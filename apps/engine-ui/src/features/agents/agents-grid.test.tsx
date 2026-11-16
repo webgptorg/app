@@ -96,6 +96,24 @@ describe('agents grid', { timeout: TIMEOUT_MS }, () => {
         expect(document.activeElement).toBe(card('Max'));
     });
 
+    it('closes the panel on a click outside it and when Back leaves its URL', async () => {
+        const { user, router } = await renderGrid();
+        await user.click(card('Ada'));
+        const panel = await screen.findByRole('dialog', { name: 'Ada' });
+        await user.click(panel);
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: 'Ada' })).toBeNull();
+        });
+
+        await user.click(card('Max'));
+        await screen.findByRole('dialog', { name: 'Max' });
+        router.history.back();
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: 'Max' })).toBeNull();
+        });
+        expect(router.state.location.search).toEqual({});
+    });
+
     it('opens a shared link’s panel at once, with the agent’s running task', async () => {
         await renderGrid('/agents?agent=agent-ada');
         const panel = await screen.findByRole('dialog', { name: 'Ada' });

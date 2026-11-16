@@ -10,7 +10,7 @@ import { FEATURES } from '../../app/features';
 import { defineFeature } from '../../app/registry/feature';
 import type { AgentLiveState, FeatureDefinition, RoutePath } from '../../app/registry/feature';
 import { expectNoAxeViolations } from '../../testing/axe';
-import { createAgentsEngine } from '../../testing/agents-engine';
+import { createAgentsEngine, seededAgent } from '../../testing/agents-engine';
 import type { AgentsEngineOptions } from '../../testing/agents-engine';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { FORMER_CORE_CAPABILITIES, problemResponse, TEST_NOW } from '../../testing/test-engine-api';
@@ -470,6 +470,23 @@ describe('agent settings', { timeout: TIMEOUT_MS }, () => {
         expect(screen.queryByRole('combobox', { name: 'Visibility' })).toBeNull();
         expect(screen.queryByRole('region', { name: 'Name and description' })).toBeNull();
         expect(within(agentHeader()).queryByRole('button', { name: /Start|Stop/ })).toBeNull();
+    });
+
+    it('shows the agent’s picture and how it was picked, with choosing not offered yet', async () => {
+        await renderAgent('/agents/agent-001/settings', {
+            agents: [seededAgent(1), { ...seededAgent(2), illustration: 'analyst' }],
+        });
+        const picture = await screen.findByRole('region', { name: 'Picture' });
+        expect(within(picture).getByText("Picked automatically from the agent's name and role.")).toBeDefined();
+        expect(within(picture).getByRole('button', { name: 'Change' }).hasAttribute('disabled')).toBe(true);
+    });
+
+    it('says the engine chose the picture when the agent carries one', async () => {
+        await renderAgent('/agents/agent-002/settings', {
+            agents: [seededAgent(1), { ...seededAgent(2), illustration: 'analyst' }],
+        });
+        const picture = await screen.findByRole('region', { name: 'Picture' });
+        expect(within(picture).getByText('Chosen for this agent on the engine.')).toBeDefined();
     });
 
     it('points to the book for the name and description, under a title that is not the field label', async () => {
