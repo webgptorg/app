@@ -79,6 +79,7 @@ const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])
     ['POST', /^\/onboarding\/answer$/, 200, (api, _, __, body, signal) => api.onboarding.answer(body as never, signal)],
     ['POST', /^\/onboarding\/defer$/, 200, (api, _, __, ___, signal) => api.onboarding.defer(signal)],
     ['GET', /^\/agents$/, 200, (api, _, query, __, signal) => api.agents.list(Object.fromEntries(query), signal)],
+    ['GET', /^\/folders$/, 200, (api, _, query, __, signal) => api.folders.list(Object.fromEntries(query), signal)],
     ['POST', /^\/agents$/, 201, (api, _, __, body, signal) => api.agents.create(body as { source: string }, signal)],
     [
         'POST',
