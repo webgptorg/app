@@ -14,14 +14,6 @@ export function UserMenu() {
     const toast = useToast();
     const items: MenuEntry[] = [
         { kind: 'heading', id: 'account', label: session.user.email },
-        {
-            kind: 'item',
-            id: 'website-licenses',
-            label: m.website_licenses(),
-            onSelect: () => {
-                window.location.assign('https://www.ptbk.io/cs/pricing/predplatne');
-            },
-        },
         { kind: 'separator', id: 'preferences-separator' },
         ...useThemeEntries(),
         { kind: 'separator', id: 'sign-out-separator' },

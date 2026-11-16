@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { m } from '../../../paraglide/messages';
 import { apiRoutes, type EngineView, type TeamView } from '../../../shared/api/routes';
 import type { TeamName } from '../../../shared/team-name';
+import { LicenseNotice } from '../licensing/license-notice';
 import { useApiClient } from '../../api/api-client-context';
 import { dataOrThrow, enginesQuery } from '../../api/queries';
 import { Link } from '../../core/link';
@@ -152,6 +153,7 @@ export function TeamListPage() {
             {...(canManage && (teams.data?.length ?? 0) > 0 ? { actions: <NewTeamButton primary /> } : {})}
         >
             <InviteOffers />
+            <LicenseNotice />
             {content()}
             {canLink ? <PendingLinkCodes /> : null}
         </Page>

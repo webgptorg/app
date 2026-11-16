@@ -167,6 +167,8 @@ export function EmailStep(props: {
     readonly autoComplete?: string;
     /** A calm picture above the title, as on the other auth screens. Decorative. */
     readonly illustration?: ReactNode;
+    /** An address someone else has verified for this browser (ptbk.io): shown, sent as is, not edited. */
+    readonly presetEmail?: string;
 }) {
     const { now } = useBrowser();
     const sendLink = useSendLink(props.purpose);
@@ -185,7 +187,7 @@ export function EmailStep(props: {
     );
     const form = useZodForm({
         schema,
-        defaultValues: { email: '' },
+        defaultValues: { email: props.presetEmail ?? '' },
         onSubmit: async ({ email }) => {
             const outcome = await sendLink(email);
             if (outcome.kind === 'sent') {
@@ -235,7 +237,13 @@ export function EmailStep(props: {
                 {state.failure === null ? null : <Banner tone="danger">{state.failure}</Banner>}
                 <FormField form={form} name="email" label={m.email_label()} required>
                     {({ text }) => (
-                        <Input {...text} type="email" autoComplete={props.autoComplete ?? 'email'} inputMode="email" />
+                        <Input
+                            {...text}
+                            type="email"
+                            autoComplete={props.autoComplete ?? 'email'}
+                            inputMode="email"
+                            readOnly={props.presetEmail !== undefined}
+                        />
                     )}
                 </FormField>
                 {props.hint}

@@ -52,3 +52,10 @@ export function requireBilling(session: SessionView): void {
         throw notFound();
     }
 }
+
+/** `/license` exists only with billing `website`, for those who may read it; elsewhere it is not found. */
+export function requireLicensing(session: SessionView): void {
+    if (!session.licensing || !session.activeOrg.permissions.includes('license.read')) {
+        throw notFound();
+    }
+}
