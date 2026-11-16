@@ -138,3 +138,37 @@ it('accepts a manage link anywhere on the configured website and nothing off it'
         expect((await read(offSite)).result).toBe('unknown');
     }
 });
+it('reads the website timestamps as it writes them, with offsets and microseconds', async () => {
+    const client = createWebsiteLicenseClient({
+        store: {
+            subjectForOrg: () => Promise.resolve(subject),
+            readSnapshot: () => Promise.resolve(null),
+            saveSnapshot: () => Promise.resolve(),
+        },
+        websiteOrigin: 'https://www.ptbk.io',
+        secret: 'server-only',
+        nowMs: () => Date.parse(snapshot.generatedAt),
+        fetch: () =>
+            Promise.resolve(
+                Response.json({
+                    ...snapshot,
+                    grants: [
+                        {
+                            id: '4408b4d6-6005-4b77-97eb-fdd67847ee94',
+                            validFrom: '2026-11-13T17:13:19.123456+00:00',
+                            validUntil: '2026-11-27T17:13:19.123456+01:00',
+                            capabilities: {
+                                engineProjects: 1,
+                                specialists: 10,
+                                controllingUsers: 5,
+                                harnessInstances: null,
+                                browserProfiles: 5,
+                                remoteControl: true,
+                            },
+                        },
+                    ],
+                }),
+            ),
+    });
+    expect((await client.read('org', new AbortController().signal)).kind).toBe('current');
+});

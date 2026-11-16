@@ -153,9 +153,10 @@ const websiteOriginSchema = originSchema.refine((origin) => origin.startsWith('h
 
 /**
  * The website's App credential (ADR 0021), shared with the website only; `wrangler secret put
- * PROMPTBOOK_APP_LICENSE_SECRET`, never a var, never sent to the SPA. At least 256 bits in any URL-safe encoding.
+ * PROMPTBOOK_APP_LICENSE_SECRET`, never a var, never sent to the SPA. The website trims its copy and wants at least 32
+ * characters; here it must be exactly what it compares against, so no whitespace at all.
  */
-const licenseSecretSchema = z.string().regex(/^[A-Za-z0-9_\-.~+/=]{43,512}$/);
+const licenseSecretSchema = z.string().regex(/^[\x21-\x7e]{32,512}$/);
 
 /**
  * Vars and secrets are JSON values. Anything else (D1, ASSETS, service bindings the runtime or the test pool adds) is a

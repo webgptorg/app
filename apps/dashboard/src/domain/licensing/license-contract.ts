@@ -11,8 +11,8 @@ export const licenseCapabilitiesSchema = z.object({
 });
 export const licenseGrantSchema = z.object({
     id: z.uuid(),
-    validFrom: z.iso.datetime(),
-    validUntil: z.iso.datetime().nullable(),
+    validFrom: z.iso.datetime({ offset: true }),
+    validUntil: z.iso.datetime({ offset: true }).nullable(),
     capabilities: licenseCapabilitiesSchema,
 });
 /**
@@ -33,7 +33,7 @@ export function licenseSnapshotSchema(websiteOrigin: string) {
     return z.object({
         version: z.literal(1),
         subject: z.uuid(),
-        generatedAt: z.iso.datetime(),
+        generatedAt: z.iso.datetime({ offset: true }),
         refreshAfterSeconds: z.number().int().min(60).max(86400),
         enforcement: z.literal('advisory'),
         manageUrl: manageUrlSchema(websiteOrigin),
