@@ -32,8 +32,8 @@ const columns = createDataTableColumnHelper<EngineView>();
 function Address(props: { readonly engine: EngineView }) {
     const { engine } = props;
     return (
-        <span className="flex flex-col gap-1">
-            <span className="flex items-center gap-1 whitespace-nowrap">
+        <span className="flex max-w-full min-w-0 flex-col gap-1">
+            <span className="flex max-w-full min-w-0 items-center gap-1 whitespace-nowrap">
                 <span title={engine.hostname} className="min-w-0 truncate font-mono text-xs text-text-muted">
                     {engine.hostname}
                 </span>
