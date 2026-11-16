@@ -1,22 +1,23 @@
 import { IntegrationId } from '@ptbk/engine-api';
-import type { AgentId, ReadIntegration } from '@ptbk/engine-api';
-import { Banner, Card, CodeText, EmptyState, ErrorState, Skeleton, useLocale } from '@ptbk/ui';
+import type { ReadIntegration } from '@ptbk/engine-api';
+import { Banner, EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
 import { getRouteApi } from '@tanstack/react-router';
 import { SearchX } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
-import { ButtonLink, Link } from '../../app/link';
+import { ButtonLink } from '../../app/link';
 import { m } from '../../paraglide/messages';
-import { BackLink, Page } from '../shell/page';
+import { EntityChip } from '../entities/entity-chip';
+import { Crumb, Page } from '../shell/page';
 import { IntegrationActions } from './integration-actions';
 import { IntegrationActivityList } from './integration-activity-list';
-import { IntegrationConfig } from './integration-config';
+import { IntegrationSettings } from './integration-config';
 import { IntegrationSecrets } from './integration-secrets';
 import { IntegrationStatusBadge, needsAttention } from './integration-status';
 import { IntegrationTools } from './integration-tools';
 import { useIntegration } from './integrations-queries';
-import { useAgentNames } from './use-agent-names';
+import { useAgents } from './use-agent-names';
 
 const route = getRouteApi('/integrations/$integrationId');
 
@@ -24,6 +25,12 @@ function isNotFound(error: unknown): boolean {
     const failure = classifyApiError(error);
     return failure.kind === 'problem' && failure.problem.status === 404;
 }
+
+function IntegrationsCrumb() {
+    return <Crumb to="/integrations">{m.integrations_title()}</Crumb>;
+}
+
+const BREADCRUMBS = [<IntegrationsCrumb key="integrations" />];
 
 /** One integration: its status, settings, scopes, tools, secret references and recent activity. */
 export function IntegrationDetailPage() {
@@ -37,7 +44,7 @@ function LoadedIntegration({ integrationId }: { readonly integrationId: Integrat
     if (integration.isError) {
         if (isNotFound(integration.error)) return <IntegrationNotFound />;
         return (
-            <Page title={m.integration_title_loading()}>
+            <Page title={m.integration_title_loading()} breadcrumbs={BREADCRUMBS}>
                 <ErrorState
                     message={m.integration_load_failed()}
                     onRetry={() => {
@@ -53,25 +60,38 @@ function LoadedIntegration({ integrationId }: { readonly integrationId: Integrat
 
 function Fact({ label, children }: { readonly label: string; readonly children: ReactNode }) {
     return (
-        <div className="flex min-w-0 flex-col gap-0.5">
-            <dt className="text-xs text-text-muted">{label}</dt>
-            <dd className="min-w-0 break-words">{children}</dd>
+        <div className="flex min-w-0 items-center">
+            <dt className="sr-only">{label}</dt>
+            <dd className="flex min-w-0 items-center">{children}</dd>
         </div>
     );
 }
 
-function DateTime({ at }: { readonly at: string | null }) {
-    const locale = useLocale();
-    if (at === null) return <span className="text-text-muted">{m.integration_never()}</span>;
-    return <time dateTime={at}>{locale.formatDateTime(new Date(at))}</time>;
+function IntegrationAgent({ agentId }: { readonly agentId: ReadIntegration['agentId'] }) {
+    const agents = useAgents();
+    const agent = agentId === null ? undefined : agents.get(agentId);
+    if (agentId === null) return <span>{m.integration_all_agents()}</span>;
+    return (
+        <EntityChip
+            kind="agent"
+            id={agentId}
+            name={agent?.name ?? agentId}
+            {...(agent === undefined ? {} : { profile: agent.profile })}
+        />
+    );
 }
 
-function AgentLink({ agentId }: { readonly agentId: AgentId }) {
-    const name = useAgentNames().get(agentId);
+/** Status and who may use it, in one quiet line under the title. */
+function IntegrationFacts({ integration }: { readonly integration: ReadIntegration }) {
     return (
-        <Link to="/agents/$agentId" params={{ agentId }}>
-            {name ?? agentId}
-        </Link>
+        <dl className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-text-muted">
+            <Fact label={m.integration_fact_status()}>
+                <IntegrationStatusBadge status={integration.status} />
+            </Fact>
+            <Fact label={m.integration_fact_agent()}>
+                <IntegrationAgent agentId={integration.agentId} />
+            </Fact>
+        </dl>
     );
 }
 
@@ -80,50 +100,23 @@ function IntegrationDetail({ integration }: { readonly integration: ReadIntegrat
         <Page
             title={integration.name}
             documentTitle={[integration.name, m.integrations_title()]}
-            back={<BackLink to="/integrations">{m.integration_back()}</BackLink>}
+            breadcrumbs={BREADCRUMBS}
             actions={<IntegrationActions integration={integration} />}
         >
-            {needsAttention(integration.status) && integration.statusDetail !== null ? (
-                <Banner tone={integration.status === 'error' ? 'danger' : 'warning'}>
-                    {/* From the engine, possibly quoting a third party: text only. */}
-                    <span className="break-words whitespace-pre-wrap">{integration.statusDetail}</span>
-                </Banner>
-            ) : null}
-            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                <Fact label={m.integration_fact_status()}>
-                    <IntegrationStatusBadge status={integration.status} />
-                </Fact>
-                <Fact label={m.integration_fact_agent()}>
-                    {integration.agentId === null ? (
-                        m.integration_all_agents()
-                    ) : (
-                        <AgentLink agentId={integration.agentId} />
-                    )}
-                </Fact>
-                <Fact label={m.integration_fact_last_activity()}>
-                    <DateTime at={integration.lastActivityAt} />
-                </Fact>
-                <Fact label={m.integration_fact_updated()}>
-                    <DateTime at={integration.updatedAt} />
-                </Fact>
-                {needsAttention(integration.status) || integration.statusDetail === null ? null : (
-                    <Fact label={m.integration_fact_status_detail()}>{integration.statusDetail}</Fact>
-                )}
-            </dl>
-            <IntegrationConfig integration={integration} />
-            <Card title={m.integration_scopes_title()} titleLevel={2}>
-                {integration.scopes.length === 0 ? (
-                    <p className="text-sm text-text-muted">{m.integration_scopes_none()}</p>
+            <div className="flex flex-col gap-4">
+                <IntegrationFacts integration={integration} />
+                {integration.statusDetail === null ? null : needsAttention(integration.status) ? (
+                    <Banner tone={integration.status === 'error' ? 'danger' : 'warning'}>
+                        {/* From the engine, possibly quoting a third party: text only. */}
+                        <span className="break-words whitespace-pre-wrap">{integration.statusDetail}</span>
+                    </Banner>
                 ) : (
-                    <ul className="flex flex-wrap gap-2">
-                        {integration.scopes.map((scope) => (
-                            <li key={scope} className="max-w-full">
-                                <CodeText value={scope} />
-                            </li>
-                        ))}
-                    </ul>
+                    <p className="max-w-prose text-sm break-words whitespace-pre-wrap text-text-muted">
+                        {integration.statusDetail}
+                    </p>
                 )}
-            </Card>
+            </div>
+            <IntegrationSettings integration={integration} />
             <IntegrationTools tools={integration.tools} />
             <IntegrationSecrets secretRefs={integration.secretRefs} />
             <IntegrationActivityList integrationId={integration.id} lastActivityAt={integration.lastActivityAt} />
@@ -133,9 +126,9 @@ function IntegrationDetail({ integration }: { readonly integration: ReadIntegrat
 
 function IntegrationDetailSkeleton() {
     return (
-        <Page title={m.integration_title_loading()}>
+        <Page title={m.integration_title_loading()} breadcrumbs={BREADCRUMBS}>
             <div aria-busy="true" aria-label={m.integration_title_loading()} className="flex flex-col gap-4">
-                <Skeleton shape="text" className="h-8 w-2/3" />
+                <Skeleton shape="text" className="h-6 w-1/3" />
                 <Skeleton shape="block" className="h-32 w-full" />
                 <Skeleton shape="block" className="h-48 w-full" />
             </div>
@@ -145,7 +138,7 @@ function IntegrationDetailSkeleton() {
 
 function IntegrationNotFound() {
     return (
-        <Page title={m.integration_not_found_title()}>
+        <Page title={m.integration_not_found_title()} breadcrumbs={BREADCRUMBS}>
             <EmptyState
                 icon={<SearchX aria-hidden />}
                 title={m.integration_not_found_title()}

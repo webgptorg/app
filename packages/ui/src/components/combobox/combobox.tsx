@@ -3,7 +3,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import type { CSSProperties, FocusEvent, KeyboardEvent, ReactNode } from 'react';
 
 import { useUiMessages } from '../../i18n/ui-provider';
-import { controlClassName, invalidAttribute } from '../../internal/control';
+import { CONTROL_HEIGHT, controlClassName, invalidAttribute } from '../../internal/control';
 import { cx } from '../../internal/cx';
 
 export interface ComboboxOption {
@@ -26,7 +26,7 @@ export interface ComboboxProps {
     readonly searchPlaceholder?: string;
     readonly invalid?: boolean;
     readonly disabled?: boolean;
-    /** Matches Button's sizes: 32px or 40px tall. */
+    /** 32px, or 36px like `Button`, `Input` and `DateInput`. */
     readonly size?: 'sm' | 'md';
     /** Posts the value with a form through a hidden input. */
     readonly name?: string;
@@ -46,7 +46,7 @@ const VIEWPORT_MARGIN = 8;
 const PAGE_STEP = 10;
 const TYPEAHEAD_RESET_MS = 500;
 
-const SIZE_CLASSES = { sm: 'min-h-8', md: 'min-h-10' } as const;
+const SIZE_CLASSES = CONTROL_HEIGHT;
 
 interface Placement {
     /** Above the trigger the popup is held by its bottom edge, so a shrinking filtered list stays attached. */

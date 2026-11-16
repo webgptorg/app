@@ -14,7 +14,7 @@ import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
 import { chatEntriesQueryOptions } from '../chat/chat-queries';
 import { tintStyle } from '../chat/references/agent-color';
-import { chatName } from '../chat/thread-list';
+import { chatName } from '../chat/chat-name';
 import { EntityChip } from '../entities/entity-chip';
 import { questionQuote } from './question-text';
 import { useAgentLook } from './use-agent-look';

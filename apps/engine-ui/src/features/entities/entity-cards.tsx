@@ -15,7 +15,7 @@ import { AgentLiveState } from '../agents/agent-live-state';
 import { agentDetailQueryOptions } from '../agents/agents-queries';
 import { chatEntriesQueryOptions, chatQueryOptions } from '../chat/chat-queries';
 import { agentColor } from '../chat/references/agent-color';
-import { threadMembers } from '../chat/thread-list';
+import { threadMembers } from '../chat/chat-name';
 import { purposeLabel } from '../files/file-labels';
 import { formatBytes } from '../files/file-size';
 import { fileDetailQueryOptions } from '../files/files-queries';

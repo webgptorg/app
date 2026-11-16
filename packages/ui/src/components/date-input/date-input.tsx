@@ -1,7 +1,7 @@
 import { CalendarDays } from 'lucide-react';
 import type { InputHTMLAttributes, Ref } from 'react';
 
-import { controlClassName, invalidAttribute } from '../../internal/control';
+import { CONTROL_HEIGHT, controlClassName, invalidAttribute } from '../../internal/control';
 import { cx } from '../../internal/cx';
 
 export interface DateInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> {
@@ -26,7 +26,7 @@ export function DateInput({ withTime = false, invalid, className, ...rest }: Dat
                 type={withTime ? 'datetime-local' : 'date'}
                 data-ptbk-date-input=""
                 aria-invalid={invalidAttribute(invalid, rest['aria-invalid'])}
-                className={controlClassName('relative min-h-10 pe-10 tabular-nums')}
+                className={controlClassName(cx(CONTROL_HEIGHT.md, 'relative pe-10 tabular-nums'))}
             />
             <CalendarDays
                 aria-hidden="true"

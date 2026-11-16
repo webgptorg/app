@@ -9,7 +9,7 @@
     --run-diff-hunk-text: var(--color-info);
     --run-diff-text: var(--color-text);
     --run-diff-meta-text: var(--color-text-muted);
-    --run-text-bg: var(--color-sunken);
+    --run-text-bg: var(--color-neutral-soft);
 }
 
 .run-text {
@@ -60,52 +60,6 @@
 
 .run-step[data-state='done']:not(:last-child)::before {
     background-color: var(--color-success);
-}
-
-/* Bars grow to their new value rather than jump; a running run's fill shimmers. Reduced motion stills both. */
-.run-progress-fill,
-.run-timing-fill {
-    transition-property: width, left;
-    transition-duration: var(--motion-seal);
-    transition-timing-function: var(--ease-enter);
-}
-
-.run-timing-fill {
-    transition-duration: 1s;
-    transition-timing-function: linear;
-}
-
-.run-progress-live {
-    background-image: linear-gradient(
-        90deg,
-        transparent 0%,
-        color-mix(in oklab, var(--color-raised) 45%, transparent) 50%,
-        transparent 100%
-    );
-    background-size: 200% 100%;
-    background-repeat: no-repeat;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-    .run-progress-live {
-        animation: ptbk-run-shimmer var(--motion-live) linear infinite;
-    }
-}
-
-@keyframes ptbk-run-shimmer {
-    0% {
-        background-position: 150% 0;
-    }
-    100% {
-        background-position: -50% 0;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .run-progress-fill,
-    .run-timing-fill {
-        transition-duration: 0s;
-    }
 }
 
 /* A tool call unfolds instead of popping open, where the browser can animate to `auto`. */

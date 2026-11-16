@@ -1,5 +1,5 @@
 import type { ReadRunDetail, ToolCall } from '@ptbk/engine-api';
-import { Banner, Card, Spinner, useLocale } from '@ptbk/ui';
+import { Banner, Section, Spinner, useLocale } from '@ptbk/ui';
 import { ChevronRight, Circle, CircleCheck, CircleStop, CircleX } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
@@ -73,35 +73,22 @@ export function StepsSection({ run, progress }: { readonly run: ReadRunDetail; r
     const nowUnderStep = currentIndex !== -1 && nowText !== '' && nowText !== progress.items[currentIndex]?.text.trim();
     const nowStandalone = running && nowText !== '' && currentIndex === -1;
     return (
-        <Card title={m.run_steps_title()}>
+        <Section
+            title={m.run_steps_title()}
+            {...(total === 0
+                ? {}
+                : {
+                      actions: (
+                          <span className="text-xs text-text-muted tabular-nums">
+                              {m.run_steps_count({
+                                  done: locale.formatNumber(done),
+                                  total: locale.formatNumber(total),
+                              })}
+                          </span>
+                      ),
+                  })}
+        >
             <div className="flex flex-col gap-4" aria-live={running ? 'polite' : 'off'}>
-                {total === 0 ? null : (
-                    <div className="flex items-center gap-3 text-sm text-text-muted">
-                        <div
-                            role="progressbar"
-                            aria-label={m.run_steps_progress()}
-                            aria-valuemin={0}
-                            aria-valuemax={total}
-                            aria-valuenow={done}
-                            className="h-1.5 flex-1 overflow-hidden rounded-pill bg-sunken"
-                        >
-                            <div
-                                className={cx(
-                                    'run-progress-fill h-full rounded-pill',
-                                    running && 'run-progress-live',
-                                    run.status === 'completed' ? 'bg-success' : running ? 'bg-accent' : 'bg-text-muted',
-                                )}
-                                style={{ width: `${String((done / total) * 100)}%` }}
-                            />
-                        </div>
-                        <span className="shrink-0 tabular-nums">
-                            {m.run_steps_count({
-                                done: locale.formatNumber(done),
-                                total: locale.formatNumber(total),
-                            })}
-                        </span>
-                    </div>
-                )}
                 {total === 0 ? null : (
                     <ol className="flex flex-col">
                         {progress.items.map((item, index) => {
@@ -112,7 +99,7 @@ export function StepsSection({ run, progress }: { readonly run: ReadRunDetail; r
                                     className="run-step relative flex gap-3 pb-3 last:pb-0"
                                     data-state={state}
                                 >
-                                    <span className="relative z-10 flex size-5 shrink-0 items-center justify-center bg-raised">
+                                    <span className="relative z-10 flex size-5 shrink-0 items-center justify-center bg-surface">
                                         <StepNode
                                             state={state}
                                             failed={run.status === 'failed'}
@@ -156,7 +143,7 @@ export function StepsSection({ run, progress }: { readonly run: ReadRunDetail; r
                     </>
                 ) : null}
             </div>
-        </Card>
+        </Section>
     );
 }
 
@@ -186,31 +173,13 @@ function ToolStateIcon({ state, inFlight }: { readonly state: ToolCall['state'];
     }
 }
 
-/** Where in the run a call sat, as a quiet bar beside its duration; decorative, the duration says it in text. */
-function TimingBar({ run, call, elapsedMs, now }: TimingProps & { readonly elapsedMs: number }) {
-    if (run.startedAt === null || call.startedAt === null) return null;
-    const startMs = Date.parse(run.startedAt);
-    const span = (run.completedAt === null ? now : Date.parse(run.completedAt)) - startMs;
-    if (span <= 0) return null;
-    const left = Math.min(1, Math.max(0, (Date.parse(call.startedAt) - startMs) / span));
-    const width = Math.min(1 - left, elapsedMs / span);
-    return (
-        <span aria-hidden="true" className="relative hidden h-1 w-24 shrink-0 rounded-pill bg-sunken sm:block">
-            <span
-                className="run-timing-fill absolute inset-y-0 min-w-1 rounded-pill bg-accent"
-                style={{ left: `${String(left * 100)}%`, width: `${String(width * 100)}%` }}
-            />
-        </span>
-    );
-}
-
 interface TimingProps {
     readonly run: ReadRunDetail;
     readonly call: ToolCall;
     readonly now: number;
 }
 
-/** The bar and the duration: what the engine reported, else, while the call is in flight, the clock since it began. */
+/** The duration: what the engine reported, else, while the call is in flight, the clock since it began. */
 function CallTiming({ run, call, now }: TimingProps) {
     const locale = useLocale();
     let elapsed = call.durationMs;
@@ -218,12 +187,9 @@ function CallTiming({ run, call, now }: TimingProps) {
         elapsed = Math.max(0, now - Date.parse(call.startedAt));
     }
     return (
-        <>
-            {elapsed === null ? null : <TimingBar run={run} call={call} now={now} elapsedMs={elapsed} />}
-            <span className="min-w-12 shrink-0 text-right text-sm whitespace-nowrap text-text-muted tabular-nums">
-                {elapsed === null ? null : formatDuration(elapsed, (value) => locale.formatNumber(value))}
-            </span>
-        </>
+        <span className="min-w-12 shrink-0 text-right text-sm whitespace-nowrap text-text-muted tabular-nums">
+            {elapsed === null ? null : formatDuration(elapsed, (value) => locale.formatNumber(value))}
+        </span>
     );
 }
 
@@ -303,15 +269,15 @@ function ToolCallRow({ run, call }: { readonly run: ReadRunDetail; readonly call
     );
 }
 
-/** Each call as a row that unfolds to its output: live timers and a bar showing when in the run it ran. */
+/** Each call as a hairline row that unfolds to its output, with a live timer while it runs. */
 export function ToolCallsSection({ run }: { readonly run: ReadRunDetail }) {
     return (
-        <Card title={m.run_tools_title()}>
-            <ul className="flex flex-col divide-y divide-divider">
+        <Section title={m.run_tools_title()} count={run.toolCalls.length}>
+            <ul className="flex flex-col divide-y divide-hairline">
                 {run.toolCalls.map((call) => (
                     <ToolCallRow key={call.id} run={run} call={call} />
                 ))}
             </ul>
-        </Card>
+        </Section>
     );
 }

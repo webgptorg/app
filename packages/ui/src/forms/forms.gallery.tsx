@@ -1,7 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { z } from 'zod';
 
+import { Button } from '../components/button/button';
 import { Checkbox } from '../components/checkbox/checkbox';
+import { Combobox } from '../components/combobox/combobox';
+import { DateInput } from '../components/date-input/date-input';
 import { Field } from '../components/field/field';
 import { Input } from '../components/input/input';
 import { Select } from '../components/select/select';
@@ -79,8 +82,37 @@ function GalleryForm() {
     );
 }
 
+const MODELS = [
+    { value: 'fast', label: 'Fast' },
+    { value: 'balanced', label: 'Balanced' },
+];
+
+/** Every control that can share a line, side by side: their edges must line up (36px, `CONTROL_HEIGHT`). */
+function ControlRow() {
+    const [model, setModel] = useState<string | null>('balanced');
+    return (
+        <div role="group" aria-label="Controls in one row" className="flex flex-wrap items-start gap-2">
+            <Input aria-label="Agent name" defaultValue="Lead bot" className="w-40" />
+            <Select aria-label="Visibility" defaultValue="team" className="w-32">
+                <option value="team">{'Team'}</option>
+                <option value="private">{'Only me'}</option>
+            </Select>
+            <Combobox aria-label="Model" options={MODELS} value={model} onChange={setModel} className="w-36" />
+            <DateInput aria-label="Starts" defaultValue="2026-11-16" className="w-44" />
+            <Textarea aria-label="Note" rows={1} className="w-40" />
+            <Button variant="primary">{'Save'}</Button>
+            <Button>{'Cancel'}</Button>
+        </div>
+    );
+}
+
 export const formsGallery: GalleryEntry = {
     id: 'form',
     title: 'Form',
-    render: () => <GalleryForm />,
+    render: () => (
+        <div className="flex flex-col gap-8">
+            <ControlRow />
+            <GalleryForm />
+        </div>
+    ),
 };

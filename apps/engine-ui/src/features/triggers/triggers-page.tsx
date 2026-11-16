@@ -23,8 +23,7 @@ export function TriggersPage() {
         [navigate],
     );
     return (
-        <Page title={m.triggers_title()} actions={<NewTriggerLink />}>
-            <p className="text-sm text-text-muted">{m.triggers_intro()}</p>
+        <Page title={m.triggers_title()} description={m.triggers_intro()} actions={<NewTriggerLink />}>
             <TriggersTable search={search} onSearchChange={onSearchChange} />
         </Page>
     );

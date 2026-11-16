@@ -56,7 +56,7 @@ describe('file drawer', { timeout: TIMEOUT_MS }, () => {
         expect(within(items[0] as HTMLElement).getByText('Current version')).toBeDefined();
         expect(within(versions).getByText(COMMITS.second)).toBeDefined();
         expect(within(versions).getByText(COMMITS.first)).toBeDefined();
-        const runLinks = within(versions).getAllByRole('link', { name: PROJECT_RUN_ID });
+        const runLinks = within(versions).getAllByRole('link', { name: 'Run' });
         expect(runLinks[0]?.getAttribute('href')).toBe(`/runs/${PROJECT_RUN_ID}`);
         const download = within(items[1] as HTMLElement).getByRole('link', { name: /^Download src\/app\.ts as of/ });
         expect(download.getAttribute('href')).toBe(
@@ -68,7 +68,7 @@ describe('file drawer', { timeout: TIMEOUT_MS }, () => {
         const { drawer } = await openDrawer(FILE_IDS.project, { capabilities: [KNOWN_CAPABILITIES.files] });
         const versions = await within(drawer).findByRole('list', { name: 'Versions' });
         expect(within(versions).getByText(COMMITS.second)).toBeDefined();
-        expect(within(drawer).queryByRole('link', { name: PROJECT_RUN_ID })).toBeNull();
+        expect(within(drawer).queryByRole('link', { name: 'Run' })).toBeNull();
         expect(within(drawer).queryByText('Run')).toBeNull();
     });
 
@@ -205,7 +205,8 @@ describe('without file scanning', { timeout: TIMEOUT_MS }, () => {
 describe('delete', { timeout: TIMEOUT_MS }, () => {
     it('asks naming the file, waits for the engine, closes the drawer and confirms with a toast', async () => {
         const { drawer, app, engine } = await openDrawer(FILE_IDS.pdf);
-        await app.user.click(within(drawer).getByRole('button', { name: 'Delete' }));
+        await app.user.click(within(drawer).getByRole('button', { name: 'More actions' }));
+        await app.user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
         const confirm = await screen.findByRole('dialog', { name: 'Delete file?' });
         expect(within(confirm).getByText(/report\.pdf and all its versions/)).toBeDefined();
         await app.user.click(within(confirm).getByRole('button', { name: 'Delete file' }));
@@ -222,7 +223,8 @@ describe('delete', { timeout: TIMEOUT_MS }, () => {
     it('reports a refusal and keeps the file', async () => {
         const { drawer, app, engine } = await openDrawer(FILE_IDS.pdf);
         engine.spies.delete.mockImplementation(() => problemResponse('validation-failed'));
-        await app.user.click(within(drawer).getByRole('button', { name: 'Delete' }));
+        await app.user.click(within(drawer).getByRole('button', { name: 'More actions' }));
+        await app.user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
         const confirm = await screen.findByRole('dialog', { name: 'Delete file?' });
         await app.user.click(within(confirm).getByRole('button', { name: 'Delete file' }));
         expect(await screen.findByText('Could not delete report.pdf')).toBeDefined();
@@ -241,9 +243,11 @@ describe('delete', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('is absent without files.write, in the drawer and the list', async () => {
-        const { drawer } = await openDrawer(FILE_IDS.pdf, { permissions: allBut('files.write') });
+        const { drawer, app } = await openDrawer(FILE_IDS.pdf, { permissions: allBut('files.write') });
         expect(within(drawer).queryByRole('button', { name: 'Delete' })).toBeNull();
-        expect(screen.queryByRole('button', { name: 'Actions for report.pdf' })).toBeNull();
+        await app.user.click(within(drawer).getByRole('button', { name: 'More actions' }));
+        expect(await screen.findByRole('menuitem', { name: 'Show in the agent’s files' })).toBeDefined();
+        expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Upload knowledge' })).toBeNull();
     });
 });

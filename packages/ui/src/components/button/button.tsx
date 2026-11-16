@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, MouseEvent, ReactNode, Ref } from 'react';
 
+import { CONTROL_HEIGHT } from '../../internal/control';
 import { cx } from '../../internal/cx';
 import { mergeTooltipHandlers, useTooltip } from '../tooltip/tooltip';
 import { Spinner } from '../spinner/spinner';
@@ -59,8 +60,8 @@ const DISABLED_CLASSES: Readonly<Record<ButtonVariant, string>> = {
 };
 
 const SIZE_CLASSES: Readonly<Record<ButtonSize, string>> = {
-    sm: 'min-h-8 gap-1.5 px-2.5 text-xs',
-    md: 'min-h-9 gap-2 px-3.5 text-sm',
+    sm: cx(CONTROL_HEIGHT.sm, 'gap-1.5 px-2.5 text-xs'),
+    md: cx(CONTROL_HEIGHT.md, 'gap-2 px-3.5 text-sm'),
 };
 
 /** Shared by `Button` and `IconButton` so both look and behave the same. */

@@ -144,7 +144,8 @@ describe('upload from the files page', { timeout: TIMEOUT_MS }, () => {
         await app.user.click(await screen.findByRole('button', { name: 'Upload knowledge' }));
         const dialog = await screen.findByRole('dialog', { name: 'Upload knowledge' });
         expect(within(dialog).getByText('Choose the agent the knowledge is for.')).toBeDefined();
-        await app.user.selectOptions(await within(dialog).findByLabelText(/^Agent/), 'agent-grace');
+        await app.user.click(await within(dialog).findByRole('combobox', { name: /^Agent/ }));
+        await app.user.click(await screen.findByRole('option', { name: 'Grace' }));
         await within(dialog).findByRole('button', { name: 'Choose files' });
         await app.user.upload(fileInput(dialog), notes());
         expect(await within(dialog).findByText('Uploaded')).toBeDefined();

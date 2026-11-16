@@ -1,6 +1,7 @@
 import { createProblem } from '@ptbk/engine-api';
+import type { Permission } from '@ptbk/engine-api';
 import { screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { OWNER_ID } from '../../testing/agents-engine';
@@ -11,8 +12,9 @@ const TIMEOUT_MS = 20_000;
 const ADA = { kind: 'agent', key: CHAT_AGENT_ID } as const;
 const CHATTER = { kind: 'agent', key: CHATTER_ID } as const;
 
-function threads() {
+function threads(permissions?: readonly Permission[]) {
     return createChatEngine({
+        ...(permissions === undefined ? {} : { permissions }),
         chats: [
             seededConversation('chat-own', 2, OWNER_ID),
             {
@@ -36,18 +38,64 @@ function threads() {
 }
 
 describe('threads page', { timeout: TIMEOUT_MS }, () => {
-    it('lists threads with their agents and marks what needs you apart from what is only unread', async () => {
+    it('lists threads as rich rows: who is in them, their newest words, what needs you apart from unread', async () => {
         const engine = threads();
         renderWithProviders({ path: '/chats', engineApi: engine.client });
-        const list = await screen.findByRole('list', { name: 'Chats' });
-        const rows = within(list).getAllByRole('listitem');
-        const row = (name: string) => rows.find((item) => within(item).queryByRole('link', { name }) !== null);
-        expect(within(row('Shipping') ?? list).getByText('Needs you')).toBeDefined();
-        expect(within(row('Shipping') ?? list).getByText('Chatter, Ada')).toBeDefined();
-        expect(within(row('Report') ?? list).getByText('1 new')).toBeDefined();
-        expect(within(row('Chat with Ada') ?? list).queryByText(/new|Needs you/)).toBeNull();
-        expect(within(list).getByRole('link', { name: 'Shipping' }).getAttribute('href')).toBe('/chats/chat-question');
+        const table = await screen.findByRole('table', { name: 'Chats' });
+        const row = (name: string) =>
+            within(table)
+                .getAllByRole('row')
+                .find((item) => within(item).queryByRole('link', { name }) !== null) as HTMLElement;
+        expect(within(row('Shipping')).getByText('Needs you')).toBeDefined();
+        expect(within(row('Shipping')).getByText('Chatter, Ada')).toBeDefined();
+        expect(within(row('Shipping')).getByText('Do we ship to Brno?', { exact: false })).toBeDefined();
+        expect(within(row('Report')).getByText('1 new')).toBeDefined();
+        expect(within(row('Report')).getByText('All quiet.')).toBeDefined();
+        expect(within(row('Chat with Ada')).queryByText(/new|Needs you/)).toBeNull();
+        expect(within(table).getByRole('link', { name: 'Shipping' }).getAttribute('href')).toBe('/chats/chat-question');
         await expectNoAxeViolations(document.body);
+    });
+
+    it('searches titles on the engine and keeps the search, agent and needs-you filters in the URL', async () => {
+        const engine = threads();
+        const app = renderWithProviders({ path: '/chats?needs=you', engineApi: engine.client });
+        const table = await screen.findByRole('table', { name: 'Chats' });
+        expect(await within(table).findByRole('link', { name: 'Shipping' })).toBeDefined();
+        expect(within(table).queryByRole('link', { name: 'Report' })).toBeNull();
+
+        await app.user.type(screen.getByRole('searchbox', { name: 'Search chats' }), 'Rep');
+        await waitFor(() => {
+            expect(app.router.state.location.search).toMatchObject({ q: 'Rep', needs: 'you' });
+        });
+        await waitFor(() => {
+            expect(engine.spies.listAll).toHaveBeenCalledWith(expect.objectContaining({ q: 'Rep' }), expect.anything());
+        });
+        expect(await screen.findByText('No chat matches')).toBeDefined();
+        await app.user.click(screen.getAllByRole('button', { name: 'Clear filters' })[0] as HTMLElement);
+        await waitFor(() => {
+            expect(app.router.state.location.search).toEqual({});
+        });
+        expect(await within(table).findByRole('link', { name: 'Report' })).toBeDefined();
+    });
+
+    it("narrows to one agent's threads, with a search, by membership", async () => {
+        const engine = threads();
+        renderWithProviders({ path: `/chats?agentId=${CHAT_AGENT_ID}&q=Ship`, engineApi: engine.client });
+        const table = await screen.findByRole('table', { name: 'Chats' });
+        expect(await within(table).findByRole('link', { name: 'Shipping' })).toBeDefined();
+        expect(within(table).queryByRole('link', { name: 'Report' })).toBeNull();
+        expect(engine.spies.listAll).toHaveBeenCalledWith(expect.objectContaining({ q: 'Ship' }), expect.anything());
+    });
+
+    it('never asks for agents without agents.read: no agent filter, faces by their hue, chips without links', async () => {
+        const engine = threads(['chats.read', 'chats.write', 'members.read']);
+        const agentList = vi.spyOn(engine.client.agents, 'list');
+        const app = renderWithProviders({ path: '/chats', engineApi: engine.client });
+        await screen.findByRole('table', { name: 'Chats' });
+        await app.user.click(screen.getByRole('button', { name: 'Filter' }));
+        expect(await screen.findByRole('option', { name: 'Attention' })).toBeDefined();
+        expect(screen.queryByRole('option', { name: 'Agent' })).toBeNull();
+        expect(agentList).not.toHaveBeenCalled();
     });
 
     it('opens a new thread with Chatter by default, and with another agent from the menu', async () => {
@@ -58,7 +106,8 @@ describe('threads page', { timeout: TIMEOUT_MS }, () => {
         const first = engine.spies.create.mock.calls[0]?.[0];
         expect(Object.keys(first ?? {})).toEqual(['requestKey']);
 
-        await app.user.click(await screen.findByRole('link', { name: 'All chats' }));
+        const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+        await app.user.click(within(trail).getByRole('link', { name: 'Chats' }));
         await app.user.click(await screen.findByRole('button', { name: 'Start with another agent' }));
         await app.user.click(await screen.findByRole('menuitem', { name: 'Ada' }));
         await waitFor(() => {
@@ -70,8 +119,11 @@ describe('threads page', { timeout: TIMEOUT_MS }, () => {
     it("lists an agent's threads on its Chat tab", async () => {
         const engine = threads();
         renderWithProviders({ path: `/agents/${CHAT_AGENT_ID}/chat`, engineApi: engine.client });
-        const list = await screen.findByRole('list', { name: 'Chats' });
-        expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+        const table = await screen.findByRole('table', { name: 'Chats' });
+        const threadLinks = (await within(table).findAllByRole('link')).filter(
+            (link) => link.getAttribute('href')?.startsWith('/chats/') === true,
+        );
+        expect(threadLinks).toHaveLength(2);
         expect(screen.getByRole('button', { name: 'New chat with Ada' })).toBeDefined();
     });
 

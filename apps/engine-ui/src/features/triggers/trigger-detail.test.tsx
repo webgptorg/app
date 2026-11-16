@@ -1,7 +1,7 @@
 import { KNOWN_CAPABILITIES, PERMISSIONS, TriggerId } from '@ptbk/engine-api';
 import type { Permission } from '@ptbk/engine-api';
 import { act, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderWithProviders } from '../../testing/render-with-providers';
@@ -25,6 +25,8 @@ async function renderTrigger(
 
 const fact = (label: string) => screen.getByText(label, { selector: 'dt' }).nextElementSibling as HTMLElement;
 const fires = () => screen.getByRole('table', { name: 'History' });
+const history = () => screen.getByRole('region', { name: 'History' });
+const crumbs = () => within(screen.getByRole('navigation', { name: 'Breadcrumb' }));
 
 describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
     it('shows an email trigger’s engine-assigned address with a copy button', async () => {
@@ -45,8 +47,9 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
         expect(within(card).getByText('2 runs')).toBeDefined();
         expect(within(card).getByText('Never')).toBeDefined();
         // Typed by a member and sent to the agent: shown as text, never as markup.
-        expect(within(card).getByText(`Write the morning report. ${HOSTILE}`)).toBeDefined();
-        expect(card.querySelector('img, script, a[href^="javascript:"]')).toBeNull();
+        const message = screen.getByRole('region', { name: 'Message sent to the agent' });
+        expect(within(message).getByText(`Write the morning report. ${HOSTILE}`)).toBeDefined();
+        expect(message.querySelector('img, script, a[href^="javascript:"]')).toBeNull();
     });
 
     it('shows next and last fire in the reader’s zone with the schedule’s zone beside it, and ticks', async () => {
@@ -66,7 +69,7 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
         expect(within(fact('Next run')).getByText(/^Oct 2, 2026, 8:00\sAM$/)).toBeDefined();
     });
 
-    it('lists fires newest first with outcome, error as text and a link to the run', async () => {
+    it('lists fires newest first with outcome, error as text and the run as a chip', async () => {
         await renderTrigger(TRIGGER_IDS.weekday);
         const rows = await waitFor(() => {
             const found = within(fires()).getAllByRole('row').slice(1);
@@ -75,7 +78,7 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
         });
         const [started, failed] = rows as [HTMLElement, HTMLElement];
         expect(within(started).getByText('Started a run')).toBeDefined();
-        expect(within(started).getByRole('link', { name: 'Open run' }).getAttribute('href')).toBe('/runs/run-morning');
+        expect(within(started).getByRole('link', { name: 'Run' }).getAttribute('href')).toBe('/runs/run-morning');
         expect(within(failed).getByText('Failed')).toBeDefined();
         expect(within(failed).getByText(`Nothing ran: ${HOSTILE}`)).toBeDefined();
         expect(within(failed).queryByRole('link')).toBeNull();
@@ -118,32 +121,60 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
         expect(engine.spies.listFires.mock.calls.at(-1)?.[1]).toMatchObject({ cursor: expect.any(String) as string });
     });
 
-    it('says when a trigger has not fired yet', async () => {
+    it('says in one quiet line when a trigger has not fired yet', async () => {
         await renderTrigger(TRIGGER_IDS.inbox);
-        expect(await within(fires()).findByText('Not run yet')).toBeDefined();
+        expect(await within(history()).findByText('Not run yet')).toBeDefined();
+        expect(within(history()).queryByRole('table')).toBeNull();
+    });
+
+    it('leaves the error column out when no fire on the page failed', async () => {
+        const { engine } = await renderTrigger(TRIGGER_IDS.inbox);
+        act(() => {
+            engine.controller.fireTrigger(TRIGGER_IDS.inbox, { subject: 'Refund please' });
+        });
+        expect(await within(history()).findByText('Started a run')).toBeDefined();
+        expect(within(fires()).queryByRole('columnheader', { name: 'Error' })).toBeNull();
     });
 
     it('updates its fire history and last fire live when the trigger fires', async () => {
         const { engine } = await renderTrigger(TRIGGER_IDS.inbox);
-        expect(await within(fires()).findByText('Not run yet')).toBeDefined();
+        expect(await within(history()).findByText('Not run yet')).toBeDefined();
         act(() => {
             engine.controller.fireTrigger(TRIGGER_IDS.inbox, { subject: 'Refund please' });
         });
-        expect(await within(fires()).findByText('Started a run')).toBeDefined();
+        expect(await within(history()).findByText('Started a run')).toBeDefined();
         await waitFor(() => {
             expect(within(fact('Last run')).queryByText('Never')).toBeNull();
         });
     });
 
-    it('explains a failed trigger and offers resume', async () => {
-        await renderTrigger(TRIGGER_IDS.failed);
+    it('explains a failed trigger and offers resume as its one button, edit in the menu', async () => {
+        const { user, engine } = await renderTrigger(TRIGGER_IDS.failed);
         expect(screen.getByText('This trigger failed')).toBeDefined();
-        expect(screen.getByRole('button', { name: 'Resume Calendar sync' })).toBeDefined();
+        await user.click(screen.getByRole('button', { name: 'More actions' }));
+        expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Edit', 'Delete']);
+        await user.keyboard('{Escape}');
+        await user.click(screen.getByRole('button', { name: 'Resume Calendar sync' }));
+        expect(await screen.findByText('Calendar sync resumed.')).toBeDefined();
+        expect(engine.controller.getTrigger(TRIGGER_IDS.failed)?.lifecycle).toBe('active');
     });
 
-    it('leads back to all triggers, or to the agent’s tab it was opened from', async () => {
+    it('edits an active trigger from its one button and pauses it from the menu', async () => {
+        const { user, engine } = await renderTrigger(TRIGGER_IDS.weekday);
+        expect(screen.getByRole('link', { name: 'Edit' }).getAttribute('href')).toBe(
+            `/triggers/${TRIGGER_IDS.weekday}/edit`,
+        );
+        await user.click(screen.getByRole('button', { name: 'More actions' }));
+        expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Pause', 'Delete']);
+        await user.click(screen.getByRole('menuitem', { name: 'Pause' }));
+        expect(await screen.findByText('Morning report paused.')).toBeDefined();
+        expect(engine.controller.getTrigger(TRIGGER_IDS.weekday)?.lifecycle).toBe('paused');
+        expect(await screen.findByRole('button', { name: 'Resume Morning report' })).toBeDefined();
+    });
+
+    it('sits under all triggers in the breadcrumb trail', async () => {
         await renderTrigger(TRIGGER_IDS.weekday);
-        expect(screen.getByRole('link', { name: 'Back to triggers' }).getAttribute('href')).toBe('/triggers');
+        expect(crumbs().getByRole('link', { name: 'Triggers' }).getAttribute('href')).toBe('/triggers');
     });
 
     it('leads back to the agent’s tab and returns there after a delete', async () => {
@@ -153,8 +184,10 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
             engineApi: engine.client,
         });
         await screen.findByRole('heading', { level: 1, name: 'Morning report' });
-        const back = await screen.findByRole('link', { name: "Back to Iris's triggers" });
-        expect(back.getAttribute('href')).toBe('/agents/agent-iris/triggers');
+        expect(crumbs().getByRole('link', { name: 'Iris' }).getAttribute('href')).toBe('/agents/agent-iris');
+        expect(crumbs().getByRole('link', { name: 'Triggers' }).getAttribute('href')).toBe(
+            '/agents/agent-iris/triggers',
+        );
         expect(screen.getByRole('link', { name: 'Edit' }).getAttribute('href')).toBe(
             `/triggers/${TRIGGER_IDS.weekday}/edit?from=agent`,
         );
@@ -182,10 +215,11 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
         const recurrence = { kind: 'unknown', rawKind: 'sunrise' } as unknown as typeof real.data.config.recurrence;
         const newer = { ...real.data, config: { ...real.data.config, recurrence } };
         engine.spies.get.mockImplementation(() => Promise.resolve({ ...real, data: newer }));
-        await renderTrigger(TRIGGER_IDS.weekday, engine);
+        const { user } = await renderTrigger(TRIGGER_IDS.weekday, engine);
         expect(within(screen.getByRole('region', { name: 'Schedule' })).getByText('sunrise')).toBeDefined();
         expect(screen.queryByRole('link', { name: 'Edit' })).toBeNull();
-        expect(screen.getByRole('button', { name: 'Pause Morning report' })).toBeDefined();
+        await user.click(screen.getByRole('button', { name: 'More actions' }));
+        expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Pause', 'Delete']);
     });
 
     it('deletes after a confirmation naming the trigger, waiting for the engine', async () => {
@@ -237,7 +271,8 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
                 }),
         );
         renderWithProviders({ path: `/triggers/${TRIGGER_IDS.weekday}`, engineApi: engine.client });
-        expect(await screen.findByRole('region', { name: 'Trigger', busy: true })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Trigger' })).toBeDefined();
+        expect(document.querySelector('[aria-busy="true"]')).not.toBeNull();
         release();
         expect(await screen.findByRole('heading', { level: 1, name: 'Morning report' })).toBeDefined();
     });
@@ -245,7 +280,16 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
     it('says a trigger does not exist, and offers the way back', async () => {
         renderWithProviders({ path: '/triggers/trigger-gone', engineApi: createTriggersEngine().client });
         expect(await screen.findByRole('heading', { level: 1, name: 'Trigger not found' })).toBeDefined();
-        expect(screen.getByRole('link', { name: 'Back to triggers' }).getAttribute('href')).toBe('/triggers');
+        expect(crumbs().getByRole('link', { name: 'Triggers' }).getAttribute('href')).toBe('/triggers');
+    });
+
+    it('names the agent without a link or an agent query for a member without agents.read', async () => {
+        const engine = createTriggersEngine({ permissions: allBut('agents.read') });
+        const agentList = vi.spyOn(engine.client.agents, 'list');
+        await renderTrigger(TRIGGER_IDS.weekday, engine);
+        expect(within(fact('Agent')).getByText('Iris')).toBeDefined();
+        expect(within(fact('Agent')).queryByRole('link')).toBeNull();
+        expect(agentList).not.toHaveBeenCalled();
     });
 
     it('shows an error with retry when the trigger cannot be loaded', async () => {

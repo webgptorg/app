@@ -10,8 +10,9 @@ import { LazyIntegrationFormDialog } from './lazy-integration-form-dialog';
 import { useIntegrationMutations } from './use-integration-mutations';
 
 /**
- * Enable or disable (optimistic), check the connection (waits for the engine and shows the status it returns), edit
- * and delete from the "More actions" menu (after confirmation). Nothing renders without `integrations.manage`.
+ * The header actions for members with `integrations.manage`: the one or two used most as soft buttons (enable a
+ * disabled integration, or check a running one, and edit), the rest in "More actions" with delete last and set apart.
+ * Enable and disable are optimistic; a check waits for the engine and shows the status it returns.
  */
 export function IntegrationActions({ integration }: { readonly integration: ReadIntegration }) {
     const { can } = usePermissions();
@@ -22,6 +23,9 @@ export function IntegrationActions({ integration }: { readonly integration: Read
     if (!can('integrations.manage')) return null;
     const target = { id: integration.id, name: integration.name };
     const disabled = integration.status === 'disconnected';
+    const check = () => {
+        mutations.check.mutate(target);
+    };
     return (
         <div className="flex flex-wrap gap-2">
             {disabled ? (
@@ -36,25 +40,11 @@ export function IntegrationActions({ integration }: { readonly integration: Read
                     {m.integration_enable()}
                 </Button>
             ) : (
-                <Button
-                    loading={mutations.disable.isPending}
-                    onClick={() => {
-                        mutations.disable.mutate(target);
-                    }}
-                >
-                    <Plug aria-hidden className="size-4" />
-                    {m.integration_disable()}
+                <Button loading={mutations.check.isPending} onClick={check}>
+                    <RefreshCw aria-hidden className="size-4" />
+                    {m.integration_check()}
                 </Button>
             )}
-            <Button
-                loading={mutations.check.isPending}
-                onClick={() => {
-                    mutations.check.mutate(target);
-                }}
-            >
-                <RefreshCw aria-hidden className="size-4" />
-                {m.integration_check()}
-            </Button>
             <Button
                 onClick={() => {
                     setEditing(true);
@@ -65,6 +55,26 @@ export function IntegrationActions({ integration }: { readonly integration: Read
             </Button>
             <ActionMenu
                 items={[
+                    disabled
+                        ? {
+                              kind: 'item',
+                              id: 'check',
+                              label: m.integration_check(),
+                              icon: <RefreshCw aria-hidden />,
+                              disabled: mutations.check.isPending,
+                              onSelect: check,
+                          }
+                        : {
+                              kind: 'item',
+                              id: 'disable',
+                              label: m.integration_disable(),
+                              icon: <Plug aria-hidden />,
+                              disabled: mutations.disable.isPending,
+                              onSelect: () => {
+                                  mutations.disable.mutate(target);
+                              },
+                          },
+                    { kind: 'separator', id: 'danger' },
                     {
                         kind: 'item',
                         id: 'delete',

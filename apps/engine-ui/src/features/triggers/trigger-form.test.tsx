@@ -1,6 +1,7 @@
-import { createProblem } from '@ptbk/engine-api';
+import { createProblem, PERMISSIONS } from '@ptbk/engine-api';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import type { UserEvent } from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 
 import { m } from '../../paraglide/messages';
 import { expectNoAxeViolations } from '../../testing/axe';
@@ -23,11 +24,36 @@ async function renderForm(
     });
     await screen.findByRole('button', { name: /^(Create trigger|Save)$/ });
     // The agent picker fills from the engine; wait so a choice is not lost to the first render.
-    await screen.findByRole('option', { name: 'Iris' });
+    await screen.findByRole('option', { name: 'Iris', hidden: true });
     return { ...app, engine };
 }
 
-const field = (name: RegExp | string) => screen.getByLabelText(name);
+/** The labelled control itself, not an open list's popup, which takes the same name. */
+const field = (name: RegExp | string) => {
+    const found = screen
+        .getAllByLabelText(name)
+        .find(
+            (element) =>
+                element.getAttribute('role') !== 'listbox' &&
+                !(element instanceof HTMLInputElement && element.getAttribute('role') === 'combobox'),
+        );
+    if (found === undefined) throw new Error(`No control labelled ${String(name)}`);
+    return found;
+};
+/** The list a combobox opens. */
+const listOf = (control: HTMLElement) =>
+    document.getElementById(control.getAttribute('aria-controls') ?? '') as HTMLElement;
+/** What a combobox holds: the value its hidden input posts. */
+const chosen = (name: string) =>
+    document.querySelector<HTMLInputElement>(`input[type="hidden"][name="${name}"]`)?.value;
+
+/** Opens a combobox and picks an option by its name; a searchable one is narrowed by typing first. */
+async function choose(app: { readonly user: UserEvent }, label: RegExp, option: string) {
+    const control = field(label);
+    await app.user.click(control);
+    if (document.activeElement instanceof HTMLInputElement) await app.user.keyboard(option);
+    await app.user.click(within(listOf(control)).getByRole('option', { name: option }));
+}
 const errorOf = (control: HTMLElement) => {
     const id = control.getAttribute('aria-describedby') ?? '';
     return id
@@ -38,19 +64,19 @@ const errorOf = (control: HTMLElement) => {
 const preview = () => screen.getByRole('region', { name: 'Next runs' });
 
 async function fillSchedule(app: Awaited<ReturnType<typeof renderForm>>, expression: string, timeZone: string) {
-    await app.user.selectOptions(field(/^Agent/), 'agent-iris');
+    await choose(app, /^Agent/, 'Iris');
     await app.user.type(field(/^Name/), 'Night shift');
-    await app.user.selectOptions(field(/^Repeats/), 'cron');
+    await choose(app, /^Repeats/, 'Custom (cron)');
     await app.user.clear(field(/^Cron expression/));
     await app.user.type(field(/^Cron expression/), expression);
-    await app.user.selectOptions(field(/^Time zone/), timeZone);
+    await choose(app, /^Time zone/, timeZone);
     await app.user.type(field(/^Message/), 'Tidy the inbox.');
 }
 
 describe('trigger form', { timeout: TIMEOUT_MS }, () => {
     it('blocks a submit with invalid local input and names what is wrong on each field', async () => {
         const app = await renderForm();
-        await app.user.selectOptions(field(/^Repeats/), 'cron');
+        await choose(app, /^Repeats/, 'Custom (cron)');
         await app.user.clear(field(/^Cron expression/));
         await app.user.type(field(/^Cron expression/), '0 8 * * MON');
         await app.user.click(screen.getByRole('button', { name: 'Create trigger' }));
@@ -63,10 +89,10 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
 
     it('checks an interval’s range and an end before the start', async () => {
         const app = await renderForm();
-        await app.user.selectOptions(field(/^Repeats/), 'interval');
+        await choose(app, /^Repeats/, 'At a fixed interval');
         await app.user.clear(field(/^Every/));
         await app.user.type(field(/^Every/), '400');
-        await app.user.selectOptions(field(/^Unit/), 'days');
+        await choose(app, /^Unit/, 'Days');
         fireEvent.change(field(/^Starts/), { target: { value: '2026-10-05T10:00' } });
         fireEvent.change(field(/^Ends/), { target: { value: '2026-10-05T09:00' } });
         await app.user.click(screen.getByRole('button', { name: 'Create trigger' }));
@@ -77,8 +103,11 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
 
     it('offers webhooks only as coming later', async () => {
         await renderForm();
-        const webhook = within(field(/^Kind/)).getByRole('option', { name: 'Webhook (coming later)' });
-        expect(webhook).toHaveProperty('disabled', true);
+        const webhook = within(listOf(field(/^Kind/))).getByRole('option', {
+            name: 'Webhook (coming later)',
+            hidden: true,
+        });
+        expect(webhook.getAttribute('aria-disabled')).toBe('true');
     });
 
     it('previews the next five fires as an estimate, in both zones', async () => {
@@ -157,12 +186,16 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
 
     it('creates a schedule with times read in its zone, then opens it', async () => {
         const app = await renderForm('/triggers/new?agentId=agent-iris');
-        expect(field(/^Agent/)).toHaveProperty('value', 'agent-iris');
+        expect(chosen('agentId')).toBe('agent-iris');
+        const trail = within(screen.getByRole('navigation', { name: 'Breadcrumb' }));
+        expect((await trail.findByRole('link', { name: 'Iris' })).getAttribute('href')).toBe('/agents/agent-iris');
+        expect(trail.getByRole('link', { name: 'Triggers' }).getAttribute('href')).toBe('/agents/agent-iris/triggers');
+        expect(field(/^Agent/).textContent).toContain('Iris');
         await app.user.type(field(/^Name/), 'Weekly digest');
-        await app.user.selectOptions(field(/^Repeats/), 'interval');
+        await choose(app, /^Repeats/, 'At a fixed interval');
         await app.user.clear(field(/^Every/));
         await app.user.type(field(/^Every/), '2');
-        await app.user.selectOptions(field(/^Time zone/), 'Europe/Prague');
+        await choose(app, /^Time zone/, 'Europe/Prague');
         fireEvent.change(field(/^Starts/), { target: { value: '2026-10-02T09:00' } });
         await app.user.type(field(/^Maximum runs/), '10');
         await app.user.type(field(/^Message/), 'Send the digest.');
@@ -189,10 +222,10 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
 
     it('creates an email trigger from an agent and a name, and shows the address the engine assigns', async () => {
         const app = await renderForm();
-        await app.user.selectOptions(field(/^Kind/), 'email');
+        await choose(app, /^Kind/, 'Email');
         expect(screen.queryByLabelText(/^Message/)).toBeNull();
         expect(screen.queryByRole('region', { name: 'Next runs' })).toBeNull();
-        await app.user.selectOptions(field(/^Agent/), 'agent-ada');
+        await choose(app, /^Agent/, 'Ada');
         await app.user.type(field(/^Name/), 'Orders inbox');
         await app.user.click(screen.getByRole('button', { name: 'Create trigger' }));
         expect(await screen.findByRole('heading', { level: 1, name: 'Orders inbox' })).toBeDefined();
@@ -208,10 +241,10 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
     it('edits a schedule with its own zone and values filled in, a cron it would write as its preset', async () => {
         const app = await renderForm(`/triggers/${TRIGGER_IDS.weekday}/edit`);
         expect(field(/^Name/)).toHaveProperty('value', 'Morning report');
-        expect(field(/^Repeats/)).toHaveProperty('value', 'weekdays');
+        expect(chosen('recurrence')).toBe('weekdays');
         expect(field(/^Time(?! zone)/)).toHaveProperty('value', '08:00');
         expect(screen.queryByLabelText(/^Cron expression/)).toBeNull();
-        expect(field(/^Time zone/)).toHaveProperty('value', 'Europe/Prague');
+        expect(chosen('timeZone')).toBe('Europe/Prague');
         expect(field(/^Agent/)).toHaveProperty('disabled', true);
         expect(screen.queryByLabelText(/^Kind/)).toBeNull();
         fireEvent.change(field(/^Time(?! zone)/), { target: { value: '09:00' } });
@@ -232,11 +265,12 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
 
     it('starts on every weekday at 09:00 and offers the presets before once, interval and custom cron', async () => {
         await renderForm();
-        expect(field(/^Repeats/)).toHaveProperty('value', 'weekdays');
+        expect(chosen('recurrence')).toBe('weekdays');
+        expect(field(/^Repeats/).textContent).toBe('Every weekday (Monday to Friday)');
         expect(field(/^Time(?! zone)/)).toHaveProperty('value', '09:00');
         expect(
-            within(field(/^Repeats/))
-                .getAllByRole('option')
+            within(listOf(field(/^Repeats/)))
+                .getAllByRole('option', { hidden: true })
                 .map((option) => option.textContent),
         ).toEqual([
             'Every hour',
@@ -251,12 +285,12 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
 
     it('creates a weekly schedule from a day and a time, previewed in words with its zone', async () => {
         const app = await renderForm('/triggers/new', createTriggersEngine(), { now: '2026-10-01T12:00:00Z' });
-        await app.user.selectOptions(field(/^Agent/), 'agent-iris');
+        await choose(app, /^Agent/, 'Iris');
         await app.user.type(field(/^Name/), 'Friday wrap-up');
-        await app.user.selectOptions(field(/^Repeats/), 'weekly');
-        await app.user.selectOptions(field(/^Day/), 'Friday');
+        await choose(app, /^Repeats/, 'Every week');
+        await choose(app, /^Day/, 'Friday');
         fireEvent.change(field(/^Time(?! zone)/), { target: { value: '16:30' } });
-        await app.user.selectOptions(field(/^Time zone/), 'Europe/Prague');
+        await choose(app, /^Time zone/, 'Europe/Prague');
         await app.user.type(field(/^Message/), 'Sum up the week.');
         expect(within(preview()).getByText('Every Friday at 16:30, Europe/Prague')).toBeDefined();
         await app.user.click(screen.getByRole('button', { name: 'Create trigger' }));
@@ -272,15 +306,15 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
 
     it('starts a custom cron from the preset it replaces', async () => {
         const app = await renderForm();
-        await app.user.selectOptions(field(/^Repeats/), 'daily');
+        await choose(app, /^Repeats/, 'Every day');
         fireEvent.change(field(/^Time(?! zone)/), { target: { value: '07:45' } });
-        await app.user.selectOptions(field(/^Repeats/), 'cron');
+        await choose(app, /^Repeats/, 'Custom (cron)');
         expect(field(/^Cron expression/)).toHaveProperty('value', '45 7 * * *');
     });
 
     it('refuses a preset without a time, on the time field', async () => {
         const app = await renderForm();
-        await app.user.selectOptions(field(/^Repeats/), 'daily');
+        await choose(app, /^Repeats/, 'Every day');
         fireEvent.change(field(/^Time(?! zone)/), { target: { value: '' } });
         await app.user.click(screen.getByRole('button', { name: 'Create trigger' }));
         await waitFor(() => {
@@ -293,7 +327,7 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
     it('opens a cron no preset writes as custom, keeping it as typed', async () => {
         const engine = createTriggersEngine();
         const app = await renderForm(`/triggers/${TRIGGER_IDS.weekday}/edit`, engine);
-        await app.user.selectOptions(field(/^Repeats/), 'cron');
+        await choose(app, /^Repeats/, 'Custom (cron)');
         expect(field(/^Cron expression/)).toHaveProperty('value', '0 8 * * 1-5');
         await app.user.clear(field(/^Cron expression/));
         await app.user.type(field(/^Cron expression/), '*/30 8-17 * * 1-5');
@@ -302,7 +336,7 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
 
         await app.router.navigate({ to: '/triggers/$triggerId/edit', params: { triggerId: TRIGGER_IDS.weekday } });
         await waitFor(() => {
-            expect(field(/^Repeats/)).toHaveProperty('value', 'cron');
+            expect(chosen('recurrence')).toBe('cron');
         });
         expect(field(/^Cron expression/)).toHaveProperty('value', '*/30 8-17 * * 1-5');
     });
@@ -332,11 +366,24 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
         const app = await renderForm(`/triggers/${TRIGGER_IDS.weekday}/edit`);
         await app.user.type(field(/^Name/), 'x');
         await app.user.type(field(/^Name/), '{Backspace}');
-        await app.user.click(screen.getByRole('link', { name: 'Back to Morning report' }));
+        // The breadcrumb to the trigger is the way back from its form.
+        const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
+        expect(within(trail).getByRole('link', { name: 'Triggers' }).getAttribute('href')).toBe('/triggers');
+        await app.user.click(within(trail).getByRole('link', { name: 'Morning report' }));
         await waitFor(() => {
             expect(app.router.state.location.pathname).toBe(`/triggers/${TRIGGER_IDS.weekday}`);
         });
         expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('without agents.read: no agent query, and the picker says why it is empty', async () => {
+        const engine = createTriggersEngine({ permissions: PERMISSIONS.filter((each) => each !== 'agents.read') });
+        const agentList = vi.spyOn(engine.client.agents, 'list');
+        renderWithProviders({ path: '/triggers/new', engineApi: engine.client });
+        await screen.findByRole('button', { name: 'Create trigger' });
+        expect(field(/^Agent/)).toHaveProperty('disabled', true);
+        expect(errorOf(field(/^Agent/))).toContain('Choosing an agent needs permission to see agents.');
+        expect(agentList).not.toHaveBeenCalled();
     });
 
     it('has no axe violations', async () => {

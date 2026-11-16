@@ -1,6 +1,6 @@
 import type { InputHTMLAttributes, Ref } from 'react';
 
-import { controlClassName, invalidAttribute } from '../../internal/control';
+import { CONTROL_HEIGHT, controlClassName, invalidAttribute } from '../../internal/control';
 import { cx } from '../../internal/cx';
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -14,7 +14,7 @@ export function Input({ invalid, className, type = 'text', ...rest }: InputProps
             {...rest}
             type={type}
             aria-invalid={invalidAttribute(invalid, rest['aria-invalid'])}
-            className={controlClassName(cx('min-h-9', className))}
+            className={controlClassName(cx(CONTROL_HEIGHT.md, className))}
         />
     );
 }

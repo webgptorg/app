@@ -5,7 +5,6 @@ import {
     IntegrationKindName,
     IntegrationStatus,
 } from '@ptbk/engine-api';
-import type { IntegrationStatus as IntegrationStatusValue } from '@ptbk/engine-api';
 import { z } from 'zod';
 
 import type { IntegrationListParams } from './integrations-keys';
@@ -46,11 +45,6 @@ export function hasIntegrationFilters(search: IntegrationSearch, scope: 'global'
     return (
         search.kind !== undefined || search.status !== undefined || (scope === 'global' && search.agentId !== undefined)
     );
-}
-
-export function selectedStatuses(search: IntegrationSearch): ReadonlySet<IntegrationStatusValue> {
-    const parts = search.status?.split(',') ?? [];
-    return new Set(INTEGRATION_STATUSES.filter((status) => parts.includes(status)));
 }
 
 /**

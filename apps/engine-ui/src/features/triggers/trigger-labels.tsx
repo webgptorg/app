@@ -1,8 +1,6 @@
 import type { ReadTrigger, ReadTriggerFire } from '@ptbk/engine-api';
-import { Badge } from '@ptbk/ui';
-import type { BadgeTone } from '@ptbk/ui';
-import { CircleAlert, CircleCheck, CircleHelp, CirclePause, CircleStop, Play, SkipForward } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { StatusPill } from '@ptbk/ui';
+import type { StatusTone } from '@ptbk/ui';
 
 import { m } from '../../paraglide/messages';
 
@@ -29,22 +27,22 @@ export function knownKindLabel(kind: Exclude<TriggerKindValue, 'unknown'>): stri
 
 interface Look {
     readonly label: string;
-    readonly tone: BadgeTone;
-    readonly icon: ReactNode;
+    readonly tone: StatusTone;
 }
 
+// Paused and ended share the quiet tone the peek cards use; the words tell them apart.
 function lifecycleLook(lifecycle: TriggerLifecycleValue, raw: string): Look {
     switch (lifecycle) {
         case 'active':
-            return { label: m.trigger_lifecycle_active(), tone: 'success', icon: <Play /> };
+            return { label: m.trigger_lifecycle_active(), tone: 'success' };
         case 'paused':
-            return { label: m.trigger_lifecycle_paused(), tone: 'warning', icon: <CirclePause /> };
+            return { label: m.trigger_lifecycle_paused(), tone: 'neutral' };
         case 'ended':
-            return { label: m.trigger_lifecycle_ended(), tone: 'neutral', icon: <CircleStop /> };
+            return { label: m.trigger_lifecycle_ended(), tone: 'neutral' };
         case 'failed':
-            return { label: m.trigger_lifecycle_failed(), tone: 'danger', icon: <CircleAlert /> };
+            return { label: m.trigger_lifecycle_failed(), tone: 'danger' };
         case 'unknown':
-            return { label: raw, tone: 'neutral', icon: <CircleHelp /> };
+            return { label: raw, tone: 'neutral' };
     }
 }
 
@@ -52,40 +50,36 @@ export function lifecycleLabel(lifecycle: Exclude<TriggerLifecycleValue, 'unknow
     return lifecycleLook(lifecycle, lifecycle).label;
 }
 
-/** The lifecycle as text with an icon, never colour alone; a newer engine's lifecycle shows as it named it. */
-export function TriggerLifecycleBadge({
+export function lifecycleTone(lifecycle: TriggerLifecycleValue): StatusTone {
+    return lifecycleLook(lifecycle, lifecycle).tone;
+}
+
+/** The lifecycle in words beside a dot, never colour alone; a newer engine's lifecycle shows as it named it. */
+export function TriggerLifecyclePill({
     trigger,
 }: {
     readonly trigger: Pick<ReadTrigger, 'lifecycle' | 'rawLifecycle'>;
 }) {
     const look = lifecycleLook(trigger.lifecycle, trigger.rawLifecycle);
-    return (
-        <Badge tone={look.tone} icon={look.icon}>
-            {look.label}
-        </Badge>
-    );
+    return <StatusPill tone={look.tone}>{look.label}</StatusPill>;
 }
 
 function outcomeLook(outcome: ReadTriggerFire['outcome']): Look {
     switch (outcome) {
         case 'started':
-            return { label: m.trigger_fire_started(), tone: 'success', icon: <CircleCheck /> };
+            return { label: m.trigger_fire_started(), tone: 'success' };
         case 'skipped':
-            return { label: m.trigger_fire_skipped(), tone: 'neutral', icon: <SkipForward /> };
+            return { label: m.trigger_fire_skipped(), tone: 'neutral' };
         case 'failed':
-            return { label: m.trigger_fire_failed(), tone: 'danger', icon: <CircleAlert /> };
+            return { label: m.trigger_fire_failed(), tone: 'danger' };
         case 'unknown':
-            return { label: m.trigger_value_unknown(), tone: 'neutral', icon: <CircleHelp /> };
+            return { label: m.trigger_value_unknown(), tone: 'neutral' };
     }
 }
 
-export function FireOutcomeBadge({ outcome }: { readonly outcome: ReadTriggerFire['outcome'] }) {
+export function FireOutcomePill({ outcome }: { readonly outcome: ReadTriggerFire['outcome'] }) {
     const look = outcomeLook(outcome);
-    return (
-        <Badge tone={look.tone} icon={look.icon}>
-            {look.label}
-        </Badge>
-    );
+    return <StatusPill tone={look.tone}>{look.label}</StatusPill>;
 }
 
 /** Why an ended trigger ended; `null` while it has not. */

@@ -1,6 +1,6 @@
 import type { FileId, FileMetadata, FileVersionId } from '@ptbk/engine-api';
 import { Button, buttonClassName } from '@ptbk/ui';
-import type { ButtonSize } from '@ptbk/ui';
+import type { ButtonSize, ButtonVariant } from '@ptbk/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { Download } from 'lucide-react';
 import { useRef, useState } from 'react';
@@ -52,6 +52,8 @@ export interface FileDownloadProps {
     /** The accessible name; defaults to "Download <file name>". */
     readonly label?: string;
     readonly size?: ButtonSize;
+    /** `ghost` for a quieter download in a row, e.g. an earlier version. */
+    readonly variant?: Extract<ButtonVariant, 'secondary' | 'ghost'>;
 }
 
 /**
@@ -59,7 +61,7 @@ export interface FileDownloadProps {
  * file and nothing of it reaches this page. The engine's `Content-Disposition` carries no name, so the link names the
  * file; without it every download would be saved as "content" (browsers sanitise the name). Disabled with the reason for an infected file.
  */
-export function FileDownload({ file, versionId, label, size = 'sm' }: FileDownloadProps) {
+export function FileDownload({ file, versionId, label, size = 'sm', variant = 'secondary' }: FileDownloadProps) {
     const check = useDownloadCheck();
     const confirmed = useRef(false);
     const [checking, setChecking] = useState(false);
@@ -69,7 +71,13 @@ export function FileDownload({ file, versionId, label, size = 'sm' }: FileDownlo
     if (file.scan?.status === 'infected') {
         return (
             <span className="flex flex-col items-start gap-1">
-                <Button size={size} disabled disabledReason={m.files_download_infected()} aria-label={name}>
+                <Button
+                    size={size}
+                    variant={variant}
+                    disabled
+                    disabledReason={m.files_download_infected()}
+                    aria-label={name}
+                >
                     <Download aria-hidden className="size-4" />
                     {m.files_download()}
                 </Button>
@@ -104,7 +112,7 @@ export function FileDownload({ file, versionId, label, size = 'sm' }: FileDownlo
                 download={file.name}
                 aria-label={name}
                 aria-busy={checking || undefined}
-                className={buttonClassName('secondary', size)}
+                className={buttonClassName(variant, size)}
                 onClick={onClick}
             >
                 <Download aria-hidden className="size-4" />

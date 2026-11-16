@@ -10,16 +10,32 @@ const CHAT_STALE_MS = 30_000;
 export const ENTRY_PAGE_SIZE = 50;
 export const THREAD_PAGE_SIZE = 50;
 
-/** The newest threads first; an agent's list holds the threads it is a member of. */
+/**
+ * The newest threads first; an agent's list holds the threads it is a member of. The engine searches titles only on
+ * the list of every thread, so a search within one agent's threads asks that list and keeps the agent's.
+ */
 export function chatListQueryOptions(engineApi: EngineApiClient, params: ChatListParams) {
     return queryOptions({
         queryKey: chatKeys.list(params),
-        queryFn: async ({ signal }) =>
-            unwrap(
-                params.agentId === undefined
-                    ? await engineApi.chats.listAll({ limit: THREAD_PAGE_SIZE }, signal)
-                    : await engineApi.chats.list(params.agentId, { limit: THREAD_PAGE_SIZE }, signal),
-            ),
+        queryFn: async ({ signal }) => {
+            const { agentId, q } = params;
+            if (agentId !== undefined && q === undefined) {
+                return unwrap(await engineApi.chats.list(agentId, { limit: THREAD_PAGE_SIZE }, signal));
+            }
+            const page = unwrap(
+                await engineApi.chats.listAll(
+                    q === undefined ? { limit: THREAD_PAGE_SIZE } : { limit: THREAD_PAGE_SIZE, q },
+                    signal,
+                ),
+            );
+            if (agentId === undefined) return page;
+            return {
+                ...page,
+                items: page.items.filter((chat) =>
+                    chat.members.some((member) => member.kind === 'agent' && member.key === agentId),
+                ),
+            };
+        },
         staleTime: CHAT_STALE_MS,
     });
 }
