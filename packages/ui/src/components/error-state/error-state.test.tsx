@@ -35,4 +35,10 @@ describe('ErrorState', () => {
         expect(screen.queryByRole('button')).toBeNull();
         expect(document.querySelector('details')).toBeNull();
     });
+
+    it('shows an illustration in place of the alert icon', () => {
+        const { container } = renderUi(<ErrorState message="Gone." illustration={<svg data-testid="robot" />} />);
+        expect(screen.getByTestId('robot').closest('[aria-hidden="true"]')).not.toBeNull();
+        expect(container.querySelectorAll('svg')).toHaveLength(1);
+    });
 });

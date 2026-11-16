@@ -22,6 +22,7 @@ import { bannerGallery } from './components/banner/banner.gallery';
 import { monogramGallery } from './components/monogram/monogram.gallery';
 import { skeletonGallery } from './components/skeleton/skeleton.gallery';
 import { emptyStateGallery } from './components/empty-state/empty-state.gallery';
+import { brandGallery } from './components/brand/brand.gallery';
 import { errorStateGallery } from './components/error-state/error-state.gallery';
 import { paginationGallery } from './components/pagination/pagination.gallery';
 import { codeTextGallery } from './components/code-text/code-text.gallery';
@@ -72,6 +73,7 @@ export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
     dialogGallery,
     drawerGallery,
     emptyStateGallery,
+    brandGallery,
     emptyValueGallery,
     engineSwitcherGallery,
     entityChipGallery,

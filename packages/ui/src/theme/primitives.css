@@ -29,6 +29,36 @@
     --ptbk-graphite-950: #111113;
     --ptbk-graphite-975: #0c0c0e;
 
+    /*
+     * The Promptbook brand kit (ptbk.io/brand): ink blue and its soft surface. Light uses the kit's values; the kit gives
+     * none for dark, so the dark steps are the same hue lifted until they hold AA on graphite.
+     */
+    --ptbk-ink-50: #eef4fb;
+    --ptbk-ink-100: #dde7f5;
+    --ptbk-ink-200: #c4d5ef;
+    --ptbk-ink-300: #a3bde8;
+    --ptbk-ink-400: #7d9fd9;
+    --ptbk-ink-600: #2e5592;
+    --ptbk-ink-700: #17386c;
+    --ptbk-ink-900: #1f2f4d;
+    --ptbk-ink-975: #1b1f27;
+
+    /* The kit's artwork colours, used only by the brand mark and the robot, which are never recoloured. */
+    --ptbk-brand-blue: #17386c;
+    --ptbk-brand-ink: #111318;
+    --ptbk-brand-white: #ffffff;
+    --ptbk-robot-shell-1: #dbe6f7;
+    --ptbk-robot-shell-2: #eff4fd;
+    --ptbk-robot-shell-3: #dfebff;
+    --ptbk-robot-shell-4: #afc8ee;
+    --ptbk-robot-shell-5: #9eb5d9;
+    --ptbk-robot-shell-6: #edf3ff;
+    --ptbk-robot-shell-7: #e3edfc;
+    --ptbk-robot-shell-8: #c4d3ee;
+    --ptbk-robot-shell-9: #eef3ff;
+    --ptbk-robot-steel: #426ba4;
+    --ptbk-robot-sky: #83a8da;
+
     --ptbk-cyan-50: #ecfdff;
     --ptbk-cyan-100: #cff8fc;
     --ptbk-cyan-200: #a3eef8;
@@ -93,6 +123,7 @@
     --ptbk-orange-300: #f8b878;
 
     --ptbk-font-text: 'Inter Variable', 'Inter Fallback', ui-sans-serif, system-ui, sans-serif;
+    --ptbk-font-heading: 'Exo 2 Variable', 'Exo 2 Fallback', ui-sans-serif, system-ui, sans-serif;
     --ptbk-font-mono: 'JetBrains Mono Variable', 'JetBrains Mono Fallback', ui-monospace, monospace;
 
     --ptbk-font-size-2xs: 0.75rem;
@@ -111,7 +142,7 @@
     --ptbk-line-height-xl: 1.75rem;
     --ptbk-line-height-2xl: 2rem;
     --ptbk-line-height-3xl: 2.25rem;
-    --ptbk-tracking-display: -0.02em;
+    --ptbk-tracking-display: -0.025em;
     --ptbk-tracking-heading: -0.011em;
     --ptbk-weight-display: 600;
 
