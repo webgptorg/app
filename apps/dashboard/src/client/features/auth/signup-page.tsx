@@ -31,7 +31,7 @@ export function SignUpPage(props: { readonly initialToken: FragmentToken }) {
                     }
                     submitLabel={m.signup_email_action()}
                     footer={
-                        <p className="text-sm">
+                        <p className="border-t border-hairline pt-5 text-sm text-text-muted">
                             {m.signup_have_account()} <Link to="/signin">{m.signup_sign_in()}</Link>
                         </p>
                     }

@@ -32,15 +32,15 @@ export function LinkPage() {
             <main
                 id={MAIN_ID}
                 tabIndex={-1}
-                className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 outline-none"
+                className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-10 outline-none md:py-16"
             >
-                <h1 className="font-display text-2xl font-semibold">{m.link_page_title()}</h1>
+                <h1 className="text-2xl font-semibold tracking-display">{m.link_page_title()}</h1>
                 {command === null ? (
-                    <p>{m.link_page_no_code()}</p>
+                    <p className="max-w-prose text-sm text-text-muted">{m.link_page_no_code()}</p>
                 ) : (
                     <>
-                        <p>{m.link_page_body()}</p>
-                        <div className="overflow-hidden rounded-control bg-(--code-text-bg) text-(--code-text-text)">
+                        <p className="max-w-prose text-sm text-text-muted">{m.link_page_body()}</p>
+                        <div className="overflow-hidden rounded-control border border-hairline bg-(--code-text-bg) text-(--code-text-text)">
                             <div className="flex justify-end px-2 pt-2">
                                 <CopyButton
                                     value={command}

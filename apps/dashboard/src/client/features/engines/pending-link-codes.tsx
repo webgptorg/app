@@ -1,4 +1,4 @@
-import { ActionMenu, Card, ConfirmDialog, useLocale } from '@ptbk/ui';
+import { ActionMenu, ConfirmDialog, Section, useLocale } from '@ptbk/ui';
 import { queryOptions, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -37,14 +37,17 @@ function PendingLinkCodeRow(props: { readonly code: PendingLinkCode }) {
         },
     });
     return (
-        <li className="flex items-center gap-4 px-4 py-3">
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm">
+        <li className="flex items-center gap-4 py-2.5">
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5 text-sm tabular-nums">
                 <span>{m.link_codes_created({ created })}</span>
-                <span className="text-text-muted">
+                <span className="text-xs text-text-muted">
                     {m.link_codes_until({ until: locale.formatDateTime(new Date(props.code.expiresAt)) })}
                 </span>
             </div>
             <ActionMenu
+                variant="ghost"
+                size="sm"
+                align="end"
                 label={m.link_codes_actions({ created })}
                 items={[
                     {
@@ -87,13 +90,12 @@ export function PendingLinkCodes() {
         return null;
     }
     return (
-        <Card title={m.link_codes_title()}>
-            <p className="text-sm text-text-muted">{m.link_codes_body()}</p>
-            <ul className="-mx-5 -mb-5 divide-y divide-divider" aria-label={m.link_codes_title()}>
+        <Section title={m.link_codes_title()} count={codes.data.length} description={m.link_codes_body()}>
+            <ul className="divide-y divide-hairline" aria-label={m.link_codes_title()}>
                 {codes.data.map((code) => (
                     <PendingLinkCodeRow key={code.linkCodeId} code={code} />
                 ))}
             </ul>
-        </Card>
+        </Section>
     );
 }

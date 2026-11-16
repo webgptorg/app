@@ -269,7 +269,9 @@ describe('new engine page', () => {
             expect(screen.getByText(COMMAND_NOTE)).toBeTruthy();
             expect(screen.getByText('Run this on the server that will host Promptbook.')).toBeTruthy();
             expect(screen.queryByText(/grants nothing inside the engine/)).toBeNull();
-            expect(screen.getByRole('link', { name: 'All engines' }).getAttribute('href')).toBe('/engines');
+            const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
+            expect(within(trail).getByRole('link', { name: 'Engines' }).getAttribute('href')).toBe('/engines');
+            expect(within(trail).getByRole('link', { name: 'Engines' }).getAttribute('aria-current')).toBeNull();
             expect(steps()).toEqual(['install:current', 'connect:ahead', 'finish:ahead']);
             await waitFor(() => {
                 expect(app.history.location.search).toBe(`?link=${LINK_ID}`);

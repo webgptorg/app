@@ -19,23 +19,23 @@ export function CeremonyPanel(props: {
 }) {
     const failed = props.state.kind === 'failed';
     return (
-        <div className="flex flex-col gap-4">
-            <h1 className="font-display text-2xl font-semibold">{props.title}</h1>
-            <div className="flex flex-col gap-2 text-text-muted">{props.description}</div>
+        <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-2">
+                <h1 className="text-2xl font-semibold tracking-display">{props.title}</h1>
+                <div className="flex flex-col gap-2 text-sm text-text-muted">{props.description}</div>
+            </div>
             {props.state.kind === 'failed' ? (
                 <Banner tone="danger" title={m.passkey_error_title()}>
                     {ceremonyFailureMessage(props.state.failure, props.kind)}
                 </Banner>
             ) : null}
-            <Button
-                variant="primary"
-                loading={props.state.kind === 'running'}
-                onClick={props.onStart}
-                className="w-full"
-            >
-                <KeyRound aria-hidden className="me-2 size-4" />
-                {failed ? m.passkey_try_again() : props.actionLabel}
-            </Button>
+            {/* The page's one action: large and centred, still the soft primary wash (docs/design/ui.md, Buttons). */}
+            <div className="flex justify-center py-2">
+                <Button variant="primary" size="lg" loading={props.state.kind === 'running'} onClick={props.onStart}>
+                    <KeyRound aria-hidden className="size-4" />
+                    {failed ? m.passkey_try_again() : props.actionLabel}
+                </Button>
+            </div>
             {props.footer}
         </div>
     );

@@ -30,7 +30,7 @@ export function SignInPage(props: { readonly returnTo: string | undefined }) {
             state={state}
             onStart={start}
             footer={
-                <ul className="flex flex-col gap-2 text-sm">
+                <ul className="flex flex-col gap-2 border-t border-hairline pt-5 text-sm text-text-muted">
                     <li>
                         {m.signin_no_account()} <Link to="/signup">{m.signin_create_account()}</Link>
                     </li>

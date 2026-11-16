@@ -97,6 +97,17 @@ describe('Button', () => {
         expect(button.className).not.toContain('bg-(--button-danger-bg)');
     });
 
+    it('makes a large button taller than the control height, keeping the soft primary wash', () => {
+        renderUi(
+            <Button variant="primary" size="lg">
+                {'Sign in with a passkey'}
+            </Button>,
+        );
+        const button = screen.getByRole('button', { name: 'Sign in with a passkey' });
+        expect(button.className).toContain('min-h-11');
+        expect(button.className).not.toContain('min-h-9');
+    });
+
     it('submits forms when asked to', () => {
         const onSubmit = vi.fn((event: { preventDefault: () => void }) => {
             event.preventDefault();

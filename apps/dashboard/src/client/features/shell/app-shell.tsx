@@ -39,47 +39,48 @@ export function AppFrame({ session, children }: { readonly session: SessionView;
         <SessionProvider session={session}>
             <div className="flex min-h-dvh flex-col bg-surface text-text">
                 <SkipLink targetId={MAIN_ID} />
-                <header className="border-b border-divider bg-raised">
-                    <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
-                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                            {/* On a phone the wordmark gives way to the mark, so the org name keeps its room. */}
-                            <img src="/favicon.svg" alt="" className="size-7 shrink-0 rounded-control sm:hidden" />
-                            <span className="sr-only font-display text-lg font-semibold sm:not-sr-only">
-                                {m.app_name()}
-                            </span>
-                            <span aria-hidden="true" className="hidden text-text-muted sm:inline">
+                <header className="sticky top-0 z-20 border-b border-hairline bg-[color-mix(in_oklab,var(--color-surface)_88%,transparent)] backdrop-blur-md">
+                    <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-3 px-4 md:h-12 md:flex-nowrap">
+                        <div className="flex h-12 min-w-0 flex-1 items-center gap-2 md:flex-none">
+                            <img src="/favicon.svg" alt="" className="size-6 shrink-0 rounded-small" />
+                            <span className="sr-only text-sm font-semibold sm:not-sr-only">{m.app_name()}</span>
+                            <span aria-hidden="true" className="hidden text-text-subtle sm:inline">
                                 /
                             </span>
                             <OrgSwitcher />
                             <EnvironmentBadge />
                         </div>
-                        <div className="flex shrink-0 items-center gap-1">
-                            <HeaderLanguageSwitch />
-                            <UserMenu />
-                        </div>
-                        <nav aria-label={m.nav_main()} className="w-full">
-                            <ul className="-mx-2 flex flex-wrap gap-1">
+                        {/* One nav landmark: beside the brand on wide screens, its own scrolling row on a phone. */}
+                        <nav
+                            aria-label={m.nav_main()}
+                            className="order-last -mx-4 w-[calc(100%+2rem)] overflow-x-auto px-2 pb-1.5 md:order-none md:mx-0 md:w-auto md:flex-1 md:overflow-visible md:p-0"
+                        >
+                            <ul className="flex gap-0.5">
                                 {visibleNavEntries(session).map((entry) => (
-                                    <li key={entry.id}>
+                                    <li key={entry.id} className="shrink-0">
                                         <Link
                                             to={entry.to}
                                             variant="standalone"
-                                            className="inline-flex items-center gap-2 rounded-control px-2 py-1.5 text-sm font-medium text-text-muted no-underline hover:bg-hover motion-safe:transition-colors motion-safe:duration-(--motion-state) aria-[current=page]:bg-selected aria-[current=page]:text-accent-text"
+                                            className="inline-flex h-8 items-center gap-1.5 rounded-control px-2.5 text-sm text-text-muted no-underline hover:bg-hover hover:text-text motion-safe:transition-colors motion-safe:duration-(--motion-state) aria-[current=page]:bg-selected aria-[current=page]:font-medium aria-[current=page]:text-text"
                                             activeProps={{ 'aria-current': 'page' }}
                                         >
-                                            <entry.icon aria-hidden className="hidden size-4 sm:block" />
+                                            <entry.icon aria-hidden className="hidden size-4 opacity-80 lg:block" />
                                             {entry.label()}
                                         </Link>
                                     </li>
                                 ))}
                             </ul>
                         </nav>
+                        <div className="flex h-12 shrink-0 items-center gap-0.5">
+                            <HeaderLanguageSwitch />
+                            <UserMenu />
+                        </div>
                     </div>
                 </header>
                 <main
                     id={MAIN_ID}
                     tabIndex={-1}
-                    className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 outline-none md:py-8"
+                    className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 outline-none md:py-10"
                 >
                     {children}
                 </main>

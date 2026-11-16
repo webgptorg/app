@@ -1,4 +1,4 @@
-import type { BadgeTone } from '@ptbk/ui';
+import type { StatusTone } from '@ptbk/ui';
 
 import { m } from '../../../paraglide/messages';
 import type { EngineView, HeartbeatView } from '../../../shared/api/routes';
@@ -21,7 +21,7 @@ export function engineStatusLabel(engine: Pick<EngineView, 'status' | 'suspended
     }
 }
 
-export function engineStatusTone(status: EngineView['status']): BadgeTone {
+export function engineStatusTone(status: EngineView['status']): StatusTone {
     switch (status) {
         case 'online':
             return 'success';
@@ -31,7 +31,7 @@ export function engineStatusTone(status: EngineView['status']): BadgeTone {
             return 'danger';
         case 'never-seen':
         case 'owner-pending':
-            return 'info';
+            return 'waiting';
         case 'unknown':
             return 'neutral';
     }

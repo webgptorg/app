@@ -38,7 +38,7 @@ export function RecoverPage(props: { readonly initialToken: FragmentToken }) {
                     intro={<p className="text-text-muted">{m.recover_body()}</p>}
                     submitLabel={m.recover_email_action()}
                     footer={
-                        <p className="text-sm">
+                        <p className="border-t border-hairline pt-5 text-sm text-text-muted">
                             {m.recover_remembered()} <Link to="/signin">{m.signup_sign_in()}</Link>
                         </p>
                     }
@@ -98,7 +98,7 @@ function Recovered(props: { readonly session: SessionView }) {
     const { now } = useBrowser();
     return (
         <div className="flex flex-col gap-4">
-            <h1 className="font-display text-2xl font-semibold">{m.recovered_title()}</h1>
+            <h1 className="text-2xl font-semibold tracking-display">{m.recovered_title()}</h1>
             <Banner tone="success">{m.recovered_body()}</Banner>
             <CooldownBanner endsAt={props.session.user.recoveryCooldownEndsAt} now={now()} />
             <p>{m.recovered_next()}</p>

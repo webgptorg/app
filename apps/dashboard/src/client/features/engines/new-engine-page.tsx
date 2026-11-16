@@ -1,17 +1,16 @@
 import {
     Banner,
     Button,
-    Card,
     CopyButton,
     ErrorState,
     ExternalLink,
+    Section,
     Skeleton,
     Tabs,
     useLocale,
     useToast,
 } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 
@@ -25,6 +24,7 @@ import { Link } from '../../core/link';
 import { useAppMutation } from '../../core/mutations';
 import { PlanOfferList } from '../billing/plan-offers';
 import { useSession } from '../session/use-session';
+import { Crumb, Page } from '../shell/page';
 import { TrustLink } from '../trust/trust-link';
 import { LINK_POLL_MS, LinkProgress, useObservedLinkState } from './link-progress';
 import type { LinkState } from './link-progress';
@@ -152,7 +152,7 @@ function InstallPathPanel(props: { readonly path: InstallCommandView; readonly g
     return (
         <div className="flex flex-col gap-3">
             {path.id === 'compose' ? <p className="text-sm">{m.engines_new_compose_hint()}</p> : null}
-            <div className="overflow-hidden rounded-control bg-(--code-text-bg) text-(--code-text-text)">
+            <div className="overflow-hidden rounded-control border border-hairline bg-(--code-text-bg) text-(--code-text-text)">
                 <div className="flex justify-end px-2 pt-2">
                     <CopyButton value={path.command} label={m.engines_new_copy()} variant="secondary" showLabel />
                 </div>
@@ -179,7 +179,7 @@ function LinkUrl(props: { readonly url: string }) {
     return (
         <div className="flex flex-col gap-2">
             <p className="text-sm">{m.engines_new_link_url()}</p>
-            <div className="flex items-center gap-2 rounded-control bg-(--code-text-bg) py-1 pr-2 pl-3 text-(--code-text-text)">
+            <div className="flex items-center gap-2 rounded-control border border-hairline bg-(--code-text-bg) py-1 pr-2 pl-3 text-(--code-text-text)">
                 <span className="min-w-0 flex-1 font-mono text-sm wrap-anywhere">{props.url}</span>
                 <CopyButton value={props.url} label={m.engines_new_copy_link()} variant="secondary" showLabel />
             </div>
@@ -221,9 +221,8 @@ function InstallCommand(props: {
         return <ExpiredBanner onRenew={props.onRenew} renewing={props.renewing} />;
     }
     return (
-        <Card title={m.engines_new_command_title()}>
+        <Section title={m.engines_new_command_title()} divided={false} description={m.engines_new_intro()}>
             <div className="flex flex-col gap-3">
-                <p className="text-sm">{m.engines_new_intro()}</p>
                 <Tabs
                     label={m.engines_new_tabs_label()}
                     selectedId={selectedId}
@@ -240,7 +239,7 @@ function InstallCommand(props: {
                     {m.engines_new_command_body({ time: locale.formatDateTime(new Date(props.view.expiresAt)) })}
                 </p>
             </div>
-        </Card>
+        </Section>
     );
 }
 
@@ -258,9 +257,8 @@ function PlanStep(props: { readonly checkout: CheckoutReturn | undefined }) {
         return <UpgradeBanner reason="not-entitled" />;
     }
     return (
-        <Card title={m.engines_new_plan_title()}>
+        <Section title={m.engines_new_plan_title()} divided={false} description={m.engines_new_plan_body()}>
             {props.checkout === 'cancel' ? <Banner tone="info">{m.billing_checkout_cancel()}</Banner> : null}
-            <p className="text-sm text-text-muted">{m.engines_new_plan_body()}</p>
             {billing.data === undefined ? (
                 billing.isError ? (
                     <ErrorState
@@ -278,7 +276,7 @@ function PlanStep(props: { readonly checkout: CheckoutReturn | undefined }) {
                     returnTo="engines-new"
                 />
             )}
-        </Card>
+        </Section>
     );
 }
 
@@ -482,15 +480,18 @@ function NewEngineContent(props: { readonly search: NewEngineSearch }) {
     const session = useSession();
     const canLink = session.activeOrg.permissions.includes(LINK_PERMISSION);
     return (
-        <div className="flex flex-col gap-6">
-            {/* Only a team without an engine is linked here, so there is no engine to go back to yet. */}
-            <Link to="/engines" variant="standalone" className="inline-flex items-center gap-1 self-start text-sm">
-                <ArrowLeft aria-hidden className="size-4" />
-                {m.engine_back()}
-            </Link>
-            <h1 className="font-display text-2xl font-semibold">{m.engines_new_title()}</h1>
+        // Only a team without an engine is linked here, so the trail leads back to the list, not to an engine.
+        <Page
+            title={m.engines_new_title()}
+            width="narrow"
+            breadcrumbs={[
+                <Crumb key="engines" to="/engines">
+                    {m.nav_teams()}
+                </Crumb>,
+            ]}
+        >
             {canLink ? <LinkFlow search={props.search} /> : <Banner tone="info">{m.engines_new_not_allowed()}</Banner>}
             <TrustLink />
-        </div>
+        </Page>
     );
 }

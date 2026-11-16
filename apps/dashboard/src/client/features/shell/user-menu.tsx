@@ -44,10 +44,10 @@ export function UserMenu() {
                     {...props}
                     type="button"
                     aria-label={m.user_menu_for({ email: session.user.email })}
-                    className="flex min-w-0 cursor-pointer items-center gap-2 rounded-control p-1.5 hover:bg-hover motion-safe:transition-colors motion-safe:duration-(--motion-state)"
+                    className="flex cursor-pointer items-center rounded-pill p-1 hover:bg-hover motion-safe:transition-colors motion-safe:duration-(--motion-state)"
                 >
+                    {/* The email is the menu's heading; beside the avatar it only truncated. */}
                     <Monogram name={session.user.email} />
-                    <span className="hidden max-w-48 truncate text-sm md:inline">{session.user.email}</span>
                 </button>
             )}
         />

@@ -39,7 +39,7 @@ export function DevMailboxPage() {
             <main id={MAIN_ID} tabIndex={-1} className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8 outline-none">
                 <header className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex flex-col gap-1">
-                        <h1 className="font-display text-2xl font-semibold">{m.dev_mailbox_title()}</h1>
+                        <h1 className="text-xl font-semibold tracking-display">{m.dev_mailbox_title()}</h1>
                         <p className="text-sm text-text-muted">{m.dev_mailbox_summary()}</p>
                     </div>
                     <Button

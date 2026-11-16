@@ -1,14 +1,4 @@
-import {
-    Banner,
-    Button,
-    Card,
-    CopyButton,
-    createDataTableColumnHelper,
-    DataTable,
-    EmptyState,
-    TrustMark,
-} from '@ptbk/ui';
-import { deriveEngineFingerprint } from '@ptbk/protocol';
+import { Banner, Button, CopyButton, createDataTableColumnHelper, DataTable, EmptyState } from '@ptbk/ui';
 import type { DataTableColumnDef } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Server } from 'lucide-react';
@@ -20,10 +10,12 @@ import { useApiClient } from '../../api/api-client-context';
 import { enginesQuery } from '../../api/queries';
 import { engineLabel } from '../../../shared/engine-label';
 import { ButtonLink, Link } from '../../core/link';
+import { Crumb, Page } from '../shell/page';
 import { useSession } from '../session/use-session';
+import { EngineIdentity } from './engine-identity';
 import { EngineOpenLink } from './engine-open-link';
 import { EngineReachability } from './engine-reachability';
-import { EngineStatusBadge } from './engine-status-badge';
+import { EngineStatusPill } from './engine-status-pill';
 import { updateStateLabel } from './engine-labels';
 import { byAttention, isRevoked, reportsLive } from './engine-order';
 import { LastSeen, useNowFor } from './engine-values';
@@ -42,12 +34,9 @@ function Address(props: { readonly engine: EngineView }) {
     return (
         <span className="flex flex-col gap-1">
             <span className="flex items-center gap-1 whitespace-nowrap">
-                <code
-                    title={engine.hostname}
-                    className="min-w-0 truncate rounded-small bg-(--code-text-bg) px-1.5 py-0.5 font-mono text-sm text-(--code-text-text)"
-                >
+                <span title={engine.hostname} className="min-w-0 truncate font-mono text-xs text-text-muted">
                     {engine.hostname}
-                </code>
+                </span>
                 <CopyButton value={engine.hostname} label={m.engines_copy_hostname()} />
                 {engine.status === 'suspended' ? null : (
                     <EngineOpenLink name={engineLabel(engine)} hostname={engine.hostname} />
@@ -71,21 +60,17 @@ function engineColumns(now: Date): DataTableColumnDef<EngineView>[] {
         columns.accessor('engineId', {
             header: m.engines_column_engine(),
             cell: ({ row }) => (
-                <span className="inline-flex items-center gap-2 whitespace-nowrap">
-                    <TrustMark
-                        fingerprint={deriveEngineFingerprint(row.original.engineId)}
-                        state="verified"
-                        size="sm"
-                        showCode={false}
-                        label={m.engines_fingerprint_label({ name: engineLabel(row.original) })}
-                    />
-                    <Link
-                        to="/engines/$engineId"
-                        params={{ engineId: row.original.engineId }}
-                        className={row.original.label === null ? 'font-mono' : undefined}
-                    >
-                        {engineLabel(row.original)}
-                    </Link>
+                <span className="inline-flex whitespace-nowrap">
+                    <EngineIdentity engineId={row.original.engineId} name={engineLabel(row.original)}>
+                        <Link
+                            to="/engines/$engineId"
+                            params={{ engineId: row.original.engineId }}
+                            variant="standalone"
+                            className={row.original.label === null ? 'font-mono' : undefined}
+                        >
+                            {engineLabel(row.original)}
+                        </Link>
+                    </EngineIdentity>
                 </span>
             ),
             meta: { priority: 0 },
@@ -94,8 +79,8 @@ function engineColumns(now: Date): DataTableColumnDef<EngineView>[] {
             header: m.engines_column_status(),
             cell: ({ row }) => (
                 <span className="flex flex-col items-start gap-1 whitespace-nowrap">
-                    <EngineStatusBadge engine={row.original} />
-                    <span className="text-xs text-text-muted">
+                    <EngineStatusPill engine={row.original} />
+                    <span className="text-xs text-text-muted tabular-nums">
                         <LastSeen engine={row.original} now={now} />
                     </span>
                     <EngineReachability engine={row.original} />
@@ -117,7 +102,7 @@ function engineColumns(now: Date): DataTableColumnDef<EngineView>[] {
                 const update = live ? row.original.heartbeat?.update : undefined;
                 return (
                     <span className="flex flex-col gap-1 whitespace-nowrap">
-                        <span className={`font-mono text-sm ${live ? '' : 'text-text-muted'}`}>
+                        <span className={`font-mono text-xs ${live ? '' : 'text-text-muted'}`}>
                             {row.original.heartbeat?.version ?? row.original.registeredVersion}
                         </span>
                         {update === undefined || update === 'none' ? null : (
@@ -137,24 +122,22 @@ function engineColumns(now: Date): DataTableColumnDef<EngineView>[] {
  */
 function NoEngines(props: { readonly canLink: boolean }) {
     return (
-        <Card>
-            <EmptyState
-                icon={<Server aria-hidden className="size-6" />}
-                title={m.engines_empty_title()}
-                headingLevel={2}
-                description={m.engines_empty_body()}
-                {...(props.canLink
-                    ? {
-                          action: (
-                              <ButtonLink to="/engines/new" variant="primary">
-                                  <Plus aria-hidden className="size-4" />
-                                  {m.engines_add()}
-                              </ButtonLink>
-                          ),
-                      }
-                    : {})}
-            />
-        </Card>
+        <EmptyState
+            icon={<Server aria-hidden className="size-6" />}
+            title={m.engines_empty_title()}
+            headingLevel={2}
+            description={m.engines_empty_body()}
+            {...(props.canLink
+                ? {
+                      action: (
+                          <ButtonLink to="/engines/new" variant="primary">
+                              <Plus aria-hidden className="size-4" />
+                              {m.engines_add()}
+                          </ButtonLink>
+                      ),
+                  }
+                : {})}
+        />
     );
 }
 
@@ -226,17 +209,25 @@ export function EngineListPage() {
     }
 
     return (
-        <div className="flex flex-col gap-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <h1 className="font-display text-2xl font-semibold">{m.engines_title()}</h1>
-                {canLink && hasEngines ? (
-                    <Link to="/engines/new" variant="standalone" className="inline-flex items-center gap-1">
-                        <Plus aria-hidden className="size-4" />
-                        {m.engines_add()}
-                    </Link>
-                ) : null}
-            </div>
+        <Page
+            title={m.engines_title()}
+            breadcrumbs={[
+                <Crumb key="engines" to="/engines">
+                    {m.nav_teams()}
+                </Crumb>,
+            ]}
+            {...(canLink && hasEngines
+                ? {
+                      actions: (
+                          <ButtonLink to="/engines/new" variant="primary">
+                              <Plus aria-hidden className="size-4" />
+                              {m.engines_add()}
+                          </ButtonLink>
+                      ),
+                  }
+                : {})}
+        >
             {content()}
-        </div>
+        </Page>
     );
 }

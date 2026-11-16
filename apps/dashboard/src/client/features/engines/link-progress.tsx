@@ -1,5 +1,15 @@
 import { deriveEngineFingerprint } from '@ptbk/protocol';
-import { Banner, Button, CodeText, CopyButton, ErrorState, ExternalLink, Skeleton, TrustMark } from '@ptbk/ui';
+import {
+    Banner,
+    Button,
+    CodeText,
+    CopyButton,
+    ErrorState,
+    ExternalLink,
+    Skeleton,
+    STATUS_TINT_CLASSES,
+    TrustMark,
+} from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { CircleCheck, CircleDashed, LoaderCircle, Unplug } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -380,14 +390,14 @@ export function LinkProgress(props: {
         <section
             aria-labelledby={ready === null ? 'link-progress-title' : 'link-ready-title'}
             data-link-state={state}
-            className="flex flex-col gap-4"
+            className="flex flex-col gap-4 border-t border-hairline pt-5"
         >
             <p className="sr-only" aria-live="polite">
                 {announcement(state)}
             </p>
             {ready === null ? (
                 <>
-                    <h2 id="link-progress-title" className="font-display text-lg font-semibold">
+                    <h2 id="link-progress-title" className="text-sm font-semibold">
                         {m.link_progress_title()}
                     </h2>
                     {state === 'expired' ? (
@@ -425,7 +435,7 @@ function ReadyPanel(props: {
     const name = givenName ?? engineLabel({ engineId: props.engineId, label: props.engine?.label ?? null });
     return (
         <div
-            className="flex flex-col items-center gap-4 rounded-(--card-radius) border border-(--card-border) bg-(--card-bg) px-6 py-8 text-center shadow-(--card-shadow)"
+            className={`soft-surface flex flex-col items-center gap-4 rounded-surface px-6 py-8 text-center ${STATUS_TINT_CLASSES.success}`}
             data-link-ready
         >
             <TrustMark
@@ -436,7 +446,7 @@ function ReadyPanel(props: {
                 className="justify-center"
             />
             <div className="flex max-w-md flex-col gap-2">
-                <h2 id="link-ready-title" className="font-display text-2xl font-semibold">
+                <h2 id="link-ready-title" className="text-xl font-semibold tracking-display">
                     {m.link_progress_ready()}
                 </h2>
                 <p>{m.link_progress_ready_body()}</p>

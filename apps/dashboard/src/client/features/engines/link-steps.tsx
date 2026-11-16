@@ -29,15 +29,16 @@ export function LinkSteps(props: { readonly steps: readonly LinkStep[]; readonly
                         aria-current={current ? 'step' : undefined}
                         className="flex items-center gap-2"
                     >
-                        {index === 0 ? null : <span aria-hidden className="h-px w-4 bg-border sm:w-8" />}
+                        {index === 0 ? null : <span aria-hidden className="h-px w-4 bg-divider sm:w-8" />}
                         <span
                             aria-hidden
-                            className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                            // No inverted disc: the current step is the soft wash the primary button uses, with a ring.
+                            className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium tabular-nums ${
                                 done
                                     ? 'bg-success-soft text-success'
                                     : current
-                                      ? 'bg-accent text-on-accent'
-                                      : 'border border-border text-text-muted'
+                                      ? 'bg-(--color-wash-strong) text-text ring-1 ring-text-muted'
+                                      : 'border border-divider text-text-muted'
                             }`}
                         >
                             {done ? <Check className="size-3.5" /> : index + 1}

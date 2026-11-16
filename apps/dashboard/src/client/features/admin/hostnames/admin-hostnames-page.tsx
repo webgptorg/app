@@ -21,6 +21,7 @@ import { useBrowser } from '../../../core/browser';
 import { useAppMutation } from '../../../core/mutations';
 import { AddHostnameCard } from './add-hostname-card';
 import { adminHostnamesKey, adminHostnamesQuery } from './hostname-queries';
+import { Page } from '../../shell/page';
 
 const columns = createDataTableColumnHelper<CustomHostnameView>();
 
@@ -168,16 +169,14 @@ export function AdminHostnamesPage(props: { readonly engineId: string }) {
 
     if (problemCode(list.error) === 'not-found') {
         return (
-            <div className="flex flex-col gap-6">
-                <h1 className="font-display text-2xl font-semibold">{m.admin_hostnames_title()}</h1>
+            <Page title={m.admin_hostnames_title()}>
                 <Banner tone="warning">{m.admin_hostnames_engine_not_found()}</Banner>
-            </div>
+            </Page>
         );
     }
 
     return (
-        <div className="flex flex-col gap-6">
-            <h1 className="font-display text-2xl font-semibold">{m.admin_hostnames_title()}</h1>
+        <Page title={m.admin_hostnames_title()}>
             <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-2 text-sm">
                 <dt className="text-text-muted">{m.admin_hostnames_engine_label()}</dt>
                 <dd>
@@ -238,6 +237,6 @@ export function AdminHostnamesPage(props: { readonly engineId: string }) {
                 tone="danger"
                 loading={remove.isPending}
             />
-        </div>
+        </Page>
     );
 }

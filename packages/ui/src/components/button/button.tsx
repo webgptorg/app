@@ -12,7 +12,7 @@ import { Spinner } from '../spinner/spinner';
  * `danger-solid`, the one filled button, is only the confirm step that names what it destroys (ConfirmDialog).
  */
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'danger-ghost' | 'danger-solid';
-export type ButtonSize = 'sm' | 'md';
+export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'disabled'> {
     readonly variant?: ButtonVariant;
@@ -62,6 +62,8 @@ const DISABLED_CLASSES: Readonly<Record<ButtonVariant, string>> = {
 const SIZE_CLASSES: Readonly<Record<ButtonSize, string>> = {
     sm: cx(CONTROL_HEIGHT.sm, 'gap-1.5 px-2.5 text-xs'),
     md: cx(CONTROL_HEIGHT.md, 'gap-2 px-3.5 text-sm'),
+    // The one action of a page with nothing else to do (sign in with a passkey); never on a line with other controls.
+    lg: 'min-h-11 gap-2 px-5 text-sm',
 };
 
 /** Shared by `Button` and `IconButton` so both look and behave the same. */

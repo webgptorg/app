@@ -4,13 +4,13 @@ import { m } from '../../../paraglide/messages';
 import { Link } from '../../core/link';
 import { useSession } from '../session/use-session';
 import { EngineLookupCard } from './hostnames/engine-lookup-card';
+import { Page } from '../shell/page';
 
 /** `/admin`: the platform admin area; engines (suspension, I-05, and custom domains, D-08) are found by ID below. */
 export function AdminPage() {
     const session = useSession();
     return (
-        <div className="flex flex-col gap-6">
-            <h1 className="font-display text-2xl font-semibold">{m.admin_title()}</h1>
+        <Page title={m.admin_title()}>
             {/* Billing is the only tool so far; with billing off there is nothing to list. */}
             {session.billingEnabled ? (
                 <Card title={m.admin_tools_title()}>
@@ -23,6 +23,6 @@ export function AdminPage() {
                 </Card>
             ) : null}
             <EngineLookupCard />
-        </div>
+        </Page>
     );
 }

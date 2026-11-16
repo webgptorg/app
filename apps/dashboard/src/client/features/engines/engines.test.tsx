@@ -88,7 +88,10 @@ describe('engine list', () => {
     it('is still reachable by its address, without a navigation entry of its own (teams replace it)', async () => {
         renderApp({ path: '/engines/all', session: OWNER, script: engines(engineView()) });
         expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
-        expect(screen.queryByRole('link', { name: 'Engines' })).toBeNull();
+        // The only way to the engines is the breadcrumb back to the list that replaced this page.
+        const [crumb, ...others] = screen.getAllByRole('link', { name: 'Engines' });
+        expect(others).toEqual([]);
+        expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('link')).toBe(crumb);
     });
 
     it('shows an empty state instead of an empty table, with linking an engine as the next step', async () => {
