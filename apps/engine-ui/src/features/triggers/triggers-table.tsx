@@ -1,94 +1,112 @@
-import { TRIGGER_KINDS, TRIGGER_LIFECYCLES } from '@ptbk/engine-api';
-import type { AgentId, ReadTrigger } from '@ptbk/engine-api';
-import { Button, createDataTableColumnHelper, DataTable, LegacyFilterBar, VisuallyHidden } from '@ptbk/ui';
-import type { DataTableColumnDef, LegacyFilterBarFilter, MenuEntry } from '@ptbk/ui';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
-import { Pause, Pencil, Play, Trash2 } from 'lucide-react';
+import { AgentId, TRIGGER_KINDS, TRIGGER_LIFECYCLES } from '@ptbk/engine-api';
+import type { ReadAgent, ReadTrigger } from '@ptbk/engine-api';
+import {
+    Button,
+    createDataTableColumnHelper,
+    DataTable,
+    FilterBar,
+    filterField,
+    StatusDot,
+    viewTransitionStyle,
+} from '@ptbk/ui';
+import type { DataTableColumnDef, FilterBarField, MenuEntry } from '@ptbk/ui';
+import { useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate } from '@tanstack/react-router';
+import { Bot, CalendarClock, CircleDot, History, Pause, Pencil, Play, Shapes, Trash2, Zap } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useBrowser } from '../../app/browser-context';
 import { useCursorPages } from '../../app/cursor-pages';
 import { useEngineApi } from '../../app/engine-api-context';
-import { Link } from '../../app/link';
 import { isInvalidCursor } from '../../app/list-errors';
+import { readOneParam } from '../../app/search-filters';
 import { SoftBreaks } from '../../app/soft-breaks';
 import { m } from '../../paraglide/messages';
-import { agentListQueryOptions } from '../agents/agents-queries';
+import { AgentAvatar } from '../agents/agent-avatar';
+import { EntityChip } from '../entities/entity-chip';
 import { usePermissions } from '../session/use-permissions';
 import { DeleteTriggerDialog } from './delete-trigger-dialog';
-import { knownKindLabel, lifecycleLabel, triggerKindLabel, TriggerLifecycleBadge } from './trigger-labels';
+import { useTriggerAgents } from './trigger-agents';
+import {
+    knownKindLabel,
+    lifecycleLabel,
+    lifecycleTone,
+    triggerKindLabel,
+    TriggerLifecyclePill,
+} from './trigger-labels';
 import { hasTriggerFilters, triggerListParams } from './trigger-search';
 import type { TriggerSearch } from './trigger-search';
 import { triggerZone, useTriggerSummary } from './trigger-summary';
 import { RelativeFireTime } from './trigger-time';
-import { TriggerToggle } from './trigger-toggle';
 import { triggerListQueryOptions, useTriggers } from './triggers-queries';
 import { canEdit, canPause, canResume, useTriggerMutations } from './use-trigger-mutations';
 
 const NO_TRIGGERS: readonly ReadTrigger[] = [];
-// The first page of agents fills the agent filter; a trigger of another agent still shows, by its own name.
-const AGENT_FILTER_LIMIT = 100;
 export const TRIGGER_COLUMNS_STORAGE_KEY = 'ptbk.triggers.columns';
 
-function useTriggerColumns(showAgent: boolean, manage: boolean, fromAgent: boolean): DataTableColumnDef<ReadTrigger>[] {
-    const summary = useTriggerSummary();
+const ICON = 'size-3.5';
+
+/** The name as the row's title and what starts it under it; members type both, so both render as text. */
+function TriggerTitle({ trigger, fromAgent }: { readonly trigger: ReadTrigger; readonly fromAgent: boolean }) {
+    const summary = useTriggerSummary()(trigger);
+    return (
+        <span className="flex min-w-0 flex-col items-start gap-0.5">
+            <Link
+                to="/triggers/$triggerId"
+                params={{ triggerId: trigger.id }}
+                search={fromAgent ? { from: 'agent' } : {}}
+                title={trigger.name}
+                className="line-clamp-2 rounded-small font-medium break-words text-text"
+            >
+                <span style={viewTransitionStyle('trigger-title', trigger.id)}>{trigger.name}</span>
+            </Link>
+            {/* An inbound address is one long token: it may wrap after its @ and dots, never mid-name. */}
+            <span className="line-clamp-1 text-xs break-words text-text-muted">
+                <SoftBreaks text={summary} after="@." />
+            </span>
+        </span>
+    );
+}
+
+function TriggerAgent({ trigger }: { readonly trigger: ReadTrigger }) {
+    const profile = useTriggerAgents(true).byId.get(trigger.agentId)?.profile;
+    return (
+        <EntityChip
+            kind="agent"
+            id={trigger.agentId}
+            name={trigger.agentName ?? trigger.agentId}
+            {...(profile === undefined ? {} : { profile })}
+        />
+    );
+}
+
+function useTriggerColumns(acrossAgents: boolean, fromAgent: boolean): DataTableColumnDef<ReadTrigger>[] {
     return useMemo(() => {
         const column = createDataTableColumnHelper<ReadTrigger>();
         const columns: DataTableColumnDef<ReadTrigger>[] = [
-            // Names are typed by members: React renders them as text.
             column.accessor('name', {
                 header: m.triggers_column_name(),
                 enableSorting: false,
                 enableHiding: false,
-                meta: { priority: 0 },
-                // At most two lines, with the full name on hover: a long name must not push the table wider than the page.
-                cell: ({ row }) => (
-                    <Link
-                        to="/triggers/$triggerId"
-                        params={{ triggerId: row.original.id }}
-                        search={fromAgent ? { from: 'agent' } : {}}
-                        variant="standalone"
-                        title={row.original.name}
-                        className="line-clamp-2 break-words"
-                    >
-                        {row.original.name}
-                    </Link>
-                ),
+                meta: { priority: 0, icon: <Zap className={ICON} /> },
+                cell: ({ row }) => <TriggerTitle trigger={row.original} fromAgent={fromAgent} />,
             }),
             column.accessor('lifecycle', {
                 header: m.triggers_column_lifecycle(),
                 enableSorting: false,
                 enableHiding: false,
-                meta: { priority: 1 },
-                cell: ({ row }) => <TriggerLifecycleBadge trigger={row.original} />,
+                meta: { priority: 1, trailing: true, icon: <CircleDot className={ICON} /> },
+                cell: ({ row }) => <TriggerLifecyclePill trigger={row.original} />,
             }),
         ];
-        if (manage) {
-            // A column, not only the row menu, so pause and resume are one tap on a card too.
-            columns.push(
-                column.display({
-                    id: 'control',
-                    // The buttons name themselves; a visible header would only add a word to scan past.
-                    header: () => <VisuallyHidden>{m.triggers_column_toggle()}</VisuallyHidden>,
-                    enableHiding: false,
-                    meta: { priority: 2, label: m.triggers_column_toggle() },
-                    cell: ({ row }) => <TriggerToggle trigger={row.original} />,
-                }),
-            );
-        }
-        if (showAgent) {
+        if (acrossAgents) {
             columns.push(
                 column.accessor((trigger) => trigger.agentName ?? trigger.agentId, {
                     id: 'agent',
                     header: m.triggers_column_agent(),
                     enableSorting: false,
-                    meta: { priority: 4 },
-                    cell: ({ row }) => (
-                        <Link to="/agents/$agentId" params={{ agentId: row.original.agentId }} className="break-words">
-                            {row.original.agentName ?? row.original.agentId}
-                        </Link>
-                    ),
+                    meta: { priority: 2, icon: <Bot className={ICON} /> },
+                    cell: ({ row }) => <TriggerAgent trigger={row.original} />,
                 }),
             );
         }
@@ -97,47 +115,42 @@ function useTriggerColumns(showAgent: boolean, manage: boolean, fromAgent: boole
                 id: 'kind',
                 header: m.triggers_column_kind(),
                 enableSorting: false,
-                meta: { priority: 5 },
-            }),
-            column.accessor((trigger) => summary(trigger), {
-                id: 'summary',
-                header: m.triggers_column_summary(),
-                enableSorting: false,
-                meta: { priority: 6 },
-                // An inbound address is one long token: it may wrap after its @ and dots, never mid-name.
-                cell: ({ row }) => (
-                    <span className="break-words">
-                        <SoftBreaks text={summary(row.original)} after="@." />
-                    </span>
-                ),
+                // On a card the line under the name already says what starts it.
+                meta: { priority: 5, hideOnCard: true, icon: <Shapes className={ICON} /> },
+                cell: ({ row }) => <span className="text-text-muted">{triggerKindLabel(row.original)}</span>,
             }),
             column.accessor('nextFireAt', {
                 header: m.triggers_column_next(),
                 enableSorting: false,
-                meta: { priority: 3 },
+                meta: { priority: 3, numeric: true, icon: <CalendarClock className={ICON} /> },
                 cell: ({ row }) => (
-                    <RelativeFireTime
-                        at={row.original.nextFireAt}
-                        zone={triggerZone(row.original)}
-                        empty={m.trigger_value_none()}
-                    />
+                    <span className="text-text-muted tabular-nums">
+                        <RelativeFireTime
+                            at={row.original.nextFireAt}
+                            zone={triggerZone(row.original)}
+                            empty={m.trigger_value_none()}
+                        />
+                    </span>
                 ),
             }),
             column.accessor('lastFiredAt', {
                 header: m.triggers_column_last(),
                 enableSorting: false,
-                meta: { priority: 7 },
+                // A card keeps only the next run: two bare relative times side by side would not say which is which.
+                meta: { priority: 4, numeric: true, hideOnCard: true, icon: <History className={ICON} /> },
                 cell: ({ row }) => (
-                    <RelativeFireTime
-                        at={row.original.lastFiredAt}
-                        zone={triggerZone(row.original)}
-                        empty={m.trigger_never_fired()}
-                    />
+                    <span className="text-text-muted tabular-nums">
+                        <RelativeFireTime
+                            at={row.original.lastFiredAt}
+                            zone={triggerZone(row.original)}
+                            empty={m.trigger_never_fired()}
+                        />
+                    </span>
                 ),
             }),
         );
         return columns;
-    }, [showAgent, manage, fromAgent, summary]);
+    }, [acrossAgents, fromAgent]);
 }
 
 export interface TriggersTableProps {
@@ -158,7 +171,8 @@ export function TriggersTable({ search, onSearchChange, agentId }: TriggersTable
     const params = triggerListParams(search, agentId);
     const list = useTriggers(params);
     const scope = agentId === undefined ? 'global' : 'agent';
-    const columns = useTriggerColumns(scope === 'global', manage, scope === 'agent');
+    const agents = useTriggerAgents(scope === 'global');
+    const columns = useTriggerColumns(scope === 'global', scope === 'agent');
     const [deleting, setDeleting] = useState<ReadTrigger | null>(null);
     const navigate = useNavigate();
     const { pause, resume } = useTriggerMutations();
@@ -177,25 +191,11 @@ export function TriggersTable({ search, onSearchChange, agentId }: TriggersTable
     const clear = () => {
         filter({ kind: undefined, lifecycle: undefined, agentId: undefined });
     };
+    // Pause and resume come first: they are the owner's way to stop anything at once.
     const rowActions = (trigger: ReadTrigger): readonly MenuEntry[] => {
         if (!manage) return [];
         const target = { id: trigger.id, name: trigger.name };
         const entries: MenuEntry[] = [];
-        if (canEdit(trigger)) {
-            entries.push({
-                kind: 'item',
-                id: 'edit',
-                label: m.trigger_edit(),
-                icon: <Pencil aria-hidden />,
-                onSelect: () => {
-                    void navigate({
-                        to: '/triggers/$triggerId/edit',
-                        params: { triggerId: trigger.id },
-                        search: scope === 'agent' ? { from: 'agent' } : {},
-                    });
-                },
-            });
-        }
         if (canPause(trigger)) {
             entries.push({
                 kind: 'item',
@@ -217,6 +217,21 @@ export function TriggersTable({ search, onSearchChange, agentId }: TriggersTable
                 },
             });
         }
+        if (canEdit(trigger)) {
+            entries.push({
+                kind: 'item',
+                id: 'edit',
+                label: m.trigger_edit(),
+                icon: <Pencil aria-hidden />,
+                onSelect: () => {
+                    void navigate({
+                        to: '/triggers/$triggerId/edit',
+                        params: { triggerId: trigger.id },
+                        search: scope === 'agent' ? { from: 'agent' } : {},
+                    });
+                },
+            });
+        }
         entries.push(
             { kind: 'separator', id: 'danger' },
             {
@@ -232,10 +247,15 @@ export function TriggersTable({ search, onSearchChange, agentId }: TriggersTable
         );
         return entries;
     };
+    const fields = triggerFilterFields({
+        search,
+        acrossAgents: scope === 'global' && agents.allowed,
+        agents: agents.list,
+        onChange: filter,
+    });
 
     return (
-        <div className="flex flex-col gap-4">
-            <TriggerFilters search={search} scope={scope} onChange={filter} onClear={clear} />
+        <>
             <DataTable
                 caption={m.triggers_title()}
                 columns={columns}
@@ -243,6 +263,7 @@ export function TriggersTable({ search, onSearchChange, agentId }: TriggersTable
                 getRowId={(trigger) => trigger.id}
                 getRowLabel={(trigger) => trigger.name}
                 visibilityStorage={{ storage, key: TRIGGER_COLUMNS_STORAGE_KEY }}
+                toolbar={(view) => <FilterBar {...view} label={m.triggers_filters()} fields={fields} onClear={clear} />}
                 rowActions={rowActions}
                 page={paging.page}
                 onPageChange={paging.onPageChange}
@@ -284,74 +305,75 @@ export function TriggersTable({ search, onSearchChange, agentId }: TriggersTable
                     }}
                 />
             )}
-        </div>
+        </>
     );
 }
 
-interface TriggerFiltersProps {
+interface TriggerFilterInput {
     readonly search: TriggerSearch;
-    readonly scope: 'global' | 'agent';
+    /** The agent field: on the global list, for a member who may see agents. */
+    readonly acrossAgents: boolean;
+    readonly agents: readonly ReadAgent[];
     readonly onChange: (change: Partial<TriggerSearch>) => void;
-    readonly onClear: () => void;
 }
 
-function choice<T extends string>(value: string, known: readonly T[]): T | undefined {
-    return known.find((candidate) => candidate === value);
-}
-
-/** Every filter reads from and writes to the search params; on a phone they sit behind one "Filters" button. */
-function TriggerFilters({ search, scope, onChange, onClear }: TriggerFiltersProps) {
-    const agents = useQuery({
-        ...agentListQueryOptions(useEngineApi(), { limit: AGENT_FILTER_LIMIT, sort: 'name' }),
-        enabled: scope === 'global',
-    });
-    const items = agents.data?.items ?? [];
-    const agentId = search.agentId;
-    const agentOptions = items.map((agent) => ({ value: agent.id, label: agent.name }));
-    if (agentId !== undefined && !items.some((agent) => agent.id === agentId))
-        agentOptions.unshift({ value: agentId, label: agentId });
-    const filters: LegacyFilterBarFilter[] = [
-        {
-            kind: 'select',
-            id: 'kind',
-            label: m.triggers_filter_kind(),
-            allLabel: m.triggers_filter_all_kinds(),
-            options: TRIGGER_KINDS.map((kind) => ({ value: kind, label: knownKindLabel(kind) })),
-            value: search.kind,
-            onChange: (value) => {
-                onChange({ kind: value === undefined ? undefined : choice(value, TRIGGER_KINDS) });
-            },
-        },
-        {
-            kind: 'select',
+/**
+ * Every field reads from and writes to the search params, so a reload or a shared link restores the view. The engine
+ * filters by one state, agent and kind at a time and has no text search for triggers, so neither does the bar.
+ */
+function triggerFilterFields({
+    search,
+    acrossAgents,
+    agents,
+    onChange,
+}: TriggerFilterInput): readonly FilterBarField[] {
+    return [
+        filterField.enum({
             id: 'lifecycle',
             label: m.triggers_filter_lifecycle(),
-            allLabel: m.triggers_filter_all_lifecycles(),
-            options: TRIGGER_LIFECYCLES.map((lifecycle) => ({ value: lifecycle, label: lifecycleLabel(lifecycle) })),
+            icon: <CircleDot className={ICON} />,
+            options: TRIGGER_LIFECYCLES.map((lifecycle) => ({
+                value: lifecycle,
+                label: lifecycleLabel(lifecycle),
+                icon: <StatusDot tone={lifecycleTone(lifecycle)} />,
+            })),
             value: search.lifecycle,
-            onChange: (value) => {
-                onChange({ lifecycle: value === undefined ? undefined : choice(value, TRIGGER_LIFECYCLES) });
+            onChange: (lifecycle) => {
+                onChange({ lifecycle });
             },
-        },
-        ...(scope === 'global'
+        }),
+        ...(acrossAgents
             ? [
-                  {
-                      kind: 'select',
+                  filterField.entity({
                       id: 'agent',
                       label: m.triggers_filter_agent(),
-                      allLabel: m.triggers_filter_all_agents(),
-                      options: agentOptions,
-                      value: agentId,
+                      icon: <Bot className={ICON} />,
+                      multiple: false,
+                      options: agents.map((agent) => ({
+                          value: agent.id,
+                          label: agent.name,
+                          icon: (
+                              <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />
+                          ),
+                      })),
+                      value: readOneParam(search.agentId),
                       onChange: (value) => {
-                          onChange({
-                              agentId:
-                                  items.find((agent) => agent.id === value)?.id ??
-                                  (value === agentId ? agentId : undefined),
-                          });
+                          // An agent beyond the first page stays selected by its ID from the URL until it is removed.
+                          const picked = value.at(-1);
+                          onChange({ agentId: picked === undefined ? undefined : AgentId.safeParse(picked).data });
                       },
-                  } satisfies LegacyFilterBarFilter,
+                  }),
               ]
             : []),
+        filterField.enum({
+            id: 'kind',
+            label: m.triggers_filter_kind(),
+            icon: <Shapes className={ICON} />,
+            options: TRIGGER_KINDS.map((kind) => ({ value: kind, label: knownKindLabel(kind) })),
+            value: search.kind,
+            onChange: (kind) => {
+                onChange({ kind });
+            },
+        }),
     ];
-    return <LegacyFilterBar label={m.triggers_filters()} filters={filters} onClear={onClear} />;
 }

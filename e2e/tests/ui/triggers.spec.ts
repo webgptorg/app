@@ -20,6 +20,12 @@ interface Fire {
     readonly runId: string | null;
 }
 
+/** Picks an option from one of the form's comboboxes, by the option's visible name. */
+async function choose(page: Page, label: RegExp, option: string): Promise<void> {
+    await page.getByLabel(label).click();
+    await page.getByRole('option', { name: option, exact: true }).click();
+}
+
 async function fires(page: Page, triggerId: string): Promise<readonly Fire[]> {
     return apiList<Fire>(page, `/triggers/${triggerId}/fires`);
 }
@@ -35,13 +41,13 @@ test('a cron schedule fires as engine time passes, links its run, and pauses and
     const name = uniqueName('Digest');
     await signIn();
     await page.goto(appUrl('/triggers/new'));
-    const agent = required((await apiList<{ id: string }>(page, '/agents'))[0], 'agent');
-    await page.getByLabel(/^Kind/).selectOption('schedule');
-    await page.getByLabel(/^Agent/).selectOption(agent.id);
+    const agent = required((await apiList<{ id: string; name: string }>(page, '/agents'))[0], 'agent');
+    await choose(page, /^Kind/, 'Schedule');
+    await choose(page, /^Agent/, agent.name);
     await page.getByLabel(/^Name/).fill(name);
-    await page.getByLabel(/^Repeats/).selectOption('cron');
+    await choose(page, /^Repeats/, 'Custom (cron)');
     await page.getByLabel(/^Cron expression/).fill('*/15 * * * *');
-    await page.getByLabel(/^Time zone/).selectOption('UTC');
+    await choose(page, /^Time zone/, 'UTC');
     await page.getByLabel(/^Message/).fill('Send the digest.');
     await page.getByRole('button', { name: 'Create trigger' }).click();
     await expect(page.getByText(`${name} created.`)).toBeVisible();
@@ -50,13 +56,17 @@ test('a cron schedule fires as engine time passes, links its run, and pauses and
 
     const history = page.getByRole('table', { name: 'History' });
     await advanceTime(PAST_NEXT_FIRE_MS);
-    await expect(history.getByRole('link', { name: 'Open run' }).first()).toBeVisible();
+    await expect(history.getByRole('link', { name: 'Run', exact: true }).first()).toBeVisible();
     const fired = (await fires(page, triggerId)).length;
     expect(fired).toBeGreaterThan(0);
     const firstRun = required((await fires(page, triggerId))[0]?.runId ?? undefined, 'run of the fire');
-    await expect(history.getByRole('link', { name: 'Open run' }).first()).toHaveAttribute('href', `/runs/${firstRun}`);
+    await expect(history.getByRole('link', { name: 'Run', exact: true }).first()).toHaveAttribute(
+        'href',
+        `/runs/${firstRun}`,
+    );
 
-    await page.getByRole('button', { name: `Pause ${name}` }).click();
+    await page.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Pause' }).click();
     await expect(page.getByText(`${name} paused.`)).toBeVisible();
     await advanceTime(PAST_NEXT_FIRE_MS);
     expect(await fires(page, triggerId)).toHaveLength(fired);
@@ -66,7 +76,7 @@ test('a cron schedule fires as engine time passes, links its run, and pauses and
     await advanceTime(PAST_NEXT_FIRE_MS);
     await expect.poll(async () => (await fires(page, triggerId)).length).toBeGreaterThan(fired);
 
-    await history.getByRole('link', { name: 'Open run' }).first().click();
+    await history.getByRole('link', { name: 'Run', exact: true }).first().click();
     await expect(page).toHaveURL(/\/runs\/[^/]+$/);
     const opened = required(/\/runs\/([^/?#]+)$/.exec(page.url())?.[1], 'run ID');
     expect((await apiGet<{ triggerId: string | null }>(page, `/runs/${opened}`)).triggerId).toBe(triggerId);

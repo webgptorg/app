@@ -1,6 +1,7 @@
 import { KNOWN_CAPABILITIES, PERMISSIONS } from '@ptbk/engine-api';
 import type { Permission } from '@ptbk/engine-api';
 import { screen, waitFor, within } from '@testing-library/react';
+import type { UserEvent } from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
@@ -25,12 +26,24 @@ async function renderTriggers(path = '/triggers', engine: TriggersEngine = creat
 }
 
 const table = () => screen.getByRole('table');
+const dialog = () => screen.getByRole('dialog');
+/** "+ Filter", then a field; the dialog then lists the field's values. */
+async function addFilter(user: UserEvent, field: string) {
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(within(dialog()).getByRole('option', { name: field }));
+}
+/** A row's ⋯ menu, then one of its items. */
+async function rowAction(user: UserEvent, name: string, action: string) {
+    await user.click(within(rowOf(name)).getByRole('button', { name: `Actions for ${name}` }));
+    await user.click(screen.getByRole('menuitem', { name: action }));
+}
 const rowNames = () =>
     within(table())
         .queryAllByRole('row')
         .slice(1)
         .map((row) => row.querySelector('a[href^="/triggers/"]')?.textContent ?? '');
 const rowOf = (name: string) => within(table()).getByRole('link', { name }).closest('tr') as HTMLElement;
+const READ_NO_AGENTS = allBut('agents.read');
 const lastListQuery = (engine: TriggersEngine) => engine.spies.list.mock.calls.at(-1)?.[0];
 
 /** A call the test answers when it chooses, so the optimistic state can be seen before the engine's answer. */
@@ -66,15 +79,17 @@ describe('triggers list', { timeout: TIMEOUT_MS }, () => {
         expect(screen.getByRole('button', { name: 'Next page' })).toHaveProperty('disabled', true);
     });
 
-    it('writes kind, state and agent to the URL, sends them to the engine and restores them on reload', async () => {
+    it('writes state, agent and kind to the URL, sends them to the engine and restores them on reload', async () => {
         const { user, engine, router } = await renderTriggers();
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Kind' }), 'schedule');
-        await user.selectOptions(screen.getByRole('combobox', { name: 'State' }), 'active');
+        await addFilter(user, 'Kind');
+        await user.click(within(dialog()).getByRole('option', { name: 'Schedule' }));
+        await addFilter(user, 'State');
+        await user.click(within(dialog()).getByRole('option', { name: 'Active' }));
         await waitFor(() => {
             expect(rowNames()[0]).toBe('Morning report');
         });
-        await screen.findByRole('option', { name: 'Iris' });
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Agent' }), 'agent-iris');
+        await addFilter(user, 'Agent');
+        await user.click(await within(dialog()).findByRole('option', { name: 'Iris' }));
         await waitFor(() => {
             expect(router.state.location.search).toEqual({
                 kind: 'schedule',
@@ -88,15 +103,26 @@ describe('triggers list', { timeout: TIMEOUT_MS }, () => {
         const filtered = lastListQuery(engine);
         expect(filtered).toEqual({ limit: 50, kind: 'schedule', lifecycle: 'active', agentId: 'agent-iris' });
 
-        // A reload: a fresh app at the same URL asks the engine the same question and shows the same controls.
+        // A reload: a fresh app at the same URL asks the engine the same question and shows the same chips.
         const reloaded = createTriggersEngine();
         renderWithProviders({ path: router.state.location.href, engineApi: reloaded.client });
         await waitFor(() => {
             expect(reloaded.spies.list).toHaveBeenCalledWith(filtered, expect.anything());
         });
-        expect(screen.getAllByRole('combobox', { name: 'Kind' }).at(-1)).toHaveProperty('value', 'schedule');
-        expect(screen.getAllByRole('combobox', { name: 'State' }).at(-1)).toHaveProperty('value', 'active');
-        expect(screen.getAllByRole('combobox', { name: 'Agent' }).at(-1)).toHaveProperty('value', 'agent-iris');
+        expect(screen.getAllByRole('button', { name: 'Kind: Schedule' })).not.toHaveLength(0);
+        expect(screen.getAllByRole('button', { name: 'State: Active' })).not.toHaveLength(0);
+        expect(await screen.findAllByRole('button', { name: 'Agent: Iris' })).not.toHaveLength(0);
+    });
+
+    it('removes a filter from its chip', async () => {
+        const { user, router } = await renderTriggers('/triggers?lifecycle=paused');
+        await waitFor(() => {
+            expect(rowNames()).toEqual(['Every quarter hour']);
+        });
+        await user.click(screen.getByRole('button', { name: /^Remove State/ }));
+        await waitFor(() => {
+            expect(router.state.location.search).toEqual({});
+        });
     });
 
     it('restores a page of a filtered list from its cursor', async () => {
@@ -139,12 +165,14 @@ describe('triggers list', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('shows only the agent’s own triggers on its tab, without the agent column or filter', async () => {
-        const { engine } = await renderTriggers('/agents/agent-ada/triggers?agentId=agent-max');
+        const { engine, user } = await renderTriggers('/agents/agent-ada/triggers?agentId=agent-max');
         await within(table()).findByText('Support inbox');
         expect(rowNames()).toEqual(['Support inbox', 'Launch reminder']);
         expect(lastListQuery(engine)).toEqual({ limit: 50, agentId: 'agent-ada' });
         expect(within(table()).queryByRole('columnheader', { name: 'Agent' })).toBeNull();
-        expect(screen.queryByRole('combobox', { name: 'Agent' })).toBeNull();
+        await user.click(screen.getByRole('button', { name: 'Filter' }));
+        expect(within(dialog()).queryByRole('option', { name: 'Agent' })).toBeNull();
+        await user.keyboard('{Escape}');
         expect(screen.getByRole('link', { name: 'New trigger' }).getAttribute('href')).toBe(
             '/triggers/new?agentId=agent-ada',
         );
@@ -188,7 +216,6 @@ describe('triggers list', { timeout: TIMEOUT_MS }, () => {
         const row = rowOf('Morning report');
         expect(within(row).getByText('sms')).toBeDefined();
         expect(within(row).getByText('snoozed')).toBeDefined();
-        expect(within(row).queryByRole('button', { name: /^(Pause|Resume) / })).toBeNull();
     });
 
     it('shows a skeleton while the first page loads', async () => {
@@ -239,7 +266,6 @@ describe('triggers list', { timeout: TIMEOUT_MS }, () => {
         // Iris has a running and a failed schedule: every kind of cell and control, without 50 rows for axe to walk.
         const { container } = await renderTriggers('/triggers?agentId=agent-iris');
         await within(table()).findByText('Calendar sync');
-        expect(within(table()).getByRole('button', { name: 'Pause Morning report' })).toBeDefined();
         await expectNoAxeViolations(container);
     });
 });
@@ -253,12 +279,12 @@ describe('row menu', { timeout: TIMEOUT_MS }, () => {
             .map((item) => item.textContent);
     };
 
-    it('offers edit, pause or resume, and delete last', async () => {
+    it('offers pause or resume first, then edit, and delete last', async () => {
         const { user } = await renderTriggers();
         await within(table()).findByText('Morning report');
-        expect(await menuItems(user, 'Morning report')).toEqual(['Edit', 'Pause', 'Delete']);
+        expect(await menuItems(user, 'Morning report')).toEqual(['Pause', 'Edit', 'Delete']);
         await user.keyboard('{Escape}');
-        expect(await menuItems(user, 'Every quarter hour')).toEqual(['Edit', 'Resume', 'Delete']);
+        expect(await menuItems(user, 'Every quarter hour')).toEqual(['Resume', 'Edit', 'Delete']);
         await user.keyboard('{Escape}');
         // Ended is final: nothing to edit, pause or resume.
         expect(await menuItems(user, 'Launch reminder')).toEqual(['Delete']);
@@ -296,9 +322,8 @@ describe('pause and resume', { timeout: TIMEOUT_MS }, () => {
         });
         const { user } = await renderTriggers('/triggers', engine);
         await within(table()).findByText('Morning report');
-        await user.click(within(rowOf('Morning report')).getByRole('button', { name: 'Pause Morning report' }));
+        await rowAction(user, 'Morning report', 'Pause');
         expect(within(rowOf('Morning report')).getByText('Paused')).toBeDefined();
-        expect(within(rowOf('Morning report')).getByRole('button', { name: 'Resume Morning report' })).toBeDefined();
 
         pending.release(undefined);
         expect(await screen.findByText('Morning report paused.')).toBeDefined();
@@ -308,9 +333,7 @@ describe('pause and resume', { timeout: TIMEOUT_MS }, () => {
 
     it('resumes a paused trigger in one tap', async () => {
         const { user, engine } = await renderTriggers();
-        await user.click(
-            within(rowOf('Every quarter hour')).getByRole('button', { name: 'Resume Every quarter hour' }),
-        );
+        await rowAction(user, 'Every quarter hour', 'Resume');
         expect(within(rowOf('Every quarter hour')).getByText('Active')).toBeDefined();
         expect(await screen.findByText('Every quarter hour resumed.')).toBeDefined();
         expect(engine.controller.getTrigger(TRIGGER_IDS.paused)?.lifecycle).toBe('active');
@@ -325,14 +348,13 @@ describe('pause and resume', { timeout: TIMEOUT_MS }, () => {
         });
         const { user } = await renderTriggers('/triggers', engine);
         await within(table()).findByText('Morning report');
-        await user.click(within(rowOf('Morning report')).getByRole('button', { name: 'Pause Morning report' }));
+        await rowAction(user, 'Morning report', 'Pause');
         expect(within(rowOf('Morning report')).getByText('Paused')).toBeDefined();
         pending.release(undefined);
         expect(await screen.findByText('Morning report could not be paused.')).toBeDefined();
         await waitFor(() => {
             expect(within(rowOf('Morning report')).getByText('Active')).toBeDefined();
         });
-        expect(within(rowOf('Morning report')).getByRole('button', { name: 'Pause Morning report' })).toBeDefined();
     });
 
     it('explains that an ended trigger cannot resume when the engine answers 409 trigger-ended', async () => {
@@ -340,7 +362,7 @@ describe('pause and resume', { timeout: TIMEOUT_MS }, () => {
         engine.spies.resume.mockImplementationOnce(() => problemResponse('trigger-ended'));
         const { user } = await renderTriggers('/triggers', engine);
         await within(table()).findByText('Morning report');
-        await user.click(within(rowOf('Calendar sync')).getByRole('button', { name: 'Resume Calendar sync' }));
+        await rowAction(user, 'Calendar sync', 'Resume');
         expect(
             await screen.findByText(
                 'This trigger has ended, and an ended trigger cannot be resumed or changed. Create a new one instead.',
@@ -351,13 +373,7 @@ describe('pause and resume', { timeout: TIMEOUT_MS }, () => {
         });
     });
 
-    it('offers neither pause nor resume for an ended trigger', async () => {
-        await renderTriggers();
-        await within(table()).findByText('Launch reminder');
-        expect(within(rowOf('Launch reminder')).queryByRole('button', { name: /^(Pause|Resume) / })).toBeNull();
-    });
-
-    it('keeps pause and resume on each card below 768 px', async () => {
+    it('keeps pause and resume in each card’s menu below 768 px', async () => {
         // The design system's table reads the viewport itself; the shell reads it through the app's port.
         vi.stubGlobal('matchMedia', (query: string) => ({
             matches: query === NARROW_QUERY,
@@ -365,15 +381,15 @@ describe('pause and resume', { timeout: TIMEOUT_MS }, () => {
             removeEventListener: () => undefined,
         }));
         try {
-            renderWithProviders({
+            const { user } = renderWithProviders({
                 path: '/triggers',
                 engineApi: createTriggersEngine().client,
                 media: createFakeMatchMedia({ [NARROW_QUERY]: true }),
             });
             const cards = await screen.findByRole('list', { name: 'Triggers' });
             expect(screen.queryByRole('table')).toBeNull();
-            expect(await within(cards).findByRole('button', { name: 'Pause Morning report' })).toBeDefined();
-            expect(within(cards).getByRole('button', { name: 'Resume Every quarter hour' })).toBeDefined();
+            await user.click(await within(cards).findByRole('button', { name: 'Actions for Morning report' }));
+            expect(screen.getByRole('menuitem', { name: 'Pause' })).toBeDefined();
         } finally {
             vi.unstubAllGlobals();
         }
@@ -386,15 +402,25 @@ describe('triggers access', { timeout: TIMEOUT_MS }, () => {
         await renderTriggers('/triggers', engine);
         await within(table()).findByText('Morning report');
         expect(screen.queryByRole('link', { name: 'New trigger' })).toBeNull();
-        expect(screen.queryByRole('button', { name: /^(Pause|Resume) / })).toBeNull();
         expect(screen.queryByRole('button', { name: /^Actions for/ })).toBeNull();
-        expect(within(table()).queryByRole('columnheader', { name: 'Pause or resume' })).toBeNull();
 
         renderWithProviders({
             path: '/triggers/new',
             engineApi: createTriggersEngine({ permissions: READ_ONLY }).client,
         });
         expect(await screen.findByRole('heading', { level: 1, name: 'No access' })).toBeDefined();
+    });
+
+    it('without agents.read: the agent shows by name, with no agent filter and no agent query', async () => {
+        const engine = createTriggersEngine({ permissions: READ_NO_AGENTS });
+        const agentList = vi.spyOn(engine.client.agents, 'list');
+        const { user } = await renderTriggers('/triggers', engine);
+        await within(table()).findByText('Morning report');
+        expect(within(rowOf('Morning report')).getByText('Iris')).toBeDefined();
+        expect(within(rowOf('Morning report')).queryByRole('link', { name: 'Iris' })).toBeNull();
+        await user.click(screen.getByRole('button', { name: 'Filter' }));
+        expect(within(dialog()).queryByRole('option', { name: 'Agent' })).toBeNull();
+        expect(agentList).not.toHaveBeenCalled();
     });
 
     it('without triggers.read: no nav item and /triggers says "no access"', async () => {

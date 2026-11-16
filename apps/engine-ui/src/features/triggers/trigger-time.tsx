@@ -52,6 +52,27 @@ export function FireTime({ at, zone, countdown = false, empty }: FireTimeProps) 
     );
 }
 
+/** A fire time in the reader's zone on one line, for a table: the schedule's own zone moves into the tooltip. */
+export function ExactFireTime({ at, zone }: { readonly at: string; readonly zone?: string | undefined }) {
+    const locale = useLocale();
+    const browserZone = useBrowserTimeZone();
+    const date = new Date(at);
+    const exact = formatInZone(date, browserZone, locale.locale);
+    return (
+        <time
+            dateTime={at}
+            className="whitespace-nowrap tabular-nums"
+            {...(zone === undefined || zone === browserZone
+                ? {}
+                : {
+                      title: m.trigger_time_zone({ zoneTime: formatInZone(date, zone, locale.locale), timeZone: zone }),
+                  })}
+        >
+            {exact}
+        </time>
+    );
+}
+
 function Countdown({ at }: { readonly at: Date }) {
     const locale = useLocale();
     const now = useNow();

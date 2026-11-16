@@ -1,22 +1,34 @@
 import type { AgentId, ReadTrigger } from '@ptbk/engine-api';
-import { applyServerErrors, Banner, Form, FormField, FormSubmit, Input, Select, Textarea, useZodForm } from '@ptbk/ui';
-import type { ServerFieldError } from '@ptbk/ui';
-import { useQuery } from '@tanstack/react-query';
+import {
+    applyServerErrors,
+    Banner,
+    Combobox,
+    DateInput,
+    Form,
+    FormField,
+    FormSubmit,
+    Input,
+    Textarea,
+    useZodForm,
+} from '@ptbk/ui';
+import type { ComboboxOption, ServerFieldError } from '@ptbk/ui';
 import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
-import { useEngineApi } from '../../app/engine-api-context';
+import { cx } from '../../app/cx';
 import { ButtonLink } from '../../app/link';
 import { useAppLocale } from '../../app/locale';
 import { useNow } from '../../app/ticker';
 import { m } from '../../paraglide/messages';
-import { agentListQueryOptions } from '../agents/agents-queries';
+import { AgentAvatar } from '../agents/agent-avatar';
 import { UnsavedChangesGuard } from '../book/unsaved-changes-guard';
 import { describeRecurrence, weekdayName } from './schedule/describe';
 import { previewFires } from './schedule/next-fires';
 import {
     createBodyOf,
     emptyFormValues,
+    FORM_KINDS,
     formFieldOf,
     formValuesOf,
     INTERVAL_UNITS,
@@ -31,14 +43,15 @@ import {
 } from './trigger-form-values';
 import type { IntervalUnit, RecurrenceKind } from './trigger-form-values';
 import { FireTime, useBrowserTimeZone } from './trigger-time';
+import { useTriggerAgents } from './trigger-agents';
 import { useTriggerMutations } from './use-trigger-mutations';
 
-/** The agent picker lists the first page of agents by name; the engine pages beyond that. */
-const AGENT_PICKER_LIMIT = 100;
 const PREVIEW_COUNT = 5;
 /** Monday first, as both languages write a week. */
 const WEEK_ORDER = [...WEEKDAYS.slice(1), WEEKDAYS[0]];
 const CRON_EXAMPLE = '0 8 * * 1-5';
+// Text inputs match the 40px combobox and date controls they sit beside.
+const CONTROL = 'min-h-10';
 
 /** Every IANA zone the browser knows, with the given ones kept even if it does not list them (`UTC` in some). */
 function timeZones(keep: readonly string[]): readonly string[] {
@@ -88,14 +101,14 @@ export interface TriggerFormProps {
 /**
  * Create or edit a trigger. Local checks block a submit only for input that cannot be sent; the preview of the next
  * fires is an estimate and never blocks. The engine's 422 `invalid-schedule` (and 400 `validation-failed`) lands on
- * the field it names, anything it cannot place in a banner above the form.
+ * the field it names, anything it cannot place in a banner above the form. On a wide screen the preview sits beside
+ * the fields, below them on a narrow one.
  */
 export function TriggerForm({ trigger, agentId, fromAgent = false }: TriggerFormProps) {
-    const engineApi = useEngineApi();
     const browserZone = useBrowserTimeZone();
     const { create, update } = useTriggerMutations();
     const [unplaced, setUnplaced] = useState<readonly string[]>([]);
-    const agents = useQuery(agentListQueryOptions(engineApi, { sort: 'name', limit: AGENT_PICKER_LIMIT }));
+    const agents = useTriggerAgents();
     const defaults = useMemo(
         () =>
             trigger === undefined
@@ -133,7 +146,15 @@ export function TriggerForm({ trigger, agentId, fromAgent = false }: TriggerForm
         },
     });
 
-    const agentItems = agents.data?.items ?? [];
+    const agentItems = agents.list;
+    const agentOptions: ComboboxOption[] = agentItems.map((agent) => ({
+        value: agent.id,
+        label: agent.name,
+        leading: <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />,
+    }));
+    if (defaults.agentId !== '' && !agentItems.some((agent) => agent.id === defaults.agentId)) {
+        agentOptions.unshift({ value: defaults.agentId, label: trigger?.agentName ?? defaults.agentId });
+    }
     const cancel = editing ? (
         <ButtonLink
             to="/triggers/$triggerId"
@@ -154,66 +175,92 @@ export function TriggerForm({ trigger, agentId, fromAgent = false }: TriggerForm
     );
 
     return (
-        <Form form={form} className="flex max-w-2xl flex-col gap-4">
+        <Form
+            form={form}
+            className="grid max-w-6xl grid-cols-1 gap-x-12 gap-y-6 xl:grid-cols-[minmax(0,42rem)_minmax(16rem,1fr)]"
+        >
             <form.Subscribe selector={(state) => state.values}>
                 {(values) => <UnsavedChangesGuard when={hasChanges(values, defaults)} />}
             </form.Subscribe>
-            {unplaced.length === 0 ? null : (
-                <Banner tone="danger" title={m.trigger_form_refused()}>
-                    {/* The engine's own words about what it refused: text only. */}
-                    <ul className="list-disc pl-5 break-words">
-                        {unplaced.map((message) => (
-                            <li key={message}>{message}</li>
-                        ))}
-                    </ul>
-                </Banner>
-            )}
-            {editing ? null : (
-                <FormField form={form} name="kind" label={m.trigger_form_kind()}>
-                    {(control) => (
-                        <Select {...control.text}>
-                            <option value="schedule">{m.trigger_kind_schedule()}</option>
-                            <option value="email">{m.trigger_kind_email()}</option>
-                            <option value="webhook" disabled>
-                                {m.trigger_form_webhook_later()}
-                            </option>
-                        </Select>
-                    )}
-                </FormField>
-            )}
-            <FormField form={form} name="agentId" label={m.trigger_form_agent()} required>
-                {(control) => (
-                    <Select {...control.text} disabled={editing}>
-                        <option value="">{m.trigger_form_agent_choose()}</option>
-                        {defaults.agentId !== '' && !agentItems.some((agent) => agent.id === defaults.agentId) ? (
-                            <option value={defaults.agentId}>{trigger?.agentName ?? defaults.agentId}</option>
-                        ) : null}
-                        {agentItems.map((agent) => (
-                            <option key={agent.id} value={agent.id}>
-                                {agent.name}
-                            </option>
-                        ))}
-                    </Select>
+            <div className="flex min-w-0 flex-col gap-5 xl:col-start-1">
+                {unplaced.length === 0 ? null : (
+                    <Banner tone="danger" title={m.trigger_form_refused()}>
+                        {/* The engine's own words about what it refused: text only. */}
+                        <ul className="list-disc pl-5 break-words">
+                            {unplaced.map((message) => (
+                                <li key={message}>{message}</li>
+                            ))}
+                        </ul>
+                    </Banner>
                 )}
-            </FormField>
-            <FormField form={form} name="name" label={m.trigger_form_name()} required>
-                {(control) => <Input {...control.text} autoComplete="off" maxLength={128} />}
-            </FormField>
-            <form.Subscribe selector={(state) => state.values.kind}>
-                {(kind) =>
-                    kind === 'schedule' ? (
-                        <ScheduleFields form={form} zones={zones} />
-                    ) : (
-                        <p className="text-sm text-text-muted">{m.trigger_form_email_hint()}</p>
-                    )
+                <div className="grid gap-5 sm:grid-cols-2">
+                    {editing ? null : (
+                        <ChoiceField
+                            form={form}
+                            name="kind"
+                            label={m.trigger_form_kind()}
+                            options={kindOptions()}
+                            onChoose={(value) => {
+                                const kind = FORM_KINDS.find((candidate) => candidate === value);
+                                if (kind !== undefined) form.setFieldValue('kind', kind);
+                            }}
+                        />
+                    )}
+                    <ChoiceField
+                        form={form}
+                        name="agentId"
+                        label={m.trigger_form_agent()}
+                        required
+                        options={agentOptions}
+                        placeholder={m.trigger_form_agent_choose()}
+                        searchPlaceholder={m.trigger_form_agent_search()}
+                        // Without agents.read there is nothing to choose from; a preset or saved agent still shows.
+                        disabled={editing || !agents.allowed}
+                        {...(agents.allowed || editing || agentId !== undefined
+                            ? {}
+                            : { hint: m.trigger_form_agent_no_access() })}
+                        onChoose={(value) => {
+                            form.setFieldValue('agentId', value);
+                        }}
+                    />
+                </div>
+                <FormField form={form} name="name" label={m.trigger_form_name()} required>
+                    {(control) => <Input {...control.text} autoComplete="off" maxLength={128} className={CONTROL} />}
+                </FormField>
+                <form.Subscribe selector={(state) => state.values.kind}>
+                    {(kind) =>
+                        kind === 'schedule' ? (
+                            <ScheduleFields form={form} zones={zones} />
+                        ) : (
+                            <p className="text-sm text-text-muted">{m.trigger_form_email_hint()}</p>
+                        )
+                    }
+                </form.Subscribe>
+            </div>
+            <form.Subscribe selector={(state) => state.values}>
+                {(values) =>
+                    values.kind === 'schedule' ? (
+                        <SchedulePreview
+                            values={values}
+                            className="xl:sticky xl:top-28 xl:col-start-2 xl:row-span-2 xl:row-start-1 xl:self-start"
+                        />
+                    ) : null
                 }
             </form.Subscribe>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 xl:col-start-1">
                 <FormSubmit form={form}>{editing ? m.trigger_form_save() : m.trigger_form_create()}</FormSubmit>
                 {cancel}
             </div>
         </Form>
     );
+}
+
+function kindOptions(): readonly ComboboxOption[] {
+    return [
+        { value: 'schedule', label: m.trigger_kind_schedule() },
+        { value: 'email', label: m.trigger_kind_email() },
+        { value: 'webhook', label: m.trigger_form_webhook_later(), disabled: true },
+    ];
 }
 
 /** Changed back to what it was is not a change: leaving then loses nothing. */
@@ -222,41 +269,109 @@ function hasChanges(values: TriggerFormValues, defaults: TriggerFormValues): boo
 }
 
 type TriggerZodForm = ReturnType<typeof useZodForm<typeof TriggerFormValues>>;
+type ChoiceName = 'kind' | 'agentId' | 'recurrence' | 'weekday' | 'everyUnit' | 'timeZone';
+
+interface ChoiceFieldProps {
+    readonly form: TriggerZodForm;
+    readonly name: ChoiceName;
+    readonly label: string;
+    readonly hint?: ReactNode;
+    readonly required?: boolean;
+    readonly options: readonly ComboboxOption[];
+    readonly placeholder?: string;
+    /** Adds a search field to the list, for long ones (agents, time zones). */
+    readonly searchPlaceholder?: string;
+    readonly disabled?: boolean;
+    /** Sets the field from the picked value; each field narrows the string to its own type. */
+    readonly onChoose: (value: string) => void;
+}
+
+/**
+ * A form field picked from a list, on the design system's combobox. It sets the form value itself (the combobox
+ * reports a value, not a change event) and, as `FormField` does for typed input, drops the engine's error on the field
+ * as soon as the member picks again.
+ */
+function ChoiceField({
+    form,
+    name,
+    label,
+    hint,
+    required,
+    options,
+    placeholder,
+    searchPlaceholder,
+    disabled = false,
+    onChoose,
+}: ChoiceFieldProps) {
+    return (
+        <FormField
+            form={form}
+            name={name}
+            label={label}
+            {...(hint === undefined ? {} : { hint })}
+            {...(required === undefined ? {} : { required })}
+        >
+            {(control) => (
+                <Combobox
+                    id={control.text.id}
+                    aria-describedby={control.text['aria-describedby']}
+                    aria-invalid={control.text['aria-invalid']}
+                    required={control.text.required}
+                    name={control.text.name}
+                    value={control.text.value === '' ? null : control.text.value}
+                    options={options}
+                    {...(placeholder === undefined ? {} : { placeholder })}
+                    {...(searchPlaceholder === undefined ? {} : { searchable: true, searchPlaceholder })}
+                    disabled={disabled}
+                    onBlur={control.text.onBlur}
+                    onChange={(value) => {
+                        form.setFieldMeta(name, (meta) => ({
+                            ...meta,
+                            errorMap: { ...meta.errorMap, onServer: undefined },
+                        }));
+                        onChoose(value);
+                    }}
+                />
+            )}
+        </FormField>
+    );
+}
 
 function TimeField({ form }: { readonly form: TriggerZodForm }) {
     return (
         <FormField form={form} name="atTime" label={m.trigger_form_time()} required>
-            {(control) => <Input {...control.text} type="time" />}
+            {(control) => <Input {...control.text} type="time" className={cx(CONTROL, 'tabular-nums')} />}
         </FormField>
     );
 }
 
 function ScheduleFields({ form, zones }: { readonly form: TriggerZodForm; readonly zones: readonly string[] }) {
-    const { locale } = useAppLocale();
+    const zoneOptions = useMemo(() => zones.map((zone) => ({ value: zone, label: zone })), [zones]);
     return (
         <>
-            <FormField form={form} name="recurrence" label={m.trigger_form_recurrence()}>
-                {(control) => (
-                    <Select
-                        {...control.text}
-                        onChange={(event) => {
-                            // Custom starts from the preset it replaces, so a small tweak needs no cron from scratch.
-                            const { recurrence, atTime, weekday } = form.state.values;
-                            const cron = isPreset(recurrence) ? presetCron(recurrence, atTime, weekday) : undefined;
-                            if (event.target.value === 'cron' && cron !== undefined) {
-                                form.setFieldValue('expression', cron);
-                            }
-                            control.text.onChange(event);
-                        }}
-                    >
-                        {RECURRENCE_KINDS.map((recurrence) => (
-                            <option key={recurrence} value={recurrence}>
-                                {recurrenceLabel(recurrence)}
-                            </option>
-                        ))}
-                    </Select>
-                )}
-            </FormField>
+            <div className="grid gap-5 sm:grid-cols-2">
+                <ChoiceField
+                    form={form}
+                    name="recurrence"
+                    label={m.trigger_form_recurrence()}
+                    options={RECURRENCE_KINDS.map((recurrence) => ({
+                        value: recurrence,
+                        label: recurrenceLabel(recurrence),
+                    }))}
+                    onChoose={(value) => {
+                        const next = RECURRENCE_KINDS.find((candidate) => candidate === value);
+                        if (next === undefined) return;
+                        // Custom starts from the preset it replaces, so a small tweak needs no cron from scratch.
+                        const { recurrence, atTime, weekday } = form.state.values;
+                        const cron = isPreset(recurrence) ? presetCron(recurrence, atTime, weekday) : undefined;
+                        if (next === 'cron' && cron !== undefined) form.setFieldValue('expression', cron);
+                        form.setFieldValue('recurrence', next);
+                    }}
+                />
+                <form.Subscribe selector={(state) => state.values.recurrence}>
+                    {(recurrence) => (recurrence === 'weekly' ? <WeekdayField form={form} /> : null)}
+                </form.Subscribe>
+            </div>
             <form.Subscribe selector={(state) => state.values.recurrence}>
                 {(recurrence) => {
                     switch (recurrence) {
@@ -264,49 +379,49 @@ function ScheduleFields({ form, zones }: { readonly form: TriggerZodForm; readon
                             return null;
                         case 'daily':
                         case 'weekdays':
-                            return <TimeField form={form} />;
                         case 'weekly':
                             return (
-                                <div className="grid gap-4 sm:grid-cols-2">
-                                    <FormField form={form} name="weekday" label={m.trigger_form_weekday()}>
-                                        {(control) => (
-                                            <Select {...control.text}>
-                                                {WEEK_ORDER.map((day) => (
-                                                    <option key={day} value={day}>
-                                                        {weekdayName(Number(day), locale)}
-                                                    </option>
-                                                ))}
-                                            </Select>
-                                        )}
-                                    </FormField>
+                                <div className="grid gap-5 sm:grid-cols-2">
                                     <TimeField form={form} />
                                 </div>
                             );
                         case 'once':
                             return (
-                                <FormField form={form} name="onceAt" label={m.trigger_form_at()} required>
-                                    {(control) => <Input {...control.text} type="datetime-local" />}
-                                </FormField>
+                                <div className="grid gap-5 sm:grid-cols-2">
+                                    <FormField form={form} name="onceAt" label={m.trigger_form_at()} required>
+                                        {(control) => <DateInput {...control.text} withTime />}
+                                    </FormField>
+                                </div>
                             );
                         case 'interval':
                             return (
-                                <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="grid gap-5 sm:grid-cols-2">
                                     <FormField form={form} name="everyAmount" label={m.trigger_form_every()} required>
                                         {(control) => (
-                                            <Input {...control.text} type="number" inputMode="numeric" min={1} />
+                                            <Input
+                                                {...control.text}
+                                                type="number"
+                                                inputMode="numeric"
+                                                min={1}
+                                                className={cx(CONTROL, 'tabular-nums')}
+                                            />
                                         )}
                                     </FormField>
-                                    <FormField form={form} name="everyUnit" label={m.trigger_form_unit()}>
-                                        {(control) => (
-                                            <Select {...control.text}>
-                                                {(Object.keys(INTERVAL_UNITS) as IntervalUnit[]).map((unit) => (
-                                                    <option key={unit} value={unit}>
-                                                        {unitLabel(unit)}
-                                                    </option>
-                                                ))}
-                                            </Select>
-                                        )}
-                                    </FormField>
+                                    <ChoiceField
+                                        form={form}
+                                        name="everyUnit"
+                                        label={m.trigger_form_unit()}
+                                        options={(Object.keys(INTERVAL_UNITS) as IntervalUnit[]).map((unit) => ({
+                                            value: unit,
+                                            label: unitLabel(unit),
+                                        }))}
+                                        onChoose={(value) => {
+                                            const unit = (Object.keys(INTERVAL_UNITS) as IntervalUnit[]).find(
+                                                (candidate) => candidate === value,
+                                            );
+                                            if (unit !== undefined) form.setFieldValue('everyUnit', unit);
+                                        }}
+                                    />
                                 </div>
                             );
                         case 'cron':
@@ -329,7 +444,7 @@ function ScheduleFields({ form, zones }: { readonly form: TriggerZodForm; readon
                                             autoComplete="off"
                                             spellCheck={false}
                                             maxLength={128}
-                                            className="font-mono"
+                                            className={cx(CONTROL, 'font-mono')}
                                         />
                                     )}
                                 </FormField>
@@ -337,43 +452,46 @@ function ScheduleFields({ form, zones }: { readonly form: TriggerZodForm; readon
                     }
                 }}
             </form.Subscribe>
-            <FormField
+            <ChoiceField
                 form={form}
                 name="timeZone"
                 label={m.trigger_form_time_zone()}
                 hint={m.trigger_form_time_zone_hint()}
-            >
-                {(control) => (
-                    <Select {...control.text}>
-                        {zones.map((zone) => (
-                            <option key={zone} value={zone}>
-                                {zone}
-                            </option>
-                        ))}
-                    </Select>
-                )}
-            </FormField>
-            <div className="grid gap-4 sm:grid-cols-2">
+                options={zoneOptions}
+                searchPlaceholder={m.trigger_form_time_zone_search()}
+                onChoose={(value) => {
+                    form.setFieldValue('timeZone', value);
+                }}
+            />
+            <div className="grid gap-5 sm:grid-cols-2">
                 <FormField
                     form={form}
                     name="startsAt"
                     label={m.trigger_form_starts()}
                     hint={m.trigger_form_starts_hint()}
                 >
-                    {(control) => <Input {...control.text} type="datetime-local" />}
+                    {(control) => <DateInput {...control.text} withTime />}
                 </FormField>
                 <FormField form={form} name="endsAt" label={m.trigger_form_ends()} hint={m.trigger_form_ends_hint()}>
-                    {(control) => <Input {...control.text} type="datetime-local" />}
+                    {(control) => <DateInput {...control.text} withTime />}
+                </FormField>
+                <FormField
+                    form={form}
+                    name="maxRunCount"
+                    label={m.trigger_form_max_runs()}
+                    hint={m.trigger_form_max_runs_hint()}
+                >
+                    {(control) => (
+                        <Input
+                            {...control.text}
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            className={cx(CONTROL, 'tabular-nums')}
+                        />
+                    )}
                 </FormField>
             </div>
-            <FormField
-                form={form}
-                name="maxRunCount"
-                label={m.trigger_form_max_runs()}
-                hint={m.trigger_form_max_runs_hint()}
-            >
-                {(control) => <Input {...control.text} type="number" inputMode="numeric" min={1} />}
-            </FormField>
             <FormField
                 form={form}
                 name="message"
@@ -383,15 +501,31 @@ function ScheduleFields({ form, zones }: { readonly form: TriggerZodForm; readon
             >
                 {(control) => <Textarea {...control.text} rows={4} />}
             </FormField>
-            <form.Subscribe selector={(state) => state.values}>
-                {(values) => <SchedulePreview values={values} />}
-            </form.Subscribe>
         </>
     );
 }
 
-/** The next five fires as the browser estimates them; labelled as an estimate, the engine's answer counts. */
-function SchedulePreview({ values }: { readonly values: TriggerFormValues }) {
+function WeekdayField({ form }: { readonly form: TriggerZodForm }) {
+    const { locale } = useAppLocale();
+    return (
+        <ChoiceField
+            form={form}
+            name="weekday"
+            label={m.trigger_form_weekday()}
+            options={WEEK_ORDER.map((day) => ({ value: day, label: weekdayName(Number(day), locale) }))}
+            onChoose={(value) => {
+                const day = WEEKDAYS.find((candidate) => candidate === value);
+                if (day !== undefined) form.setFieldValue('weekday', day);
+            }}
+        />
+    );
+}
+
+/**
+ * The next five fires as the browser estimates them, as quiet hairline rows; labelled as an estimate, the engine's
+ * answer counts.
+ */
+function SchedulePreview({ values, className }: { readonly values: TriggerFormValues; readonly className?: string }) {
     const now = useNow();
     const { locale } = useAppLocale();
     const browserZone = useBrowserTimeZone();
@@ -399,8 +533,8 @@ function SchedulePreview({ values }: { readonly values: TriggerFormValues }) {
     const fires = schedule === null ? [] : previewFires(schedule, now, PREVIEW_COUNT);
     const zone = isCronLike(values.recurrence) ? values.timeZone : undefined;
     return (
-        <section aria-labelledby="trigger-preview-title" className="flex flex-col gap-2 rounded-md bg-sunken p-4">
-            <h2 id="trigger-preview-title" className="text-sm font-medium">
+        <section aria-labelledby="trigger-preview-title" className={cx('flex min-w-0 flex-col gap-2', className)}>
+            <h2 id="trigger-preview-title" className="text-sm font-semibold">
                 {m.trigger_preview_title()}
             </h2>
             {schedule === null ? (
@@ -418,9 +552,9 @@ function SchedulePreview({ values }: { readonly values: TriggerFormValues }) {
                     {fires.length === 0 ? (
                         <p className="text-sm text-text-muted">{m.trigger_preview_none()}</p>
                     ) : (
-                        <ol className="flex flex-col gap-1 text-sm">
+                        <ol className="flex flex-col border-t border-hairline text-sm tabular-nums">
                             {fires.map((at) => (
-                                <li key={at}>
+                                <li key={at} className="border-b border-hairline py-2">
                                     <FireTime at={new Date(at).toISOString()} zone={zone} />
                                 </li>
                             ))}
