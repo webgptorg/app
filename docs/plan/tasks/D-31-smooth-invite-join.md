@@ -2,7 +2,7 @@
 
 - **Lane:** Dashboard · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-13, D-14
-- **Status:** in progress (feat/smooth-invite-join)
+- **Status:** done (#304)
 - **Spec:** [Teams](../../spec/teams.md) "Adding a person"; [ADR 0018](../../adr/0018-teams-and-member-access.md)
 
 ## Goal
@@ -35,8 +35,8 @@ A colleague who gets an invitation is on the engine's waiting page within a minu
 
 ## Acceptance criteria
 
-- [ ] Typed routes with strict input, `public` auth and IP rate limits for the join and sign-in-and-join ceremonies.
-- [ ] Tests for a reused or expired invite, an email mismatch, an invite for an existing account on the new-account path, and rate limits.
-- [ ] Component tests for the invite page states; e2e teams flow updated.
-- [ ] `bun run check` passes for the dashboard.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Typed routes with strict input, `public` auth and IP rate limits for the join and sign-in-and-join ceremonies.
+- [x] Tests for a reused or expired invite, an email mismatch, an invite for an existing account on the new-account path, and rate limits.
+- [x] Component tests for the invite page states; e2e teams flow updated.
+- [x] `bun run check` passes for the dashboard.
+- [x] **Status** line above set to `done (#<PR>)`.
