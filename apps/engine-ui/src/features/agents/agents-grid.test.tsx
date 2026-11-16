@@ -103,6 +103,29 @@ describe('agents grid', { timeout: TIMEOUT_MS }, () => {
         expect(within(tasks).getByRole('link', { name: /Ship billing v2/ })).toBeDefined();
     });
 
+    it('lists the agent’s live work in the panel: a run of its own, or the reply it is writing', async () => {
+        const { user } = await renderGrid();
+        await user.click(card('Max'));
+        const max = await screen.findByRole('dialog', { name: 'Max' });
+        const now = within(max).getByRole('region', { name: 'Now' });
+        expect(await within(now).findByRole('link', { name: 'Answer a refund request' })).toBeDefined();
+        await user.keyboard('{Escape}');
+
+        await user.click(card('Chatter'));
+        const chatter = await screen.findByRole('dialog', { name: 'Chatter' });
+        expect(within(within(chatter).getByRole('region', { name: 'Now' })).getByText('Replying in')).toBeDefined();
+    });
+
+    it('says nothing matches, with the way back, when the search finds no agent', async () => {
+        const { user, router } = renderWithProviders({ path: '/agents?q=zebra', engineApi: demoEngine().client });
+        expect(await screen.findByText('No agents match')).toBeDefined();
+        await user.click(screen.getByRole('button', { name: 'Clear search and filters' }));
+        await waitFor(() => {
+            expect(router.state.location.search).toEqual({});
+        });
+        expect(await screen.findByRole('list', { name: 'Your agents' })).toBeDefined();
+    });
+
     it('switches to the table, remembers the choice, and lets the URL win', async () => {
         const storage = createMemoryStorage();
         const { user, router, unmount } = await renderGrid('/agents', demoEngine(), storage);
