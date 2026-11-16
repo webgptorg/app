@@ -518,7 +518,8 @@ test.describe('the built bundle under the engine CSP', () => {
 
     test('/audit restores its filters from the URL and meets the UX checks', async ({ page, visit }) => {
         const report = await visit('/audit?outcome=denied&from=2026-09-01&to=2026-09-03');
-        await expect(page.getByRole('combobox', { name: 'Outcome' })).toHaveValue('denied');
+        await expect(page.getByRole('button', { name: 'Outcome: Denied', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: /^Date: / })).toBeVisible();
         await expect(page.getByRole('table')).toBeVisible();
         expectCleanPage(report);
     });
@@ -528,7 +529,10 @@ test.describe('the built bundle under the engine CSP', () => {
         visit,
     }) => {
         const report = await visit('/wallet');
-        await expect(page.getByText('github.com · ad…@example.com')).toBeVisible();
+        // The row names the site once, with the account under it, instead of the engine's "site · account" label.
+        await expect(
+            page.getByRole('region', { name: 'Saved logins' }).getByRole('listitem').filter({ hasText: 'github.com' }),
+        ).toBeVisible();
         await expect(page.getByText('Ada needs a login for linear.app')).toBeVisible();
 
         await page.getByRole('button', { name: 'Add login' }).last().click();

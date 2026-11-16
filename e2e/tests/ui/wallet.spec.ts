@@ -29,7 +29,8 @@ test('a login is added, updated and removed without its password ever coming bac
 
     await addWalletLogin(page, site, 'canary@example.com', first);
     const logins = page.getByRole('region', { name: 'Saved logins' });
-    const row = logins.getByRole('listitem').filter({ hasText: label });
+    // The row names the site once; the engine's masked label lives on in the menu, the dialog and the toast.
+    const row = logins.getByRole('listitem').filter({ hasText: site });
     await expect(row).toBeVisible();
     await expect(row).toContainText('Not checked yet');
 
@@ -74,7 +75,8 @@ test('an agent request is marked as seen, keeps waiting, and is rejected', async
     const requests = page.getByRole('region', { name: 'Agents are waiting' });
     const request = requests.getByRole('listitem').filter({ hasText: `needs a login for ${site}` });
     await expect(request).toBeVisible();
-    await request.getByRole('button', { name: 'Mark as seen' }).click();
+    await request.getByRole('button', { name: `More for the ${site} request` }).click();
+    await page.getByRole('menuitem', { name: 'Mark as seen' }).click();
     await expect(request).toContainText('Seen');
     await page.reload();
     await expect(request).toContainText('Seen');

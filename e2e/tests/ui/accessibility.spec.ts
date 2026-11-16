@@ -65,7 +65,8 @@ test('switching to Czech changes the visible text and <html lang>', async ({ pag
     const nav = page.getByRole('navigation', { name: 'Main' });
     await expect(nav.getByRole('link', { name: 'Agents', exact: true })).toBeVisible();
 
-    await page.getByRole('combobox', { name: 'Language' }).selectOption('cs');
+    await page.getByRole('combobox', { name: 'Language' }).click();
+    await page.getByRole('option', { name: 'Čeština' }).click();
     await expect(page.locator('html')).toHaveAttribute('lang', 'cs');
     await expect(nav.getByRole('link', { name: 'Agents', exact: true })).toHaveCount(0);
     await page.reload();

@@ -11,7 +11,8 @@ test('the owner creates and revokes an invite and changes a role', async ({ page
 
     await page.getByRole('button', { name: 'Invite member' }).click();
     const form = page.getByRole('dialog', { name: 'Invite a member' });
-    await form.getByRole('combobox', { name: 'Role' }).selectOption('member');
+    await form.getByRole('combobox', { name: 'Role' }).click();
+    await page.getByRole('option', { name: /^Member/ }).click();
     await form.getByRole('button', { name: 'Create invite link' }).click();
     const created = page.getByRole('dialog', { name: 'Invite link created' });
     await expect(created.getByRole('textbox', { name: 'Invite link' })).toHaveValue(
@@ -34,7 +35,8 @@ test('the owner creates and revokes an invite and changes a role', async ({ page
     expect(name).not.toBe('');
     await (await openRowMenu(page, name)).getByRole('menuitem', { name: 'Change role' }).click();
     const change = page.getByRole('dialog', { name: `Change ${name}'s role` });
-    await change.getByRole('combobox', { name: 'Role' }).selectOption('member');
+    await change.getByRole('combobox', { name: 'Role' }).click();
+    await page.getByRole('option', { name: /^Member/ }).click();
     await change.getByRole('button', { name: 'Change role' }).click();
     await expect(page.getByText(`Changed ${name}'s role to Member`)).toBeVisible();
     await expect(page.getByRole('row').filter({ hasText: name })).toContainText('Member');
