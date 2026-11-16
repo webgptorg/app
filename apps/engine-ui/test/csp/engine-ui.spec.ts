@@ -333,7 +333,7 @@ test.describe('the built bundle under the engine CSP', () => {
 
         const filtered = await visit('/files?scan=infected,failed');
         // The counted values are read from a visually hidden node, which Chrome sets apart with a space.
-        await expect(page.getByRole('button', { name: /^Scan: Infected ?, Failed$/ })).toBeVisible();
+        await expect(page.getByRole('button', { name: /^Scan: Infected ?, Scan failed$/ })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: 'invoice.png' })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: 'photo.png' })).toHaveCount(0);
         expectCleanPage(filtered);
@@ -445,7 +445,7 @@ test.describe('the built bundle under the engine CSP', () => {
         expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
     });
 
-    test(`/triggers/${FAKE_TRIGGER_ID} keeps the planned message and fire errors inert, keeps Pause in reach at 360 px and meets the UX checks`, async ({
+    test(`/triggers/${FAKE_TRIGGER_ID} keeps the planned message and fire errors inert, fits its actions into 360 px and meets the UX checks`, async ({
         page,
         visit,
     }) => {
@@ -462,9 +462,10 @@ test.describe('the built bundle under the engine CSP', () => {
         expect(await page.locator('main a[href^="javascript:"]').count()).toBe(0);
         expectCleanPage(report);
 
+        // Narrow, the page header scrolls away with the page (the phone keeps its own bar), so Pause is in its menu up top.
         await page.setViewportSize({ width: 360, height: 740 });
-        await page.mouse.wheel(0, 400);
-        await expect(page.getByRole('button', { name: 'More actions' })).toBeInViewport();
+        await page.getByRole('button', { name: 'More actions' }).click();
+        await expect(page.getByRole('menuitem', { name: 'Pause' })).toBeInViewport();
         expect(
             await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
         ).toBeLessThanOrEqual(0);
