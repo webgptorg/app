@@ -1,12 +1,11 @@
 import type { AgentId, FileMetadata } from '@ptbk/engine-api';
-import { Button, FilterBar, Tabs } from '@ptbk/ui';
+import { Button, Tabs } from '@ptbk/ui';
 import type { ColumnFiltersState, MenuEntry } from '@ptbk/ui';
 import { getRouteApi } from '@tanstack/react-router';
 import { Trash2 } from 'lucide-react';
 import { useCallback, useEffect } from 'react';
 
 import { useCursorPages } from '../../app/cursor-pages';
-import { useDebouncedSearch } from '../../app/debounced-search';
 import { Link } from '../../app/link';
 import { isInvalidCursor } from '../../app/list-errors';
 import { SoftBreaks } from '../../app/soft-breaks';
@@ -15,13 +14,16 @@ import { useAgentIdParam } from '../agents/agent-detail-route';
 import { usePermissions } from '../session/use-permissions';
 import { useFileDelete } from './file-delete';
 import { FileDrawer } from './file-drawer';
-import { filterValue, FileTable } from './file-table';
+import { FileFilters } from './file-filters';
+import { FileTable } from './file-table';
 import { useFiles } from './files-queries';
 import { AGENT_FILE_SECTIONS, fileListParams } from './files-search';
 import type { AgentFileSection, AgentFilesSearch } from './files-search';
 import { KnowledgeUpload } from './knowledge-upload';
 
 const route = getRouteApi('/agents/$agentId/files');
+// The toolbar's FilterBar holds the scan filter; the columns carry none of their own.
+const NO_COLUMN_FILTERS: ColumnFiltersState = [];
 
 /** What each section lists: the agent's knowledge, or what it produced and received (outputs, attachments, uploads). */
 const SECTION_PURPOSES: Readonly<Record<AgentFileSection, string>> = {
@@ -41,11 +43,12 @@ function sectionLabel(section: AgentFileSection): string {
 interface SectionProps {
     readonly agentId: AgentId;
     readonly section: AgentFileSection;
+    readonly onChange: (change: Partial<AgentFilesSearch>, replace?: boolean) => void;
     readonly onClear: () => void;
     readonly rowActions: ((file: FileMetadata) => readonly MenuEntry[]) | undefined;
 }
 
-function FileSection({ agentId, section, onClear, rowActions }: SectionProps) {
+function FileSection({ agentId, section, onChange, onClear, rowActions }: SectionProps) {
     const search = route.useSearch();
     const navigate = route.useNavigate();
     const list = useFiles(fileListParams({ ...search, agentId, purpose: SECTION_PURPOSES[section] }));
@@ -71,7 +74,6 @@ function FileSection({ agentId, section, onClear, rowActions }: SectionProps) {
         [agentId, search],
     );
     const filtered = search.q !== undefined || search.scan !== undefined;
-    const filters: ColumnFiltersState = search.scan === undefined ? [] : [{ id: 'scan', value: search.scan }];
     return (
         <FileTable
             caption={sectionLabel(section)}
@@ -82,11 +84,11 @@ function FileSection({ agentId, section, onClear, rowActions }: SectionProps) {
             onSortChange={(sort) => {
                 void navigate({ search: (previous) => ({ ...previous, sort, cursor: undefined }) });
             }}
-            filters={filters}
-            onFiltersChange={(next) => {
-                const scan = filterValue(next, 'scan');
-                void navigate({ search: (previous) => ({ ...previous, scan, cursor: undefined }) });
-            }}
+            filters={NO_COLUMN_FILTERS}
+            onFiltersChange={() => undefined}
+            toolbar={(view) => (
+                <FileFilters view={view} search={search} scope="agent" onChange={onChange} onClear={onClear} />
+            )}
             page={paging.page}
             onPageChange={paging.onPageChange}
             loading={list.isPending}
@@ -127,11 +129,7 @@ export function AgentFilesPage() {
     const update = (change: Partial<AgentFilesSearch>, replace = false) => {
         void navigate({ search: (previous) => ({ ...previous, cursor: undefined, ...change }), replace });
     };
-    const [text, setText] = useDebouncedSearch(search.q, (q) => {
-        update({ q }, true);
-    });
     const clear = () => {
-        setText('');
         update({ q: undefined, scan: undefined });
     };
     const writable = can('files.write');
@@ -153,7 +151,13 @@ export function AgentFilesPage() {
     const panel = (section: AgentFileSection) =>
         search.section === section ? (
             <div className="flex flex-col gap-4">
-                <FileSection agentId={agentId} section={section} onClear={clear} rowActions={rowActions} />
+                <FileSection
+                    agentId={agentId}
+                    section={section}
+                    onChange={update}
+                    onClear={clear}
+                    rowActions={rowActions}
+                />
                 {section === 'knowledge' && writable ? (
                     <section aria-label={m.files_upload_knowledge()}>
                         <KnowledgeUpload agentId={agentId} />
@@ -164,16 +168,6 @@ export function AgentFilesPage() {
 
     return (
         <div className="flex flex-col gap-3">
-            <FilterBar
-                search={{
-                    label: m.files_search_label(),
-                    placeholder: m.files_search_placeholder(),
-                    value: text,
-                    onChange: setText,
-                    maxLength: 255,
-                }}
-                onClear={clear}
-            />
             <Tabs
                 label={m.files_sections()}
                 selectedId={search.section}

@@ -42,11 +42,6 @@ export function sortOf(sorting: SortingState): FileSort {
     return FILE_SORTS.find((candidate) => candidate === sort) ?? DEFAULT_FILE_SORT;
 }
 
-export function filterValue(filters: ColumnFiltersState, id: string): string | undefined {
-    const value = filters.find((filter) => filter.id === id)?.value;
-    return typeof value === 'string' && value !== '' ? value : undefined;
-}
-
 interface ColumnOptions {
     /** The global list shows each file's agent and filters by purpose; an agent's own tab does neither. */
     readonly global: boolean;
