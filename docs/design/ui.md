@@ -48,8 +48,12 @@ The agent detail tabs and the main sections come from the feature registry, so a
 ## Key screens
 
 - **Home, Chatter-first, for every member:** a greeting and a large "Ask Chatter anything…" composer that starts a chat with Chatter and opens it; then **Needs you** (agents' questions quoted with Reply, tasks waiting on the member, and every feature's attention count, such as failed runs, login requests or people asking to join, each with one action, on soft surfaces); **Working now** (agents replying with their latest step and a timer, running tasks, runs that belong to neither); **Recent chats** (agent avatars, title, preview, time). Members who oversee the engine also get the update notice and the live activity feed, in a quiet side column on wide screens and after everything else on narrow ones. Empty sections are one quiet line.
-- **Agents list:** `DataTable` with search, filters (status, folder, visibility), sort, and live status; two-line rows on mobile.
-- **Agent overview:** identity (avatar, name, description), live status, recent runs, triggers, integrations, knowledge at a glance; primary actions Chat, Run, Edit, Stop.
+- **Agents:** a grid of cards by default, the table one switch away (`?view=`, the last choice remembered on the device). Both share the filter bar (search, status, origin, visibility, folder where the engine has folders) and put the built-in agents in their own group below the member's.
+  - A card is the agent's picture, its name and a light status line ("Working · 2 chats, 1 task", "Idle"), from three lists for the whole page (recent chats, active tasks, running runs), never one request per card. Hover lifts it, deepens its tint and lets the character breathe (working) or blink (idle); the role and last activity fade in.
+  - Clicking a card morphs it into the agent's panel (a modal dialog, `?agent=` keeps it shareable, a full-screen sheet on phones): what it does now with the live step and a timer, Chat and Open agent, its chats with a Needs-you pill, its running tasks.
+  - The table is the `DataTable` with avatar, role, status pill, visibility, creator and updated time; two-line rows on mobile.
+- **Agent page:** "Agents ›" breadcrumb, the large picture, name, status pill (and "Public" when it is), role, Chat as the primary action and the rest in ⋯; quiet tabs.
+  - Overview in the open layout: chats, tasks, recent runs, files, triggers and integrations as sections of table-like rows with chips, each registered by its feature and absent when it has nothing to show; then the details as property rows.
 - **Create agent:** the guided wizard from the predecessor, refined: _Brief_ (describe the job in plain words) → _Book_ (AI draft, editable) → _Knowledge_ (drop files) → _Test_ (chat with the draft) → _Publish_. One click switches to the pro editor at any step.
 - **Book editor (pro):** CodeMirror with the book language, diagnostics, version history and diff, and a live test chat beside it.
 - **Chat:** streaming replies, visible progress card and tool calls while the agent works, stop, attachments, safe markdown; model output never becomes an executable control.
@@ -111,7 +115,7 @@ Visual identity v1 ([U-17](../plan/tasks/U-17-visual-identity.md), decided with 
   - Agents use `tone="agent"`: the name is in the agent's colour.
   - Every other entity uses `neutral`: text colour, with the hue only in the wash.
   - Entity-specific chips compose it in `apps/engine-ui/src/features/entities/`.
-- **`Avatar`** puts the agent's initial on a wash of its colour, so an agent looks the same everywhere.
+- **`Avatar`** puts a picture on a wash of the agent's colour, so an agent looks the same everywhere. For agents it is the agent's own image when its book has one, else an illustration (`features/agents/illustrations/`): the engine's choice (`profile.illustration`, an ID from the set), a built-in agent's own character, a guess from keywords in the name and role (English and Czech), else the generic agent. Strokes use the readable tint colour, so they meet AA in both themes. The initial is only the fallback.
 - **`StatusPill` and `StatusDot`** cover the tones `live`, `waiting`, `success`, `warning`, `danger`, `info` and `neutral`. The state is always in words, and the hue lives in the dot and the wash.
 - **`Combobox`** replaces native `<select>` as screens move to it. `DateInput` is the native date control, styled: it is accessible, follows the browser's locale for date order, and opens the platform picker on phones.
 - **Buttons are soft:** a text-coloured label on a quiet wash or a hairline.
