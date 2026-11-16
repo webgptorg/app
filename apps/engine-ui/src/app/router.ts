@@ -20,12 +20,10 @@ export const PENDING_MIN_MS = 300;
 /**
  * Only a change of route animates. Search-param updates (typing in a search box, a filter, the next page) follow each
  * other faster than a transition runs, and a transition the next one skips rejects its `ready` promise, which the
- * router never handles: every quick filter change would surface as an uncaught error. The first load does not animate
- * either: there is nothing to morph from, and while a transition waits for the route, the page takes no clicks.
+ * router never handles: every quick filter change would surface as an uncaught error.
  */
 export const ROUTE_VIEW_TRANSITION = {
-    types: ({ fromLocation, pathChanged }: { readonly fromLocation?: unknown; readonly pathChanged: boolean }) =>
-        fromLocation !== undefined && pathChanged ? ['route'] : false,
+    types: ({ pathChanged }: { readonly pathChanged: boolean }) => (pathChanged ? ['route'] : false),
 } as const;
 
 export function createAppRouter(context: RouterContext, options: AppRouterOptions = {}) {

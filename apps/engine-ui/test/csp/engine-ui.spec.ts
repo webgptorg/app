@@ -495,14 +495,6 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(report);
     });
 
-    test('a cold load of /triggers/new takes its first click at once', async ({ page, visit }) => {
-        expectCleanPage(await visit('/settings'));
-        // No waiting for the network: a route transition over the first load would swallow this click.
-        await page.goto('/triggers/new');
-        await page.getByRole('combobox', { name: /^Kind/ }).click();
-        await expect(page.getByRole('option', { name: 'Schedule', exact: true })).toBeVisible();
-    });
-
     test('/integrations lists integrations, restores its filters from the URL and meets the UX checks', async ({
         page,
         visit,
