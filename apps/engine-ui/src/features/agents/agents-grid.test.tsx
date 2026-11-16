@@ -61,7 +61,8 @@ describe('agents grid', { timeout: TIMEOUT_MS }, () => {
         });
         expect(cardText('Ada')).toContain('Working · 1 task');
         expect(cardText('Chatter')).toContain('Working · 1 chat');
-        expect(cardText('Iris')).toContain('Idle');
+        // Iris asked the User whether the weekly report should include the open support cases.
+        expect(cardText('Iris')).toContain('Needs you');
         expect(cardText('Copywriter')).toContain('Idle');
         expect(engine.spies.listAllChats).toHaveBeenCalledTimes(1);
         expect(engine.spies.listAgentChats).not.toHaveBeenCalled();

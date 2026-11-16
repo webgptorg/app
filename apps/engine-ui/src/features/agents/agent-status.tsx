@@ -12,7 +12,7 @@ import { stateLabel } from './agent-badges';
 import { AgentLiveState } from './agent-live-state';
 import type { AgentLiveStatus } from './agent-live-state';
 
-export type AgentStatusKind = 'working' | 'waiting' | 'stopped' | 'failed' | 'idle' | 'unknown';
+export type AgentStatusKind = 'working' | 'needs-you' | 'waiting' | 'stopped' | 'failed' | 'idle' | 'unknown';
 
 export interface AgentStatus {
     readonly kind: AgentStatusKind;
@@ -25,8 +25,9 @@ export interface AgentStatus {
  * views disagree:
  * 1. **Working** while it writes a reply, runs a task or a run (the page's lists), or its run state says so;
  * 2. **Stopped** or **Failed / Error** as the run state reports them;
- * 3. **Waiting** when the run state has only queued work;
- * 4. **Idle** otherwise. A state from a newer engine shows as unknown with its raw value.
+ * 3. **Needs you** while it waits for the User to answer one of its questions;
+ * 4. **Waiting** when the run state has only queued work;
+ * 5. **Idle** otherwise. A state from a newer engine shows as unknown with its raw value.
  *
  * `null` while the run state is still loading and the lists show no work, so a view waits instead of flashing Idle.
  */
@@ -36,12 +37,10 @@ export function agentStatus(live: AgentLiveStatus, activity: AgentActivity): Age
         return { kind: 'working', tone: 'live', label: m.agent_state_working() };
     }
     if (live.kind === 'pending') return null;
+    if (state === 'stopped') return { kind: 'stopped', tone: 'warning', label: stateLabel('stopped') };
+    if (state === 'failed' || state === 'error') return { kind: 'failed', tone: 'danger', label: stateLabel(state) };
+    if (activity.questions > 0) return { kind: 'needs-you', tone: 'warning', label: m.chat_needs_you() };
     switch (state) {
-        case 'stopped':
-            return { kind: 'stopped', tone: 'warning', label: stateLabel('stopped') };
-        case 'failed':
-        case 'error':
-            return { kind: 'failed', tone: 'danger', label: stateLabel(state) };
         case 'waiting':
             return { kind: 'waiting', tone: 'waiting', label: stateLabel('waiting') };
         case 'idle':
