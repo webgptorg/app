@@ -157,6 +157,48 @@
   "agents_filters": "Agent filters",
   "agents_filter_origin": "Origin",
   "agents_filter_folder": "Folder",
+  "agents_built_in_hint": "The engine's own agents. They set up your project and keep the work moving.",
+  "agents_view_label": "View",
+  "agents_view_grid": "Grid",
+  "agents_view_table": "Table",
+  "agents_card_chats": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} chat",
+        "countPlural=other": "{count} chats"
+      }
+    }
+  ],
+  "agents_card_tasks": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} task",
+        "countPlural=other": "{count} tasks"
+      }
+    }
+  ],
+  "agents_card_runs": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} run",
+        "countPlural=other": "{count} runs"
+      }
+    }
+  ],
+  "agents_card_last_active": "last active",
+  "agent_panel_close": "Close",
+  "agent_panel_open": "Open agent",
+  "agent_panel_now": "Now",
+  "agent_panel_replying_in": "Replying in",
+  "agent_panel_tasks": "Running tasks",
+  "agent_panel_chats": "Chats",
+  "agent_panel_no_chats": "No chats yet.",
   "agents_column_status": "Status",
   "agents_column_visibility": "Visibility",
   "agents_column_created_by": "Created by",
@@ -1647,6 +1689,10 @@
   "unsaved_body": "Your changes are not saved anywhere and will be lost.",
   "unsaved_leave": "Leave and lose changes",
   "wizard_steps_label": "Steps",
+  "wizard_preview_title": "Preview",
+  "wizard_preview_name": "Your new agent",
+  "wizard_preview_role": "What it does appears here.",
+  "wizard_preview_next": "Next you shape its book, give it knowledge and try it in a chat. You can change everything later.",
   "wizard_step_brief": "Brief",
   "wizard_step_book": "Book",
   "wizard_step_knowledge": "Knowledge",

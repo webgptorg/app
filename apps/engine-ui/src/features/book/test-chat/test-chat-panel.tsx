@@ -1,10 +1,11 @@
 import type { AgentId, Diagnostic } from '@ptbk/engine-api';
-import { Badge, Banner, Button } from '@ptbk/ui';
+import { Banner, Button, StatusPill } from '@ptbk/ui';
 import { RotateCcw } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef } from 'react';
 
 import { cx } from '../../../app/cx';
 import { m } from '../../../paraglide/messages';
+import { AgentAvatar } from '../../agents/agent-avatar';
 import { Composer } from '../../chat/composer';
 import { MessageList } from '../../chat/message-list';
 import { useCurrentMember } from '../../session/use-current-member';
@@ -128,15 +129,18 @@ export function TestChatPanel({
             className={cx('flex min-h-0 min-w-0 flex-col gap-3', className)}
             data-testid="book-test-chat"
         >
-            <header className="flex flex-wrap items-center justify-between gap-2">
+            <header className="flex min-h-8 flex-wrap items-center justify-between gap-2">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <Heading id={headingId} className="text-base font-semibold">
+                    <Heading id={headingId} className="text-sm font-semibold">
                         {m.book_test_title()}
                     </Heading>
-                    <Badge tone="warning">{m.book_test_badge()}</Badge>
+                    <StatusPill tone="waiting" variant="quiet">
+                        {m.book_test_badge()}
+                    </StatusPill>
                 </div>
                 <Button
                     size="sm"
+                    variant="ghost"
                     disabled={views.length === 0 && error === null}
                     onClick={() => {
                         chat.reset();
@@ -148,9 +152,15 @@ export function TestChatPanel({
                 </Button>
             </header>
             {views.length === 0 ? (
-                // Like a fresh chat: the space stays empty and the hint sits right above the composer it is about.
-                <div className="flex min-h-0 flex-1 flex-col justify-end">
-                    <p className="text-sm text-text-muted">{intro}</p>
+                // Like a fresh chat: the agent waits in the middle, and the hint sits above the composer it is about.
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
+                    <AgentAvatar
+                        name={agentName}
+                        agentKey={agentId}
+                        profile={{ avatarUrl: null, color: null }}
+                        size="lg"
+                    />
+                    <p className="max-w-xs text-sm text-text-muted">{intro}</p>
                 </div>
             ) : (
                 <MessageList

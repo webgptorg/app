@@ -1,0 +1,34 @@
+/*
+ * The agents grid's characters come alive on hover: a working agent breathes, an idle one blinks once. Motion only;
+ * under reduced motion the card's tint still deepens (agents-grid.tsx), and nothing here runs.
+ */
+@keyframes ptbk-agent-breathe {
+    50% {
+        scale: 1.06;
+    }
+}
+
+@keyframes ptbk-agent-blink {
+    0%,
+    100% {
+        scale: 1 1;
+    }
+    50% {
+        scale: 1 0.12;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .agent-card-art {
+        transform-origin: 50% 80%;
+    }
+
+    .agent-card:is(:hover, :focus-visible) .agent-card-art[data-working] {
+        animation: ptbk-agent-breathe 1.6s ease-in-out infinite;
+    }
+
+    .agent-card:is(:hover, :focus-visible) .agent-card-art:not([data-working]) .art-eye {
+        animation: ptbk-agent-blink 220ms ease-out 140ms 1;
+    }
+}
+

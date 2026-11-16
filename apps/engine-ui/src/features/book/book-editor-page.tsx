@@ -1,6 +1,6 @@
 import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { AgentId, AgentSource, Diagnostic, Revision, RevisionSummary } from '@ptbk/engine-api';
-import { Banner, Button, Dialog, ErrorState, Skeleton } from '@ptbk/ui';
+import { Banner, Button, Dialog, ErrorState, Skeleton, StatusDot } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Save } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
@@ -173,16 +173,18 @@ function BookWorkspace({ agentId, initial }: WorkspaceProps) {
     return (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
             <UnsavedChangesGuard when={dirty} />
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex min-h-8 flex-wrap items-center gap-3">
                 {testable ? <BookViewSwitch view={view} onChange={setView} className="xl:hidden" /> : null}
                 <div className="ms-auto flex flex-wrap items-center justify-end gap-3">
                     {/* On a phone the Save button's state says it, and the switch needs the row. */}
-                    <p className="text-sm text-text-muted max-sm:sr-only" role="status">
+                    <p className="flex items-center gap-1.5 text-xs text-text-muted max-sm:sr-only" role="status">
+                        {canWrite && dirty ? <StatusDot tone="warning" /> : null}
                         {canWrite ? (dirty ? m.book_unsaved() : m.book_all_saved()) : m.book_read_only()}
                     </p>
                     {canWrite ? (
                         <Button
                             variant="primary"
+                            size="sm"
                             loading={save.isPending}
                             disabled={!dirty}
                             aria-keyshortcuts="Control+S Meta+S"
@@ -222,13 +224,14 @@ function BookWorkspace({ agentId, initial }: WorkspaceProps) {
             <div
                 className={cx(
                     'grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)] gap-6',
-                    testable && 'xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]',
+                    testable && 'xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)] xl:gap-0',
                 )}
             >
                 {/* Hidden rather than unmounted, so switching views keeps the editor's state and the conversation. */}
                 <div
                     className={cx(
                         'flex min-h-0 min-w-0 flex-col gap-4',
+                        testable && 'xl:pe-6',
                         testable && view === 'test' && 'max-xl:hidden',
                     )}
                 >
@@ -242,7 +245,7 @@ function BookWorkspace({ agentId, initial }: WorkspaceProps) {
                         readOnly={!canWrite}
                         onSave={() => void saveDraft()}
                     />
-                    <div className="flex max-h-[40%] min-h-0 shrink-0 flex-col gap-6 overflow-y-auto">
+                    <div className="flex max-h-[40%] min-h-0 shrink-0 flex-col gap-5 overflow-y-auto">
                         {canWrite ? (
                             <ProblemsList
                                 diagnostics={validation.diagnostics}
@@ -262,7 +265,8 @@ function BookWorkspace({ agentId, initial }: WorkspaceProps) {
                         onInvalidBook={showInvalidBook}
                         onShowProblems={showProblems}
                         headingLevel={2}
-                        className={cx(view === 'book' && 'max-xl:hidden')}
+                        // On wide screens a hairline, not a card, sets the conversation beside the book.
+                        className={cx('xl:border-s xl:border-hairline xl:ps-6', view === 'book' && 'max-xl:hidden')}
                     />
                 ) : null}
             </div>

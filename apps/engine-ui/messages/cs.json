@@ -161,6 +161,54 @@
   "agents_filters": "Filtry agentů",
   "agents_filter_origin": "Původ",
   "agents_filter_folder": "Složka",
+  "agents_built_in_hint": "Vlastní agenti enginu. Nastaví váš projekt a udržují práci v chodu.",
+  "agents_view_label": "Zobrazení",
+  "agents_view_grid": "Mřížka",
+  "agents_view_table": "Tabulka",
+  "agents_card_chats": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} chat",
+        "countPlural=few": "{count} chaty",
+        "countPlural=many": "{count} chatu",
+        "countPlural=other": "{count} chatů"
+      }
+    }
+  ],
+  "agents_card_tasks": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} úkol",
+        "countPlural=few": "{count} úkoly",
+        "countPlural=many": "{count} úkolu",
+        "countPlural=other": "{count} úkolů"
+      }
+    }
+  ],
+  "agents_card_runs": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} běh",
+        "countPlural=few": "{count} běhy",
+        "countPlural=many": "{count} běhu",
+        "countPlural=other": "{count} běhů"
+      }
+    }
+  ],
+  "agents_card_last_active": "naposledy aktivní",
+  "agent_panel_close": "Zavřít",
+  "agent_panel_open": "Otevřít agenta",
+  "agent_panel_now": "Teď",
+  "agent_panel_replying_in": "Odpovídá v",
+  "agent_panel_tasks": "Běžící úkoly",
+  "agent_panel_chats": "Chaty",
+  "agent_panel_no_chats": "Zatím žádné chaty.",
   "agents_column_status": "Stav",
   "agents_column_visibility": "Viditelnost",
   "agents_column_created_by": "Vytvořil",
@@ -1704,6 +1752,10 @@
   "unsaved_body": "Vaše změny nejsou nikde uložené a ztratí se.",
   "unsaved_leave": "Odejít a změny ztratit",
   "wizard_steps_label": "Kroky",
+  "wizard_preview_title": "Náhled",
+  "wizard_preview_name": "Váš nový agent",
+  "wizard_preview_role": "Tady se objeví, co dělá.",
+  "wizard_preview_next": "Pak upravíte jeho knihu, dáte mu znalosti a vyzkoušíte ho v chatu. Vše můžete později změnit.",
   "wizard_step_brief": "Zadání",
   "wizard_step_book": "Book",
   "wizard_step_knowledge": "Znalosti",

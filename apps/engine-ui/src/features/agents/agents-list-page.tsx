@@ -5,8 +5,10 @@ import {
     createDataTableColumnHelper,
     DataTable,
     EmptyState,
+    ErrorState,
     FilterBar,
     filterField,
+    Pagination,
     RelativeTime,
     viewTransitionStyle,
 } from '@ptbk/ui';
@@ -42,6 +44,10 @@ import {
 } from './agent-list-search';
 import type { AgentListOrigin, AgentListSearch } from './agent-list-search';
 import { agentListQueryOptions, folderListQueryOptions } from './agents-queries';
+import { AgentsGridView } from './agents-grid-view';
+import { resolveAgentView, rememberAgentView } from './agent-view';
+import type { AgentView } from './agent-view';
+import { AgentViewSwitch } from './agent-view-switch';
 
 const route = getRouteApi('/agents/');
 
@@ -93,7 +99,7 @@ function AgentNameCell({ agent }: { readonly agent: Agent }) {
             params={{ agentId: agent.id }}
             className="inline-flex max-w-full min-w-0 items-center gap-2.5 rounded-control font-medium text-text hover:underline"
         >
-            <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} />
+            <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} origin={agent.origin} />
             {/* Names come from Books: React renders them as text. */}
             <span className="truncate" style={viewTransitionStyle('agent-title', agent.id)}>
                 {agent.name}
@@ -222,6 +228,24 @@ export function AgentsListPage() {
         if (invalidCursor) void navigate({ search: (previous) => ({ ...previous, cursor: undefined }), replace: true });
     }, [invalidCursor, navigate]);
 
+    const previousCursor = search.cursor === undefined ? null : (previousCursors.get(search.cursor) ?? FIRST_PAGE);
+    const nextCursor = own.data?.nextCursor ?? null;
+    const goToPage = (cursor: string, direction: 'previous' | 'next') => {
+        // A second click before the next page arrives would make the page its own predecessor.
+        if (cursor === search.cursor) return;
+        if (direction === 'next') {
+            setPreviousCursors((known) => new Map(known).set(cursor, search.cursor ?? FIRST_PAGE));
+        }
+        void navigate({
+            search: (previous) => ({ ...previous, cursor: cursor === FIRST_PAGE ? undefined : cursor }),
+        });
+    };
+    const view = resolveAgentView(search.view, storage);
+    const changeView = (next: AgentView) => {
+        rememberAgentView(next, storage);
+        void navigate({ search: (previous) => ({ ...previous, view: next, agent: undefined }), replace: true });
+    };
+
     const filtered = hasAgentFilters(search);
     const newAgent = canCreate ? (
         <ButtonLink to="/agents/new" variant="primary">
@@ -242,8 +266,94 @@ export function AgentsListPage() {
         builtInAgents.length > 0;
     const pending = shown.own ? own.isPending : builtIn.isPending;
 
+    const emptyState = filtered ? (
+        <EmptyState
+            icon={<Bot aria-hidden />}
+            title={m.agents_no_results()}
+            description={m.agents_no_results_hint()}
+            action={<Button onClick={clear}>{m.agents_clear_filters()}</Button>}
+        />
+    ) : (
+        <EmptyState
+            icon={<Bot aria-hidden />}
+            title={m.agents_empty_title()}
+            description={canCreate ? m.agents_empty_body() : m.agents_empty_body_chat()}
+            action={newAgent ?? undefined}
+        />
+    );
+    const filters = (tableView: DataTableView) => (
+        <AgentFilters
+            view={tableView}
+            search={search}
+            managesAgents={managesAgents}
+            searchRef={searchRef}
+            onChange={(change) => {
+                update(change, 'q' in change);
+            }}
+            onClear={clear}
+        />
+    );
+    const header = (
+        <>
+            <AgentViewSwitch view={view} onChange={changeView} />
+            {newAgent}
+        </>
+    );
+
+    if (view === 'grid') {
+        return (
+            <Page title={m.agents_title()} actions={header}>
+                {filters({})}
+                {noOwnAgents ? (
+                    <EmptyState
+                        variant="inline"
+                        icon={<Bot aria-hidden />}
+                        title={m.agents_empty_title()}
+                        description={canCreate ? m.agents_empty_body() : m.agents_empty_body_chat()}
+                    />
+                ) : null}
+                {shown.own && own.isError && !invalidCursor ? (
+                    <ErrorState
+                        message={m.agents_load_failed()}
+                        onRetry={() => {
+                            void own.refetch();
+                        }}
+                        retrying={own.isFetching}
+                    />
+                ) : (
+                    <AgentsGridView
+                        own={ownAgents}
+                        builtIn={builtInAgents}
+                        showOwn={shown.own && !noOwnAgents}
+                        loading={pending}
+                        openId={search.agent ?? null}
+                        onOpenChange={(agent) => {
+                            void navigate({ search: (previous) => ({ ...previous, agent }) });
+                        }}
+                        pager={
+                            previousCursor === null && nextCursor === null ? null : (
+                                <Pagination
+                                    hasPrevious={previousCursor !== null}
+                                    hasNext={nextCursor !== null}
+                                    onPrevious={() => {
+                                        if (previousCursor !== null) goToPage(previousCursor, 'previous');
+                                    }}
+                                    onNext={() => {
+                                        if (nextCursor !== null) goToPage(nextCursor, 'next');
+                                    }}
+                                />
+                            )
+                        }
+                        empty={emptyState}
+                    />
+                )}
+                {actions.dialogs}
+            </Page>
+        );
+    }
+
     return (
-        <Page title={m.agents_title()} actions={newAgent}>
+        <Page title={m.agents_title()} actions={header}>
             {noOwnAgents ? (
                 <EmptyState
                     variant="inline"
@@ -264,27 +374,8 @@ export function AgentsListPage() {
                     update({ sort: sortOf(sorting) });
                 }}
                 visibilityStorage={{ storage, key: AGENT_COLUMNS_STORAGE_KEY }}
-                {...(shown.own
-                    ? {
-                          page: {
-                              previousCursor:
-                                  search.cursor === undefined
-                                      ? null
-                                      : (previousCursors.get(search.cursor) ?? FIRST_PAGE),
-                              nextCursor: own.data?.nextCursor ?? null,
-                          },
-                      }
-                    : {})}
-                onPageChange={(cursor, direction) => {
-                    // A second click before the next page arrives would make the page its own predecessor.
-                    if (cursor === search.cursor) return;
-                    if (direction === 'next') {
-                        setPreviousCursors((known) => new Map(known).set(cursor, search.cursor ?? FIRST_PAGE));
-                    }
-                    void navigate({
-                        search: (previous) => ({ ...previous, cursor: cursor === FIRST_PAGE ? undefined : cursor }),
-                    });
-                }}
+                {...(shown.own ? { page: { previousCursor, nextCursor } } : {})}
+                onPageChange={goToPage}
                 loading={pending}
                 fetching={(own.isFetching && !own.isPending) || (builtIn.isFetching && !builtIn.isPending)}
                 {...(shown.own && own.isError && !invalidCursor
@@ -315,18 +406,7 @@ export function AgentsListPage() {
                     groups: AGENT_LIST_ORIGINS.map((origin) => ({ id: origin, label: originLabel(origin) })),
                     getGroupId: (agent): AgentListOrigin => (isBuiltInAgent(agent) ? 'built-in' : 'own'),
                 }}
-                toolbar={(view) => (
-                    <AgentFilters
-                        view={view}
-                        search={search}
-                        managesAgents={managesAgents}
-                        searchRef={searchRef}
-                        onChange={(change) => {
-                            update(change, 'q' in change);
-                        }}
-                        onClear={clear}
-                    />
-                )}
+                toolbar={filters}
                 rowActions={actions.menuEntries}
             />
             {actions.dialogs}

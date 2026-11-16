@@ -119,6 +119,7 @@ export function AgentDetailFrame() {
                             name={agent.name}
                             agentKey={agent.id}
                             profile={agent.profile}
+                            origin={agent.origin}
                             size={compact ? 'sm' : 'lg'}
                         />
                         <div className="flex min-w-0 flex-col gap-1">

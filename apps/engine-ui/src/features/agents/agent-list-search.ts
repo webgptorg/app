@@ -1,7 +1,8 @@
-import { AGENT_SORTS, AgentRunState, AgentVisibility, DEFAULT_PAGE_LIMIT, FolderId } from '@ptbk/engine-api';
+import { AGENT_SORTS, AgentId, AgentRunState, AgentVisibility, DEFAULT_PAGE_LIMIT, FolderId } from '@ptbk/engine-api';
 import { z } from 'zod';
 
 import type { AgentListParams } from './agents-keys';
+import { AGENT_VIEWS } from './agent-view';
 
 export const DEFAULT_AGENT_SORT = '-updatedAt';
 
@@ -28,6 +29,10 @@ export const AgentListSearch = z.object({
         .regex(/^[A-Za-z0-9_-]{1,1024}$/)
         .optional()
         .catch(undefined),
+    /** Cards or the table; without it, the member's last choice on this device. */
+    view: z.enum(AGENT_VIEWS).optional().catch(undefined),
+    /** The agent whose panel is open over the grid, so the open panel is a link. */
+    agent: AgentId.optional().catch(undefined),
 });
 export type AgentListSearch = z.output<typeof AgentListSearch>;
 
@@ -71,4 +76,9 @@ export function agentListGroups(search: AgentListSearch): { readonly own: boolea
         own: search.origin !== 'built-in',
         builtIn: search.origin !== 'own' && search.cursor === undefined,
     };
+}
+
+/** The part of the list's state the engine is asked about; the view and the open panel change no request. */
+export function engineSearch(search: AgentListSearch): AgentListSearch {
+    return { ...search, view: undefined, agent: undefined };
 }
