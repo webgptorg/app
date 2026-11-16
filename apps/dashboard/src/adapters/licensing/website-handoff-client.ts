@@ -3,12 +3,13 @@ import { z } from 'zod';
 import type { WebsiteIdentity } from '../../domain/licensing/website-handoff';
 const responseSchema = z.object({
     version: z.literal(1),
-    subject: z.string().uuid(),
-    email: z.string().email().max(254),
+    subject: z.uuid(),
+    email: z.email().max(254),
     emailVerified: z.literal(true),
 });
 /** Challenge comes from an HttpOnly App cookie created before redirecting to the website. */
 export async function exchangeWebsiteTicket(input: {
+    readonly websiteOrigin: string;
     readonly code: string;
     readonly challenge: string;
     readonly secret: string;
@@ -17,7 +18,7 @@ export async function exchangeWebsiteTicket(input: {
 }): Promise<WebsiteIdentity | null> {
     if (!/^[A-Za-z0-9_-]{43}$/.test(input.code) || !/^[A-Za-z0-9_-]{43}$/.test(input.challenge)) return null;
     try {
-        const response = await input.fetch('https://www.ptbk.io/api/promptbook-billing/app/exchange', {
+        const response = await input.fetch(`${input.websiteOrigin}/api/promptbook-billing/app/exchange`, {
             method: 'POST',
             redirect: 'error',
             cache: 'no-store',

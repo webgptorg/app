@@ -8,7 +8,7 @@ import { newOrgId, type OrgId } from '../domain/ids';
 
 const ALPHANUMERIC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
-function randomAlphanumeric(length: number): string {
+export function randomAlphanumeric(length: number): string {
     return Array.from(crypto.getRandomValues(new Uint8Array(length)), (byte) => ALPHANUMERIC[byte % 62]).join('');
 }
 

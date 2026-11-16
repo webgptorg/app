@@ -145,6 +145,18 @@ const hmacKeySchema = z.string().regex(/^[A-Za-z0-9_-]{43,86}$/);
 const stripeKeySchema = z.string().regex(/^(sk|rk)_(test|live)_[A-Za-z0-9]{10,255}$/);
 const stripeWebhookSecretSchema = z.string().regex(/^whsec_[A-Za-z0-9+/=]{16,255}$/);
 
+/** Production's website, where licences are sold (ADR 0021); staging may point `WEBSITE_ORIGIN` at another one. */
+export const DEFAULT_WEBSITE_ORIGIN = 'https://www.ptbk.io';
+
+/** The website is reached server to server with a bearer secret, so plain http is refused even in dev. */
+const websiteOriginSchema = originSchema.refine((origin) => origin.startsWith('https://'), 'must be https');
+
+/**
+ * The website's App credential (ADR 0021), shared with the website only; `wrangler secret put
+ * PROMPTBOOK_APP_LICENSE_SECRET`, never a var, never sent to the SPA. At least 256 bits in any URL-safe encoding.
+ */
+const licenseSecretSchema = z.string().regex(/^[A-Za-z0-9_\-.~+/=]{43,512}$/);
+
 /**
  * Vars and secrets are JSON values. Anything else (D1, ASSETS, service bindings the runtime or the test pool adds) is a
  * runtime object that the composition root wires up; config never reads it. Every JSON value must be a known var.
@@ -284,6 +296,8 @@ const varsSchema = z
         ABUSE_MONITORING: abuseMonitoringSchema.optional(),
         CERTSPOTTER_API_KEY: certSpotterKeySchema.optional(),
         WEB_RISK_API_KEY: webRiskKeySchema.optional(),
+        WEBSITE_ORIGIN: websiteOriginSchema.optional(),
+        PROMPTBOOK_APP_LICENSE_SECRET: licenseSecretSchema.optional(),
     })
     .superRefine((vars, ctx) => {
         if (
@@ -328,6 +342,13 @@ const varsSchema = z
             if (vars.BILLING_OFF_PLAN !== undefined) {
                 ctx.addIssue({ code: 'custom', path: ['BILLING_OFF_PLAN'], message: 'only with billing off' });
             }
+        }
+        if (vars.ADAPTERS.billing === 'website' && vars.PROMPTBOOK_APP_LICENSE_SECRET === undefined) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['PROMPTBOOK_APP_LICENSE_SECRET'],
+                message: 'required by the website billing adapter',
+            });
         }
         if (vars.ADAPTERS.billing === 'stripe') {
             for (const name of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'] as const) {
@@ -394,7 +415,12 @@ export type AdapterSelection = z.infer<typeof adaptersSchema>;
  * plans are sold through the provider.
  */
 export type BillingConfig =
-    | { readonly adapter: 'website' }
+    | {
+          readonly adapter: 'website';
+          readonly websiteOrigin: string;
+          /** Secret: the website's App credential; server to server only. */
+          readonly licenseSecret: string;
+      }
     | { readonly adapter: 'off'; readonly grant: PlanEntitlements }
     | { readonly adapter: 'stripe' | 'fake'; readonly plans: PlanCatalogue };
 
@@ -507,8 +533,14 @@ function abuseMonitoringConfig(parsed: z.infer<typeof varsSchema>): AbuseMonitor
 
 function billingConfig(parsed: z.infer<typeof varsSchema>): BillingConfig {
     const adapter = parsed.ADAPTERS.billing;
-    if (adapter === 'website') return Object.freeze({ adapter });
     // The refinement above requires the var each adapter reads.
+    if (adapter === 'website') {
+        return Object.freeze({
+            adapter,
+            websiteOrigin: parsed.WEBSITE_ORIGIN ?? DEFAULT_WEBSITE_ORIGIN,
+            licenseSecret: parsed.PROMPTBOOK_APP_LICENSE_SECRET as string,
+        });
+    }
     return adapter === 'off'
         ? Object.freeze({ adapter, grant: createPlanEntitlements(parsed.BILLING_OFF_PLAN as PlanEntitlementsVar) })
         : Object.freeze({ adapter, plans: createPlanCatalogue(parsed.BILLING_PLANS as PlanCatalogueVar) });

@@ -23,6 +23,7 @@ it('keeps a previous snapshot on outage and refuses another account response', a
     };
     const client = createWebsiteLicenseClient({
         store,
+        websiteOrigin: 'https://www.ptbk.io',
         secret: 'server-only',
         nowMs: () => Date.parse(snapshot.generatedAt) + 900_001,
         fetch: () =>
@@ -51,6 +52,7 @@ it('fetches and stores known fields without depending on plan names', async () =
     };
     const client = createWebsiteLicenseClient({
         store,
+        websiteOrigin: 'https://www.ptbk.io',
         secret: 'server-only',
         nowMs: () => Date.parse(snapshot.generatedAt),
         fetch: (_url, options) => {
@@ -72,6 +74,7 @@ it('uses a fresh cache, leaves unlinked organizations unknown and tolerates an u
     const make = () =>
         createWebsiteLicenseClient({
             store,
+            websiteOrigin: 'https://www.ptbk.io',
             secret: 'server-only',
             nowMs: () => Date.parse(snapshot.generatedAt),
             fetch: () => {
@@ -94,9 +97,44 @@ it('rejects future-dated snapshots and drops unrelated cached identities during 
     };
     const client = createWebsiteLicenseClient({
         store,
+        websiteOrigin: 'https://www.ptbk.io',
         secret: 'server-only',
         nowMs: () => Date.parse(snapshot.generatedAt) - 120_001,
         fetch: () => Promise.resolve(Response.json(snapshot)),
     });
     expect(await client.read('org', new AbortController().signal)).toEqual({ kind: 'unknown' });
+});
+it('accepts a manage link anywhere on the configured website and nothing off it', async () => {
+    const read = async (manageUrl: string, websiteOrigin = 'https://www.ptbk.io') => {
+        let requested = '';
+        const client = createWebsiteLicenseClient({
+            store: {
+                subjectForOrg: () => Promise.resolve(subject),
+                readSnapshot: () => Promise.resolve(null),
+                saveSnapshot: () => Promise.resolve(),
+            },
+            websiteOrigin,
+            secret: 'server-only',
+            nowMs: () => Date.parse(snapshot.generatedAt),
+            fetch: (url) => {
+                requested = url instanceof Request ? url.url : url.toString();
+                return Promise.resolve(Response.json({ ...snapshot, manageUrl }));
+            },
+        });
+        return { result: (await client.read('org', new AbortController().signal)).kind, requested };
+    };
+    expect((await read('https://www.ptbk.io/en/pricing/subscription?tab=team')).result).toBe('current');
+    expect(await read('https://staging.ptbk.io/cs/predplatne', 'https://staging.ptbk.io')).toEqual({
+        result: 'current',
+        requested: `https://staging.ptbk.io/api/promptbook-billing/app/licenses?subject=${subject}`,
+    });
+    for (const offSite of [
+        'https://evil.example/cs/pricing/predplatne',
+        'http://www.ptbk.io/cs/pricing/predplatne',
+        'https://user:pass@www.ptbk.io/cs',
+        'https://www.ptbk.io.evil.example/cs',
+        'javascript:alert(1)',
+    ]) {
+        expect((await read(offSite)).result).toBe('unknown');
+    }
 });

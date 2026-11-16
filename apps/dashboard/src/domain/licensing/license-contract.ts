@@ -10,23 +10,38 @@ export const licenseCapabilitiesSchema = z.object({
     remoteControl: z.boolean(),
 });
 export const licenseGrantSchema = z.object({
-    id: z.string().uuid(),
-    validFrom: z.string().datetime(),
-    validUntil: z.string().datetime().nullable(),
+    id: z.uuid(),
+    validFrom: z.iso.datetime(),
+    validUntil: z.iso.datetime().nullable(),
     capabilities: licenseCapabilitiesSchema,
 });
+/**
+ * The manage link is shown as a link, so it must stay on the website: any locale or page there, never another origin,
+ * plain http, or credentials smuggled into the URL.
+ */
+export function manageUrlSchema(websiteOrigin: string) {
+    return z
+        .url({ protocol: /^https$/ })
+        .max(2048)
+        .refine((value) => {
+            const url = new URL(value);
+            return url.origin === websiteOrigin && url.username === '' && url.password === '';
+        }, 'must be on the website origin');
+}
 /** Responses are forward compatible; server requests remain strict at the website boundary. */
-export const licenseSnapshotSchema = z.object({
-    version: z.literal(1),
-    subject: z.string().uuid(),
-    generatedAt: z.string().datetime(),
-    refreshAfterSeconds: z.number().int().min(60).max(86400),
-    enforcement: z.literal('advisory'),
-    manageUrl: z.literal('https://www.ptbk.io/cs/pricing/predplatne'),
-    grants: z.array(licenseGrantSchema).max(1000),
-});
+export function licenseSnapshotSchema(websiteOrigin: string) {
+    return z.object({
+        version: z.literal(1),
+        subject: z.uuid(),
+        generatedAt: z.iso.datetime(),
+        refreshAfterSeconds: z.number().int().min(60).max(86400),
+        enforcement: z.literal('advisory'),
+        manageUrl: manageUrlSchema(websiteOrigin),
+        grants: z.array(licenseGrantSchema).max(1000),
+    });
+}
 export type LicenseGrant = z.infer<typeof licenseGrantSchema>;
-export type LicenseSnapshot = z.infer<typeof licenseSnapshotSchema>;
+export type LicenseSnapshot = z.infer<ReturnType<typeof licenseSnapshotSchema>>;
 export type LicenseDimension = 'specialists' | 'controllingUsers' | 'harnessInstances' | 'browserProfiles';
 export interface EngineLicenseUsage {
     readonly id: string;
