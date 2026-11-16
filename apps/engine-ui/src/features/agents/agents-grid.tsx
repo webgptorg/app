@@ -38,21 +38,16 @@ function AgentCard({ agent, activity, named, onOpen }: CardProps) {
     const detailsId = useId();
     return (
         <li className="flex min-w-0">
-            {/* Named by the agent alone; its state and role are read after the name, not run into it. */}
-            <button
-                type="button"
-                aria-haspopup="dialog"
-                aria-label={agent.name}
-                aria-describedby={detailsId}
-                data-agent-card={agent.id}
-                onClick={() => {
-                    onOpen(agent);
-                }}
+            {/*
+             * The name is the button and its ::after covers the card, so the whole card opens the panel while the
+             * button's name stays the agent's name alone; role and state are read after it as its description.
+             */}
+            <div
                 style={{ ...tintStyle(tint), ...(named ? viewTransitionStyle('agent-card', agent.id) : {}) }}
                 className={cx(
-                    'agent-card group flex w-full min-w-0 cursor-pointer flex-col items-start gap-3 rounded-surface border border-hairline p-4 text-left',
+                    'agent-card relative flex w-full min-w-0 flex-col items-start gap-3 rounded-surface border border-hairline p-4',
                     'bg-[color-mix(in_oklab,var(--tint)_4%,var(--color-surface))] hover:bg-[color-mix(in_oklab,var(--tint)_9%,var(--color-surface))]',
-                    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
+                    'has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-focus',
                     'motion-safe:transition-[background-color,translate,box-shadow] motion-safe:duration-(--motion-state) motion-safe:ease-out',
                     'motion-safe:hover:-translate-y-0.5 motion-safe:hover:shadow-overlay',
                 )}
@@ -72,13 +67,24 @@ function AgentCard({ agent, activity, named, onOpen }: CardProps) {
                 </span>
                 <span className="flex w-full min-w-0 flex-col gap-0.5">
                     {/* Names and roles come from Books: React renders them as text. */}
-                    <span className="truncate text-sm font-semibold">{agent.name}</span>
+                    <button
+                        type="button"
+                        aria-haspopup="dialog"
+                        aria-describedby={detailsId}
+                        data-agent-card={agent.id}
+                        onClick={() => {
+                            onOpen(agent);
+                        }}
+                        className="block w-full cursor-pointer truncate text-left text-sm font-semibold outline-none after:absolute after:inset-0 after:rounded-surface after:content-['']"
+                    >
+                        {agent.name}
+                    </button>
                     <span id={detailsId} className="flex min-w-0 flex-col gap-1.5">
                         <span className="truncate text-xs text-text-muted">{agent.profile.description}</span>
                         <AgentStatusLine agentId={agent.id} activity={activity} withTime />
                     </span>
                 </span>
-            </button>
+            </div>
         </li>
     );
 }

@@ -37,7 +37,11 @@ export function SettingsPage() {
                                 aria-labelledby={labelId}
                                 className="w-full sm:w-56"
                                 value={locale}
-                                options={locales.map((option) => ({ value: option, label: localeLabel(option) }))}
+                                options={locales.map((option) => ({
+                                    value: option,
+                                    label: localeLabel(option),
+                                    lang: option,
+                                }))}
                                 onChange={(value) => {
                                     if (isLocale(value)) changeLocale(value);
                                 }}

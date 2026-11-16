@@ -15,7 +15,7 @@ import {
 import type { DataTableColumnDef, FilterBarField, SortingState } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link as RouterLink } from '@tanstack/react-router';
-import { Bot, CalendarClock, CircleDot, Coins, Hash, Timer, Zap } from 'lucide-react';
+import { Activity, Bot, CalendarClock, CircleDot, Coins, Hash, Timer, Zap } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 
 import { useBrowser } from '../../app/browser-context';
@@ -285,6 +285,7 @@ export function RunsTable({ search, onSearchChange, agentId }: RunsTableProps) {
                 filtered
                     ? { title: m.runs_no_results(), description: m.runs_no_results_hint(), action: clearButton }
                     : {
+                          icon: <Activity />,
                           title: m.runs_empty_title(),
                           description: scope === 'agent' ? m.runs_empty_agent_body() : m.runs_empty_body(),
                       }

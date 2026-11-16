@@ -23,11 +23,11 @@
         transform-origin: 50% 80%;
     }
 
-    .agent-card:is(:hover, :focus-visible) .agent-card-art[data-working] {
+    .agent-card:is(:hover, :has(:focus-visible)) .agent-card-art[data-working] {
         animation: ptbk-agent-breathe 1.6s ease-in-out infinite;
     }
 
-    .agent-card:is(:hover, :focus-visible) .agent-card-art:not([data-working]) .art-eye {
+    .agent-card:is(:hover, :has(:focus-visible)) .agent-card-art:not([data-working]) .art-eye {
         animation: ptbk-agent-blink 220ms ease-out 140ms 1;
     }
 }

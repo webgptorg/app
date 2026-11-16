@@ -10,6 +10,8 @@ export interface ComboboxOption {
     readonly value: string;
     /** Rendered as text; also what typeahead and the search match. */
     readonly label: string;
+    /** A BCP 47 tag when the label is in another language than the page ("Čeština"), so it is read and hyphenated right. */
+    readonly lang?: string;
     readonly description?: string;
     /** A decorative icon or avatar before the label. */
     readonly leading?: ReactNode;
@@ -411,7 +413,9 @@ export function Combobox({
                     {selected === undefined ? (
                         <span className="min-w-0 flex-1 truncate text-(--combobox-placeholder)">{placeholder}</span>
                     ) : (
-                        <span className="min-w-0 flex-1 truncate">{selected.label}</span>
+                        <span lang={selected.lang} className="min-w-0 flex-1 truncate">
+                            {selected.label}
+                        </span>
                     )}
                     <ChevronsUpDown aria-hidden="true" className="size-4 shrink-0 text-(--combobox-icon)" />
                 </span>
@@ -497,7 +501,9 @@ export function Combobox({
                                 </span>
                             )}
                             <span className="flex min-w-0 flex-1 flex-col">
-                                <span className="truncate">{option.label}</span>
+                                <span lang={option.lang} className="truncate">
+                                    {option.label}
+                                </span>
                                 {option.description === undefined ? null : (
                                     <span className="truncate text-xs text-(--combobox-muted)">
                                         {option.description}

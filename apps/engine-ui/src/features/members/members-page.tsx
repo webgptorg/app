@@ -15,7 +15,17 @@ import {
 import type { DataTableColumnDef, MenuEntry } from '@ptbk/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { CalendarClock, Clock, KeyRound, Shield, UserMinus, UserPlus, UserRound, UserRoundCog } from 'lucide-react';
+import {
+    CalendarClock,
+    Clock,
+    KeyRound,
+    Shield,
+    UserMinus,
+    UserPlus,
+    UserRound,
+    UserRoundCog,
+    Users,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
@@ -240,7 +250,7 @@ export function MembersPage() {
                               },
                           }
                         : {})}
-                    empty={{ title: m.members_empty_title(), description: m.members_empty_body() }}
+                    empty={{ icon: <Users />, title: m.members_empty_title(), description: m.members_empty_body() }}
                     {...(managing ? { rowActions } : {})}
                 />
             </Section>

@@ -1,3 +1,4 @@
+import { Bot } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import type { GalleryEntry } from '../../gallery-entry';
@@ -163,7 +164,7 @@ export const dataTableGallery: GalleryEntry = {
                 data={NONE}
                 getRowId={(row) => row.id}
                 getRowLabel={(row) => row.name}
-                empty={{ title: 'No agents yet', description: 'Agents you create appear here.' }}
+                empty={{ icon: <Bot />, title: 'No agents yet', description: 'Agents you create appear here.' }}
             />
             <DataTable<SampleAgent>
                 caption="No results"

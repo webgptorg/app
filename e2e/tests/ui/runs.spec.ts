@@ -72,7 +72,7 @@ test('a scripted run progresses live in the timeline and in its detail', async (
     await expect(
         page.getByRole('region', { name: 'Tool calls' }).getByText('github.list_issues').first(),
     ).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Token usage' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Details' })).toBeVisible();
 });
 
 test('a finished run shows usage, cost and the project change with the truncated diff', async ({
@@ -85,8 +85,8 @@ test('a finished run shows usage, cost and the project change with the truncated
     await page.goto(appUrl('/runs'));
     const { runId, change } = await runWithTruncatedDiff(page);
     await page.goto(appUrl(`/runs/${runId}`));
-    const usage = page.getByRole('region', { name: 'Token usage' });
-    await expect(factValue(usage, 'Input tokens')).toHaveText(/\d/);
+    const details = page.getByRole('region', { name: 'Details' });
+    await expect(factValue(details, 'Input tokens')).toHaveText(/\d/);
     await expect(factValue(page.locator('main'), 'Cost')).toHaveText(/\$/);
     const outputs = page.getByRole('region', { name: 'Outputs' });
     await expect(outputs.getByRole('heading', { name: `Changes in ${change.projectName}` })).toBeVisible();

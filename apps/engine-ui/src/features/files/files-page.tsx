@@ -1,38 +1,30 @@
-import { AgentId, FILE_PURPOSES, FILE_SCAN_STATUSES } from '@ptbk/engine-api';
-import type { FileMetadata, FilePurpose } from '@ptbk/engine-api';
-import { Button, Dialog, FilterBar, filterField } from '@ptbk/ui';
-import type { ColumnFiltersState, DataTableView, FilterBarField, MenuEntry } from '@ptbk/ui';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { FileMetadata } from '@ptbk/engine-api';
+import { Button, Dialog } from '@ptbk/ui';
+import type { ColumnFiltersState, MenuEntry } from '@ptbk/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { Bot, PanelRightOpen, ShieldCheck, Tag, Trash2, Upload } from 'lucide-react';
+import { Files, PanelRightOpen, Trash2, Upload } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { useCursorPages } from '../../app/cursor-pages';
-import { useDebouncedSearch } from '../../app/debounced-search';
 import { useEngineApi } from '../../app/engine-api-context';
 import { Link } from '../../app/link';
 import { isInvalidCursor } from '../../app/list-errors';
-import { useAllows } from '../../app/registry/use-visible-features';
-import { readListParam, readOneParam, writeListParam } from '../../app/search-filters';
 import { SoftBreaks } from '../../app/soft-breaks';
 import { m } from '../../paraglide/messages';
-import { AgentAvatar } from '../agents/agent-avatar';
-import { agentListQueryOptions } from '../agents/agents-queries';
 import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
-import { AGENT_CHOICES, AgentSelect } from './agent-filter';
+import { AgentSelect } from './agent-filter';
 import { useFileDelete } from './file-delete';
 import { FileDrawer } from './file-drawer';
-import { purposeIcon, purposeLabel, scanFieldOptions } from './file-labels';
+import { FileFilters } from './file-filters';
 import { FileTable } from './file-table';
 import { fileListQueryOptions, useFiles } from './files-queries';
 import { fileListParams, hasFileFilters } from './files-search';
 import type { FilesSearch } from './files-search';
 import { KnowledgeUpload } from './knowledge-upload';
-import { useFileScanning } from './use-file-scanning';
 
 const route = getRouteApi('/files');
-const ICON = 'size-3.5';
 // The filter bar owns every filter; the columns have none of their own to report.
 const NO_COLUMN_FILTERS: ColumnFiltersState = [];
 const NO_FILTERS = { q: undefined, purpose: undefined, scan: undefined, agentId: undefined } as const;
@@ -160,7 +152,9 @@ export function FilesPage() {
                 }}
                 filters={NO_COLUMN_FILTERS}
                 onFiltersChange={() => undefined}
-                toolbar={(view) => <FileFilters view={view} search={search} onChange={update} onClear={clear} />}
+                toolbar={(view) => (
+                    <FileFilters view={view} search={search} scope="engine" onChange={update} onClear={clear} />
+                )}
                 page={paging.page}
                 onPageChange={paging.onPageChange}
                 onPageIntent={(cursor, direction) => {
@@ -186,7 +180,7 @@ export function FilesPage() {
                               description: m.files_no_results_hint(),
                               action: <Button onClick={clear}>{m.files_clear_filters()}</Button>,
                           }
-                        : { title: m.files_empty_title(), description: m.files_empty_body() }
+                        : { icon: <Files />, title: m.files_empty_title(), description: m.files_empty_body() }
                 }
                 rowActions={rowActions}
             />
@@ -207,98 +201,5 @@ export function FilesPage() {
             ) : null}
             {deletion.dialog}
         </Page>
-    );
-}
-
-/** Every filter reads from and writes to the search params, so a reload or a shared link restores the view. */
-function FileFilters({
-    view,
-    search,
-    onChange,
-    onClear,
-}: {
-    readonly view: DataTableView;
-    readonly search: FilesSearch;
-    readonly onChange: (change: Partial<FilesSearch>, replace?: boolean) => void;
-    readonly onClear: () => void;
-}) {
-    const scanning = useFileScanning();
-    const [text, setText] = useDebouncedSearch(search.q, (q) => {
-        onChange({ q }, true);
-    });
-    const agentsVisible = useAllows({ permission: 'agents.read' });
-    const agents = useQuery({
-        ...agentListQueryOptions(useEngineApi(), AGENT_CHOICES),
-        enabled: agentsVisible,
-    });
-    const fields: FilterBarField[] = [
-        filterField.enum<FilePurpose>({
-            id: 'purpose',
-            label: m.files_column_purpose(),
-            icon: <Tag className={ICON} />,
-            options: FILE_PURPOSES.map((purpose) => ({
-                value: purpose,
-                label: purposeLabel(purpose),
-                icon: <span className="flex [&>svg]:size-3.5">{purposeIcon(purpose)}</span>,
-            })),
-            value: search.purpose,
-            onChange: (purpose) => {
-                onChange({ purpose });
-            },
-        }),
-        ...(agentsVisible
-            ? [
-                  filterField.entity<string>({
-                      id: 'agent',
-                      label: m.files_filter_agent(),
-                      icon: <Bot className={ICON} />,
-                      multiple: false,
-                      options: (agents.data?.items ?? []).map((agent) => ({
-                          value: agent.id,
-                          label: agent.name,
-                          icon: (
-                              <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />
-                          ),
-                      })),
-                      value: readOneParam(search.agentId),
-                      onChange: (value) => {
-                          // An agent beyond the first page stays selected by its ID from the URL until it is removed.
-                          const picked = value.at(-1);
-                          onChange({ agentId: picked === undefined ? undefined : AgentId.safeParse(picked).data });
-                      },
-                  }),
-              ]
-            : []),
-        ...(scanning
-            ? [
-                  filterField.multiEnum({
-                      id: 'scan',
-                      label: m.files_column_scan(),
-                      icon: <ShieldCheck className={ICON} />,
-                      options: scanFieldOptions(),
-                      value: readListParam(search.scan, FILE_SCAN_STATUSES),
-                      onChange: (value) => {
-                          onChange({ scan: writeListParam(value, FILE_SCAN_STATUSES) });
-                      },
-                  }),
-              ]
-            : []),
-    ];
-    return (
-        <FilterBar
-            {...view}
-            label={m.files_filters()}
-            search={{
-                label: m.files_search_label(),
-                value: text,
-                onChange: setText,
-                maxLength: 255,
-            }}
-            fields={fields}
-            onClear={() => {
-                setText('');
-                onClear();
-            }}
-        />
     );
 }

@@ -47,6 +47,8 @@ export interface DataTablePage {
 
 export interface DataTableEmpty {
     readonly title: string;
+    /** A small monochrome icon (lucide), usually the list's own, as in the navigation; decorative. */
+    readonly icon?: ReactNode;
     readonly description?: ReactNode;
     readonly action?: ReactNode;
 }
@@ -474,6 +476,7 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
         ) : (
             <EmptyState
                 title={empty?.title ?? messages.noData()}
+                icon={empty?.icon}
                 description={empty?.description}
                 action={empty?.action}
             />

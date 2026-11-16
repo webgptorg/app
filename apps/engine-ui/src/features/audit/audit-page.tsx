@@ -4,7 +4,17 @@ import { Button, createDataTableColumnHelper, DataTable, StatusPill, useLocale }
 import type { ColumnVisibilityState, DataTableColumnDef } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { CalendarClock, Crosshair, Globe, Laptop, RefreshCw, Shapes, ShieldCheck, UserRound } from 'lucide-react';
+import {
+    CalendarClock,
+    Crosshair,
+    Globe,
+    Laptop,
+    RefreshCw,
+    ScrollText,
+    Shapes,
+    ShieldCheck,
+    UserRound,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useCursorPages } from '../../app/cursor-pages';
@@ -413,7 +423,7 @@ export function AuditPage() {
                 empty={
                     filtered
                         ? { title: m.audit_no_results(), description: m.audit_no_results_hint(), action: clearButton }
-                        : { title: m.audit_empty_title(), description: m.audit_empty_body() }
+                        : { icon: <ScrollText />, title: m.audit_empty_title(), description: m.audit_empty_body() }
                 }
             />
         </Page>

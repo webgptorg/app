@@ -41,6 +41,14 @@ test('a cron schedule fires as engine time passes, links its run, and pauses and
     const name = uniqueName('Digest');
     await signIn();
     await page.goto(appUrl('/triggers/new'));
+    await expect(page.getByRole('heading', { level: 1, name: 'New trigger' })).toBeVisible();
+    // The route's view transition covers the page until it ends; a click into it would scroll a page that then shrinks.
+    await page.waitForFunction(() =>
+        document.getAnimations().every((animation) => {
+            const target = animation.effect instanceof KeyframeEffect ? animation.effect.pseudoElement : null;
+            return target?.startsWith('::view-transition') !== true;
+        }),
+    );
     const agent = required((await apiList<{ id: string; name: string }>(page, '/agents'))[0], 'agent');
     await choose(page, /^Kind/, 'Schedule');
     await choose(page, /^Agent/, agent.name);

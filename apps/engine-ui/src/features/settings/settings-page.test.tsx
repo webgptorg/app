@@ -42,6 +42,7 @@ describe('settings', { timeout: TIMEOUT_MS }, () => {
         expect(storage.getItem(LOCALE_STORAGE_KEY)).toBe('cs');
         // Each language keeps its own name, so the way back reads the same in any language.
         expect(screen.getByRole('combobox', { name: 'Jazyk' }).textContent).toBe('Čeština');
+        expect(screen.getByRole('combobox', { name: 'Jazyk' }).querySelector('[lang="cs"]')).not.toBeNull();
         await user.click(screen.getByRole('combobox', { name: 'Jazyk' }));
         expect(await screen.findByRole('option', { name: 'English' })).toBeDefined();
         expect(screen.queryByRole('heading', { name: 'Aktualizace' })).toBeNull();

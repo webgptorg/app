@@ -91,11 +91,14 @@ test.describe('the built bundle under the engine CSP', () => {
     });
 
     test('/agents loads its data and meets the UX checks', async ({ page, visit }) => {
-        const report = await visit('/agents');
+        const grid = await visit('/agents');
+        await expect(page.getByRole('button', { name: 'Ada', exact: true })).toBeVisible();
+        expectCleanPage(grid);
 
+        const table = await visit('/agents?view=table');
         await expect(page.getByRole('link', { name: 'Ada' })).toBeVisible();
         await expect(page.getByRole('row').filter({ hasText: 'Grace' }).getByText('Jana Nováková')).toBeVisible();
-        expectCleanPage(report);
+        expectCleanPage(table);
     });
 
     test(`/agents/${FAKE_AGENT_ID} and its Settings tab meet the UX checks`, async ({ page, visit }) => {
@@ -105,7 +108,7 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(overview);
 
         const settings = await visit(`/agents/${FAKE_AGENT_ID}/settings`);
-        await expect(page.getByRole('combobox', { name: 'Visibility' })).toHaveValue('public');
+        await expect(page.getByRole('combobox', { name: 'Visibility' })).toHaveText('Public');
         expectCleanPage(settings);
     });
 
@@ -135,12 +138,13 @@ test.describe('the built bundle under the engine CSP', () => {
             'Documentation search with a rather long name that has to wrap',
         ]) {
             const link = page.getByRole('link', { name, exact: true });
-            const row = await link.locator('xpath=ancestor::li[1]').boundingBox();
+            // The row's middle column, between the type icon and the time.
+            const middle = await link.locator('xpath=ancestor::li[1]/span[2]').boundingBox();
             const box = await link.boundingBox();
-            expect(row).not.toBeNull();
+            expect(middle).not.toBeNull();
             expect(box).not.toBeNull();
-            // Not squeezed between the status badge and the time: the name may use the whole row.
-            expect(box?.x ?? Infinity).toBeLessThanOrEqual((row?.x ?? 0) + 1);
+            // Not squeezed between the status badge and the time: the name may use the whole middle column.
+            expect(box?.x ?? Infinity).toBeLessThanOrEqual((middle?.x ?? 0) + 1);
         }
     });
 
@@ -333,7 +337,7 @@ test.describe('the built bundle under the engine CSP', () => {
 
         const filtered = await visit('/files?scan=infected,failed');
         // The counted values are read from a visually hidden node, which Chrome sets apart with a space.
-        await expect(page.getByRole('button', { name: /^Scan: Infected ?, Failed$/ })).toBeVisible();
+        await expect(page.getByRole('button', { name: /^Scan: Infected ?, Scan failed$/ })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: 'invoice.png' })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: 'photo.png' })).toHaveCount(0);
         expectCleanPage(filtered);
@@ -445,7 +449,7 @@ test.describe('the built bundle under the engine CSP', () => {
         expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
     });
 
-    test(`/triggers/${FAKE_TRIGGER_ID} keeps the planned message and fire errors inert, keeps Pause in reach at 360 px and meets the UX checks`, async ({
+    test(`/triggers/${FAKE_TRIGGER_ID} keeps the planned message and fire errors inert, fits its actions into 360 px and meets the UX checks`, async ({
         page,
         visit,
     }) => {
@@ -462,9 +466,10 @@ test.describe('the built bundle under the engine CSP', () => {
         expect(await page.locator('main a[href^="javascript:"]').count()).toBe(0);
         expectCleanPage(report);
 
+        // Narrow, the page header scrolls away with the page (the phone keeps its own bar), so Pause is in its menu up top.
         await page.setViewportSize({ width: 360, height: 740 });
-        await page.mouse.wheel(0, 400);
-        await expect(page.getByRole('button', { name: 'More actions' })).toBeInViewport();
+        await page.getByRole('button', { name: 'More actions' }).click();
+        await expect(page.getByRole('menuitem', { name: 'Pause' })).toBeInViewport();
         expect(
             await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
         ).toBeLessThanOrEqual(0);
@@ -576,7 +581,7 @@ test.describe('the built bundle under the engine CSP', () => {
     });
 
     test('row actions and the delete dialog work by keyboard and return focus', async ({ page, visit }) => {
-        expectCleanPage(await visit('/agents'));
+        expectCleanPage(await visit('/agents?view=table'));
         const trigger = page.getByRole('button', { name: 'Actions for Ada' });
         await trigger.focus();
         await page.keyboard.press('ArrowDown');
@@ -600,18 +605,22 @@ test.describe('the built bundle under the engine CSP', () => {
         test(`a link to /agents preloads its chunk and data on ${intent}`, async ({ page, visit }) => {
             expectCleanPage(await visit('/nowhere'));
             const requested: string[] = [];
-            page.on('request', (request) => requested.push(new URL(request.url()).pathname));
+            page.on('request', (request) => {
+                const url = new URL(request.url());
+                requested.push(`${url.pathname}${url.search}`);
+            });
             const loaded = new Set(requested);
 
             const link = page.getByRole('link', { name: 'Agents', exact: true });
             if (intent === 'hover') await link.hover();
             else await link.focus();
 
+            // Two lists, the member's own agents and the built-in ones, each asked for once.
+            const agentLists = () => requested.filter((path) => path.startsWith(`${ENGINE_API_PREFIX}/agents?`));
+            await expect.poll(() => agentLists()).toHaveLength(2);
+            expect(new Set(agentLists()).size).toBe(2);
             await expect
-                .poll(() => requested.filter((path) => path.startsWith(`${ENGINE_API_PREFIX}/agents`)))
-                .toHaveLength(1);
-            await expect
-                .poll(() => requested.filter((path) => path.endsWith('.js') && !loaded.has(path)).length)
+                .poll(() => requested.filter((path) => /\.js(\?|$)/.test(path) && !loaded.has(path)).length)
                 .toBeGreaterThan(0);
             expect(new URL(page.url()).pathname).toBe('/nowhere');
         });

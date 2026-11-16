@@ -41,6 +41,20 @@ describe('agentStatus', () => {
         expect(agentStatus(state('idle'), NO_ACTIVITY)).toMatchObject({ kind: 'idle', tone: 'neutral' });
     });
 
+    it('says Needs you, amber, while one of its questions waits for the User: over waiting and idle, not over working', () => {
+        const asking: AgentActivity = { ...NO_ACTIVITY, questions: 1 };
+        expect(agentStatus(state('idle'), asking)).toMatchObject({
+            kind: 'needs-you',
+            tone: 'warning',
+            label: 'Needs you',
+        });
+        expect(agentStatus(state('waiting'), asking)?.kind).toBe('needs-you');
+        expect(agentStatus({ kind: 'unavailable' }, asking)?.kind).toBe('needs-you');
+        expect(agentStatus(state('idle'), { ...withTask, questions: 1 })?.kind).toBe('working');
+        expect(agentStatus(state('working'), asking)?.kind).toBe('working');
+        expect(agentStatus(state('failed'), asking)?.kind).toBe('failed');
+    });
+
     it('says working at once while the run state loads, and waits instead of flashing Idle otherwise', () => {
         expect(agentStatus({ kind: 'pending' }, withTask)?.kind).toBe('working');
         expect(agentStatus({ kind: 'pending' }, NO_ACTIVITY)).toBeNull();

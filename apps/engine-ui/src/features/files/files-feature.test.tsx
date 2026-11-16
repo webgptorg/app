@@ -107,7 +107,11 @@ describe('agent Files tab', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(screen.queryByRole('dialog', { name: 'File details' })).toBeNull();
         });
-        await app.user.type(screen.getByLabelText('Search files'), 'invoice');
+        // One toolbar over the section's table: search and scan, no purpose or agent (the tab and the page give those).
+        const toolbar = screen.getByRole('search', { name: 'Filter files' });
+        expect(within(toolbar).getByRole('button', { name: /^Scan: Infected/ })).toBeDefined();
+        expect(within(toolbar).queryByRole('button', { name: /^Purpose/ })).toBeNull();
+        await app.user.type(within(toolbar).getByLabelText('Search files'), 'invoice');
         await waitFor(() => {
             expect(engine.spies.list.mock.calls.at(-1)?.[0]).toMatchObject({ q: 'invoice', scan: 'infected' });
         });

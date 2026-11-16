@@ -27,11 +27,20 @@ export interface AgentActivity {
     readonly tasks: readonly ReadTask[];
     /** Runs of it running now. */
     readonly runs: readonly ReadRun[];
+    /** Its questions to the User that wait for an answer, across the threads in view. */
+    readonly questions: number;
     /** The newest message in any of its threads, or `null` when there is none in view. */
     readonly lastActiveAt: string | null;
 }
 
-export const NO_ACTIVITY: AgentActivity = { working: [], chats: [], tasks: [], runs: [], lastActiveAt: null };
+export const NO_ACTIVITY: AgentActivity = {
+    working: [],
+    chats: [],
+    tasks: [],
+    runs: [],
+    questions: 0,
+    lastActiveAt: null,
+};
 
 interface Sources {
     readonly chats: readonly ReadChat[];
@@ -49,12 +58,19 @@ function newer(a: string | null, b: string | null): string | null {
 export function groupActivity({ chats, tasks, runs }: Sources): ReadonlyMap<string, AgentActivity> {
     const byAgent = new Map<
         string,
-        { working: AgentWorking[]; chats: ReadChat[]; tasks: ReadTask[]; runs: ReadRun[]; lastActiveAt: string | null }
+        {
+            working: AgentWorking[];
+            chats: ReadChat[];
+            tasks: ReadTask[];
+            runs: ReadRun[];
+            questions: number;
+            lastActiveAt: string | null;
+        }
     >();
     const entry = (agentId: string) => {
         let found = byAgent.get(agentId);
         if (found === undefined) {
-            found = { working: [], chats: [], tasks: [], runs: [], lastActiveAt: null };
+            found = { working: [], chats: [], tasks: [], runs: [], questions: 0, lastActiveAt: null };
             byAgent.set(agentId, found);
         }
         return found;
@@ -68,6 +84,9 @@ export function groupActivity({ chats, tasks, runs }: Sources): ReadonlyMap<stri
         }
         for (const working of chat.working) {
             if (working.author.kind === 'agent') entry(working.author.key).working.push({ chat, working });
+        }
+        for (const question of chat.questions) {
+            if (question.author.kind === 'agent') entry(question.author.key).questions += 1;
         }
     }
     for (const task of tasks) {
