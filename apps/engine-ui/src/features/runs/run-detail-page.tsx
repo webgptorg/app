@@ -1,18 +1,31 @@
 import { KNOWN_CAPABILITIES, RunId } from '@ptbk/engine-api';
-import type { ReadRun, ReadRunDetail, TaskId, TriggerId } from '@ptbk/engine-api';
-import { Banner, Card, CodeText, EmptyState, ErrorState, RelativeTime, Skeleton, useLocale } from '@ptbk/ui';
+import type { ChatId, ReadRun, ReadRunDetail, TaskId, TriggerId } from '@ptbk/engine-api';
+import {
+    Banner,
+    CodeText,
+    EmptyState,
+    ErrorState,
+    RelativeTime,
+    Section,
+    Skeleton,
+    useLocale,
+    viewTransitionStyle,
+} from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { ChevronRight } from 'lucide-react';
+import { FileText, GitCommitHorizontal, MessageSquare } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
 import { useEngineApi } from '../../app/engine-api-context';
-import { ButtonLink, Link } from '../../app/link';
+import { ButtonLink } from '../../app/link';
 import { isPageLevelFailure } from '../../app/list-errors';
 import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
-import { BackLink, Page } from '../shell/page';
+import { chatName } from '../chat/chat-name';
+import { chatQueryOptions } from '../chat/chat-queries';
+import { EntityChip } from '../entities/entity-chip';
+import { Crumb, Page } from '../shell/page';
 import { NARROW_QUERY, useMediaQuery } from '../shell/use-media-query';
 import { taskQueryOptions } from '../tasks/tasks-queries';
 import { triggerQueryOptions } from '../triggers/triggers-queries';
@@ -20,7 +33,7 @@ import { DiffView } from './diff-view';
 import { RunActions } from './run-actions';
 import { finishedDurationMs, NotReported, RunCost, RunDuration, runTitle } from './run-format';
 import { runSourceLabel } from './run-source';
-import { RunStatusBadge } from './run-status';
+import { RunStatusPill } from './run-status';
 import { StepsSection, ToolCallsSection } from './run-timeline';
 import { runListQueryOptions, runQueryOptions } from './runs-queries';
 
@@ -31,19 +44,43 @@ function isNotFound(error: unknown): boolean {
     return failure.kind === 'problem' && failure.problem.status === 404;
 }
 
-/** One run: what started it, its steps, tool calls, usage, error and outputs, with cancel and retry where allowed. */
+/** One run: what started it, its steps, tool calls, error and outputs, with stop and retry where allowed. */
 export function RunDetailPage() {
     const runId = RunId.safeParse(route.useParams().runId).data;
     return runId === undefined ? <RunNotFound /> : <LoadedRunDetail runId={runId} />;
 }
 
+/**
+ * Where the run sits: the agent's Runs tab when the member opened it there, else all runs. The trail replaces the
+ * old "Back to …" link.
+ */
+function useRunCrumbs(run: Pick<ReadRun, 'agentId' | 'agentName'> | null): ReactNode[] {
+    const { from } = route.useSearch();
+    if (from === 'agent' && run !== null) {
+        return [
+            <Crumb key="agent" to="/agents/$agentId" params={{ agentId: run.agentId }}>
+                {run.agentName ?? run.agentId}
+            </Crumb>,
+            <Crumb key="runs" to="/agents/$agentId/runs" params={{ agentId: run.agentId }}>
+                {m.runs_title()}
+            </Crumb>,
+        ];
+    }
+    return [
+        <Crumb key="runs" to="/runs">
+            {m.runs_title()}
+        </Crumb>,
+    ];
+}
+
 function LoadedRunDetail({ runId }: { readonly runId: RunId }) {
     const run = useQuery({ ...runQueryOptions(useEngineApi(), runId), throwOnError: isPageLevelFailure });
+    const crumbs = useRunCrumbs(null);
     if (run.isPending) return <RunDetailSkeleton />;
     if (run.isError) {
         if (isNotFound(run.error)) return <RunNotFound />;
         return (
-            <Page title={m.run_title_loading()}>
+            <Page title={m.run_title_loading()} breadcrumbs={crumbs}>
                 <ErrorState
                     message={m.run_load_failed()}
                     onRetry={() => {
@@ -60,6 +97,7 @@ function LoadedRunDetail({ runId }: { readonly runId: RunId }) {
 function RunDetail({ run }: { readonly run: ReadRunDetail }) {
     const narrow = useMediaQuery(NARROW_QUERY);
     const retry = useRetryOf(run);
+    const crumbs = useRunCrumbs(run);
     const actions = <RunActions run={run} retried={retry !== null} />;
     const hasOutputs =
         run.outputs.messages.length > 0 || run.outputs.files.length > 0 || run.outputs.projectChanges.length > 0;
@@ -67,24 +105,28 @@ function RunDetail({ run }: { readonly run: ReadRunDetail }) {
         <Page
             title={runTitle(run)}
             documentTitle={[runTitle(run), m.runs_title()]}
-            back={<RunBackLink run={run} />}
+            breadcrumbs={crumbs}
+            titleStyle={viewTransitionStyle('run-title', run.id)}
             {...(narrow ? {} : { actions })}
         >
             <RunSummary run={run} />
             {run.error === null ? null : (
                 <Banner tone="danger" title={runErrorTitle(run.error.code)}>
-                    <span className="flex flex-col gap-1">
+                    <span className="flex flex-col gap-1.5">
                         {/* The summary may quote what the agent read: text only. */}
                         <span className="break-words whitespace-pre-wrap">{run.error.summary}</span>
                         <span className="text-xs text-text-muted">
                             {m.run_error_code()} <span className="font-mono">{run.error.code}</span>
                         </span>
                         {retry === null ? null : (
-                            <span>
-                                {m.run_retried_as()}{' '}
-                                <Link to="/runs/$runId" params={{ runId: retry.id }}>
-                                    {m.run_retried_open()}
-                                </Link>
+                            <span className="flex flex-wrap items-center gap-2">
+                                {m.run_retried_as()}
+                                <EntityChip
+                                    kind="run"
+                                    id={retry.id}
+                                    name={m.run_retried_new()}
+                                    status={retry.status === 'running' ? 'live' : undefined}
+                                />
                             </span>
                         )}
                     </span>
@@ -93,28 +135,14 @@ function RunDetail({ run }: { readonly run: ReadRunDetail }) {
             {run.progress === null ? null : <StepsSection run={run} progress={run.progress} />}
             {run.toolCalls.length === 0 ? null : <ToolCallsSection run={run} />}
             {hasOutputs ? <OutputsSection run={run} /> : null}
-            {hasTokenUsage(run) ? <UsageSection run={run} /> : null}
             <RunDetails run={run} />
             {narrow ? (
-                <div className="sticky bottom-0 z-10 -mx-4 border-t border-divider bg-raised px-4 py-3 empty:hidden">
+                <div className="sticky bottom-0 z-10 -mx-4 border-t border-hairline bg-surface px-4 py-3 empty:hidden">
                     {actions}
                 </div>
             ) : null}
         </Page>
     );
-}
-
-/** Back to where the member came from: the agent's Runs tab when they opened the run there, else all runs. */
-function RunBackLink({ run }: { readonly run: ReadRunDetail }) {
-    const { from } = route.useSearch();
-    if (from === 'agent') {
-        return (
-            <BackLink to="/agents/$agentId/runs" params={{ agentId: run.agentId }}>
-                {m.run_back_to_agent_runs({ agent: run.agentName ?? run.agentId })}
-            </BackLink>
-        );
-    }
-    return <BackLink to="/runs">{m.run_back_to_runs()}</BackLink>;
 }
 
 // Codes are open slugs (the engine may add more); known ones get a plain title, the rest a generic one.
@@ -146,41 +174,26 @@ function SummaryItem({ label, children }: { readonly label: string; readonly chi
     return (
         <div className="flex min-w-0 items-center">
             <dt className="sr-only">{label}</dt>
-            <dd className="min-w-0 break-words">{children}</dd>
+            <dd className="flex min-w-0 flex-wrap items-center gap-1.5">{children}</dd>
         </div>
     );
 }
 
-/** One quiet line under the title: what a member asks first. The rest waits in Details. */
+/** One quiet line under the title: the state, then who ran it, what started it and how long it took, as chips. */
 function RunSummary({ run }: { readonly run: ReadRunDetail }) {
     const cost = run.usage?.cost ?? null;
     const showDuration = (run.status === 'running' && run.startedAt !== null) || finishedDurationMs(run) !== null;
     return (
-        <dl className="-mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">
+        <dl className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-text-muted">
             <SummaryItem label={m.run_fact_status()}>
-                <RunStatusBadge status={run.status} cancelling={run.cancelRequestedAt !== null} />
+                <RunStatusPill status={run.status} cancelling={run.cancelRequestedAt !== null} />
             </SummaryItem>
             <SummaryItem label={m.run_fact_agent()}>
-                <Link to="/agents/$agentId" params={{ agentId: run.agentId }}>
-                    {run.agentName ?? run.agentId}
-                </Link>
+                <EntityChip kind="agent" id={run.agentId} name={run.agentName ?? run.agentId} />
             </SummaryItem>
             <SummaryItem label={m.run_fact_source()}>
                 <Source run={run} />
             </SummaryItem>
-            <SummaryItem label={m.run_fact_queued()}>
-                <RelativeTime value={new Date(run.queuedAt)} />
-            </SummaryItem>
-            {showDuration ? (
-                <SummaryItem label={m.run_usage_duration()}>
-                    <RunDuration run={run} />
-                </SummaryItem>
-            ) : null}
-            {cost === null ? null : (
-                <SummaryItem label={m.run_usage_cost()}>
-                    <RunCost cost={cost} />
-                </SummaryItem>
-            )}
             {run.taskId === null ? null : (
                 <SummaryItem label={m.run_fact_task()}>
                     <RunTask taskId={run.taskId} />
@@ -188,67 +201,84 @@ function RunSummary({ run }: { readonly run: ReadRunDetail }) {
             )}
             {run.retryOf === null ? null : (
                 <SummaryItem label={m.run_fact_retry_of()}>
-                    <Link to="/runs/$runId" params={{ runId: run.retryOf }}>
-                        {m.run_fact_retry_of_link()}
-                    </Link>
+                    <EntityChip kind="run" id={run.retryOf} name={m.run_fact_retry_of_link()} />
+                </SummaryItem>
+            )}
+            <SummaryItem label={m.run_fact_queued()}>
+                <RelativeTime value={new Date(run.queuedAt)} className="tabular-nums" />
+            </SummaryItem>
+            {showDuration ? (
+                <SummaryItem label={m.run_usage_duration()}>
+                    <span className="tabular-nums">
+                        <RunDuration run={run} />
+                    </span>
+                </SummaryItem>
+            ) : null}
+            {cost === null ? null : (
+                <SummaryItem label={m.run_usage_cost()}>
+                    <span className="tabular-nums">
+                        <RunCost cost={cost} />
+                    </span>
                 </SummaryItem>
             )}
         </dl>
     );
 }
 
-/** The task this run worked on, by name; without `tasks@1` there is nothing to link to. */
+/** The task this run worked on, by name; without `tasks@1` the chip is left out. */
 function RunTask({ taskId }: { readonly taskId: TaskId }) {
     const allowed = useAllows({ capability: KNOWN_CAPABILITIES.tasks, permission: 'tasks.read' });
     const task = useQuery({ ...taskQueryOptions(useEngineApi(), taskId), enabled: allowed });
     if (!allowed) return null;
-    return (
-        <Link to="/tasks/$taskId" params={{ taskId }}>
-            {task.data?.name ?? m.run_fact_task()}
-        </Link>
-    );
+    return <EntityChip kind="task" id={taskId} name={task.data?.name ?? m.run_fact_task()} />;
 }
 
+/** A chat by its title once the engine has it, else by what the run's reply is ("Open the reply in its chat"). */
+function ChatChip({ chatId, fallback }: { readonly chatId: ChatId; readonly fallback: string }) {
+    const allowed = useAllows({ permission: 'chats.read' });
+    const chat = useQuery({ ...chatQueryOptions(useEngineApi(), chatId), enabled: allowed });
+    return <EntityChip kind="chat" id={chatId} name={chat.data === undefined ? fallback : chatName(chat.data)} />;
+}
+
+/** How the run started: the chat or the trigger as a chip, the channel quiet before it ("Email · (chat)"). */
 function Source({ run }: { readonly run: ReadRunDetail }) {
     const label = runSourceLabel(run.source);
     if (run.chatId !== null) {
         return (
-            <Link to="/chats/$chatId" params={{ chatId: run.chatId }}>
-                {run.source === 'web' ? label : m.run_source_chat({ source: label })}
-            </Link>
+            <>
+                {run.source === 'web' ? null : <span>{label}</span>}
+                <ChatChip chatId={run.chatId} fallback={m.run_source_web()} />
+            </>
         );
     }
     if (run.triggerId !== null) return <TriggerSource label={label} triggerId={run.triggerId} />;
     return <span>{label}</span>;
 }
 
-/** "Schedule · Weekly report", linking the trigger by name; never its ID. */
+/** "Schedule · (Weekly report)", the trigger by name, never its ID. */
 function TriggerSource({ label, triggerId }: { readonly label: string; readonly triggerId: TriggerId }) {
     const allowed = useAllows({ capability: KNOWN_CAPABILITIES.triggers, permission: 'triggers.read' });
     const trigger = useQuery({ ...triggerQueryOptions(useEngineApi(), triggerId), enabled: allowed });
     let name: ReactNode = null;
     if (trigger.data !== undefined) {
-        name = (
-            <Link to="/triggers/$triggerId" params={{ triggerId }}>
-                {trigger.data.name}
-            </Link>
-        );
+        name = <EntityChip kind="trigger" id={triggerId} name={trigger.data.name} />;
     } else if (trigger.isError && isNotFound(trigger.error)) {
-        name = m.run_source_trigger_deleted();
+        name = <span>{m.run_source_trigger_deleted()}</span>;
     }
-    if (name === null) return <span>{label}</span>;
     return (
-        <span>
-            {label} · {name}
-        </span>
+        <>
+            <span>{label}</span>
+            {name}
+        </>
     );
 }
 
-function Fact({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+/** One property: its name quiet on the left, the value beside it. */
+function Property({ label, children }: { readonly label: string; readonly children: ReactNode }) {
     return (
-        <div className="flex min-w-0 flex-col gap-0.5">
-            <dt className="text-xs text-text-muted">{label}</dt>
-            <dd className="min-w-0 break-words">{children}</dd>
+        <div className="grid grid-cols-[9rem_minmax(0,1fr)] items-baseline gap-x-6 py-1.5 sm:grid-cols-[11rem_minmax(0,1fr)]">
+            <dt className="text-sm text-text-subtle">{label}</dt>
+            <dd className="min-w-0 text-sm break-words">{children}</dd>
         </div>
     );
 }
@@ -256,32 +286,10 @@ function Fact({ label, children }: { readonly label: string; readonly children: 
 function DateTime({ at }: { readonly at: string | null }) {
     const locale = useLocale();
     if (at === null) return <span className="text-text-muted">{m.run_value_not_yet()}</span>;
-    return <time dateTime={at}>{locale.formatDateTime(new Date(at))}</time>;
-}
-
-/** Exact times and how the run ran: for whoever investigates, folded away for everyone else. */
-function RunDetails({ run }: { readonly run: ReadRunDetail }) {
     return (
-        <details className="group rounded-surface border border-divider">
-            <summary className="flex cursor-pointer items-center gap-2 rounded-surface px-4 py-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-focus">
-                <ChevronRight aria-hidden className="size-4 transition-transform group-open:rotate-90" />
-                {m.run_details_title()}
-            </summary>
-            <dl className="grid grid-cols-2 gap-4 border-t border-divider p-4 text-sm sm:grid-cols-3">
-                <Fact label={m.run_fact_queued()}>
-                    <DateTime at={run.queuedAt} />
-                </Fact>
-                <Fact label={m.run_fact_started()}>
-                    <DateTime at={run.startedAt} />
-                </Fact>
-                <Fact label={m.run_fact_completed()}>
-                    <DateTime at={run.completedAt} />
-                </Fact>
-                <Fact label={m.run_fact_attempt()}>{run.attemptCount}</Fact>
-                <Fact label={m.run_fact_runner()}>{run.runner ?? <NotReported />}</Fact>
-                <Fact label={m.run_fact_model()}>{run.model ?? <NotReported />}</Fact>
-            </dl>
-        </details>
+        <time dateTime={at} className="tabular-nums">
+            {locale.formatDateTime(new Date(at))}
+        </time>
     );
 }
 
@@ -292,8 +300,8 @@ function hasTokenUsage(run: ReadRunDetail): boolean {
     );
 }
 
-/** Tokens only: duration and cost already sit in the summary line. */
-function UsageSection({ run }: { readonly run: ReadRunDetail }) {
+/** Exact times, how the run ran and what it used, as quiet property rows for whoever investigates. */
+function RunDetails({ run }: { readonly run: ReadRunDetail }) {
     const locale = useLocale();
     const tokens = (value: number | null | undefined) =>
         value === null || value === undefined ? (
@@ -302,69 +310,85 @@ function UsageSection({ run }: { readonly run: ReadRunDetail }) {
             <span className="tabular-nums">{locale.formatNumber(value)}</span>
         );
     return (
-        <Card title={m.run_usage_title()}>
-            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Fact label={m.run_usage_input_tokens()}>{tokens(run.usage?.inputTokens)}</Fact>
-                <Fact label={m.run_usage_output_tokens()}>{tokens(run.usage?.outputTokens)}</Fact>
+        <Section title={m.run_details_title()}>
+            <dl className="flex max-w-2xl flex-col">
+                <Property label={m.run_fact_queued()}>
+                    <DateTime at={run.queuedAt} />
+                </Property>
+                <Property label={m.run_fact_started()}>
+                    <DateTime at={run.startedAt} />
+                </Property>
+                <Property label={m.run_fact_completed()}>
+                    <DateTime at={run.completedAt} />
+                </Property>
+                <Property label={m.run_fact_attempt()}>
+                    <span className="tabular-nums">{run.attemptCount}</span>
+                </Property>
+                <Property label={m.run_fact_runner()}>{run.runner ?? <NotReported />}</Property>
+                <Property label={m.run_fact_model()}>{run.model ?? <NotReported />}</Property>
+                {hasTokenUsage(run) ? (
+                    <>
+                        <Property label={m.run_usage_input_tokens()}>{tokens(run.usage?.inputTokens)}</Property>
+                        <Property label={m.run_usage_output_tokens()}>{tokens(run.usage?.outputTokens)}</Property>
+                    </>
+                ) : null}
             </dl>
-        </Card>
+        </Section>
     );
 }
 
+/** One output as a hairline row: its type icon, then the chip. */
+function OutputRow({ icon, children }: { readonly icon: ReactNode; readonly children: ReactNode }) {
+    return (
+        <li className="grid min-h-10 grid-cols-[1.25rem_minmax(0,1fr)] items-center gap-x-3 py-2">
+            <span className="flex h-6 items-center text-text-muted [&>svg]:size-4">{icon}</span>
+            <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">{children}</span>
+        </li>
+    );
+}
+
+/** What the run left behind: replies and files as chips, then each project change with its files and diff. */
 function OutputsSection({ run }: { readonly run: ReadRunDetail }) {
     const { messages, files, fileNames, projectChanges } = run.outputs;
-    const filesLinked = useAllows({ capability: KNOWN_CAPABILITIES.files, permission: 'files.read' });
+    const count = messages.length + files.length + projectChanges.length;
     return (
-        <Card title={m.run_outputs_title()}>
-            <div className="flex flex-col gap-6">
-                {messages.length === 0 ? null : (
-                    <section className="flex flex-col gap-2">
-                        <h3 className="font-medium">{m.run_outputs_messages()}</h3>
-                        <ul className="flex flex-col gap-1">
-                            {messages.map((message) => (
-                                <li key={message.messageId}>
-                                    <Link to="/chats/$chatId" params={{ chatId: message.chatId }}>
-                                        {m.run_outputs_message_link()}
-                                    </Link>
-                                </li>
-                            ))}
-                        </ul>
-                    </section>
-                )}
-                {files.length === 0 ? null : (
-                    <section className="flex flex-col gap-2">
-                        <h3 className="font-medium">{m.run_outputs_files()}</h3>
-                        <ul className="flex flex-col gap-1 text-sm">
-                            {files.map((fileId, index) => (
-                                <li key={fileId} className="break-words">
-                                    {filesLinked ? (
-                                        <Link to="/files" search={{ file: fileId }}>
-                                            {fileNames[index] ?? fileId}
-                                        </Link>
-                                    ) : (
-                                        (fileNames[index] ?? fileId)
-                                    )}
-                                </li>
-                            ))}
-                        </ul>
-                    </section>
-                )}
-                {projectChanges.map((change, index) => (
-                    <ProjectChangeView key={`${change.commitHash}-${String(index)}`} change={change} />
-                ))}
-            </div>
-        </Card>
+        <Section title={m.run_outputs_title()} count={count}>
+            {messages.length === 0 && files.length === 0 ? null : (
+                <ul className="flex flex-col divide-y divide-hairline">
+                    {messages.map((message) => (
+                        <OutputRow key={message.messageId} icon={<MessageSquare aria-hidden />}>
+                            <span className="text-text-muted">{m.run_outputs_message()}</span>
+                            <ChatChip chatId={message.chatId} fallback={m.run_outputs_message_link()} />
+                        </OutputRow>
+                    ))}
+                    {files.map((fileId, index) => (
+                        <OutputRow key={fileId} icon={<FileText aria-hidden />}>
+                            <span className="text-text-muted">{m.run_outputs_file()}</span>
+                            <EntityChip kind="file" id={fileId} name={fileNames[index] ?? fileId} />
+                        </OutputRow>
+                    ))}
+                </ul>
+            )}
+            {projectChanges.map((change, index) => (
+                <ProjectChangeView key={`${change.commitHash}-${String(index)}`} change={change} />
+            ))}
+        </Section>
     );
 }
 
 function ProjectChangeView({ change }: { readonly change: ReadRunDetail['outputs']['projectChanges'][number] }) {
     const locale = useLocale();
     return (
-        <section className="flex flex-col gap-3">
-            <h3 className="font-medium break-words">{m.run_project_title({ project: change.projectName })}</h3>
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-text-muted">{m.run_project_commit()}</span>
-                <CodeText value={change.commitHash} copyable copyLabel={m.run_project_copy_commit()} />
+        <section className="flex flex-col gap-3 pt-2">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <h3 className="flex items-center gap-2 text-sm font-medium break-words">
+                    <GitCommitHorizontal aria-hidden className="size-4 shrink-0 text-text-muted" />
+                    {m.run_project_title({ project: change.projectName })}
+                </h3>
+                <span className="flex items-center gap-1.5 text-xs text-text-muted">
+                    {m.run_project_commit()}
+                    <CodeText value={change.commitHash} copyable copyLabel={m.run_project_copy_commit()} />
+                </span>
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -372,26 +396,26 @@ function ProjectChangeView({ change }: { readonly change: ReadRunDetail['outputs
                         {m.run_project_files_caption({ project: change.projectName })}
                     </caption>
                     <thead>
-                        <tr className="text-left text-text-muted">
-                            <th scope="col" className="py-1 pr-3 font-medium">
+                        <tr className="text-left text-xs text-text-muted">
+                            <th scope="col" className="py-1.5 pr-3 font-medium">
                                 {m.run_project_file_path()}
                             </th>
-                            <th scope="col" className="py-1 pr-3 text-right font-medium">
+                            <th scope="col" className="py-1.5 pr-3 text-right font-medium">
                                 {m.run_project_file_insertions()}
                             </th>
-                            <th scope="col" className="py-1 text-right font-medium">
+                            <th scope="col" className="py-1.5 text-right font-medium">
                                 {m.run_project_file_deletions()}
                             </th>
                         </tr>
                     </thead>
                     <tbody>
                         {change.changedFiles.map((file) => (
-                            <tr key={file.path} className="border-t border-divider">
-                                <td className="py-1 pr-3 font-mono text-xs break-all">{file.path}</td>
-                                <td className="py-1 pr-3 text-right tabular-nums">
+                            <tr key={file.path} className="border-t border-hairline">
+                                <td className="py-2 pr-3 font-mono text-xs break-all">{file.path}</td>
+                                <td className="py-2 pr-3 text-right text-success tabular-nums">
                                     {m.run_project_insertions({ count: locale.formatNumber(file.insertions) })}
                                 </td>
-                                <td className="py-1 text-right tabular-nums">
+                                <td className="py-2 text-right text-danger tabular-nums">
                                     {m.run_project_deletions({ count: locale.formatNumber(file.deletions) })}
                                 </td>
                             </tr>
@@ -410,7 +434,14 @@ function ProjectChangeView({ change }: { readonly change: ReadRunDetail['outputs
 
 function RunNotFound() {
     return (
-        <Page title={m.run_not_found_title()}>
+        <Page
+            title={m.run_not_found_title()}
+            breadcrumbs={[
+                <Crumb key="runs" to="/runs">
+                    {m.runs_title()}
+                </Crumb>,
+            ]}
+        >
             <EmptyState
                 title={m.run_not_found_title()}
                 description={m.run_not_found_body()}
@@ -420,18 +451,21 @@ function RunNotFound() {
     );
 }
 
-/** Shaped like the header and the sections, so nothing jumps when the run arrives. */
+/** Shaped like the header, the facts line and the sections, so nothing jumps when the run arrives. */
 export function RunDetailSkeleton() {
     return (
         <section aria-busy="true" aria-label={m.run_title_loading()} className="flex flex-col gap-6">
-            <Skeleton shape="text" className="h-8 w-2/3" />
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                {Array.from({ length: 8 }, (_, index) => (
-                    <Skeleton key={index} shape="text" className="h-10 w-full" />
+            <div className="flex flex-col gap-2 py-3">
+                <Skeleton shape="text" className="h-4 w-16" />
+                <Skeleton shape="text" className="h-7 w-2/3" />
+            </div>
+            <div className="flex flex-wrap gap-3">
+                {Array.from({ length: 4 }, (_, index) => (
+                    <Skeleton key={index} shape="text" className="h-6 w-24" />
                 ))}
             </div>
-            {Array.from({ length: 4 }, (_, index) => (
-                <Skeleton key={index} shape="block" className="h-40 w-full" />
+            {Array.from({ length: 3 }, (_, index) => (
+                <Skeleton key={index} shape="block" className="h-32 w-full" />
             ))}
         </section>
     );

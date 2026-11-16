@@ -10,6 +10,7 @@ import {
     filterField,
     RelativeTime,
     StatusDot,
+    viewTransitionStyle,
 } from '@ptbk/ui';
 import type { DataTableColumnDef, FilterBarField, SortingState } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -104,7 +105,9 @@ function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColum
                             variant="standalone"
                             className="line-clamp-2 font-medium break-words text-text"
                         >
-                            {runTitle(row.original)}
+                            <span style={viewTransitionStyle('run-title', row.original.id)}>
+                                {runTitle(row.original)}
+                            </span>
                         </Link>
                         <RunNow run={row.original} />
                         {row.original.retryOf === null ? null : (

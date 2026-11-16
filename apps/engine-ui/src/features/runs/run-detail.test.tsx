@@ -45,8 +45,11 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
         expect(screen.getByRole('heading', { level: 1, name: 'Review the billing pull request' })).toBeDefined();
         const status = screen.getByText('Status').closest('div');
         expect(status === null ? null : within(status).getByText('Completed')).not.toBeNull();
-        expect(screen.getByRole('link', { name: 'Back to runs' }).getAttribute('href')).toBe('/runs');
-        expect(screen.getByRole('link', { name: 'Chat' }).getAttribute('href')).toBe('/chats/chat-ada');
+        const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
+        expect(within(trail).getByRole('link', { name: 'Runs' }).getAttribute('href')).toBe('/runs');
+        expect(screen.queryByRole('link', { name: /^Back to/ })).toBeNull();
+        const source = screen.getByText('Source', { selector: 'dt' }).parentElement as HTMLElement;
+        expect(within(source).getByRole('link').getAttribute('href')).toBe('/chats/chat-ada');
         expect(screen.getByRole('link', { name: 'Ada' }).getAttribute('href')).toBe('/agents/agent-ada');
         expect(screen.getByText('claude-code')).toBeDefined();
         expect(screen.getByText('claude-sonnet-4-5')).toBeDefined();
@@ -59,14 +62,16 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
         expect(within(tools).getByText('Completed')).toBeDefined();
         expect(within(tools).getByText('1 s')).toBeDefined();
 
-        const usage = section('Token usage');
+        const usage = section('Details');
+        expect(within(usage).getByText('Input tokens')).toBeDefined();
         expect(within(usage).getByText('18,200')).toBeDefined();
         expect(within(usage).getByText('2,150')).toBeDefined();
         expect(screen.getByText('11 min 0 s')).toBeDefined();
         expect(screen.getByText('$1,234.50')).toBeDefined();
 
         const outputs = section('Outputs');
-        expect(within(outputs).getByRole('link', { name: 'Open the reply in its chat' })).toBeDefined();
+        expect(within(outputs).getByText('Reply in')).toBeDefined();
+        expect(within(outputs).getAllByRole('link', { name: /.+/ })[0]?.getAttribute('href')).toBe('/chats/chat-ada');
         expect(within(outputs).getByRole('heading', { name: 'Changes in billing' })).toBeDefined();
         expect(within(outputs).getByText('+1')).toBeDefined();
         expect(within(outputs).getByText('−1')).toBeDefined();
@@ -99,12 +104,13 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
 
     it('leaves out what the run did not report: no empty sections, no usage, no duration', async () => {
         await renderRun(RUN_IDS.queued);
-        for (const name of ['Steps', 'Tool calls', 'Token usage', 'Outputs']) {
+        for (const name of ['Steps', 'Tool calls', 'Outputs']) {
             expect(screen.queryByRole('region', { name })).toBeNull();
         }
+        expect(within(section('Details')).queryByText('Input tokens')).toBeNull();
         expect(screen.queryByText('Duration', { selector: 'dt' })).toBeNull();
         expect(screen.queryByText('Cost', { selector: 'dt' })).toBeNull();
-        expect(screen.getByText('Refund for order 1042', { selector: 'h1' })).toBeDefined();
+        expect(screen.getByRole('heading', { level: 1, name: 'Refund for order 1042' })).toBeDefined();
     });
 
     it('takes a finished run’s duration from its timestamps when the engine reported none, as the list does', async () => {
@@ -117,8 +123,8 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
     it('names the trigger that started a run, links its output files and points a retried failure at its retry', async () => {
         const engine = createRunsEngine({ seed: createDemoSeed() });
         const { unmount } = renderWithProviders({ path: '/runs/run-iris-weekly', engineApi: engine.client });
-        expect(await screen.findByRole('link', { name: 'Weekly report' })).toBeDefined();
-        expect(screen.getByRole('link', { name: 'Weekly report' }).getAttribute('href')).toBe(
+        const source = (await screen.findByText('Source', { selector: 'dt' })).parentElement as HTMLElement;
+        expect((await within(source).findByRole('link', { name: 'Weekly report' })).getAttribute('href')).toBe(
             '/triggers/trigger-weekly-report',
         );
         expect(screen.queryByText('trigger-weekly-report')).toBeNull();
@@ -132,7 +138,7 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
 
         renderWithProviders({ path: '/runs/run-iris-weekly-failed', engineApi: engine.client });
         expect(await screen.findByText('A tool failed')).toBeDefined();
-        const retry = await screen.findByRole('link', { name: 'Open the new run' });
+        const retry = await screen.findByRole('link', { name: 'The new run' });
         expect(retry.getAttribute('href')).toBe('/runs/run-iris-weekly');
         expect(screen.getByText(/Already retried\./)).toBeDefined();
         expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
@@ -143,7 +149,9 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
         const failed = seed.runs?.find((run) => run.id === RUN_IDS.failed) as InMemorySeedRun;
         const orphan: InMemorySeedRun = { ...failed, id: 'run-orphan', triggerId: 'trigger-gone' };
         await renderRun('run-orphan', createRunsEngine({ seed: { ...seed, runs: [...(seed.runs ?? []), orphan] } }));
-        expect(await screen.findByText('Schedule · a deleted trigger')).toBeDefined();
+        const source = screen.getByText('Source', { selector: 'dt' }).parentElement as HTMLElement;
+        expect(await within(source).findByText('a deleted trigger')).toBeDefined();
+        expect(within(source).getByText('Schedule')).toBeDefined();
         expect(screen.queryByText('trigger-gone')).toBeNull();
     });
 
@@ -152,24 +160,26 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
         renderWithProviders({ path: '/runs/run-iris-weekly', engineApi: engine.client });
         expect(await screen.findByText('Details')).toBeDefined();
         expect(screen.getByText('Schedule', { selector: 'span' })).toBeDefined();
-        expect(screen.queryByRole('link', { name: 'Weekly report' })).toBeNull();
+        const source = screen.getByText('Source', { selector: 'dt' }).parentElement as HTMLElement;
+        expect(within(source).queryByRole('link')).toBeNull();
     });
 
-    it('returns to the agent’s Runs tab when opened from it, and to all runs otherwise', async () => {
+    it('places the run under the agent’s Runs tab when opened from it, and under all runs otherwise', async () => {
         renderWithProviders({ path: `/runs/${RUN_IDS.failed}?from=agent`, engineApi: createRunsEngine().client });
-        expect((await screen.findByRole('link', { name: "Back to Iris's runs" })).getAttribute('href')).toBe(
-            '/agents/agent-iris/runs',
-        );
+        const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+        expect(within(trail).getByRole('link', { name: 'Iris' }).getAttribute('href')).toBe('/agents/agent-iris');
+        expect(within(trail).getByRole('link', { name: 'Runs' }).getAttribute('href')).toBe('/agents/agent-iris/runs');
     });
 
     it('ignores an unknown origin in the URL', async () => {
         renderWithProviders({ path: `/runs/${RUN_IDS.failed}?from=elsewhere`, engineApi: createRunsEngine().client });
-        expect((await screen.findByRole('link', { name: 'Back to runs' })).getAttribute('href')).toBe('/runs');
+        const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+        expect(within(trail).getByRole('link', { name: 'Runs' }).getAttribute('href')).toBe('/runs');
     });
 
     it('formats cost and numbers in Czech', async () => {
         await renderRun(RUN_IDS.completed, createRunsEngine(), 'cs');
-        const usage = section('Spotřeba tokenů');
+        const usage = section('Podrobnosti');
         expect(screen.getByText('1 234,50 US$')).toBeDefined();
         expect(within(usage).getByText('18 200')).toBeDefined();
     });
@@ -246,7 +256,7 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
     it('marks where a running run is and times its tool call live, opened to its output', async () => {
         const { engine, ticker } = await renderRun(RUN_IDS.running);
         const steps = section('Steps');
-        expect(within(steps).getByRole('progressbar', { name: 'Steps done' }).getAttribute('aria-valuenow')).toBe('1');
+        expect(within(steps).queryByRole('progressbar')).toBeNull();
         expect(within(steps).getByText('1 of 2 done')).toBeDefined();
         expect(within(steps).getByText('Working on:', { exact: false }).parentElement?.textContent).toContain(
             'Read each one',
