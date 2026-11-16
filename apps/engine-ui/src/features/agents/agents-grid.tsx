@@ -2,6 +2,7 @@ import type { Agent } from '@ptbk/engine-api';
 import { EmptyState, RelativeTime, Section, Skeleton, StatusDot, tintStyle, viewTransitionStyle } from '@ptbk/ui';
 import type { StatusTone } from '@ptbk/ui';
 import { Bot } from 'lucide-react';
+import { useId } from 'react';
 import type { ReactNode } from 'react';
 
 import { cx } from '../../app/cx';
@@ -87,11 +88,15 @@ interface CardProps {
 function AgentCard({ agent, activity, open, onOpen }: CardProps) {
     const tint = agentColor(agent.profile.color, agent.id);
     const working = isWorking(activity);
+    const detailsId = useId();
     return (
         <li className="flex min-w-0">
+            {/* Named by the agent alone; its state and role are read after the name, not run into it. */}
             <button
                 type="button"
                 aria-haspopup="dialog"
+                aria-label={agent.name}
+                aria-describedby={detailsId}
                 data-agent-card={agent.id}
                 onClick={() => {
                     onOpen(agent);
@@ -121,21 +126,23 @@ function AgentCard({ agent, activity, open, onOpen }: CardProps) {
                 <span className="flex w-full min-w-0 flex-col gap-1">
                     {/* Names and roles come from Books: React renders them as text. */}
                     <span className="truncate text-sm font-semibold">{agent.name}</span>
-                    <StatusLine activity={activity} />
-                    {/* Read by screen readers always; on a device with hover it fades in with the pointer. */}
-                    <span
-                        className={cx(
-                            'flex min-h-12 flex-col gap-0.5 pt-1 text-xs text-text-muted',
-                            '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-visible:opacity-100',
-                            'motion-safe:transition-opacity motion-safe:duration-(--motion-state)',
-                        )}
-                    >
-                        <span className="line-clamp-2 break-words">{agent.profile.description}</span>
-                        {isWorking(activity) || activity.lastActiveAt === null ? null : (
-                            <span className="truncate tabular-nums">
-                                <LastActive activity={activity} />
-                            </span>
-                        )}
+                    <span id={detailsId} className="flex min-w-0 flex-col gap-1">
+                        <StatusLine activity={activity} />
+                        {/* Read by screen readers always; on a device with hover it fades in with the pointer. */}
+                        <span
+                            className={cx(
+                                'flex min-h-12 flex-col gap-0.5 pt-1 text-xs text-text-muted',
+                                '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-visible:opacity-100',
+                                'motion-safe:transition-opacity motion-safe:duration-(--motion-state)',
+                            )}
+                        >
+                            <span className="line-clamp-2 break-words">{agent.profile.description}</span>
+                            {isWorking(activity) || activity.lastActiveAt === null ? null : (
+                                <span className="truncate tabular-nums">
+                                    <LastActive activity={activity} />
+                                </span>
+                            )}
+                        </span>
                     </span>
                 </span>
             </button>

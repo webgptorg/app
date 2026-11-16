@@ -281,9 +281,12 @@ export function AgentsListPage() {
             action={newAgent ?? undefined}
         />
     );
+    // With no agent at all and nothing filtered, there is nothing to search: the bar steps aside for the invitation.
+    const nothing = !filtered && !pending && search.cursor === undefined && rows.length === 0;
     const filters = (tableView: DataTableView) => (
         <AgentFilters
             view={tableView}
+            empty={nothing}
             search={search}
             managesAgents={managesAgents}
             searchRef={searchRef}
@@ -420,10 +423,12 @@ function AgentFilters({
     search,
     managesAgents,
     searchRef,
+    empty,
     onChange,
     onClear,
 }: {
     readonly view: DataTableView;
+    readonly empty: boolean;
     readonly search: AgentListSearch;
     readonly managesAgents: boolean;
     readonly searchRef: RefObject<HTMLInputElement | null>;
@@ -504,6 +509,7 @@ function AgentFilters({
                 inputRef: searchRef,
             }}
             fields={fields}
+            empty={empty}
             onClear={() => {
                 setText('');
                 onClear();

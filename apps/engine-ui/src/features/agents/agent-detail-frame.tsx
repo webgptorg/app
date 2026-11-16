@@ -15,7 +15,7 @@ import { Breadcrumbs, Crumb } from '../shell/page';
 import { NARROW_QUERY, useMediaQuery } from '../shell/use-media-query';
 import { useAgentActions } from './agent-actions';
 import { AgentAvatar } from './agent-avatar';
-import { AgentStateBadge } from './agent-badges';
+import { AgentStateBadge, AgentVisibilityBadge } from './agent-badges';
 import { useAgentIdParam } from './agent-detail-route';
 import { AgentLiveState, AgentStop } from './agent-live-state';
 import { useAgentTabs } from './agent-tabs';
@@ -137,6 +137,8 @@ export function AgentDetailFrame() {
                                 <AgentLiveState agentId={agent.id}>
                                     {(status) => <AgentStateBadge status={status} />}
                                 </AgentLiveState>
+                                {/* Only public is worth a word up here: anyone with the link can talk to it. */}
+                                {agent.visibility === 'public' ? <AgentVisibilityBadge visibility="public" /> : null}
                             </div>
                             {compact || agent.profile.description === '' ? null : (
                                 <p className="line-clamp-2 max-w-prose text-sm break-words text-text-muted">

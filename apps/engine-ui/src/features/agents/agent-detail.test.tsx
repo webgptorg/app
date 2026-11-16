@@ -403,28 +403,32 @@ describe('agent header', { timeout: TIMEOUT_MS }, () => {
 describe('agent settings', { timeout: TIMEOUT_MS }, () => {
     it('changes visibility, asking first only when making the agent public', async () => {
         const { user, engine } = await renderAgent('/agents/agent-003/settings');
-        const select = await screen.findByRole('combobox', { name: 'Visibility' });
-        expect((select as HTMLSelectElement).value).toBe('private');
+        const visibility = await screen.findByRole('combobox', { name: 'Visibility' });
+        expect(visibility.textContent).toContain('Private');
 
-        await user.selectOptions(select, 'unlisted');
+        await user.click(visibility);
+        await user.click(screen.getByRole('option', { name: /^Unlisted/ }));
         await waitFor(() => {
-            expect((select as HTMLSelectElement).value).toBe('unlisted');
+            expect(visibility.textContent).toContain('Unlisted');
         });
         expect(engine.spies.update).toHaveBeenLastCalledWith(
             'agent-003',
             { visibility: 'unlisted' },
             expect.anything(),
         );
+        // Only a public agent says so in the header: anyone with the link can talk to it.
+        expect(within(agentHeader()).queryByText('Public')).toBeNull();
 
-        await user.selectOptions(select, 'public');
+        await user.click(visibility);
+        await user.click(screen.getByRole('option', { name: /^Public/ }));
         const dialog = await screen.findByRole('dialog', { name: 'Make Agent 003 public?' });
-        expect((select as HTMLSelectElement).value).toBe('unlisted');
+        expect(visibility.textContent).toContain('Unlisted');
         await user.click(within(dialog).getByRole('button', { name: 'Make public' }));
         await waitFor(() => {
-            expect((select as HTMLSelectElement).value).toBe('public');
+            expect(visibility.textContent).toContain('Public');
         });
         expect(within(agentHeader()).getByText('Public')).toBeDefined();
-        expect(document.activeElement).toBe(select);
+        expect(document.activeElement).toBe(visibility);
     });
 
     it('deletes the agent, then returns to the list and reports it', async () => {
@@ -439,8 +443,8 @@ describe('agent settings', { timeout: TIMEOUT_MS }, () => {
             expect(router.state.location.pathname).toBe('/agents');
         });
         expect(await screen.findByText('Agent 002 deleted')).toBeDefined();
-        expect(await screen.findByRole('link', { name: 'Agent 001' })).toBeDefined();
-        expect(screen.queryByRole('link', { name: 'Agent 002' })).toBeNull();
+        expect(await screen.findByRole('button', { name: 'Agent 001' })).toBeDefined();
+        expect(screen.queryByRole('button', { name: 'Agent 002' })).toBeNull();
     });
 
     it('opens the step-up dialog when delete needs a fresh passkey check', async () => {

@@ -54,7 +54,7 @@ describe('without files@1 or files.read', { timeout: TIMEOUT_MS }, () => {
         await screen.findAllByRole('region', { name: 'Details' });
         expect(screen.queryByRole('link', { name: 'Files' })).toBeNull();
         expect(screen.queryByRole('tab', { name: 'Files' })).toBeNull();
-        expect(screen.queryByRole('region', { name: 'Knowledge at a glance' })).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Files' })).toBeNull();
         expect(engine.spies.stats).not.toHaveBeenCalled();
         renderWithProviders({ path: '/files', engineApi: engine.client });
         expect(await screen.findByText(/not available on this engine/i)).toBeDefined();
@@ -123,7 +123,9 @@ describe('agent Files tab', { timeout: TIMEOUT_MS }, () => {
         await screen.findByRole('link', { name: 'Note 001.md' });
         await app.user.type(screen.getByLabelText('Search files'), 'zzz');
         expect(await screen.findByText('No files match your filters', {}, { timeout: 5_000 })).toBeDefined();
-        await app.user.click(screen.getByRole('button', { name: 'Clear filters' }));
+        // The filter bar and the empty list both offer the way back; either clears the same URL state.
+        const clear = screen.getAllByRole('button', { name: 'Clear filters' }).at(-1);
+        await app.user.click(clear as HTMLElement);
         expect(await screen.findByRole('link', { name: 'Note 001.md' })).toBeDefined();
     });
 });
@@ -132,9 +134,9 @@ describe('knowledge at a glance', { timeout: TIMEOUT_MS }, () => {
     it('counts files by purpose, links scan problems and lists the latest outputs', async () => {
         const engine = createFilesEngine();
         renderWithProviders({ path: '/agents/agent-ada', engineApi: engine.client });
-        const card = await screen.findByRole('region', { name: 'Knowledge at a glance' }, { timeout: CARD_LOAD_MS });
+        const card = await screen.findByRole('region', { name: 'Files' }, { timeout: CARD_LOAD_MS });
         const outputs = await within(card).findByRole('link', { name: HOSTILE_FILE_NAME });
-        expect(outputs.getAttribute('href')).toBe(`/agents/agent-ada/files?file=${FILE_IDS.hostile}`);
+        expect(outputs.getAttribute('href')).toBe(`/files?file=${FILE_IDS.hostile}`);
         expect(within(card).getByText('Knowledge').nextElementSibling?.textContent).toBe('2');
         expect(within(card).getByText('Output').nextElementSibling?.textContent).toBe('4');
         const problems = within(card).getByRole('link', { name: /1 file needs attention/ });
@@ -142,12 +144,12 @@ describe('knowledge at a glance', { timeout: TIMEOUT_MS }, () => {
         expect(engine.spies.stats).toHaveBeenCalledWith({ agentId: 'agent-ada' }, expect.anything());
     });
 
-    it('says when an agent has no scan problems and no outputs', async () => {
+    it('leaves out the latest outputs when the agent has none, and keeps its scan problem', async () => {
         const engine = createFilesEngine();
         renderWithProviders({ path: '/agents/agent-grace', engineApi: engine.client });
-        const card = await screen.findByRole('region', { name: 'Knowledge at a glance' }, { timeout: CARD_LOAD_MS });
-        expect(await within(card).findByText('This agent has produced no files yet.')).toBeDefined();
-        expect(within(card).getByText(/1 file needs attention/)).toBeDefined();
+        const card = await screen.findByRole('region', { name: 'Files' }, { timeout: CARD_LOAD_MS });
+        expect(await within(card).findByText(/1 file needs attention/)).toBeDefined();
+        expect(within(card).queryByText('Latest outputs')).toBeNull();
     });
 });
 
@@ -166,7 +168,7 @@ describe('without file scanning', { timeout: TIMEOUT_MS }, () => {
             ],
         });
         renderWithProviders({ path: '/agents/agent-ada', engineApi: engine.client, features: [...FEATURES, probe] });
-        const card = await screen.findByRole('region', { name: 'Knowledge at a glance' }, { timeout: CARD_LOAD_MS });
+        const card = await screen.findByRole('region', { name: 'Files' }, { timeout: CARD_LOAD_MS });
         expect(await within(card).findByRole('link', { name: HOSTILE_FILE_NAME })).toBeDefined();
         expect(within(card).queryByText(/needs attention|no scan problems/i)).toBeNull();
         expect(screen.getByText('attention 0')).toBeDefined();

@@ -48,7 +48,7 @@ describe('agent status provider', { timeout: TIMEOUT_MS }, () => {
 
     it('derives each agent’s badge from its run counts and follows run.changed events', async () => {
         const engine = createRunsEngine();
-        renderWithProviders({ path: '/agents', engineApi: engine.client });
+        renderWithProviders({ path: '/agents?view=table', engineApi: engine.client });
         expect(await within(await rowOf('Ada')).findByText('Working')).toBeDefined();
         expect(await within(await rowOf('Grace')).findByText('Waiting')).toBeDefined();
         expect(await within(await rowOf('Iris')).findByText('Failed')).toBeDefined();

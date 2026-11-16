@@ -1,6 +1,6 @@
 import type { Agent, ReadChat } from '@ptbk/engine-api';
 import { Button, IconButton, RelativeTime, StatusPill, tintStyle, viewTransitionStyle } from '@ptbk/ui';
-import { ArrowUpRight, ListTodo, MessageSquare, X } from 'lucide-react';
+import { Activity, ArrowUpRight, ListTodo, MessageSquare, X } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 
@@ -14,6 +14,7 @@ import { chatName } from '../chat/thread-list';
 import { useNewChat } from '../chat/use-new-chat';
 import { EntityChip } from '../entities/entity-chip';
 import { chatPreview } from '../home/chat-preview';
+import { runTitle } from '../runs/run-format';
 import { usePermissions } from '../session/use-permissions';
 import { splitTaskName } from '../tasks/task-name';
 import { TaskStateBadge } from '../tasks/task-state';
@@ -168,6 +169,8 @@ export function AgentPanel({ agent, activity, onClose }: AgentPanelProps) {
     const status = activityStatus(activity);
     const tint = agentColor(agent.profile.color, agent.id);
     const chats = activity.chats.slice(0, SHOWN_CHATS);
+    // A run of a task or a chat reply is already shown as that task or reply.
+    const looseRuns = activity.runs.filter((run) => (run.taskId ?? null) === null && run.chatId === null);
     return (
         <dialog
             ref={dialogRef}
@@ -233,12 +236,21 @@ export function AgentPanel({ agent, activity, onClose }: AgentPanelProps) {
                     </ButtonLink>
                 </div>
                 <PanelSection title={m.agent_panel_now()}>
-                    {activity.working.length === 0 ? (
+                    {activity.working.length === 0 && looseRuns.length === 0 ? (
                         <StatusLine activity={activity} withLastActive className="py-1 text-sm" />
                     ) : (
                         <ul className="soft-surface flex flex-col divide-y divide-hairline [--tint:var(--color-live)]">
                             {activity.working.map((entry) => (
                                 <WorkingRow key={entry.chat.id} entry={entry} />
+                            ))}
+                            {looseRuns.map((run) => (
+                                <li key={run.id} className="flex items-center gap-3 px-3 py-2.5">
+                                    <Activity aria-hidden className="size-4 shrink-0 text-text-muted" />
+                                    <span className="min-w-0 flex-1">
+                                        <EntityChip kind="run" id={run.id} name={runTitle(run)} />
+                                    </span>
+                                    {run.startedAt === null ? null : <Timer since={run.startedAt} />}
+                                </li>
                             ))}
                         </ul>
                     )}

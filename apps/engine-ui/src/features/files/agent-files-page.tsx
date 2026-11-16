@@ -165,7 +165,6 @@ export function AgentFilesPage() {
     return (
         <div className="flex flex-col gap-3">
             <FilterBar
-                label={m.files_search_label()}
                 search={{
                     label: m.files_search_label(),
                     placeholder: m.files_search_placeholder(),
@@ -173,6 +172,7 @@ export function AgentFilesPage() {
                     onChange: setText,
                     maxLength: 255,
                 }}
+                onClear={clear}
             />
             <Tabs
                 label={m.files_sections()}

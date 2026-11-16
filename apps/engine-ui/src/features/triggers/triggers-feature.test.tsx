@@ -194,14 +194,18 @@ describe('agent overview card', { timeout: TIMEOUT_MS }, () => {
         );
     });
 
-    it('says so when the agent has no triggers', async () => {
+    it('leaves the overview without a Triggers section when the agent has none', async () => {
         const seed = triggersSeed();
         const engine = createTriggersEngine({
             seed: { ...seed, agents: [...(seed.agents ?? []), { id: 'agent-grace', source: 'Grace\nPERSONA Idle' }] },
         });
         renderWithProviders({ path: '/agents/agent-grace', engineApi: engine.client });
-        const card = await screen.findByRole('region', { name: 'Triggers' });
-        expect(await within(card).findByText('No triggers yet.')).toBeDefined();
+        await screen.findByRole('region', { name: 'Details' });
+        // Neither the section nor its loading line stays once the engine says there are none.
+        await waitFor(() => {
+            expect(screen.queryByLabelText('Triggers')).toBeNull();
+        });
+        expect(screen.queryByRole('region', { name: 'Triggers' })).toBeNull();
     });
 });
 
