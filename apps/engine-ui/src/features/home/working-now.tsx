@@ -12,7 +12,7 @@ import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
 import { StepLine } from '../chat/references/agent-hovercard';
 import { formatClock, useElapsedMs } from '../chat/references/elapsed';
-import { chatName } from '../chat/thread-list';
+import { chatName } from '../chat/chat-name';
 import { EntityChip } from '../entities/entity-chip';
 import { runTitle } from '../runs/run-format';
 import { runListQueryOptions } from '../runs/runs-queries';

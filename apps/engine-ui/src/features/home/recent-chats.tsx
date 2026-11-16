@@ -5,41 +5,13 @@ import { MessageSquare } from 'lucide-react';
 
 import { Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
-import { AgentAvatar } from '../agents/agent-avatar';
 import { useEngineApi } from '../../app/engine-api-context';
 import { chatEntriesQueryOptions } from '../chat/chat-queries';
-import { chatName } from '../chat/thread-list';
+import { ChatAvatars } from '../chat/chat-avatars';
+import { chatName } from '../chat/chat-name';
 import { chatPreview } from './chat-preview';
-import { useAgentLook } from './use-agent-look';
 
 export const RECENT_CHAT_COUNT = 6;
-const AVATARS = 3;
-
-function MemberAvatar({ agentKey, name }: { readonly agentKey: string; readonly name: string }) {
-    const look = useAgentLook(agentKey);
-    return (
-        <AgentAvatar name={name} agentKey={agentKey} profile={look.profile} size="xs" className="ring-2 ring-surface" />
-    );
-}
-
-/** The thread's agents as overlapping avatars, first joined first; people are implied. */
-function ChatAvatars({ chat }: { readonly chat: ReadChat }) {
-    const agents = chat.members.filter((member) => member.kind === 'agent').slice(0, AVATARS);
-    if (agents.length === 0) {
-        return (
-            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-neutral-soft text-text-muted">
-                <MessageSquare aria-hidden className="size-3.5" />
-            </span>
-        );
-    }
-    return (
-        <span className="flex w-10 shrink-0 -space-x-2">
-            {agents.map((agent) => (
-                <MemberAvatar key={agent.key} agentKey={agent.key} name={agent.name} />
-            ))}
-        </span>
-    );
-}
 
 function ChatRow({ chat }: { readonly chat: ReadChat }) {
     // Only what the thread already has in the cache: Home never fetches every thread's entries for a preview.
