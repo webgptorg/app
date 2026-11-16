@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `packages/ui`, `apps/engine-ui`, later `apps/dashboard` · **Milestone:** M5
 - **Depends on:** U-16
-- **Status:** in progress (phase 1 landed in #286; phases 2 and 3 open)
+- **Status:** done (#294)
 - **Spec:** —; ADRs: [0015](../../adr/0015-ui-architecture-and-design-system.md); brief: [ui.md](../../design/ui.md)
 
 ## Goal

@@ -9,6 +9,11 @@ export const buttonGallery: GalleryEntry = {
     title: 'Button',
     render: () => (
         <div className="flex flex-col gap-3">
+            <div>
+                <Button variant="primary" size="lg">
+                    {'primary large, the single action of a page'}
+                </Button>
+            </div>
             {VARIANTS.map((variant) => (
                 <div key={variant} className="flex flex-wrap items-center gap-3">
                     <Button variant={variant}>{variant}</Button>

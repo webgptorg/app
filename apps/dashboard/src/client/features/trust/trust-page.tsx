@@ -15,10 +15,12 @@ export function TrustPage() {
             <main
                 id={MAIN_ID}
                 tabIndex={-1}
-                className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 outline-none"
+                className="mx-auto flex w-full max-w-3xl flex-col px-4 py-10 outline-none md:py-16"
             >
-                <h1 className="font-display text-2xl font-semibold">{m.trust_title()}</h1>
-                <TrustExplanation />
+                <div className="flex max-w-[65ch] flex-col gap-6">
+                    <h1 className="text-3xl font-semibold tracking-display">{m.trust_title()}</h1>
+                    <TrustExplanation />
+                </div>
             </main>
             <PublicFooter width="narrow" />
         </div>

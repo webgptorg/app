@@ -1,4 +1,12 @@
-import { Badge, Button, Card, ConfirmDialog, createDataTableColumnHelper, DataTable, RelativeTime } from '@ptbk/ui';
+import {
+    Button,
+    ConfirmDialog,
+    createDataTableColumnHelper,
+    DataTable,
+    RelativeTime,
+    Section,
+    StatusPill,
+} from '@ptbk/ui';
 import { useLocale as useFormatters, useToast } from '@ptbk/ui';
 import type { DataTableColumnDef } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -49,7 +57,7 @@ export function SessionsCard() {
                 header: m.session_column_session(),
                 cell: (context) =>
                     context.row.original.current ? (
-                        <Badge tone="accent">{m.session_current()}</Badge>
+                        <StatusPill tone="success">{m.session_current()}</StatusPill>
                     ) : (
                         m.session_other()
                     ),
@@ -75,8 +83,9 @@ export function SessionsCard() {
     );
 
     return (
-        <Card
+        <Section
             title={m.sessions_title()}
+            description={m.sessions_body()}
             actions={
                 <Button
                     variant="danger-ghost"
@@ -89,7 +98,6 @@ export function SessionsCard() {
                 </Button>
             }
         >
-            <p className="text-sm text-text-muted">{m.sessions_body()}</p>
             <DataTable<SessionSummary>
                 caption={m.sessions_title()}
                 mode="client"
@@ -123,6 +131,6 @@ export function SessionsCard() {
                 tone="danger"
                 loading={revokeAll.isPending}
             />
-        </Card>
+        </Section>
     );
 }

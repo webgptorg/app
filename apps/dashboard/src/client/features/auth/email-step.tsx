@@ -125,11 +125,11 @@ function SentState(props: {
     }, []);
     return (
         <div className="flex flex-col gap-4">
-            <MailCheck aria-hidden className="size-8 text-accent" />
-            <h1 ref={headingRef} tabIndex={-1} className="font-display text-2xl font-semibold outline-none">
+            <MailCheck aria-hidden className="size-6 text-text-muted" />
+            <h1 ref={headingRef} tabIndex={-1} className="text-2xl font-semibold tracking-display outline-none">
                 {m.email_sent_title()}
             </h1>
-            <div role="status" className="flex flex-col gap-4">
+            <div role="status" className="flex flex-col gap-4 text-sm">
                 <SentMessage purpose={props.purpose} email={props.state.email} />
                 {props.state.resent ? <p className="text-sm">{m.email_sent_again()}</p> : null}
             </div>
@@ -207,15 +207,19 @@ export function EmailStep(props: {
     }
 
     return (
-        <div className="flex flex-col gap-4">
-            <h1 className="font-display text-2xl font-semibold">{props.title}</h1>
-            {props.intro}
+        <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-2 text-sm">
+                <h1 className="text-2xl font-semibold tracking-display">{props.title}</h1>
+                {props.intro}
+            </div>
             <Form form={form} className="flex flex-col gap-4">
                 {state.failure === null ? null : <Banner tone="danger">{state.failure}</Banner>}
                 <FormField form={form} name="email" label={m.email_label()} required>
                     {({ text }) => <Input {...text} type="email" autoComplete="email" inputMode="email" />}
                 </FormField>
-                <FormSubmit form={form}>{props.submitLabel}</FormSubmit>
+                <FormSubmit form={form} size="lg">
+                    {props.submitLabel}
+                </FormSubmit>
             </Form>
             {props.footer}
         </div>

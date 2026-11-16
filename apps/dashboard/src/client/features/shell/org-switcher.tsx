@@ -71,10 +71,10 @@ function OrgMenu({ name }: { readonly name: string }) {
                     {...props}
                     type="button"
                     aria-label={m.org_switcher_for({ name })}
-                    className="flex min-w-0 cursor-pointer items-center gap-1 rounded-control px-1.5 py-1 text-sm font-medium hover:bg-hover motion-safe:transition-colors motion-safe:duration-(--motion-state)"
+                    className="flex h-8 min-w-0 cursor-pointer items-center gap-1 rounded-control px-2 text-sm font-medium hover:bg-hover motion-safe:transition-colors motion-safe:duration-(--motion-state)"
                 >
                     <span className="truncate">{name}</span>
-                    <ChevronsUpDown aria-hidden className="size-4 shrink-0 text-text-muted" />
+                    <ChevronsUpDown aria-hidden className="size-3.5 shrink-0 text-text-subtle" />
                 </button>
             )}
         />

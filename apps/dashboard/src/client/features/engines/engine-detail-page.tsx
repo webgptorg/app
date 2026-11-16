@@ -1,7 +1,17 @@
 import { deriveEngineFingerprint } from '@ptbk/protocol';
-import { Banner, Card, CodeText, EmptyState, ErrorState, ExternalLink, Skeleton, TrustMark, useLocale } from '@ptbk/ui';
+import {
+    Banner,
+    CodeText,
+    EmptyState,
+    ErrorState,
+    ExternalLink,
+    Section,
+    Skeleton,
+    TrustMark,
+    useLocale,
+} from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, ChevronRight, SearchX } from 'lucide-react';
+import { ChevronRight, SearchX } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { m } from '../../../paraglide/messages';
@@ -11,14 +21,16 @@ import { useApiClient } from '../../api/api-client-context';
 import { engineQuery, installGuideQuery, problemCode } from '../../api/queries';
 import { ButtonLink, Link } from '../../core/link';
 import { AbuseContactLink } from '../abuse/abuse-contact';
+import { Crumb, Page } from '../shell/page';
 import { useSession } from '../session/use-session';
 import { OpenTeamButton } from '../teams/open-team-button';
 import { ENGINE_STATUS_COMMAND, TROUBLESHOOTING_ANCHOR } from './engine-guide';
+import { EngineMark } from './engine-identity';
 import { cpuLoadLabel, modeLabel, updateStateLabel } from './engine-labels';
 import { canRename, RenameEngineButton } from './engine-name';
 import { EngineOpenLink } from './engine-open-link';
 import { EngineReachability } from './engine-reachability';
-import { EngineStatusBadge } from './engine-status-badge';
+import { EngineStatusPill } from './engine-status-pill';
 import { LastSeen, useNowFor } from './engine-values';
 import { EngineActionMenu } from './revoke-engine';
 import { useEngineTeam } from './use-engine-name';
@@ -26,23 +38,17 @@ import { useEngineTeam } from './use-engine-name';
 const READ_PERMISSION = 'engine.read';
 const REVOKE_PERMISSION = 'engine.revoke';
 
-function BackLink() {
-    return (
-        <Link to="/engines" variant="standalone" className="inline-flex items-center gap-1 self-start text-sm">
-            <ArrowLeft aria-hidden className="size-4" />
-            {m.engine_back()}
-        </Link>
-    );
-}
-
-/** A read-only list of facts, label beside value at every width; every value is plain text from our API. */
+/**
+ * Read-only facts, a muted label before its value as in the peek cards; every value is plain text from our API. On a
+ * phone the label sits over its value, so long IDs and hostnames get the whole width.
+ */
 function Fields(props: { readonly fields: readonly (readonly [string, ReactNode])[] }) {
     return (
-        <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-6 gap-y-3 sm:grid-cols-[minmax(10rem,max-content)_1fr]">
+        <dl className="grid grid-cols-1 gap-y-3 text-sm sm:grid-cols-[minmax(8rem,max-content)_minmax(0,1fr)] sm:gap-x-8 sm:gap-y-2.5">
             {props.fields.map(([label, value]) => (
                 <div key={label} className="contents">
-                    <dt className="text-sm text-text-muted">{label}</dt>
-                    <dd className="min-w-0 text-sm">{value}</dd>
+                    <dt className="text-text-muted">{label}</dt>
+                    <dd className="-mt-2.5 min-w-0 tabular-nums sm:mt-0">{value}</dd>
                 </div>
             ))}
         </dl>
@@ -119,51 +125,30 @@ function StatusNotice(props: { readonly engine: EngineView }) {
     return engine.status === 'offline' ? <OfflineHint /> : null;
 }
 
+/** When it was last heard from, what it runs and how browsers reach it: the line under the title. */
+function SummaryLine(props: { readonly engine: EngineView }) {
+    const { engine } = props;
+    const now = useNowFor(engine);
+    const update = engine.heartbeat?.update ?? 'none';
+    return (
+        <span className="flex flex-wrap items-center gap-x-4 gap-y-1 tabular-nums">
+            <EngineStatusPill engine={engine} />
+            <span>
+                {m.engine_field_last_seen()} <LastSeen engine={engine} now={now} />
+            </span>
+            <span>
+                {m.engine_summary_version({ version: engine.heartbeat?.version ?? engine.registeredVersion })}
+                {update === 'none' ? null : ` · ${updateStateLabel(update)}`}
+            </span>
+            <EngineReachability engine={engine} />
+        </span>
+    );
+}
+
 /**
  * Name, status, when it was last heard from and what it runs, with the one thing to do: open it. Someone in the team
  * opens with a ticket, as on the list: the plain link lands a person not yet approved at a sign-in they cannot pass.
  */
-function Summary(props: { readonly engine: EngineView; readonly canRename: boolean; readonly canRevoke: boolean }) {
-    const { engine } = props;
-    const now = useNowFor(engine);
-    const { team, givenName } = useEngineTeam(engine.engineId, engine.hostname);
-    const name = givenName ?? engineLabel(engine);
-    const update = engine.heartbeat?.update ?? 'none';
-    return (
-        <div className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-                <h1
-                    className={`${givenName === null && engine.label === null ? 'font-mono' : 'font-display'} text-2xl font-semibold`}
-                >
-                    {name}
-                </h1>
-                <EngineStatusBadge engine={engine} />
-                {props.canRename && givenName === null ? <RenameEngineButton engine={engine} /> : null}
-            </div>
-            <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-muted">
-                <span>
-                    {m.engine_field_last_seen()} <LastSeen engine={engine} now={now} />
-                </span>
-                <span>
-                    {m.engine_summary_version({ version: engine.heartbeat?.version ?? engine.registeredVersion })}
-                    {update === 'none' ? null : ` · ${updateStateLabel(update)}`}
-                </span>
-                <EngineReachability engine={engine} />
-            </p>
-            {engine.status === 'suspended' ? null : (
-                <div className="flex items-center gap-2">
-                    {team?.isMember === true ? (
-                        <OpenTeamButton team={team} variant="primary" />
-                    ) : (
-                        <EngineOpenLink name={name} hostname={engine.hostname} variant="primary" size="md" prominent />
-                    )}
-                    {props.canRevoke ? <EngineActionMenu engine={engine} name={name} /> : null}
-                </div>
-            )}
-        </div>
-    );
-}
-
 function EngineDetail(props: {
     readonly engine: EngineView;
     readonly canRevoke: boolean;
@@ -171,73 +156,94 @@ function EngineDetail(props: {
 }) {
     const { engine } = props;
     const formatters = useLocale();
-    const { givenName } = useEngineTeam(engine.engineId, engine.hostname);
+    const { team, givenName } = useEngineTeam(engine.engineId, engine.hostname);
     const name = givenName ?? engineLabel(engine);
     return (
-        <>
-            <Summary engine={engine} canRename={props.canRename} canRevoke={props.canRevoke} />
+        <Page
+            title={
+                <span className={givenName === null && engine.label === null ? 'font-mono' : undefined}>{name}</span>
+            }
+            leading={<EngineMark engineId={engine.engineId} name={name} size="md" decorative />}
+            breadcrumbs={[
+                <Crumb key="engines" to="/engines">
+                    {m.nav_teams()}
+                </Crumb>,
+            ]}
+            description={<SummaryLine engine={engine} />}
+            actions={
+                <>
+                    {props.canRename && givenName === null ? <RenameEngineButton engine={engine} /> : null}
+                    {engine.status === 'suspended' ? null : team?.isMember === true ? (
+                        <OpenTeamButton team={team} variant="primary" size="md" />
+                    ) : (
+                        <EngineOpenLink name={name} hostname={engine.hostname} variant="primary" size="md" prominent />
+                    )}
+                    {props.canRevoke && engine.status !== 'suspended' ? (
+                        <EngineActionMenu engine={engine} name={name} />
+                    ) : null}
+                </>
+            }
+        >
             <StatusNotice engine={engine} />
-            <Card title={m.engine_identity_title()}>
-                <div className="flex flex-col gap-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                        <TrustMark
-                            fingerprint={deriveEngineFingerprint(engine.engineId)}
-                            state="verified"
-                            size="lg"
-                            className="shrink-0"
-                            label={m.engines_fingerprint_label({ name })}
-                        />
-                        <p className="text-sm">{m.engine_fingerprint_body()}</p>
-                    </div>
-                    <Fields
-                        fields={[
-                            [
-                                m.engine_field_id(),
-                                <CodeText
-                                    value={engine.engineId}
-                                    copyable
-                                    copyLabel={m.engines_copy_id({ engineId: shortEngineId(engine.engineId) })}
-                                />,
-                            ],
-                            [
-                                m.engine_field_hostname(),
-                                <CodeText
-                                    value={engine.hostname}
-                                    kind="hostname"
-                                    copyable
-                                    copyLabel={m.engines_copy_hostname()}
-                                />,
-                            ],
-                            ...(engine.customHostnames.length === 0
-                                ? []
-                                : [
-                                      [
-                                          m.engine_field_custom_hostnames(),
-                                          <ul className="flex flex-col gap-1">
-                                              {engine.customHostnames.map((hostname) => (
-                                                  <li key={hostname} className="font-mono">
-                                                      {hostname}
-                                                  </li>
-                                              ))}
-                                          </ul>,
-                                      ] as const,
-                                  ]),
-                            [m.engine_field_mode(), modeLabel(engine.mode)],
-                            [
-                                m.engine_field_registered_version(),
-                                <span className="font-mono">{engine.registeredVersion}</span>,
-                            ],
-                            [m.engine_field_created(), formatters.formatDateTime(new Date(engine.createdAt))],
-                        ]}
+            <Section title={m.engine_identity_title()} divided={false}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                    <TrustMark
+                        fingerprint={deriveEngineFingerprint(engine.engineId)}
+                        state="verified"
+                        size="lg"
+                        className="shrink-0"
+                        label={m.engines_fingerprint_label({ name })}
                     />
+                    <p className="max-w-prose text-sm text-text-muted">{m.engine_fingerprint_body()}</p>
                 </div>
-            </Card>
-            <Card title={m.engine_heartbeat_title()}>
+                <Fields
+                    fields={[
+                        [
+                            m.engine_field_id(),
+                            <CodeText
+                                value={engine.engineId}
+                                copyable
+                                copyLabel={m.engines_copy_id({ engineId: shortEngineId(engine.engineId) })}
+                            />,
+                        ],
+                        [
+                            m.engine_field_hostname(),
+                            <CodeText
+                                value={engine.hostname}
+                                kind="hostname"
+                                copyable
+                                copyLabel={m.engines_copy_hostname()}
+                            />,
+                        ],
+                        ...(engine.customHostnames.length === 0
+                            ? []
+                            : [
+                                  [
+                                      m.engine_field_custom_hostnames(),
+                                      <ul className="flex flex-col gap-1">
+                                          {engine.customHostnames.map((hostname) => (
+                                              <li key={hostname} className="font-mono">
+                                                  {hostname}
+                                              </li>
+                                          ))}
+                                      </ul>,
+                                  ] as const,
+                              ]),
+                        [m.engine_field_mode(), modeLabel(engine.mode)],
+                        [
+                            m.engine_field_registered_version(),
+                            <span className="font-mono">{engine.registeredVersion}</span>,
+                        ],
+                        [m.engine_field_created(), formatters.formatDateTime(new Date(engine.createdAt))],
+                    ]}
+                />
+            </Section>
+            <Section title={m.engine_heartbeat_title()}>
                 {engine.heartbeat === null ? (
-                    <p className="text-sm">{m.engine_heartbeat_none()}</p>
+                    <p className="text-sm text-text-muted">{m.engine_heartbeat_none()}</p>
                 ) : (
                     <details className="group flex flex-col gap-3">
-                        <summary className="inline-flex cursor-pointer items-center gap-1 text-sm font-medium">
+                        <summary className="inline-flex cursor-pointer items-center gap-1 rounded-small text-sm font-medium">
                             <ChevronRight
                                 aria-hidden
                                 className="size-4 group-open:rotate-90 motion-safe:transition-transform"
@@ -250,8 +256,8 @@ function EngineDetail(props: {
                         </div>
                     </details>
                 )}
-            </Card>
-        </>
+            </Section>
+        </Page>
     );
 }
 
@@ -319,10 +325,5 @@ export function EngineDetailPage(props: { readonly engineId: string | null }) {
             </div>
         );
     }
-    return (
-        <div className="flex flex-col gap-6">
-            <BackLink />
-            {content}
-        </div>
-    );
+    return content;
 }

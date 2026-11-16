@@ -1,4 +1,12 @@
-import { Badge, Button, Card, ConfirmDialog, createDataTableColumnHelper, DataTable, RelativeTime } from '@ptbk/ui';
+import {
+    Button,
+    ConfirmDialog,
+    createDataTableColumnHelper,
+    DataTable,
+    RelativeTime,
+    Section,
+    StatusPill,
+} from '@ptbk/ui';
 import { useLocale as useFormatters } from '@ptbk/ui';
 import type { DataTableColumnDef } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
@@ -71,10 +79,10 @@ export function PasskeysCard() {
                             <span className="flex flex-wrap items-center gap-2">
                                 <span className="font-medium">{passkeyName(passkey)}</span>
                                 {passkey.counterRegressedAt === null ? null : (
-                                    <Badge tone="danger">{m.passkey_flagged()}</Badge>
+                                    <StatusPill tone="danger">{m.passkey_flagged()}</StatusPill>
                                 )}
                             </span>
-                            <span className="text-sm text-text-muted">
+                            <span className="text-xs text-text-muted tabular-nums">
                                 {m.passkey_created_on({ date: formatters.formatDate(new Date(passkey.createdAt)) })}
                                 <span aria-hidden="true"> · </span>
                                 {passkey.lastUsedAt === null ? (
@@ -125,8 +133,9 @@ export function PasskeysCard() {
     );
 
     return (
-        <Card
+        <Section
             title={m.passkeys_title()}
+            description={m.passkeys_body()}
             actions={
                 <Button
                     variant="primary"
@@ -136,12 +145,11 @@ export function PasskeysCard() {
                         add.mutate();
                     }}
                 >
-                    <Plus aria-hidden className="me-1 size-4" />
+                    <Plus aria-hidden className="size-4" />
                     {m.passkey_add()}
                 </Button>
             }
         >
-            <p className="text-sm text-text-muted">{m.passkeys_body()}</p>
             <DataTable<PasskeyView>
                 caption={m.passkeys_title()}
                 mode="client"
@@ -177,6 +185,6 @@ export function PasskeysCard() {
                 tone="danger"
                 loading={remove.isPending}
             />
-        </Card>
+        </Section>
     );
 }

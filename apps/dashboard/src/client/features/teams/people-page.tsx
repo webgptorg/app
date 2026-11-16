@@ -1,4 +1,14 @@
-import { ActionMenu, Badge, Banner, Button, Card, ConfirmDialog, ErrorState, Skeleton } from '@ptbk/ui';
+import {
+    ActionMenu,
+    Banner,
+    Button,
+    ConfirmDialog,
+    ErrorState,
+    Monogram,
+    Section,
+    Skeleton,
+    StatusPill,
+} from '@ptbk/ui';
 import type { MenuEntry } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { UserPlus } from 'lucide-react';
@@ -10,6 +20,7 @@ import { useApiClient } from '../../api/api-client-context';
 import { dataOrThrow, problemCode } from '../../api/queries';
 import { useAppMutation } from '../../core/mutations';
 import { useSession } from '../session/use-session';
+import { Page } from '../shell/page';
 import { InviteDialog } from './invite-dialog';
 import { roleLabel, type OrgRole } from './team-labels';
 import { peopleQuery, teamKeys, teamsQuery } from './team-queries';
@@ -18,6 +29,8 @@ const READ = 'org.members.read';
 const MANAGE = 'org.members.manage';
 const ROLES = 'org.roles.manage';
 const ROLE_ORDER: readonly OrgRole[] = ['owner', 'admin', 'member'];
+const ROW = 'flex items-center gap-3 py-2.5';
+const LIST = 'divide-y divide-hairline';
 
 function teamNames(teamIds: readonly string[], teams: readonly TeamView[] | undefined): string {
     const names = (teams ?? []).filter((team) => teamIds.includes(team.teamId)).map((team) => team.name);
@@ -90,16 +103,17 @@ function MemberRow(props: { readonly member: OrgMemberView; readonly teams: read
             : []),
     ];
     return (
-        <li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
+        <li className={ROW}>
+            <Monogram name={member.email} />
             <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate">
+                <span className="truncate font-medium">
                     {member.email}
-                    {self ? <span className="text-text-muted"> · {m.people_you()}</span> : null}
+                    {self ? <span className="font-normal text-text-muted"> · {m.people_you()}</span> : null}
                 </span>
-                <span className="truncate text-sm text-text-muted">{teamNames(member.teamIds, props.teams)}</span>
+                <span className="truncate text-xs text-text-muted">{teamNames(member.teamIds, props.teams)}</span>
             </span>
-            <Badge tone="neutral">{roleLabel(member.role)}</Badge>
-            <span className="w-9">
+            <span className="shrink-0 text-sm text-text-muted">{roleLabel(member.role)}</span>
+            <span className="flex w-8 shrink-0 justify-end">
                 <ActionMenu
                     items={items}
                     variant="ghost"
@@ -164,13 +178,16 @@ function InviteRow(props: { readonly invite: InviteView }) {
         },
     ];
     return (
-        <li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
+        <li className={ROW}>
+            <Monogram name={invite.email} />
             <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate">{invite.email}</span>
-                <span className="text-sm text-text-muted">{roleLabel(invite.role)}</span>
+                <span className="truncate font-medium">{invite.email}</span>
+                <span className="truncate text-xs text-text-muted">{roleLabel(invite.role)}</span>
             </span>
-            <Badge tone="neutral">{m.team_state_invited()}</Badge>
-            <span className="w-9">
+            <StatusPill tone="waiting" className="shrink-0">
+                {m.team_state_invited()}
+            </StatusPill>
+            <span className="flex w-8 shrink-0 justify-end">
                 <ActionMenu
                     items={items}
                     variant="ghost"
@@ -214,31 +231,31 @@ export function PeoplePage() {
         }
         return (
             <>
-                <Card title={m.people_members_title()}>
-                    <ul className="-mx-5 -mb-5 divide-y divide-divider border-t border-divider">
+                <Section title={m.people_members_title()} count={people.data.members.length} divided={false}>
+                    <ul className={LIST}>
                         {people.data.members.map((member) => (
                             <MemberRow key={member.userId} member={member} teams={teams.data} />
                         ))}
                     </ul>
-                </Card>
+                </Section>
                 {people.data.invites.length === 0 ? null : (
-                    <Card title={m.people_invites_title()}>
-                        <ul className="-mx-5 -mb-5 divide-y divide-divider border-t border-divider">
+                    <Section title={m.people_invites_title()} count={people.data.invites.length}>
+                        <ul className={LIST}>
                             {people.data.invites.map((invite) => (
                                 <InviteRow key={invite.inviteId} invite={invite} />
                             ))}
                         </ul>
-                    </Card>
+                    </Section>
                 )}
             </>
         );
     }
 
     return (
-        <div className="flex flex-col gap-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <h1 className="font-display text-2xl font-semibold">{m.people_title()}</h1>
-                {session.activeOrg.permissions.includes(MANAGE) ? (
+        <Page
+            title={m.people_title()}
+            actions={
+                session.activeOrg.permissions.includes(MANAGE) ? (
                     <Button
                         variant="primary"
                         onClick={() => {
@@ -248,8 +265,9 @@ export function PeoplePage() {
                         <UserPlus aria-hidden className="size-4" />
                         {m.invite_open()}
                     </Button>
-                ) : null}
-            </div>
+                ) : undefined
+            }
+        >
             {content()}
             <InviteDialog
                 open={inviting}
@@ -257,6 +275,6 @@ export function PeoplePage() {
                     setInviting(false);
                 }}
             />
-        </div>
+        </Page>
     );
 }

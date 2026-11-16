@@ -22,6 +22,7 @@ import { useApiClient } from '../../../api/api-client-context';
 import { adminEngineQuery, dataOrThrow, problemCode, queryKeys } from '../../../api/queries';
 import { useAppMutation } from '../../../core/mutations';
 import { Link } from '../../../core/link';
+import { Page } from '../../shell/page';
 
 function StatusBadge(props: { readonly engine: AdminEngineView }) {
     switch (props.engine.suspendedBy) {
@@ -137,20 +138,17 @@ function EngineFacts(props: { readonly engine: AdminEngineView }) {
 export function AdminEnginePage(props: { readonly engineId: string }) {
     const api = useApiClient();
     const engine = useQuery(adminEngineQuery(api, props.engineId));
-    const heading = <h1 className="font-display text-2xl font-semibold">{m.admin_engine_title()}</h1>;
 
     if (problemCode(engine.error) === 'not-found') {
         return (
-            <div className="flex flex-col gap-6">
-                {heading}
+            <Page title={m.admin_engine_title()}>
                 <Banner tone="warning">{m.admin_engine_not_found()}</Banner>
-            </div>
+            </Page>
         );
     }
     if (engine.isError) {
         return (
-            <div className="flex flex-col gap-6">
-                {heading}
+            <Page title={m.admin_engine_title()}>
                 <ErrorState
                     message={m.admin_engine_load_failed()}
                     retrying={engine.isFetching}
@@ -158,21 +156,19 @@ export function AdminEnginePage(props: { readonly engineId: string }) {
                         void engine.refetch();
                     }}
                 />
-            </div>
+            </Page>
         );
     }
     if (engine.data === undefined) {
         return (
-            <div className="flex flex-col gap-6">
-                {heading}
+            <Page title={m.admin_engine_title()}>
                 <Skeleton className="h-40" />
-            </div>
+            </Page>
         );
     }
     const view = engine.data;
     return (
-        <div className="flex flex-col gap-6">
-            {heading}
+        <Page title={m.admin_engine_title()}>
             <Card>
                 <EngineFacts engine={view} />
             </Card>
@@ -188,6 +184,6 @@ export function AdminEnginePage(props: { readonly engineId: string }) {
                     direction={view.status === 'active' ? 'suspend' : 'unsuspend'}
                 />
             )}
-        </div>
+        </Page>
     );
 }

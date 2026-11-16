@@ -16,7 +16,7 @@ const SECTIONS = [
 export function TrustExplanation() {
     return (
         <div className="flex flex-col gap-5">
-            <p>{m.trust_intro()}</p>
+            <p className="text-base text-text-muted">{m.trust_intro()}</p>
             {SECTIONS.map((section) => (
                 <section key={section.id} className="flex flex-col gap-1" data-trust-section={section.id}>
                     <h2 className="font-semibold">{section.title()}</h2>

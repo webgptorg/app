@@ -10,6 +10,7 @@ import { useApiClient } from '../../api/api-client-context';
 import { adminBillingQuery } from '../../api/queries';
 import { useBrowser } from '../../core/browser';
 import { STATUS_LABELS, STATUS_TONES } from '../billing/billing-labels';
+import { Page } from '../shell/page';
 
 const columns = createDataTableColumnHelper<ProblemOrganization>();
 
@@ -70,9 +71,7 @@ export function AdminBillingPage() {
     );
 
     return (
-        <div className="flex flex-col gap-6">
-            <h1 className="font-display text-2xl font-semibold">{m.admin_billing_title()}</h1>
-            <p className="text-sm text-text-muted">{m.admin_billing_body()}</p>
+        <Page title={m.admin_billing_title()} description={m.admin_billing_body()}>
             <DataTable<ProblemOrganization>
                 caption={m.admin_billing_title()}
                 mode="client"
@@ -93,6 +92,6 @@ export function AdminBillingPage() {
                 empty={{ title: m.admin_billing_empty_title(), description: m.admin_billing_empty_body() }}
                 skeletonRows={2}
             />
-        </div>
+        </Page>
     );
 }

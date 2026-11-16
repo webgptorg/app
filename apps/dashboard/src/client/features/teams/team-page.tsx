@@ -1,8 +1,19 @@
-import { ActionMenu, Badge, Banner, Button, Card, ConfirmDialog, EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
-import type { MenuEntry } from '@ptbk/ui';
+import {
+    ActionMenu,
+    Avatar,
+    Banner,
+    Button,
+    ConfirmDialog,
+    EmptyState,
+    ErrorState,
+    Section,
+    Skeleton,
+    StatusPill,
+} from '@ptbk/ui';
+import type { MenuEntry, StatusTone } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, SearchX, UserPlus } from 'lucide-react';
+import { ChevronRight, SearchX, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
@@ -17,10 +28,12 @@ import {
 import type { TeamName } from '../../../shared/team-name';
 import { useApiClient } from '../../api/api-client-context';
 import { dataOrThrow, enginesQuery, problemCode, queryKeys } from '../../api/queries';
-import { ButtonLink, Link } from '../../core/link';
+import { ButtonLink } from '../../core/link';
 import { useAppMutation } from '../../core/mutations';
-import { EngineStatusBadge } from '../engines/engine-status-badge';
+import { engineDisplayName, EngineMark } from '../engines/engine-identity';
+import { EngineStatusPill } from '../engines/engine-status-pill';
 import { ceremonyFailureMessage } from '../passkeys/ceremony-messages';
+import { Crumb, Page } from '../shell/page';
 import { useSession } from '../session/use-session';
 import { StepUpFailedError, useStepUp } from '../step-up/step-up';
 import { InviteDialog } from './invite-dialog';
@@ -85,10 +98,10 @@ function rows(
     ];
 }
 
-const STATE_TONES: Readonly<Record<PersonState, 'neutral' | 'info' | 'success' | 'warning'>> = {
+const STATE_TONES: Readonly<Record<PersonState, StatusTone>> = {
     invited: 'neutral',
     'not-opened': 'neutral',
-    waiting: 'info',
+    waiting: 'waiting',
     'has-access': 'success',
     removing: 'warning',
     refused: 'warning',
@@ -133,14 +146,19 @@ function PersonRow(props: {
                   },
               ];
     return (
-        <li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
-            <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate">{row.email}</span>
-                <span className="text-sm text-text-muted">{roleLabel(row.role)}</span>
-                {row.note === undefined ? null : <span className="text-sm">{row.note}</span>}
+        <li className="flex items-center gap-3 py-2.5">
+            <Avatar name={row.email} />
+            <span className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
+                <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="[overflow-wrap:anywhere]">{row.email}</span>
+                    <span className="text-xs text-text-muted">{roleLabel(row.role)}</span>
+                    {row.note === undefined ? null : <span className="text-xs">{row.note}</span>}
+                </span>
+                <StatusPill tone={STATE_TONES[row.state]} className="self-start sm:self-center">
+                    {personStateLabel(row.state)}
+                </StatusPill>
             </span>
-            <Badge tone={STATE_TONES[row.state]}>{personStateLabel(row.state)}</Badge>
-            <span className="w-9">
+            <span className="w-8 shrink-0">
                 <ActionMenu
                     items={items}
                     variant="ghost"
@@ -269,15 +287,17 @@ function TeamMenu(props: { readonly team: TeamView }) {
 
 function NotFound() {
     return (
-        <Card>
-            <EmptyState
-                icon={<SearchX aria-hidden className="size-6" />}
-                title={m.team_not_found_title()}
-                headingLevel={2}
-                description={m.team_not_found_body()}
-                action={<ButtonLink to="/engines">{m.team_back()}</ButtonLink>}
-            />
-        </Card>
+        <EmptyState
+            icon={<SearchX aria-hidden className="size-6" />}
+            title={m.team_not_found_title()}
+            headingLevel={1}
+            description={m.team_not_found_body()}
+            action={
+                <ButtonLink to="/engines" variant="primary">
+                    {m.engine_not_found_action()}
+                </ButtonLink>
+            }
+        />
     );
 }
 
@@ -307,18 +327,44 @@ export function TeamPage(props: { readonly teamId: string }) {
     }
     const view = team.data.team;
     const engine = engines.data?.find((candidate) => candidate.engineId === view.engineId);
+    const name = engineDisplayName(view, engine);
     const people = rows(team.data.members, team.data.removing, team.data.refused, team.data.invites);
     return (
-        <div className="flex flex-col gap-6">
-            <Link to="/engines" variant="standalone" className="inline-flex items-center gap-1 self-start text-sm">
-                <ArrowLeft aria-hidden className="size-4" />
-                {m.team_back()}
-            </Link>
-            <div className="flex flex-wrap items-center gap-3">
-                <h1 className="min-w-0 flex-1 font-display text-2xl font-semibold break-words">{view.name}</h1>
-                <OpenTeamButton team={view} variant="primary" />
-                <TeamMenu team={view} />
-            </div>
+        <Page
+            title={name}
+            leading={<EngineMark engineId={view.engineId} name={name} size="md" />}
+            breadcrumbs={[
+                <Crumb key="engines" to="/engines">
+                    {m.nav_teams()}
+                </Crumb>,
+            ]}
+            actions={
+                <>
+                    <OpenTeamButton team={view} variant="primary" size="md" />
+                    <TeamMenu team={view} />
+                </>
+            }
+            description={
+                view.engineId === null ? undefined : (
+                    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        {engine === undefined ? null : <EngineStatusPill engine={engine} />}
+                        {engine === undefined || engine.hostname === name ? null : (
+                            <span className="font-mono text-xs [overflow-wrap:anywhere]">{engine.hostname}</span>
+                        )}
+                        <ButtonLink
+                            to="/engines/$engineId"
+                            params={{ engineId: view.engineId }}
+                            variant="ghost"
+                            size="sm"
+                            className="-ms-2"
+                        >
+                            {m.team_engine_details()}
+                            <ChevronRight aria-hidden className="size-4" />
+                        </ButtonLink>
+                    </span>
+                )
+            }
+        >
             {view.engineId === null ? (
                 <Banner tone="info">
                     <span className="flex flex-wrap items-center gap-3">
@@ -330,22 +376,16 @@ export function TeamPage(props: { readonly teamId: string }) {
                         ) : null}
                     </span>
                 </Banner>
-            ) : (
-                <p className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
-                    {m.team_engine()}
-                    {engine === undefined ? null : <EngineStatusBadge engine={engine} />}
-                    <Link to="/engines/$engineId" params={{ engineId: view.engineId }}>
-                        {m.team_engine_details()}
-                    </Link>
-                </p>
-            )}
-            <Card
+            ) : null}
+            <Section
                 title={m.team_people_title()}
+                count={people.length}
+                {...(view.engineId === null ? {} : { description: m.team_access_note() })}
                 {...(permissions.includes(INVITE)
                     ? {
                           actions: (
                               <Button
-                                  variant="secondary"
+                                  variant="ghost"
                                   size="sm"
                                   onClick={() => {
                                       setInviting(true);
@@ -358,7 +398,7 @@ export function TeamPage(props: { readonly teamId: string }) {
                       }
                     : {})}
             >
-                <ul className="-mx-5 -mb-5 divide-y divide-divider border-t border-divider">
+                <ul className="divide-y divide-hairline">
                     {people.map((row) => (
                         <PersonRow
                             key={row.key}
@@ -372,8 +412,7 @@ export function TeamPage(props: { readonly teamId: string }) {
                         />
                     ))}
                 </ul>
-            </Card>
-            {view.engineId === null ? null : <p className="text-sm text-text-muted">{m.team_access_note()}</p>}
+            </Section>
             <InviteDialog
                 open={inviting}
                 teamIds={[view.teamId]}
@@ -381,6 +420,6 @@ export function TeamPage(props: { readonly teamId: string }) {
                     setInviting(false);
                 }}
             />
-        </div>
+        </Page>
     );
 }

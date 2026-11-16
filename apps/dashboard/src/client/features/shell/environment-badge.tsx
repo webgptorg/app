@@ -1,4 +1,4 @@
-import { Badge } from '@ptbk/ui';
+import { StatusPill } from '@ptbk/ui';
 
 import { m } from '../../../paraglide/messages';
 import { useEnvironment } from '../../api/queries';
@@ -11,8 +11,8 @@ export function EnvironmentBadge() {
     }
     // The org name gives way first: the badge is short, and a hidden environment is the costlier mistake.
     return (
-        <Badge tone="warning" className="shrink-0">
+        <StatusPill tone="warning" className="shrink-0">
             {m.environment_label({ environment: environment.data.environment })}
-        </Badge>
+        </StatusPill>
     );
 }
