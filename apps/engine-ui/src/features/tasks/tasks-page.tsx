@@ -264,7 +264,8 @@ function TaskFilters({
     const [text, setText] = useDebouncedSearch(search.q, (q) => {
         onChange({ q });
     });
-    const agents = useQuery(agentListQueryOptions(useEngineApi(), AGENT_LOOK_PARAMS));
+    const agentsVisible = useAllows({ permission: 'agents.read' });
+    const agents = useQuery({ ...agentListQueryOptions(useEngineApi(), AGENT_LOOK_PARAMS), enabled: agentsVisible });
     const fields: FilterBarField[] = [
         filterField.multiEnum<TaskStatusGroup>({
             id: 'status',

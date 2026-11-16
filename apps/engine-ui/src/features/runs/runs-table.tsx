@@ -22,6 +22,7 @@ import { useCursorPages } from '../../app/cursor-pages';
 import { useEngineApi } from '../../app/engine-api-context';
 import { Link } from '../../app/link';
 import { isInvalidCursor } from '../../app/list-errors';
+import { useAllows } from '../../app/registry/use-visible-features';
 import { readListParam, readOneParam, readRangeParams, writeListParam } from '../../app/search-filters';
 import { m } from '../../paraglide/messages';
 import { safeImageSource } from '../../security/safe-url';
@@ -66,9 +67,10 @@ function useAgents(enabled: boolean): {
     readonly list: readonly ReadAgent[];
     readonly byId: ReadonlyMap<string, ReadAgent>;
 } {
+    const allowed = useAllows({ permission: 'agents.read' });
     const query = useQuery({
         ...agentListQueryOptions(useEngineApi(), { limit: AGENT_FILTER_LIMIT, sort: 'name' }),
-        enabled,
+        enabled: enabled && allowed,
     });
     const list = query.data?.items ?? NO_AGENTS;
     const byId = useMemo(() => new Map(list.map((agent) => [agent.id, agent])), [list]);

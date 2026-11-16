@@ -2,7 +2,7 @@ import { KNOWN_CAPABILITIES, PERMISSIONS, RunId } from '@ptbk/engine-api';
 import type { Permission } from '@ptbk/engine-api';
 import { screen, waitFor, within } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderWithProviders } from '../../testing/render-with-providers';
@@ -247,6 +247,14 @@ describe('runs access', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
         const nav = screen.getByRole('navigation', { name: 'Main' });
         expect(within(nav).queryByRole('link', { name: 'Runs' })).toBeNull();
+    });
+
+    it('asks for no agents without agents.read', async () => {
+        const engine = createRunsEngine({ permissions: allBut('agents.read') });
+        const agents = vi.spyOn(engine.client.agents, 'list');
+        await renderRuns('/runs', engine);
+        await within(table()).findByText('Refund for order 1042');
+        expect(agents).not.toHaveBeenCalled();
     });
 
     it('offers no stop or retry in the row menu without runs.control', async () => {

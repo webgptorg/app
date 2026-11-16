@@ -206,6 +206,20 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         expect(screen.queryByRole('link', { name: 'Tasks' })).toBeNull();
     });
 
+    it('asks for no agents without agents.read, and still lists the tasks', async () => {
+        const engineApi = demoEngine({
+            member: {
+                id: 'member-owner',
+                role: 'member',
+                permissions: PERMISSIONS.filter((permission) => permission !== 'agents.read'),
+            },
+        });
+        const agents = vi.spyOn(engineApi.agents, 'list');
+        renderWithProviders({ path: '/tasks', engineApi });
+        await firstRow();
+        expect(agents).not.toHaveBeenCalled();
+    });
+
     it('pages the inventory and the history on with "Show more"', async () => {
         const seed = createDemoSeed(TEST_NOW);
         const tasks = seed.tasks ?? [];
