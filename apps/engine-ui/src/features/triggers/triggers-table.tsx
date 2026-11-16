@@ -123,15 +123,17 @@ function useTriggerColumns(acrossAgents: boolean, fromAgent: boolean): DataTable
                 header: m.triggers_column_next(),
                 enableSorting: false,
                 meta: { priority: 3, numeric: true, icon: <CalendarClock className={ICON} /> },
-                cell: ({ row }) => (
-                    <span className="text-text-muted tabular-nums">
-                        <RelativeFireTime
-                            at={row.original.nextFireAt}
-                            zone={triggerZone(row.original)}
-                            empty={m.trigger_value_none()}
-                        />
-                    </span>
-                ),
+                // Mail and webhooks fire when something arrives: no next run to show, not even a dash.
+                cell: ({ row }) =>
+                    row.original.kind !== 'schedule' && row.original.nextFireAt === null ? null : (
+                        <span className="text-text-muted tabular-nums">
+                            <RelativeFireTime
+                                at={row.original.nextFireAt}
+                                zone={triggerZone(row.original)}
+                                empty={m.trigger_value_none()}
+                            />
+                        </span>
+                    ),
             }),
             column.accessor('lastFiredAt', {
                 header: m.triggers_column_last(),
