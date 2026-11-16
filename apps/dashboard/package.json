@@ -30,6 +30,7 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "stripe": "catalog:",
+    "ucho-js": "0.4.2",
     "zod": "catalog:"
   },
   "devDependencies": {

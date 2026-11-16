@@ -8,6 +8,7 @@ import type { SessionView } from '../../../shared/api/routes';
 import { sessionQuery } from '../../api/queries';
 import { useApiClient } from '../../api/api-client-context';
 import { Link } from '../../core/link';
+import { FeedbackWidget } from '../feedback/feedback-widget';
 import { SessionProvider } from '../session/use-session';
 import { EnvironmentBadge } from './environment-badge';
 import { HeaderLanguageSwitch } from './language-switch';
@@ -37,6 +38,7 @@ export function AppShell() {
 export function AppFrame({ session, children }: { readonly session: SessionView; readonly children: ReactNode }) {
     return (
         <SessionProvider session={session}>
+            <FeedbackWidget />
             <div className="flex min-h-dvh flex-col bg-surface text-text">
                 <SkipLink targetId={MAIN_ID} />
                 <header className="sticky top-0 z-20 border-b border-hairline bg-[color-mix(in_oklab,var(--color-surface)_88%,transparent)] backdrop-blur-md">
