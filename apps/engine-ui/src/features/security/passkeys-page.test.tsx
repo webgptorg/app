@@ -84,9 +84,9 @@ function passkeysEngine(options: { permissions?: readonly Permission[]; stepUp?:
     });
 }
 
-const mine = () => screen.getByRole('heading', { name: 'Your passkeys' }).closest('section') as HTMLElement;
+const mine = () => screen.getByRole('heading', { name: /^Your passkeys( \d+)?$/ }).closest('section') as HTMLElement;
 const everyone = () =>
-    screen.getByRole('heading', { name: "Other members' passkeys" }).closest('section') as HTMLElement;
+    screen.getByRole('heading', { name: /^Other members' passkeys( \d+)?$/ }).closest('section') as HTMLElement;
 const rowOf = (container: HTMLElement, name: string) => within(container).getByText(name).closest('li') as HTMLElement;
 
 async function chooseRevoke(user: UserEvent, row: HTMLElement) {
@@ -98,9 +98,14 @@ describe('passkeys', { timeout: TIMEOUT_MS }, () => {
     it("lists the member's passkeys with their kind, marks the current one, and passes axe", async () => {
         const { container } = renderWithProviders({ path: '/security/passkeys', engineApi: passkeysEngine().client });
         await screen.findAllByText('MacBook');
-        expect(rowOf(mine(), 'MacBook').textContent).toContain('Built into a device, synced');
-        expect(rowOf(mine(), 'MacBook').textContent).toContain('Signed in with this one');
-        expect(rowOf(mine(), 'YubiKey').textContent).toContain('Security key or phone, this device only');
+        const macBook = rowOf(mine(), 'MacBook');
+        expect(macBook.textContent).toContain('Built into a device');
+        expect(within(macBook).getByText('synced')).toBeDefined();
+        expect(macBook.textContent).toContain('Signed in with this one');
+        const yubiKey = rowOf(mine(), 'YubiKey');
+        expect(yubiKey.textContent).toContain('Security key or phone');
+        expect(within(yubiKey).getByText('this device only')).toBeDefined();
+        expect(within(yubiKey).queryByText('Signed in with this one')).toBeNull();
         expect(within(mine()).queryByText('Jana phone')).toBeNull();
         await expectNoAxeViolations(container);
     });
@@ -202,7 +207,7 @@ describe('passkeys', { timeout: TIMEOUT_MS }, () => {
         const engine = passkeysEngine();
         const revoke = vi.spyOn(engine.client.passkeys, 'revoke');
         const { user } = renderWithProviders({ path: '/security/passkeys', engineApi: engine.client });
-        await screen.findByRole('heading', { name: "Other members' passkeys" });
+        await screen.findByRole('heading', { name: /^Other members' passkeys( \d+)?$/ });
         const jana = await within(everyone()).findByText('Jana phone');
         expect(within(everyone()).queryByText('MacBook')).toBeNull();
         await waitFor(() => {
@@ -219,7 +224,7 @@ describe('passkeys', { timeout: TIMEOUT_MS }, () => {
         const permissions = OWNER_PERMISSIONS.filter((permission) => permission !== 'members.manage');
         renderWithProviders({ path: '/security/passkeys', engineApi: passkeysEngine({ permissions }).client });
         await screen.findAllByText('MacBook');
-        expect(screen.queryByRole('heading', { name: "Other members' passkeys" })).toBeNull();
+        expect(screen.queryByRole('heading', { name: /^Other members' passkeys( \d+)?$/ })).toBeNull();
     });
 
     it('is reachable from the security page, also with no permission at all', async () => {

@@ -1,6 +1,7 @@
 import type { ReadSecurityOverview } from '@ptbk/engine-api';
 import { deriveEngineFingerprint } from '@ptbk/protocol';
-import { CodeText, ExternalLink, Skeleton, TrustMark } from '@ptbk/ui';
+import { CodeText, Skeleton, StatusDot, TrustMark } from '@ptbk/ui';
+import type { StatusTone } from '@ptbk/ui';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useLocation } from '@tanstack/react-router';
@@ -12,6 +13,7 @@ import { m } from '../../paraglide/messages';
 import { engineInfoQueryOptions } from '../engine/engine-queries';
 import { dashboardLinks } from '../shell/dashboard-links';
 import { Facts } from './facts';
+import { ExternalChip } from './security-parts';
 import { TRUST_PANEL_HASH } from './trust-panel-hash';
 
 interface Seal {
@@ -19,6 +21,7 @@ interface Seal {
     readonly label: string | undefined;
     /** The same verdict in words, so the seal's colour and motion never carry it alone. */
     readonly status: string;
+    readonly tone: StatusTone;
 }
 
 /**
@@ -27,7 +30,12 @@ interface Seal {
  */
 function sealOf(overview: UseQueryResult<ReadSecurityOverview> | null): Seal {
     if (overview === null)
-        return { verified: true, label: m.security_trust_identity(), status: m.security_trust_status_no_access() };
+        return {
+            verified: true,
+            label: m.security_trust_identity(),
+            status: m.security_trust_status_no_access(),
+            tone: 'neutral',
+        };
     const data = overview.data;
     if (data === undefined)
         return overview.isError
@@ -35,12 +43,13 @@ function sealOf(overview: UseQueryResult<ReadSecurityOverview> | null): Seal {
                   verified: false,
                   label: m.security_trust_unverified(),
                   status: m.security_trust_status_unavailable(),
+                  tone: 'neutral',
               }
-            : { verified: false, label: undefined, status: m.security_trust_status_checking() };
+            : { verified: false, label: undefined, status: m.security_trust_status_checking(), tone: 'waiting' };
     const problem = problemOf(data);
     return problem === undefined
-        ? { verified: true, label: undefined, status: m.security_trust_status_verified() }
-        : { verified: false, label: problem, status: m.security_trust_status_unverified() };
+        ? { verified: true, label: undefined, status: m.security_trust_status_verified(), tone: 'success' }
+        : { verified: false, label: problem, status: m.security_trust_status_unverified(), tone: 'warning' };
 }
 
 function problemOf(data: ReadSecurityOverview): string | undefined {
@@ -83,7 +92,7 @@ export function TrustPanel({ overview }: { readonly overview: UseQueryResult<Rea
         <section
             id={TRUST_PANEL_HASH}
             aria-labelledby="trust-panel-title"
-            className="flex flex-col gap-6 rounded-(--card-radius) border border-(--card-border) bg-(--card-bg) p-6 shadow-(--card-shadow) sm:flex-row sm:items-start"
+            className="flex flex-col items-center gap-6 py-2 text-center sm:flex-row sm:items-start sm:gap-10 sm:text-start"
         >
             <TrustMark
                 fingerprint={engine.engineId === null ? null : deriveEngineFingerprint(engine.engineId)}
@@ -92,47 +101,60 @@ export function TrustPanel({ overview }: { readonly overview: UseQueryResult<Rea
                 {...(label === undefined ? {} : { label })}
                 className="shrink-0 flex-col sm:flex-col"
             />
-            <div className="flex min-w-0 flex-col gap-3">
-                <h2 id="trust-panel-title" ref={heading} tabIndex={-1} className="text-xl font-semibold">
+            <div className="flex w-full min-w-0 flex-col items-center gap-3 sm:items-start">
+                <h2
+                    id="trust-panel-title"
+                    ref={heading}
+                    tabIndex={-1}
+                    className="text-lg font-semibold tracking-heading text-balance"
+                >
                     {m.security_trust_headline()}
                 </h2>
-                <p className="text-sm font-medium">{seal.status}</p>
-                <p className="text-sm text-text-muted">
+                {/* A dot and words, not a pill: some verdicts are a sentence and must wrap, never truncate. */}
+                <p className="flex items-baseline gap-2 text-sm font-medium">
+                    <StatusDot tone={seal.tone} className="relative -top-px" />
+                    <span>{seal.status}</span>
+                </p>
+                <p className="max-w-prose text-sm text-text-muted">
                     {engine.engineId === null ? m.security_trust_no_fingerprint() : m.security_trust_compare()}
                 </p>
-                <Facts
-                    facts={[
-                        engine.engineId === null
-                            ? null
-                            : {
-                                  label: m.security_engine_id(),
-                                  value: (
-                                      <CodeText
-                                          value={engine.engineId}
-                                          copyable
-                                          copyLabel={m.security_copy_engine_id()}
-                                      />
-                                  ),
-                              },
-                        {
-                            label: overview === null ? m.security_hostname() : m.security_default_hostname(),
-                            value:
-                                defaultHostname === undefined ? (
-                                    overview?.isError === true ? (
-                                        m.security_not_reported()
+                <div className="w-full text-start">
+                    <Facts
+                        facts={[
+                            engine.engineId === null
+                                ? null
+                                : {
+                                      label: m.security_engine_id(),
+                                      value: (
+                                          <CodeText
+                                              value={engine.engineId}
+                                              copyable
+                                              copyLabel={m.security_copy_engine_id()}
+                                          />
+                                      ),
+                                  },
+                            {
+                                label: overview === null ? m.security_hostname() : m.security_default_hostname(),
+                                value:
+                                    defaultHostname === undefined ? (
+                                        overview?.isError === true ? (
+                                            m.security_not_reported()
+                                        ) : (
+                                            <Skeleton className="h-5 w-48" />
+                                        )
                                     ) : (
-                                        <Skeleton className="h-5 w-48" />
-                                    )
-                                ) : (
-                                    <CodeText value={defaultHostname} copyable copyLabel={m.security_copy_hostname()} />
-                                ),
-                        },
-                    ]}
-                />
+                                        <CodeText
+                                            value={defaultHostname}
+                                            copyable
+                                            copyLabel={m.security_copy_hostname()}
+                                        />
+                                    ),
+                            },
+                        ]}
+                    />
+                </div>
                 {explanation === null ? null : (
-                    <ExternalLink href={explanation} showHost={false} className="self-start text-sm">
-                        {m.security_trust_explained()}
-                    </ExternalLink>
+                    <ExternalChip href={explanation}>{m.security_trust_explained()}</ExternalChip>
                 )}
             </div>
         </section>

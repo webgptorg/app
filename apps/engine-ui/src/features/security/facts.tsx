@@ -6,15 +6,21 @@ export interface Fact {
     readonly value: ReactNode;
 }
 
-/** Label and value pairs as a definition list: stacked on a phone, two columns from `sm` up. */
+/**
+ * Property rows, as on a task's details: the name quiet on the left, the value beside it. Stacked on a phone, where a
+ * hash or hostname needs the whole width.
+ */
 export function Facts({ facts }: { readonly facts: readonly (Fact | null)[] }) {
     return (
-        <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-[minmax(8rem,auto)_1fr]">
+        <dl className="flex min-w-0 flex-col">
             {facts.map((fact) =>
                 fact === null ? null : (
-                    <div key={fact.label} className="contents">
-                        <dt className="text-text-muted">{fact.label}</dt>
-                        <dd className="min-w-0 break-words">{fact.value}</dd>
+                    <div
+                        key={fact.label}
+                        className="grid grid-cols-1 items-baseline gap-x-6 gap-y-0.5 py-1.5 sm:grid-cols-[11rem_minmax(0,1fr)]"
+                    >
+                        <dt className="text-sm text-text-subtle">{fact.label}</dt>
+                        <dd className="min-w-0 text-sm break-words">{fact.value}</dd>
                     </div>
                 ),
             )}

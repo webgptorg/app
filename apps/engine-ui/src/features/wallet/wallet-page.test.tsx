@@ -52,12 +52,16 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
     it('lists logins without secrets, then what agents wait for', async () => {
         renderWithProviders({ path: '/wallet', engineApi: walletEngine().client });
         const logins = await screen.findByRole('region', { name: 'Saved logins' });
-        expect(within(logins).getByText('github.com · ad…@example.com')).toBeDefined();
+        // The engine's derived name repeats the site and account, so the row shows the site once.
+        expect(within(logins).getByText('github.com')).toBeDefined();
+        expect(within(logins).queryByText('github.com · ad…@example.com')).toBeNull();
         expect(within(logins).getByText('Verified')).toBeDefined();
         expect(within(logins).getByText(/ada@example\.com · also Recovery phone/)).toBeDefined();
         const requests = screen.getByRole('region', { name: 'Agents are waiting' });
         expect(within(requests).getByText('Ada needs a login for linear.app')).toBeDefined();
         expect(within(requests).getByText('For: File the review findings')).toBeDefined();
+        // How passwords stay safe is there for whoever asks, closed until then.
+        expect(screen.getByText('How passwords stay safe').closest('details')?.open).toBe(false);
     });
 
     it('answers a request with a masked password the owner may reveal, which never comes back', async () => {
@@ -83,20 +87,27 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(screen.queryByRole('region', { name: 'Agents are waiting' })).toBeNull();
         });
-        expect(await screen.findByText('linear.app · ad…@example.com')).toBeDefined();
+        expect(
+            await within(screen.getByRole('region', { name: 'Saved logins' })).findByText('linear.app'),
+        ).toBeDefined();
         expect(documentText()).not.toContain('wallet-canary-password');
     });
 
-    it('marks a request as seen and keeps it waiting, and rejects one from the menu', async () => {
+    it('keeps one answer on a request and marks it seen or rejects it from its menu', async () => {
         const engine = walletEngine();
         const { user } = renderWithProviders({ path: '/wallet', engineApi: engine.client });
         const requests = await screen.findByRole('region', { name: 'Agents are waiting' });
-        await user.click(within(requests).getByRole('button', { name: 'Mark as seen' }));
-        expect(await within(requests).findByText('Seen')).toBeDefined();
+        expect(within(requests).getAllByRole('button', { name: 'Add login' })).toHaveLength(1);
         expect(within(requests).queryByRole('button', { name: 'Mark as seen' })).toBeNull();
+        const more = within(requests).getByRole('button', { name: 'More for the linear.app request' });
+        await user.click(more);
+        await user.click(await screen.findByRole('menuitem', { name: 'Mark as seen' }));
+        expect(await within(requests).findByText('Seen')).toBeDefined();
 
-        await user.click(within(requests).getByRole('button', { name: 'More for the linear.app request' }));
-        await user.click(await screen.findByRole('menuitem', { name: /^Reject request/ }));
+        await user.click(more);
+        expect(await screen.findByRole('menuitem', { name: /^Reject request/ })).toBeDefined();
+        expect(screen.queryByRole('menuitem', { name: 'Mark as seen' })).toBeNull();
+        await user.click(screen.getByRole('menuitem', { name: /^Reject request/ }));
         expect(await screen.findByText('Request for linear.app rejected.')).toBeDefined();
         await waitFor(() => {
             expect(screen.queryByRole('region', { name: 'Agents are waiting' })).toBeNull();
@@ -106,7 +117,7 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
     it('shows one plain line when the Wallet is not set up, and offers no login form', async () => {
         const engine = walletEngine();
         engine.controller.setWalletState('empty');
-        renderWithProviders({ path: '/wallet?dialog=new', engineApi: engine.client });
+        const { user } = renderWithProviders({ path: '/wallet?dialog=new', engineApi: engine.client });
         expect(
             await screen.findByText("The Wallet isn't set up yet. It's set up on the server, not here."),
         ).toBeDefined();
@@ -114,7 +125,19 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
         expect(screen.queryByRole('dialog', { name: 'Add login' })).toBeNull();
         const requests = screen.getByRole('region', { name: 'Agents are waiting' });
         expect(within(requests).queryByRole('button', { name: 'Add login' })).toBeNull();
-        expect(within(requests).getByRole('button', { name: 'Mark as seen' })).toBeDefined();
+        await user.click(within(requests).getByRole('button', { name: 'More for the linear.app request' }));
+        expect(await screen.findByRole('menuitem', { name: 'Mark as seen' })).toBeDefined();
+    });
+
+    it('shows the asking agent by its initial without agents.read, and never asks for the agent list', async () => {
+        const engine = walletEngine(PERMISSIONS.filter((permission) => permission !== 'agents.read'));
+        const list = vi.spyOn(engine.client.agents, 'list');
+        renderWithProviders({ path: '/wallet', engineApi: engine.client });
+        const requests = await screen.findByRole('region', { name: 'Agents are waiting' });
+        expect(within(requests).getByText('Ada needs a login for linear.app')).toBeDefined();
+        // The avatar's initial is CSS content, so the mark is found by the letter it carries.
+        expect(requests.querySelector('[data-initial="A"]')).not.toBeNull();
+        expect(list).not.toHaveBeenCalled();
     });
 
     it('lets wallet.read look but change nothing', async () => {
@@ -123,7 +146,7 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
         await screen.findByRole('region', { name: 'Saved logins' });
         expect(screen.queryByRole('button', { name: 'Add login' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
-        expect(screen.queryByRole('button', { name: 'Mark as seen' })).toBeNull();
+        expect(screen.queryByRole('button', { name: /^More for/ })).toBeNull();
     });
 
     it('shows each verification state, a locked or unavailable Wallet, and requests answered on the server', async () => {
@@ -276,7 +299,8 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
             tasks: [],
             agents: ['Ada'],
         });
-        await user.click(within(requests).getByRole('button', { name: 'Mark as seen' }));
+        await user.click(within(requests).getByRole('button', { name: 'More for the linear.app request' }));
+        await user.click(await screen.findByRole('menuitem', { name: 'Mark as seen' }));
         expect(await screen.findByText('The request changed in the meantime. Look at it again.')).toBeDefined();
     });
 

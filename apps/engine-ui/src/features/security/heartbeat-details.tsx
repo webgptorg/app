@@ -1,9 +1,11 @@
 import type { ReadSecurityOverview } from '@ptbk/engine-api';
-import { Banner, CodeText, CopyButton, useLocale } from '@ptbk/ui';
+import { CopyButton, useLocale } from '@ptbk/ui';
+import { ChevronRight } from 'lucide-react';
 
 import { SoftBreaks } from '../../app/soft-breaks';
 import { m } from '../../paraglide/messages';
 import { Facts } from './facts';
+import { HashValue, SecurityNote } from './security-parts';
 
 /** What each field of the heartbeat (C-03) tells the dashboard; the payload holds numbers and closed enums only. */
 const FIELDS: readonly (readonly [string, () => string])[] = [
@@ -25,10 +27,10 @@ function ClockSkew({ skew }: { readonly skew: NonNullable<ReadSecurityOverview['
     const locale = useLocale();
     const seconds = locale.formatNumber(Math.abs(skew.seconds));
     return (
-        <Banner tone="warning">
+        <SecurityNote tone="warning">
             {skew.seconds < 0 ? m.security_clock_behind({ seconds }) : m.security_clock_ahead({ seconds })}{' '}
             {m.security_clock_measured({ at: locale.formatDateTime(new Date(skew.measuredAt)) })}
-        </Banner>
+        </SecurityNote>
     );
 }
 
@@ -39,7 +41,7 @@ export function HeartbeatDetails({
 }) {
     const locale = useLocale();
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
             {clockSkew === null ? null : <ClockSkew skew={clockSkew} />}
             {lastHeartbeat === null ? (
                 <p className="text-sm text-text-muted">{m.security_heartbeat_empty_body()}</p>
@@ -51,7 +53,7 @@ export function HeartbeatDetails({
                             {
                                 label: m.security_heartbeat_sent(),
                                 value: (
-                                    <time dateTime={lastHeartbeat.sentAt}>
+                                    <time dateTime={lastHeartbeat.sentAt} className="tabular-nums">
                                         {locale.formatDateTime(new Date(lastHeartbeat.sentAt))}
                                     </time>
                                 ),
@@ -62,9 +64,8 @@ export function HeartbeatDetails({
                                     lastHeartbeat.signature === null ? (
                                         m.security_not_reported()
                                     ) : (
-                                        <CodeText
+                                        <HashValue
                                             value={lastHeartbeat.signature}
-                                            copyable
                                             copyLabel={m.security_copy_signature()}
                                         />
                                     ),
@@ -73,7 +74,7 @@ export function HeartbeatDetails({
                     />
                     <div className="flex flex-col gap-2">
                         <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-medium" id="heartbeat-body-label">
+                            <span className="text-sm text-text-subtle" id="heartbeat-body-label">
                                 {m.security_heartbeat_body()}
                             </span>
                             <CopyButton value={lastHeartbeat.body} label={m.security_copy_heartbeat()} />
@@ -83,34 +84,40 @@ export function HeartbeatDetails({
                         <pre
                             aria-labelledby="heartbeat-body-label"
                             data-testid="heartbeat-body"
-                            className="rounded-control bg-(--code-text-bg) p-3 font-mono text-xs whitespace-pre-wrap break-words text-(--code-text-text)"
+                            className="rounded-control bg-neutral-soft px-3.5 py-3 font-mono text-xs leading-relaxed whitespace-pre-wrap break-words text-text"
                         >
                             <SoftBreaks text={lastHeartbeat.body} after="," />
                         </pre>
                     </div>
                 </>
             )}
-            <details className="text-sm">
-                <summary className="cursor-pointer font-medium">{m.security_heartbeat_fields()}</summary>
-                <table className="mt-3 w-full text-start">
+            <details className="group/fields text-sm">
+                <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-small text-text-muted hover:text-text [&::-webkit-details-marker]:hidden">
+                    <ChevronRight
+                        aria-hidden
+                        className="size-4 shrink-0 group-open/fields:rotate-90 motion-safe:transition-transform motion-safe:duration-(--motion-state)"
+                    />
+                    {m.security_heartbeat_fields()}
+                </summary>
+                <table className="mt-2 w-full max-w-2xl text-start">
                     <caption className="sr-only">{m.security_heartbeat_fields()}</caption>
                     <thead>
                         <tr>
-                            <th scope="col" className="py-1 pe-4 text-start font-medium">
+                            <th scope="col" className="py-1.5 pe-6 text-start text-xs font-medium text-text-subtle">
                                 {m.security_heartbeat_field()}
                             </th>
-                            <th scope="col" className="py-1 text-start font-medium">
+                            <th scope="col" className="py-1.5 text-start text-xs font-medium text-text-subtle">
                                 {m.security_heartbeat_meaning()}
                             </th>
                         </tr>
                     </thead>
                     <tbody>
                         {FIELDS.map(([field, meaning]) => (
-                            <tr key={field} className="border-t border-divider align-top">
-                                <th scope="row" className="py-1 pe-4 text-start font-normal">
-                                    <code className="font-mono">{field}</code>
+                            <tr key={field} className="border-t border-hairline align-top">
+                                <th scope="row" className="py-1.5 pe-6 text-start font-normal">
+                                    <code className="font-mono text-xs">{field}</code>
                                 </th>
-                                <td className="py-1 text-text-muted">{meaning()}</td>
+                                <td className="py-1.5 text-text-muted">{meaning()}</td>
                             </tr>
                         ))}
                     </tbody>

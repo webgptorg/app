@@ -1,5 +1,5 @@
 import type { ReadAuditEntry } from '@ptbk/engine-api';
-import { Badge, Button, CodeText, useLocale } from '@ptbk/ui';
+import { Button, CopyButton, StatusPill, useLocale } from '@ptbk/ui';
 import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -39,11 +39,23 @@ function detailFacts(details: Details): readonly DetailFact[] {
     });
 }
 
+/** A hash or ID on one mono line, cut short where it must be, and copied whole; the full value stays in the DOM. */
+function MachineValue({ value, copyLabel }: { readonly value: string; readonly copyLabel: string }) {
+    return (
+        <span className="flex min-w-0 items-center gap-1">
+            <code title={value} className="min-w-0 truncate font-mono text-xs text-text-muted">
+                {value}
+            </code>
+            <CopyButton value={value} label={copyLabel} />
+        </span>
+    );
+}
+
 function Row({ label, children }: { readonly label: string; readonly children: ReactNode }) {
     return (
         <>
-            <dt className="font-medium text-text-muted">{label}</dt>
-            <dd className="min-w-0 break-words">{children}</dd>
+            <dt className="text-text-muted">{label}</dt>
+            <dd className="flex min-h-6 min-w-0 items-center break-words">{children}</dd>
         </>
     );
 }
@@ -65,17 +77,21 @@ export function AuditEntryDetails({
     const [rawOpen, setRawOpen] = useState(false);
     const details = entry.details ?? null;
     return (
-        <div className="flex min-w-0 flex-col gap-3 py-2">
-            <dl className="grid min-w-0 gap-x-6 gap-y-2 text-sm sm:grid-cols-[max-content_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-3 py-3 ps-1">
+            <dl className="grid min-w-0 gap-x-8 gap-y-1.5 text-sm sm:grid-cols-[max-content_minmax(0,1fr)]">
                 <Row label={m.audit_column_time()}>
-                    <time dateTime={entry.at}>{time.format(new Date(entry.at))}</time>
+                    <time dateTime={entry.at} className="tabular-nums">
+                        {time.format(new Date(entry.at))}
+                    </time>
                 </Row>
                 <Row label={m.audit_column_outcome()}>
-                    <Badge tone={AUDIT_OUTCOME_TONES[entry.outcome]}>{AUDIT_OUTCOME_LABELS[entry.outcome]()}</Badge>
+                    <StatusPill tone={AUDIT_OUTCOME_TONES[entry.outcome]}>
+                        {AUDIT_OUTCOME_LABELS[entry.outcome]()}
+                    </StatusPill>
                 </Row>
                 {entry.target === null ? null : (
                     <Row label={m.audit_filter_target_id()}>
-                        <CodeText value={entry.target.id} copyable copyLabel={m.audit_copy_target_id()} />
+                        <MachineValue value={entry.target.id} copyLabel={m.audit_copy_target_id()} />
                     </Row>
                 )}
                 {(details === null ? [] : detailFacts(details)).map((fact) => (
@@ -83,17 +99,28 @@ export function AuditEntryDetails({
                         {fact.value}
                     </Row>
                 ))}
+                {entry.client === null ? null : (
+                    <>
+                        <Row label={m.audit_column_ip()}>
+                            <code className="font-mono text-xs break-all">{entry.client.ip}</code>
+                        </Row>
+                        {/* Whatever the client sent: shown whole here, as text, since the row only names the device. */}
+                        <Row label={m.audit_user_agent()}>
+                            <span className="text-xs break-all text-text-muted">{entry.client.userAgent}</span>
+                        </Row>
+                    </>
+                )}
                 <Row label={m.audit_sequence()}>
                     <span className="tabular-nums">{locale.formatNumber(entry.seq)}</span>
                 </Row>
                 <Row label={m.audit_entry_hash()}>
-                    <CodeText value={entry.hash} copyable copyLabel={m.audit_copy_hash()} />
+                    <MachineValue value={entry.hash} copyLabel={m.audit_copy_hash()} />
                 </Row>
                 <Row label={m.audit_previous_hash()}>
                     {entry.prevHash === null ? (
                         <span className="text-text-muted">{m.audit_first_entry()}</span>
                     ) : (
-                        <CodeText value={entry.prevHash} copyable copyLabel={m.audit_copy_previous_hash()} />
+                        <MachineValue value={entry.prevHash} copyLabel={m.audit_copy_previous_hash()} />
                     )}
                 </Row>
             </dl>

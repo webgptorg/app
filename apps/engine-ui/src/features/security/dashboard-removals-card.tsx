@@ -7,7 +7,7 @@ import { useEngineApi } from '../../app/engine-api-context';
 import { useStepUpAwareMutation } from '../../app/mutations';
 import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
-import { SectionCard } from './section-card';
+import { QuerySection } from './query-section';
 import { securityKeys } from './security-keys';
 
 const MUTATION_TIMEOUT_MS = 30_000;
@@ -38,18 +38,20 @@ export function DashboardRemovalsCard() {
     });
     if (!allowed) return null;
     return (
-        <SectionCard title={m.removals_title()} query={settings} skeleton={<Skeleton className="h-10 w-full" />}>
+        <QuerySection title={m.removals_title()} query={settings} skeleton={<Skeleton className="h-10 w-full" />}>
             {(current) => (
-                <Switch
-                    label={m.removals_label()}
-                    description={m.removals_hint()}
-                    checked={save.isPending ? !current.dashboardRemovals : current.dashboardRemovals === true}
-                    disabled={save.isPending || current.dashboardRemovals === null}
-                    onChange={(event) => {
-                        save.mutate(event.target.checked);
-                    }}
-                />
+                <div className="max-w-2xl">
+                    <Switch
+                        label={m.removals_label()}
+                        description={m.removals_hint()}
+                        checked={save.isPending ? !current.dashboardRemovals : current.dashboardRemovals === true}
+                        disabled={save.isPending || current.dashboardRemovals === null}
+                        onChange={(event) => {
+                            save.mutate(event.target.checked);
+                        }}
+                    />
+                </div>
             )}
-        </SectionCard>
+        </QuerySection>
     );
 }

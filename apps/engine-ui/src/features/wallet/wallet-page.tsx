@@ -1,27 +1,33 @@
 import type { ReadWalletOverview, ReadWalletRecord, ReadWalletRequest } from '@ptbk/engine-api';
 import {
     ActionMenu,
-    Badge,
     Button,
-    Card,
     ConfirmDialog,
     EmptyState,
     ErrorState,
     RelativeTime,
+    Section,
     Skeleton,
+    STATUS_TINT_CLASSES,
+    StatusPill,
 } from '@ptbk/ui';
-import type { BadgeTone } from '@ptbk/ui';
+import type { MenuEntry, StatusTone } from '@ptbk/ui';
 import { getRouteApi } from '@tanstack/react-router';
-import { KeyRound, Plus } from 'lucide-react';
+import { Ban, Eye, Globe, KeyRound, Plus } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 
+import { cx } from '../../app/cx';
 import { m } from '../../paraglide/messages';
+import { AgentAvatar } from '../agents/agent-avatar';
 import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
 import type { LoginDialogTarget } from './login-dialog';
 import { useResumedStepUp } from '../step-up/step-up';
 import { REMOVE_LOGIN_ACTION, SAVE_LOGIN_ACTION, useWalletMutations } from './use-wallet-mutations';
 import type { WalletMutations } from './use-wallet-mutations';
+import { loginTitle } from './login-title';
+import { useAgentLookByName } from './use-agent-look-by-name';
+import { WalletTrust } from './wallet-trust';
 import { siteName } from './wallet-origin';
 import { useWallet } from './wallet-queries';
 
@@ -30,7 +36,7 @@ const route = getRouteApi('/wallet');
 // The dialog brings the form layer, so it loads when first opened rather than with the page.
 const LoginDialog = lazy(() => import('./login-dialog').then((module) => ({ default: module.LoginDialog })));
 
-function verificationLook(record: ReadWalletRecord): { readonly label: string; readonly tone: BadgeTone } {
+function verificationLook(record: ReadWalletRecord): { readonly label: string; readonly tone: StatusTone } {
     switch (record.verification?.state) {
         case 'verified':
             return { label: m.wallet_status_verified(), tone: 'success' };
@@ -71,36 +77,54 @@ function LoginRow({
     readonly onRemove: () => void;
 }) {
     const look = verificationLook(record);
+    const { title, site } = loginTitle(record.label, siteName(record.origin));
+    // The site shows once: as the title, or beside a name the owner gave the login.
+    const details = [
+        ...(site === null ? [] : [site]),
+        ...(record.username === null ? [] : [record.username]),
+        ...(record.fields.length === 0
+            ? []
+            : [m.wallet_fields({ labels: record.fields.map(({ label }) => label).join(', ') })]),
+    ].join(' · ');
     return (
-        <li className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0 sm:items-center">
-            <div className="flex min-w-0 flex-col gap-1">
-                <span className="flex flex-wrap items-center gap-2 font-medium break-words">
-                    {record.label}
-                    <Badge tone={look.tone}>{look.label}</Badge>
+        <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
+            <span
+                aria-hidden
+                className="flex size-8 shrink-0 items-center justify-center rounded-control bg-hover text-text-muted"
+            >
+                <Globe className="size-4" />
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    {/* Labels and usernames come from the engine: text nodes only. */}
+                    <span className="min-w-0 font-medium [overflow-wrap:anywhere]">{title}</span>
+                    <StatusPill
+                        tone={look.tone}
+                        variant={look.tone === 'danger' || look.tone === 'warning' ? 'soft' : 'quiet'}
+                    >
+                        {look.label}
+                    </StatusPill>
                 </span>
-                <span className="text-sm break-words text-text-muted">
-                    {siteName(record.origin)}
-                    {record.username === null ? null : ` · ${record.username}`}
-                    {record.fields.length === 0
-                        ? null
-                        : ` · ${m.wallet_fields({ labels: record.fields.map(({ label }) => label).join(', ') })}`}
-                </span>
+                {details === '' ? null : (
+                    <span className="text-xs [overflow-wrap:anywhere] text-text-muted">{details}</span>
+                )}
                 {record.verification !== null && record.verification.state !== 'verified' ? (
-                    <span className="text-sm text-text-muted">{record.verification.reason}</span>
+                    <span className="text-xs text-text-muted">{record.verification.reason}</span>
                 ) : null}
-                <span className="text-sm text-text-muted">
-                    {record.lastUse === null ? (
-                        m.wallet_never_used()
-                    ) : (
-                        <>
-                            {m.wallet_last_used()} <RelativeTime value={new Date(record.lastUse.at)} />
-                        </>
-                    )}
-                </span>
             </div>
+            {/* On phones the time wraps under the name, aligned with it, instead of squeezing the row. */}
+            <span className="order-last basis-full ps-11 text-xs whitespace-nowrap text-text-muted tabular-nums sm:order-none sm:basis-auto sm:ps-0">
+                {record.lastUse === null ? (
+                    m.wallet_never_used()
+                ) : (
+                    <>
+                        {m.wallet_last_used()} <RelativeTime value={new Date(record.lastUse.at)} />
+                    </>
+                )}
+            </span>
             {canManage ? (
                 <span className="flex shrink-0 items-center gap-1">
-                    <Button size="sm" variant="secondary" onClick={onUpdate}>
+                    <Button size="sm" onClick={onUpdate}>
                         {m.wallet_update()}
                     </Button>
                     <ActionMenu
@@ -112,6 +136,7 @@ function LoginRow({
                                 kind: 'item',
                                 id: 'remove',
                                 label: m.wallet_remove(),
+                                icon: <Ban />,
                                 tone: 'danger',
                                 onSelect: onRemove,
                             },
@@ -147,7 +172,16 @@ function answerable(request: ReadWalletRequest): boolean {
     return request.problem === 'missing' || request.problem === 'rejected' || request.problem === 'field';
 }
 
-function RequestRow({
+function RequestAvatar({ name }: { readonly name: string }) {
+    const look = useAgentLookByName(name);
+    return <AgentAvatar name={name} agentKey={look.key} profile={look.profile} size="xs" />;
+}
+
+/**
+ * One login an agent waits for, on a soft surface like Home's "Needs you": who asks and for what, one action that
+ * answers it, and the quieter answers (seen, reject) in the ⋯ menu. A seen request still waits, but calmly.
+ */
+function RequestItem({
     request,
     record,
     canManage,
@@ -164,61 +198,82 @@ function RequestRow({
 }) {
     const target = { id: request.id, step: request.step, origin: request.origin };
     const canAnswer = canManage && ready && answerable(request);
+    const seen = request.seenAt !== null;
+    const agent = request.agents[0] ?? m.wallet_request_system_agent();
+    const items: MenuEntry[] = [
+        ...(seen
+            ? []
+            : [
+                  {
+                      kind: 'item' as const,
+                      id: 'seen',
+                      label: m.wallet_mark_seen(),
+                      icon: <Eye />,
+                      disabled: mutations.markSeen.isPending && mutations.markSeen.variables.id === request.id,
+                      onSelect: () => {
+                          mutations.markSeen.mutate(target);
+                      },
+                  },
+                  { kind: 'separator' as const, id: 'danger' },
+              ]),
+        {
+            kind: 'item',
+            id: 'reject',
+            label: m.wallet_reject(),
+            description: m.wallet_reject_hint(),
+            icon: <Ban />,
+            tone: 'danger',
+            onSelect: () => {
+                mutations.reject.mutate(target);
+            },
+        },
+    ];
     return (
-        <li className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex min-w-0 flex-col gap-1">
-                <span className="flex flex-wrap items-center gap-2 font-medium break-words">
-                    {requestHeadline(request)}
-                    {request.seenAt === null ? null : <Badge>{m.wallet_request_seen()}</Badge>}
+        <li
+            className={cx(
+                'soft-surface flex flex-wrap items-start gap-x-3 gap-y-2 px-4 py-3',
+                STATUS_TINT_CLASSES[seen ? 'neutral' : 'warning'],
+            )}
+        >
+            <span className="mt-0.5 flex shrink-0">
+                <RequestAvatar name={agent} />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {/* Agent, task and site names come from the engine: text nodes only. */}
+                    <span className="text-sm font-medium [overflow-wrap:anywhere]">{requestHeadline(request)}</span>
+                    {seen ? (
+                        <StatusPill tone="neutral" variant="quiet">
+                            {m.wallet_request_seen()}
+                        </StatusPill>
+                    ) : null}
                 </span>
                 {request.tasks.length === 0 ? null : (
-                    <span className="text-sm break-words">
+                    <span className="text-sm [overflow-wrap:anywhere] text-text-muted">
                         {m.wallet_request_for({ tasks: request.tasks.join(', ') })}
                     </span>
                 )}
-                <span className="text-sm break-words text-text-muted">
+                <span className="text-xs [overflow-wrap:anywhere] text-text-muted tabular-nums">
                     {request.account === null ? null : `${m.wallet_request_account({ account: request.account })} · `}
                     {m.wallet_request_asked()} <RelativeTime value={new Date(request.createdAt)} />
                 </span>
                 {answerable(request) ? null : (
-                    <span className="text-sm text-text-muted">{m.wallet_request_on_server()}</span>
+                    <span className="text-xs text-text-muted">{m.wallet_request_on_server()}</span>
                 )}
-            </div>
+            </span>
             {canManage ? (
-                <span className="flex shrink-0 flex-wrap items-center gap-1">
+                // On phones the actions take their own line under the words, aligned with them.
+                <span className="flex shrink-0 basis-full items-center gap-1 ps-9 sm:ms-auto sm:basis-auto sm:self-center sm:ps-0">
                     {canAnswer ? (
-                        <Button size="sm" variant="primary" onClick={onAnswer}>
+                        <Button size="sm" onClick={onAnswer}>
                             {record === undefined ? m.wallet_add_login() : m.wallet_update()}
-                        </Button>
-                    ) : null}
-                    {request.seenAt === null ? (
-                        <Button
-                            size="sm"
-                            variant="secondary"
-                            loading={mutations.markSeen.isPending && mutations.markSeen.variables.id === request.id}
-                            onClick={() => {
-                                mutations.markSeen.mutate(target);
-                            }}
-                        >
-                            {m.wallet_mark_seen()}
                         </Button>
                     ) : null}
                     <ActionMenu
                         label={m.wallet_request_actions({ site: siteName(request.origin) })}
                         variant="ghost"
                         size="sm"
-                        items={[
-                            {
-                                kind: 'item',
-                                id: 'reject',
-                                label: m.wallet_reject(),
-                                description: m.wallet_reject_hint(),
-                                tone: 'danger',
-                                onSelect: () => {
-                                    mutations.reject.mutate(target);
-                                },
-                            },
-                        ]}
+                        items={items}
                     />
                 </span>
             ) : null}
@@ -333,41 +388,13 @@ export function WalletPage() {
             ) : (
                 <>
                     {ready ? null : <p className="text-sm">{notReadyLine(wallet.data)}</p>}
-                    {ready ? (
-                        wallet.data.records.length === 0 ? (
-                            <EmptyState
-                                icon={<KeyRound />}
-                                headingLevel={2}
-                                title={m.wallet_empty_title()}
-                                description={m.wallet_empty_body()}
-                            />
-                        ) : (
-                            <Card title={m.wallet_logins_title()} titleLevel={2}>
-                                <ul className="flex flex-col divide-y divide-divider">
-                                    {wallet.data.records.map((record) => (
-                                        <LoginRow
-                                            key={record.id}
-                                            record={record}
-                                            canManage={canManage}
-                                            onUpdate={() => {
-                                                setPending({ kind: 'login', target: { record } });
-                                            }}
-                                            onRemove={() => {
-                                                setPending({ kind: 'remove', record });
-                                            }}
-                                        />
-                                    ))}
-                                </ul>
-                            </Card>
-                        )
-                    ) : null}
                     {wallet.data.pending.length === 0 ? null : (
-                        <Card title={m.wallet_requests_title()} titleLevel={2}>
-                            <ul className="flex flex-col divide-y divide-divider">
+                        <Section title={m.wallet_requests_title()} count={wallet.data.pending.length} divided={false}>
+                            <ul className="flex flex-col gap-2">
                                 {wallet.data.pending.map((request) => {
                                     const record = wallet.data.records.find(({ id }) => id === request.recordId);
                                     return (
-                                        <RequestRow
+                                        <RequestItem
                                             key={request.id}
                                             request={request}
                                             record={record}
@@ -384,12 +411,41 @@ export function WalletPage() {
                                     );
                                 })}
                             </ul>
-                        </Card>
+                        </Section>
                     )}
-                    <details className="text-sm text-text-muted">
-                        <summary className="cursor-pointer">{m.wallet_trust_summary()}</summary>
-                        <p className="mt-2 max-w-prose">{m.wallet_trust_body()}</p>
-                    </details>
+                    {ready ? (
+                        <Section
+                            title={m.wallet_logins_title()}
+                            {...(wallet.data.records.length === 0 ? {} : { count: wallet.data.records.length })}
+                            divided={wallet.data.pending.length > 0}
+                        >
+                            {wallet.data.records.length === 0 ? (
+                                <EmptyState
+                                    variant="inline"
+                                    icon={<KeyRound />}
+                                    title={m.wallet_empty_title()}
+                                    description={m.wallet_empty_body()}
+                                />
+                            ) : (
+                                <ul className="-mt-1 flex flex-col divide-y divide-hairline">
+                                    {wallet.data.records.map((record) => (
+                                        <LoginRow
+                                            key={record.id}
+                                            record={record}
+                                            canManage={canManage}
+                                            onUpdate={() => {
+                                                setPending({ kind: 'login', target: { record } });
+                                            }}
+                                            onRemove={() => {
+                                                setPending({ kind: 'remove', record });
+                                            }}
+                                        />
+                                    ))}
+                                </ul>
+                            )}
+                        </Section>
+                    ) : null}
+                    <WalletTrust />
                 </>
             )}
             {loginTarget === null ? null : (

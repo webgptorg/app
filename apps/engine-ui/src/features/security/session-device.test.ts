@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { sessionDevice } from './session-device';
+import { deviceGlyph } from './sessions-page';
 
 const client = (userAgent: string) => ({ ip: '203.0.113.7', userAgent });
 
@@ -38,6 +39,10 @@ describe('sessionDevice', () => {
             'Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0',
             { browser: 'Firefox', os: 'Linux', kind: 'computer' },
         ],
+        [
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36',
+            { browser: 'Chrome', os: 'macOS', kind: 'computer' },
+        ],
     ])('reads %s', (userAgent, expected) => {
         expect(sessionDevice(client(userAgent))).toEqual(expected);
     });
@@ -45,5 +50,14 @@ describe('sessionDevice', () => {
     it('knows nothing about an agent it does not recognise, or a session without a client', () => {
         expect(sessionDevice(client('curl/8.7.1'))).toEqual({ browser: null, os: null, kind: 'computer' });
         expect(sessionDevice(null)).toEqual({ browser: null, os: null, kind: 'computer' });
+    });
+
+    it('picks a glyph a person recognises: a laptop for Macs and Chromebooks, a screen for other computers', () => {
+        expect(deviceGlyph({ browser: 'Chrome', os: 'macOS', kind: 'computer' })).toBe('laptop');
+        expect(deviceGlyph({ browser: 'Chrome', os: 'ChromeOS', kind: 'computer' })).toBe('laptop');
+        expect(deviceGlyph({ browser: 'Firefox', os: 'Windows', kind: 'computer' })).toBe('desktop');
+        expect(deviceGlyph({ browser: null, os: null, kind: 'computer' })).toBe('desktop');
+        expect(deviceGlyph({ browser: 'Safari', os: 'iOS', kind: 'phone' })).toBe('phone');
+        expect(deviceGlyph({ browser: 'Chrome', os: 'iPadOS', kind: 'tablet' })).toBe('tablet');
     });
 });

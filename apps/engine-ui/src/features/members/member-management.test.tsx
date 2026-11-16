@@ -51,6 +51,12 @@ function teamEngine(
 
 type User = ReturnType<typeof renderWithProviders>['user'];
 
+/** Picks an option from a `Combobox`: open its list, then choose by the option's name. */
+async function pick(user: User, combobox: HTMLElement, option: string | RegExp) {
+    await user.click(combobox);
+    await user.click(screen.getByRole('option', { name: option }));
+}
+
 async function openRowMenu(user: User, label: string) {
     await user.click(await screen.findByRole('button', { name: `Actions for ${label}` }));
     return screen.getByRole('menu', { name: `Actions for ${label}` });
@@ -71,7 +77,7 @@ describe('member management', { timeout: TIMEOUT_MS }, () => {
         const dialog = screen.getByRole('dialog', { name: "Change Petr Svoboda's role" });
         const confirm = within(dialog).getByRole('button', { name: 'Change role' });
         expect(confirm.hasAttribute('disabled')).toBe(true);
-        await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Role' }), 'viewer');
+        await pick(user, within(dialog).getByRole('combobox', { name: 'Role' }), 'Viewer');
         await expectNoAxeViolations(container);
         await user.click(confirm);
         expect(await screen.findByText("Changed Petr Svoboda's role to Viewer")).toBeDefined();
@@ -114,7 +120,7 @@ describe('member management', { timeout: TIMEOUT_MS }, () => {
         vi.spyOn(engine.client.members, 'update').mockImplementation(() => problemResponse('forbidden'));
         const { user } = renderWithProviders({ path: '/members', engineApi: engine.client });
         await pickMenuItem(user, 'Petr Svoboda', 'Change role');
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Role' }), 'admin');
+        await pick(user, screen.getByRole('combobox', { name: 'Role' }), 'Admin');
         await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Change role' }));
         expect(await screen.findByText('Not allowed')).toBeDefined();
         expect(roleCell('Petr Svoboda')).toContain('Member');
@@ -137,8 +143,8 @@ describe('invites', { timeout: TIMEOUT_MS }, () => {
         const { user, container, queryClient } = renderWithProviders({ path: '/members', engineApi: engine.client });
         await user.click(await screen.findByRole('button', { name: 'Invite member' }));
         const form = screen.getByRole('dialog', { name: 'Invite a member' });
-        await user.selectOptions(within(form).getByRole('combobox', { name: 'Role' }), 'viewer');
-        await user.selectOptions(within(form).getByRole('combobox', { name: 'Link works for' }), '1');
+        await pick(user, within(form).getByRole('combobox', { name: 'Role' }), 'Viewer');
+        await pick(user, within(form).getByRole('combobox', { name: 'Link works for' }), /^1 /);
         await expectNoAxeViolations(container);
         await user.click(within(form).getByRole('button', { name: 'Create invite link' }));
 

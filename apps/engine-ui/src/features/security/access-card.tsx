@@ -1,7 +1,7 @@
 import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
-import { Card, Skeleton } from '@ptbk/ui';
+import { Section, Skeleton } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
-import { KeyRound, MonitorSmartphone, ScrollText } from 'lucide-react';
+import { ChevronRight, KeyRound, MonitorSmartphone, ScrollText } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
@@ -21,17 +21,20 @@ export interface AccessRowProps {
 /** One kind of access on the Security page (passkeys, sessions, the audit log): what it is now, and where to manage it. */
 export function AccessRow({ icon, title, summary, action }: AccessRowProps) {
     return (
-        <li className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center">
-            <span className="flex min-w-0 flex-1 items-start gap-3">
-                <span aria-hidden className="mt-0.5 inline-flex shrink-0 text-text-muted [&>svg]:size-5">
+        <li className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:gap-4">
+            <span className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
+                <span
+                    aria-hidden
+                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-control bg-neutral-soft text-text-muted [&>svg]:size-4"
+                >
                     {icon}
                 </span>
-                <span className="flex min-w-0 flex-col">
-                    <span className="font-medium">{title}</span>
-                    <span className="text-sm text-text-muted">{summary}</span>
+                <span className="flex min-w-0 flex-col sm:flex-row sm:items-baseline sm:gap-4">
+                    <span className="text-sm font-medium sm:w-36 sm:shrink-0">{title}</span>
+                    <span className="text-sm text-text-muted tabular-nums">{summary}</span>
                 </span>
             </span>
-            <span className="ps-8 sm:ps-0">{action}</span>
+            <span className="ps-9 sm:ps-0">{action}</span>
         </li>
     );
 }
@@ -54,15 +57,16 @@ function SessionsSummary() {
 export function AccessCard() {
     const canOpenAudit = useAllows({ capability: KNOWN_CAPABILITIES.audit, permission: 'audit.read' });
     return (
-        <Card title={m.security_access_title()}>
-            <ul className="-my-3 flex flex-col divide-y divide-divider">
+        <Section title={m.security_access_title()}>
+            <ul className="flex flex-col divide-y divide-hairline">
                 <AccessRow
                     icon={<KeyRound />}
                     title={m.passkeys_title()}
                     summary={<PasskeysSummary />}
                     action={
-                        <ButtonLink to="/security/passkeys" size="sm">
+                        <ButtonLink to="/security/passkeys" size="sm" variant="ghost">
                             {m.security_access_passkeys_link()}
+                            <ChevronRight aria-hidden className="size-4 text-text-subtle" />
                         </ButtonLink>
                     }
                 />
@@ -71,8 +75,9 @@ export function AccessCard() {
                     title={m.sessions_title()}
                     summary={<SessionsSummary />}
                     action={
-                        <ButtonLink to="/security/sessions" size="sm">
+                        <ButtonLink to="/security/sessions" size="sm" variant="ghost">
                             {m.security_access_sessions_link()}
+                            <ChevronRight aria-hidden className="size-4 text-text-subtle" />
                         </ButtonLink>
                     }
                 />
@@ -82,13 +87,14 @@ export function AccessCard() {
                         title={m.audit_title()}
                         summary={m.security_access_audit()}
                         action={
-                            <ButtonLink to="/audit" size="sm">
+                            <ButtonLink to="/audit" size="sm" variant="ghost">
                                 {m.security_access_audit_open()}
+                                <ChevronRight aria-hidden className="size-4 text-text-subtle" />
                             </ButtonLink>
                         }
                     />
                 ) : null}
             </ul>
-        </Card>
+        </Section>
     );
 }

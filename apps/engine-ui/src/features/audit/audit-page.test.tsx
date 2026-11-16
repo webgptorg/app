@@ -141,6 +141,14 @@ describe('audit log: paging', { timeout: TIMEOUT_MS }, () => {
     });
 });
 
+const dialog = () => screen.getByRole('dialog');
+
+/** "+ Filter", then the field, as the shared filter bar offers them. */
+async function addFilter(app: RenderedApp, field: string) {
+    await app.user.click(screen.getByRole('button', { name: /^Filter$/ }));
+    await app.user.click(within(dialog()).getByRole('option', { name: field }));
+}
+
 describe('audit log: filters', { timeout: TIMEOUT_MS }, () => {
     it('narrows by every filter, writes them to the URL and restores them on reload', async () => {
         const engine = auditEngine();
@@ -149,18 +157,23 @@ describe('audit log: filters', { timeout: TIMEOUT_MS }, () => {
         await app.user.click(screen.getByRole('button', { name: 'Next page' }));
         await screen.findByText('Target 180');
 
-        await app.user.selectOptions(screen.getByRole('combobox', { name: 'Member' }), 'member-petr');
+        await addFilter(app, 'Member');
+        await app.user.click(within(dialog()).getByRole('option', { name: 'Petr Svoboda' }));
         await waitFor(() => {
             expect(lastQuery(engine.spies.list)).toEqual({ limit: 50, memberId: 'member-petr' });
         });
         expect(await screen.findByText('Target 229')).toBeDefined();
         expect(screen.queryByText('Target 228')).toBeNull();
 
-        await app.user.selectOptions(screen.getByRole('combobox', { name: 'Action' }), 'wallet.record.update');
-        await app.user.click(screen.getByRole('button', { name: 'More filters' }));
-        await app.user.selectOptions(screen.getByRole('combobox', { name: 'Target type' }), 'wallet-record');
-        await app.user.selectOptions(screen.getByRole('combobox', { name: 'Outcome' }), 'success');
-        await app.user.type(screen.getByRole('textbox', { name: 'Target ID' }), 'target-225');
+        await addFilter(app, 'Action');
+        await app.user.click(within(dialog()).getByRole('option', { name: 'Wallet login updated' }));
+        await addFilter(app, 'Target type');
+        await app.user.click(within(dialog()).getByRole('option', { name: 'Wallet login' }));
+        await app.user.keyboard('{Escape}');
+        await addFilter(app, 'Outcome');
+        await app.user.click(within(dialog()).getByRole('option', { name: 'Succeeded' }));
+        await app.user.keyboard('{Escape}');
+        await app.user.type(screen.getByRole('searchbox', { name: 'Target ID' }), 'target-225');
         await waitFor(() => {
             expect(lastQuery(engine.spies.list)).toEqual({
                 limit: 50,
@@ -174,9 +187,10 @@ describe('audit log: filters', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByText('Target 225')).toBeDefined();
         expect(shownTargets()).toEqual(['Target 225']);
 
-        const from = screen.getByLabelText('From');
-        await app.user.type(from, '2026-09-10');
-        await app.user.type(screen.getByLabelText('To'), '2026-09-10');
+        await addFilter(app, 'Date');
+        await app.user.type(within(dialog()).getByLabelText('From'), '2026-09-10');
+        await app.user.type(within(dialog()).getByLabelText('To'), '2026-09-10');
+        await app.user.click(within(dialog()).getByRole('button', { name: 'Done' }));
         const search = app.router.state.location.search;
         expect(search).toMatchObject({
             memberId: 'member-petr',
@@ -201,9 +215,10 @@ describe('audit log: filters', { timeout: TIMEOUT_MS }, () => {
         renderWithProviders({ path: app.router.state.location.href, engineApi: reloaded.client });
         expect(await screen.findByText('Target 225')).toBeDefined();
         expect(shownTargets()).toEqual(['Target 225']);
-        expect(screen.getByRole<HTMLSelectElement>('combobox', { name: 'Member' }).value).toBe('member-petr');
-        expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Target ID' }).value).toBe('target-225');
-        expect(screen.getByLabelText<HTMLInputElement>('From').value).toBe('2026-09-10');
+        expect(await screen.findByRole('button', { name: 'Member: Petr Svoboda' })).toBeDefined();
+        expect(screen.getByRole('button', { name: 'Action: Wallet login updated' })).toBeDefined();
+        expect(screen.getByRole('button', { name: /^Date: Sep 10/ })).toBeDefined();
+        expect(screen.getByRole<HTMLInputElement>('searchbox', { name: 'Target ID' }).value).toBe('target-225');
         expect(reloaded.spies.list).toHaveBeenCalledOnce();
         expect(lastQuery(reloaded.spies.list)).toMatchObject({ targetId: 'target-225', outcome: 'success' });
     });
@@ -242,11 +257,15 @@ describe('audit log: filters', { timeout: TIMEOUT_MS }, () => {
         const engine = auditEngine({ count: 3 });
         const app = renderWithProviders({ path: '/audit', engineApi: engine.client });
         await screen.findByText('Target 3');
-        await app.user.click(screen.getByRole('button', { name: 'More filters' }));
-        await app.user.type(screen.getByRole('textbox', { name: 'Target ID' }), 'a b');
+        await app.user.type(screen.getByRole('searchbox', { name: 'Target ID' }), 'a b');
         expect(await screen.findByText('Use letters, digits, - and _ only, at most 64.')).toBeDefined();
         await new Promise((resolve) => setTimeout(resolve, 400));
         expect(app.router.state.location.search).not.toHaveProperty('targetId');
+    });
+
+    it('keeps an actor beyond the first page of members selected by its ID', async () => {
+        renderWithProviders({ path: '/audit?memberId=member-gone', engineApi: auditEngine({ count: 3 }).client });
+        expect(await screen.findByRole('button', { name: 'Member: member-gone' })).toBeDefined();
     });
 });
 
@@ -340,12 +359,12 @@ describe('audit log: entries', { timeout: TIMEOUT_MS }, () => {
                 },
             } as never),
         );
-        renderWithProviders({ path: '/audit', engineApi: engine.client });
+        const app = renderWithProviders({ path: '/audit', engineApi: engine.client });
         expect(await screen.findByText('agent.clone')).toBeDefined();
         expect(within(screen.getByRole('table')).getByText('System')).toBeDefined();
-        const action = screen.getByRole('combobox', { name: 'Action' });
-        expect(within(action).getAllByRole('option')).toHaveLength(AUDIT_ACTIONS.length + 1);
-        expect(within(action).getByRole('option', { name: 'Wallet login updated' })).toBeDefined();
+        await addFilter(app, 'Action');
+        expect(within(dialog()).getAllByRole('option')).toHaveLength(AUDIT_ACTIONS.length);
+        expect(within(dialog()).getByRole('option', { name: 'Wallet login updated' })).toBeDefined();
     });
 
     it('names actors from the members list and falls back to the ID', async () => {
@@ -362,44 +381,22 @@ describe('audit log: entries', { timeout: TIMEOUT_MS }, () => {
     });
 });
 
-describe('audit log: filter layout', { timeout: TIMEOUT_MS }, () => {
-    it('keeps rare filters behind "More filters" and opens it when the URL already uses them', async () => {
-        const app = renderWithProviders({ path: '/audit', engineApi: auditEngine({ count: 3 }).client });
-        await screen.findByText('Target 3');
-        const more = screen.getByRole('button', { name: 'More filters' });
-        expect(more.getAttribute('aria-expanded')).toBe('false');
-        expect(screen.queryByRole('combobox', { name: 'Outcome' })).toBeNull();
-        expect(screen.getByRole('combobox', { name: 'Action' })).toBeDefined();
-        await app.user.click(more);
-        expect(more.getAttribute('aria-expanded')).toBe('true');
-        expect(screen.getByRole('combobox', { name: 'Outcome' })).toBeDefined();
-        app.unmount();
-
-        renderWithProviders({
-            path: '/audit?outcome=denied&targetKind=agent',
-            engineApi: auditEngine({ count: 3 }).client,
-        });
-        const reopened = await screen.findByRole('button', { name: 'More filters (2)' });
-        expect(reopened.getAttribute('aria-expanded')).toBe('true');
-        expect(screen.getByRole<HTMLSelectElement>('combobox', { name: 'Outcome' }).value).toBe('denied');
-    });
-
+describe('audit log: filter bar', { timeout: TIMEOUT_MS }, () => {
     it('shows each filter in force as a chip that removes only that filter', async () => {
         const engine = auditEngine({ count: 3 });
         const app = renderWithProviders({
             path: '/audit?memberId=member-petr&action=agent.create&from=2026-09-01',
             engineApi: engine.client,
         });
-        const chips = await screen.findByRole('list', { name: 'Active filters' });
-        await within(chips).findByRole('button', { name: 'Remove filter Member: Petr Svoboda' });
-        expect(within(chips).getByRole('button', { name: 'Remove filter Action: Agent created' })).toBeDefined();
-        expect(within(chips).getByRole('button', { name: /^Remove filter From: / })).toBeDefined();
+        await screen.findByRole('button', { name: 'Member: Petr Svoboda' });
+        expect(screen.getByRole('button', { name: 'Action: Agent created' })).toBeDefined();
+        expect(screen.getByRole('button', { name: /^Date: from / })).toBeDefined();
 
-        await app.user.click(within(chips).getByRole('button', { name: 'Remove filter Action: Agent created' }));
+        await app.user.click(screen.getByRole('button', { name: 'Remove Action: Agent created' }));
         await waitFor(() => {
             expect(app.router.state.location.search).toEqual({ memberId: 'member-petr', from: '2026-09-01' });
         });
-        expect(within(chips).queryByRole('button', { name: /Action/ })).toBeNull();
+        expect(screen.queryByRole('button', { name: /^Action:/ })).toBeNull();
         await waitFor(() => {
             expect(lastQuery(engine.spies.list)).toEqual({
                 limit: 50,
@@ -408,28 +405,20 @@ describe('audit log: filter layout', { timeout: TIMEOUT_MS }, () => {
             });
         });
 
-        await app.user.click(within(chips).getByRole('button', { name: 'Clear filters' }));
+        const bar = screen.getByRole('search', { name: 'Filters' });
+        await app.user.click(within(bar).getByRole('button', { name: 'Clear filters' }));
         await waitFor(() => {
             expect(app.router.state.location.search).toEqual({});
         });
-        expect(screen.queryByRole('list', { name: 'Active filters' })).toBeNull();
+        expect(screen.queryByRole('button', { name: /^Member:/ })).toBeNull();
     });
 
-    it('puts every filter behind one "Filters" button on a phone, with the count in force', async () => {
-        const app = renderWithProviders({
-            path: '/audit?action=agent.create&outcome=denied',
-            engineApi: auditEngine({ count: 3 }).client,
-        });
-        app.media.set('(max-width: 767.98px)', true);
-        const toggle = await screen.findByRole('button', { name: 'Filters (2)' });
-        expect(toggle.getAttribute('aria-expanded')).toBe('false');
-        expect(screen.queryByRole('combobox', { name: 'Action' })).toBeNull();
-        expect(screen.getByRole('list', { name: 'Active filters' })).toBeDefined();
-        await app.user.click(toggle);
-        expect(screen.getByRole<HTMLSelectElement>('combobox', { name: 'Action' }).value).toBe('agent.create');
-        expect(screen.getByRole<HTMLSelectElement>('combobox', { name: 'Outcome' }).value).toBe('denied');
-        expect(screen.getByLabelText('From').getAttribute('aria-describedby')).toBe(
-            screen.getByText(/^Days in your time zone/).id,
+    it("says the days are counted in the reader's time zone", async () => {
+        const app = renderWithProviders({ path: '/audit', engineApi: auditEngine({ count: 3 }).client });
+        await screen.findByText('Target 3');
+        await addFilter(app, 'Date');
+        expect(within(dialog()).getByLabelText('From').getAttribute('aria-describedby')).toBe(
+            within(dialog()).getByText(/^Days in your time zone/).id,
         );
     });
 
@@ -657,7 +646,7 @@ describe('audit log: states', { timeout: TIMEOUT_MS }, () => {
         await app.user.click(clearInEmptyState);
         expect(await screen.findByText('Target 3')).toBeDefined();
         expect(app.router.state.location.search).toEqual({});
-        expect(screen.getByRole<HTMLInputElement>('textbox', { name: 'Target ID' }).value).toBe('');
+        expect(screen.getByRole<HTMLInputElement>('searchbox', { name: 'Target ID' }).value).toBe('');
     });
 
     it('shows an error with a retry', async () => {
@@ -709,5 +698,17 @@ describe('audit log: access', { timeout: TIMEOUT_MS }, () => {
         });
         await screen.findByText('Target 1');
         expect(screen.getAllByRole('link', { name: 'Audit log' }).length).toBeGreaterThan(0);
+    });
+
+    it('shows agent targets as plain chips and asks for no agent list without agents.read', async () => {
+        const { client } = auditEngine({ count: 3, permissions: ['audit.read'] });
+        const agentList = vi.spyOn(client.agents, 'list');
+        const app = renderWithProviders({ path: '/audit', engineApi: client });
+        await screen.findByText('Target 3');
+        await waitFor(() => {
+            expect(app.queryClient.isFetching()).toBe(0);
+        });
+        expect(within(screen.getByRole('table')).queryByRole('link', { name: 'Target 3' })).toBeNull();
+        expect(agentList).not.toHaveBeenCalled();
     });
 });

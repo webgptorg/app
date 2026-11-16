@@ -50,7 +50,8 @@ function sessionsEngine(options: { permissions?: readonly Permission[]; stepUp?:
     });
 }
 
-const list = () => screen.getByRole('heading', { name: "Where you're signed in" }).closest('section') as HTMLElement;
+const list = () =>
+    screen.getByRole('heading', { name: /^Where you're signed in( \d+)?$/ }).closest('section') as HTMLElement;
 const rowOf = (name: string) => within(list()).getByText(name).closest('li') as HTMLElement;
 
 async function openRowMenu(user: ReturnType<typeof renderWithProviders>['user'], device: string) {
@@ -69,6 +70,14 @@ describe('sessions', { timeout: TIMEOUT_MS }, () => {
         expect(rowOf('Unknown browser')).toBeDefined();
         expect(within(list()).queryByText('Edge on Windows')).toBeNull();
         await expectNoAxeViolations(container);
+    });
+
+    it('reaches back to Security through the breadcrumb trail, with no "Back to" link', async () => {
+        renderWithProviders({ path: '/security/sessions', engineApi: sessionsEngine().client });
+        await screen.findByText('Firefox on macOS');
+        const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
+        expect(within(trail).getByRole('link', { name: 'Security' }).getAttribute('href')).toBe('/security');
+        expect(screen.queryByRole('link', { name: /^Back to/ })).toBeNull();
     });
 
     it('signs one session out after a confirmation naming the device', async () => {

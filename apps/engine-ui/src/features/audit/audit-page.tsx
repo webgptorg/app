@@ -1,9 +1,10 @@
+import { AgentId, ChatId, FileId, IntegrationId, MemberId, RunId, TriggerId } from '@ptbk/engine-api';
 import type { Member, ReadAuditEntry } from '@ptbk/engine-api';
-import { Badge, Button, createDataTableColumnHelper, DataTable, useLocale } from '@ptbk/ui';
+import { Button, createDataTableColumnHelper, DataTable, StatusPill, useLocale } from '@ptbk/ui';
 import type { ColumnVisibilityState, DataTableColumnDef } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { RefreshCw } from 'lucide-react';
+import { CalendarClock, Crosshair, Globe, Laptop, RefreshCw, Shapes, ShieldCheck, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useCursorPages } from '../../app/cursor-pages';
@@ -12,7 +13,9 @@ import { useEngineApi } from '../../app/engine-api-context';
 import { isInvalidCursor } from '../../app/list-errors';
 import { SoftBreaks } from '../../app/soft-breaks';
 import { m } from '../../paraglide/messages';
+import { EntityChip } from '../entities/entity-chip';
 import { memberListQueryOptions } from '../members/members-queries';
+import { sessionDevice } from '../security/session-device';
 import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
 import { useMediaQuery } from '../shell/use-media-query';
@@ -21,7 +24,7 @@ import { AuditEntryDetails } from './audit-entry-details';
 import { AuditFilters, TARGET_ID_PATTERN } from './audit-filters';
 import { auditKeys } from './audit-keys';
 import { AUDIT_OUTCOME_LABELS, AUDIT_OUTCOME_TONES, auditActionLabel, auditTargetKindLabel } from './audit-labels';
-import { auditLogQueryOptions, useAuditLog } from './audit-queries';
+import { auditChainStatusQueryOptions, auditLogQueryOptions, useAuditLog } from './audit-queries';
 import { auditListParams, hasAuditFilters } from './audit-search';
 import type { AuditSearch } from './audit-search';
 
@@ -72,26 +75,68 @@ function EntryTime({ at, format }: { readonly at: string; readonly format: Entry
     const value = new Date(at);
     const short = value.getFullYear() === new Date().getFullYear() ? format.short : format.shortWithYear;
     return (
-        <time dateTime={at} title={format.full.format(value)} className="whitespace-nowrap">
+        <time
+            dateTime={at}
+            title={format.full.format(value)}
+            className="whitespace-nowrap text-text-muted tabular-nums"
+        >
             {short.format(value)}
         </time>
     );
 }
 
-function actorName(entry: ReadAuditEntry, names: ReadonlyMap<string, string>): string {
-    switch (entry.actor.kind) {
-        case 'system':
-            return m.audit_actor_system();
-        case 'member':
-            return names.get(entry.actor.memberId) ?? entry.actor.memberId;
-        case 'api-token':
-            return m.audit_actor_api_token({ name: names.get(entry.actor.memberId) ?? entry.actor.memberId });
-    }
+/** A member by name as a chip; one beyond the first page of members keeps its ID as the name. */
+function Actor({ entry, names }: { readonly entry: ReadAuditEntry; readonly names: ReadonlyMap<string, string> }) {
+    if (entry.actor.kind === 'system') return <span className="text-text-muted">{m.audit_actor_system()}</span>;
+    const { memberId } = entry.actor;
+    const chip = <EntityChip kind="member" id={memberId} name={names.get(memberId) ?? memberId} />;
+    if (entry.actor.kind === 'member') return chip;
+    return (
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+            {chip}
+            <span className="shrink-0 text-xs text-text-muted">{m.audit_actor_via_token()}</span>
+        </span>
+    );
 }
 
 /** Settings and engine actions act on the engine itself, so an entry without a target lost nothing. */
 function isEngineAction(action: ReadAuditEntry['action']): boolean {
     return action.startsWith('settings.') || action.startsWith('engine.') || action.startsWith('ui.');
+}
+
+/**
+ * The target as the same chip it has everywhere else, where it is an entity the app can open. The ID comes from the
+ * log, so one that does not parse as that entity's ID gives a plain chip with no link.
+ */
+function targetChip(target: NonNullable<ReadAuditEntry['target']>, name: string) {
+    switch (target.kind) {
+        case 'agent':
+            return <EntityChip kind="agent" id={AgentId.safeParse(target.id).data ?? null} name={name} />;
+        case 'chat':
+            return <EntityChip kind="chat" id={ChatId.safeParse(target.id).data ?? null} name={name} />;
+        case 'member':
+            return <EntityChip kind="member" id={MemberId.safeParse(target.id).data ?? null} name={name} />;
+        case 'run':
+            return <EntityChip kind="run" id={RunId.safeParse(target.id).data ?? null} name={name} />;
+        case 'file':
+            return <EntityChip kind="file" id={FileId.safeParse(target.id).data ?? null} name={name} />;
+        case 'trigger':
+            return <EntityChip kind="trigger" id={TriggerId.safeParse(target.id).data ?? null} name={name} />;
+        case 'integration':
+            return <EntityChip kind="integration" id={IntegrationId.safeParse(target.id).data ?? null} name={name} />;
+        case 'folder':
+        case 'message':
+        case 'invite':
+        case 'access-request':
+        case 'api-token':
+        case 'wallet-record':
+        case 'wallet-request':
+        case 'passkey':
+        case 'session':
+        case 'settings':
+        case 'engine':
+            return null;
+    }
 }
 
 /** Target names are whatever a member typed; React renders them as text, never as markup. The ID is in the details. */
@@ -105,6 +150,12 @@ function Target({ entry }: { readonly entry: ReadAuditEntry }) {
         );
     }
     const name = target.name ?? null;
+    const chip = name === null ? null : targetChip(target, name);
+    if (chip !== null) return chip;
+    // There is one settings and one engine, so the kind alone names them; their IDs only repeat it.
+    if (name === null && (target.kind === 'settings' || target.kind === 'engine')) {
+        return <span>{auditTargetKindLabel(target.kind)}</span>;
+    }
     return (
         <span className="break-words">
             <span className="text-text-muted">{`${auditTargetKindLabel(target.kind)} `}</span>
@@ -113,81 +164,101 @@ function Target({ entry }: { readonly entry: ReadAuditEntry }) {
     );
 }
 
-/** Success is the norm, so only a denied or failed entry carries a badge. */
+/** Success is the norm, so only a denied or failed entry carries a pill: the exceptions stand out in a calm list. */
 function Action({ entry }: { readonly entry: ReadAuditEntry }) {
     return (
         <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span>{auditActionLabel(entry.action)}</span>
+            <span className="font-medium">{auditActionLabel(entry.action)}</span>
             {entry.outcome === 'success' ? null : (
-                <Badge tone={AUDIT_OUTCOME_TONES[entry.outcome]}>{AUDIT_OUTCOME_LABELS[entry.outcome]()}</Badge>
+                <StatusPill tone={AUDIT_OUTCOME_TONES[entry.outcome]}>
+                    {AUDIT_OUTCOME_LABELS[entry.outcome]()}
+                </StatusPill>
             )}
         </span>
     );
 }
+
+/** "Firefox on Windows" from the user agent; one it cannot read stays as sent, on one line, whole on hover. */
+function Device({ client }: { readonly client: NonNullable<ReadAuditEntry['client']> }) {
+    const { browser, os } = sessionDevice(client);
+    const named = browser !== null && os !== null ? m.sessions_device({ browser, os }) : (browser ?? os);
+    if (named !== null) {
+        return (
+            <span title={client.userAgent} className="whitespace-nowrap text-text-muted">
+                {named}
+            </span>
+        );
+    }
+    return (
+        <span title={client.userAgent} className="block max-w-56 truncate text-xs text-text-muted">
+            {client.userAgent}
+        </span>
+    );
+}
+
+const ICON = 'size-3.5';
 
 function useAuditColumns(names: ReadonlyMap<string, string>): DataTableColumnDef<ReadAuditEntry>[] {
     const format = useEntryTimeFormat();
     return useMemo(() => {
         const column = createDataTableColumnHelper<ReadAuditEntry>();
         return [
-            // On a phone card the first column is the title: what happened, then when.
+            // On a phone the first column is the title line: what happened, with when at its end.
             column.accessor('action', {
                 header: m.audit_column_action(),
                 enableSorting: false,
                 enableHiding: false,
-                meta: { priority: 0 },
+                meta: { icon: <Shapes className={ICON} />, priority: 0 },
                 cell: ({ row }) => <Action entry={row.original} />,
-            }),
-            column.accessor('at', {
-                header: m.audit_column_time(),
-                enableSorting: false,
-                enableHiding: false,
-                meta: { priority: 1 },
-                cell: ({ row }) => <EntryTime at={row.original.at} format={format} />,
             }),
             // The name comes from the cell, not the accessor, which TanStack Table caches per row.
             column.accessor((entry) => entry.actor.kind, {
                 id: 'actor',
                 header: m.audit_column_actor(),
                 enableSorting: false,
-                meta: { priority: 2 },
-                cell: ({ row }) => <span className="break-words">{actorName(row.original, names)}</span>,
+                meta: { icon: <UserRound className={ICON} />, priority: 2 },
+                cell: ({ row }) => <Actor entry={row.original} names={names} />,
             }),
             column.accessor((entry) => entry.target?.id ?? '', {
                 id: 'target',
                 header: m.audit_column_target(),
                 enableSorting: false,
-                meta: { priority: 3 },
+                meta: { icon: <Crosshair className={ICON} />, priority: 3 },
                 cell: ({ row }) => <Target entry={row.original} />,
-            }),
-            column.accessor((entry) => entry.client?.ip ?? '', {
-                id: 'clientIp',
-                header: m.audit_column_ip(),
-                enableSorting: false,
-                meta: { priority: 5 },
-                cell: ({ row }) =>
-                    row.original.client === null ? (
-                        <span className="text-text-muted">{m.audit_not_recorded()}</span>
-                    ) : (
-                        // An IPv4 address never wraps; a long IPv6 one only between its groups.
-                        <span className="font-mono text-xs">
-                            <SoftBreaks text={row.original.client.ip} after=":" />
-                        </span>
-                    ),
             }),
             column.accessor((entry) => entry.client?.userAgent ?? '', {
                 id: 'device',
                 header: m.audit_column_device(),
                 enableSorting: false,
-                meta: { priority: 6 },
+                meta: { icon: <Laptop className={ICON} />, priority: 5, hideOnCard: true },
                 cell: ({ row }) =>
                     row.original.client === null ? (
                         <span className="text-text-muted">{m.audit_not_recorded()}</span>
                     ) : (
-                        <span className="line-clamp-2 text-xs break-words" title={row.original.client.userAgent}>
-                            {row.original.client.userAgent}
+                        <Device client={row.original.client} />
+                    ),
+            }),
+            column.accessor((entry) => entry.client?.ip ?? '', {
+                id: 'clientIp',
+                header: m.audit_column_ip(),
+                enableSorting: false,
+                meta: { icon: <Globe className={ICON} />, priority: 6, hideOnCard: true },
+                cell: ({ row }) =>
+                    row.original.client === null ? (
+                        <span className="text-text-muted">{m.audit_not_recorded()}</span>
+                    ) : (
+                        // An IPv4 address never wraps; a long IPv6 one only between its groups.
+                        <span className="font-mono text-xs text-text-muted">
+                            <SoftBreaks text={row.original.client.ip} after=":" />
                         </span>
                     ),
+            }),
+            column.accessor('at', {
+                header: m.audit_column_time(),
+                enableSorting: false,
+                enableHiding: false,
+                meta: { icon: <CalendarClock className={ICON} />, priority: 1, numeric: true, trailing: true },
+                cell: ({ row }) => <EntryTime at={row.original.at} format={format} />,
             }),
         ];
     }, [names, format]);
@@ -258,35 +329,34 @@ export function AuditPage() {
     const refresh = () => {
         void queryClient.invalidateQueries({ queryKey: auditKeys.all });
     };
+    // Asks the engine to walk the chain again; the UI only reports its verdict (U-07, Risks).
+    const verify = () => {
+        void queryClient.refetchQueries({ queryKey: auditChainStatusQueryOptions(engineApi).queryKey });
+    };
     const clearButton = <Button onClick={clear}>{m.audit_clear_filters()}</Button>;
 
     return (
         <Page
             title={m.audit_title()}
+            description={m.audit_intro()}
             actions={
-                <Button loading={list.isFetching && !list.isPending} onClick={refresh}>
-                    <RefreshCw aria-hidden className="size-4" />
-                    {m.audit_refresh()}
-                </Button>
+                <>
+                    {nothingLogged ? null : (
+                        <Button variant="ghost" size="sm" onClick={verify}>
+                            <ShieldCheck aria-hidden className="size-4" />
+                            {m.audit_verify_chain()}
+                        </Button>
+                    )}
+                    <Button variant="ghost" size="sm" loading={list.isFetching && !list.isPending} onClick={refresh}>
+                        <RefreshCw aria-hidden className="size-4" />
+                        {m.audit_refresh()}
+                    </Button>
+                </>
             }
         >
-            <div className="-mt-3 flex flex-col gap-2">
-                <p className="text-sm text-text-muted">{m.audit_intro()}</p>
+            <div className="-mt-4">
                 <AuditChainStatus />
             </div>
-            {nothingLogged ? null : (
-                <AuditFilters
-                    search={search}
-                    members={members}
-                    onChange={(change) => {
-                        update(change);
-                    }}
-                    targetIdText={targetIdText}
-                    onTargetIdTextChange={setTargetIdText}
-                    onClear={clear}
-                    timeZone={localTimeZone()}
-                />
-            )}
             <DataTable
                 caption={m.audit_title()}
                 columns={columns}
@@ -324,6 +394,22 @@ export function AuditPage() {
                           },
                       }
                     : {})}
+                toolbar={(view) =>
+                    nothingLogged ? null : (
+                        <AuditFilters
+                            view={view}
+                            search={search}
+                            members={members}
+                            onChange={(change) => {
+                                update(change);
+                            }}
+                            targetIdText={targetIdText}
+                            onTargetIdTextChange={setTargetIdText}
+                            onClear={clear}
+                            timeZone={localTimeZone()}
+                        />
+                    )
+                }
                 empty={
                     filtered
                         ? { title: m.audit_no_results(), description: m.audit_no_results_hint(), action: clearButton }

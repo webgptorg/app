@@ -1,5 +1,7 @@
 // Flow 8: what the owner did in the flows above shows up in the audit log, and its filters by action and by target
 // work and stay in the URL.
+import type { Page } from '@playwright/test';
+
 import { addWalletLogin, apiList, openRowMenu, required } from '../../src/ui-app.ts';
 import { expect, test } from '../../src/ui-fixtures.ts';
 
@@ -7,6 +9,11 @@ interface Agent {
     readonly id: string;
     readonly name: string;
     readonly visibility: string;
+}
+
+async function addFilter(page: Page, field: string): Promise<void> {
+    await page.getByRole('button', { name: 'Filter', exact: true }).click();
+    await page.getByRole('dialog').getByRole('option', { name: field }).click();
 }
 
 test('the actions taken in the UI are audited and the filters find them', async ({ page, signIn, appUrl }) => {
@@ -32,7 +39,9 @@ test('the actions taken in the UI are audited and the filters find them', async 
     await expect(page.getByRole('button', { name: /^Chain verified / })).toBeVisible();
     const table = page.getByRole('table');
 
-    await page.getByRole('combobox', { name: 'Action' }).selectOption('wallet.record.save');
+    await addFilter(page, 'Action');
+    await page.getByRole('dialog').getByRole('option', { name: 'Wallet login saved' }).click();
+    await page.keyboard.press('Escape');
     await expect(page).toHaveURL((url) => url.searchParams.get('action') === 'wallet.record.save');
     await expect(table.getByText(`${site} · au…@example.com`, { exact: true })).toBeVisible();
     await expect(table.getByText('Wallet login saved', { exact: true }).first()).toBeVisible();
@@ -40,9 +49,10 @@ test('the actions taken in the UI are audited and the filters find them', async 
 
     await page.getByRole('button', { name: 'Clear filters' }).click();
     await expect(page).toHaveURL((url) => !url.searchParams.has('action'));
-    await page.getByRole('button', { name: 'More filters' }).click();
-    await page.getByRole('combobox', { name: 'Target type' }).selectOption('agent');
-    await page.getByRole('textbox', { name: 'Target ID' }).fill(agent.id);
+    await addFilter(page, 'Target type');
+    await page.getByRole('dialog').getByRole('option', { name: 'Agent', exact: true }).click();
+    await page.keyboard.press('Escape');
+    await page.getByRole('searchbox', { name: 'Target ID' }).fill(agent.id);
     await expect(page).toHaveURL(
         (url) => url.searchParams.get('targetKind') === 'agent' && url.searchParams.get('targetId') === agent.id,
     );
@@ -51,6 +61,7 @@ test('the actions taken in the UI are audited and the filters find them', async 
 
     // The filters come back from the URL alone.
     await page.reload();
-    await expect(page.getByRole('combobox', { name: 'Target type' })).toHaveValue('agent');
+    await expect(page.getByRole('button', { name: /^Target type/ })).toContainText('Agent');
+    await expect(page.getByRole('searchbox', { name: 'Target ID' })).toHaveValue(agent.id);
     await expect(table.getByText('Agent updated', { exact: true }).first()).toBeVisible();
 });

@@ -1,6 +1,6 @@
 import { isAuditAction } from '@ptbk/engine-api';
 import type { AuditAction, AuditEntry, ReadAuditAction } from '@ptbk/engine-api';
-import type { BadgeTone } from '@ptbk/ui';
+import type { StatusTone } from '@ptbk/ui';
 
 import { m } from '../../paraglide/messages';
 
@@ -101,7 +101,7 @@ export const AUDIT_OUTCOME_LABELS: Readonly<Record<Outcome, () => string>> = {
     failed: m.audit_outcome_failed,
 };
 
-export const AUDIT_OUTCOME_TONES: Readonly<Record<Outcome, BadgeTone>> = {
+export const AUDIT_OUTCOME_TONES: Readonly<Record<Outcome, StatusTone>> = {
     success: 'success',
     denied: 'warning',
     failed: 'danger',

@@ -1,6 +1,6 @@
 import { ROLES } from '@ptbk/engine-api';
 import type { Role } from '@ptbk/engine-api';
-import { Button, CopyButton, Dialog, Field, Input, Select } from '@ptbk/ui';
+import { Button, Combobox, CopyButton, Dialog, Field, Input } from '@ptbk/ui';
 import { useId, useState } from 'react';
 import type { SyntheticEvent } from 'react';
 
@@ -13,20 +13,16 @@ export function RoleField({ value, onChange }: { readonly value: Role; readonly 
     return (
         <Field label={m.members_role_label()} hint={m.members_role_hint()}>
             {(control) => (
-                <Select
+                <Combobox
                     {...control}
+                    className="w-full"
                     value={value}
-                    onChange={(event) => {
-                        const next = ROLES.find((role) => role === event.target.value);
+                    options={ROLES.map((role) => ({ value: role, label: roleLabel(role) }))}
+                    onChange={(picked) => {
+                        const next = ROLES.find((role) => role === picked);
                         if (next !== undefined) onChange(next);
                     }}
-                >
-                    {ROLES.map((role) => (
-                        <option key={role} value={role}>
-                            {roleLabel(role)}
-                        </option>
-                    ))}
-                </Select>
+                />
             )}
         </Field>
     );
@@ -172,19 +168,19 @@ export function InviteDialog({ mutations, onClose }: InviteDialogProps) {
                 <RoleField value={role} onChange={setRole} />
                 <Field label={m.invites_expiry_label()}>
                     {(control) => (
-                        <Select
+                        <Combobox
                             {...control}
+                            className="w-full"
                             value={String(days)}
-                            onChange={(event) => {
-                                setDays(Number(event.target.value));
+                            options={INVITE_DAYS.map((option) => ({
+                                value: String(option),
+                                label: expiryLabel(option),
+                            }))}
+                            onChange={(picked) => {
+                                const next = INVITE_DAYS.find((option) => String(option) === picked);
+                                if (next !== undefined) setDays(next);
                             }}
-                        >
-                            {INVITE_DAYS.map((option) => (
-                                <option key={option} value={option}>
-                                    {expiryLabel(option)}
-                                </option>
-                            ))}
-                        </Select>
+                        />
                     )}
                 </Field>
             </form>

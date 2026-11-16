@@ -1,12 +1,26 @@
 import { ACCESS_CODE_PATTERN, ROLES } from '@ptbk/engine-api';
 import type { AccessRequest, Role } from '@ptbk/engine-api';
-import { Banner, Button, Card, Dialog, ErrorState, Field, IconButton, Input, Menu, RelativeTime } from '@ptbk/ui';
+import {
+    ActionMenu,
+    Avatar,
+    Badge,
+    Banner,
+    Button,
+    Dialog,
+    ErrorState,
+    Field,
+    Input,
+    RelativeTime,
+    Section,
+    STATUS_TINT_CLASSES,
+} from '@ptbk/ui';
 import type { MenuEntry } from '@ptbk/ui';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { Ellipsis, UserRoundCheck, UserX } from 'lucide-react';
+import { UserRoundCheck, UserX } from 'lucide-react';
 import { useId, useState } from 'react';
 import type { SyntheticEvent } from 'react';
 
+import { cx } from '../../app/cx';
 import { m } from '../../paraglide/messages';
 import { roleLabel } from '../shell/role-label';
 import { useResumedStepUp } from '../step-up/step-up';
@@ -106,7 +120,7 @@ function ApproveDialog({ request, gone, initialRole, resumed, mutations, onClose
         >
             <form id={formId} noValidate onSubmit={submit} className="flex flex-col gap-4">
                 {resumed ? <Banner tone="info">{m.step_up_resumed()}</Banner> : null}
-                <Field label={m.access_code_label()} error={error} required>
+                <Field label={m.access_code_label()} hint={m.access_code_hint()} error={error} required>
                     {(control) => (
                         <Input
                             {...control}
@@ -115,7 +129,8 @@ function ApproveDialog({ request, gone, initialRole, resumed, mutations, onClose
                             autoComplete="off"
                             spellCheck={false}
                             maxLength={7}
-                            className="w-32 font-mono tracking-widest tabular-nums"
+                            // Read out digit by digit and compared by eye: large, spaced and centred, like a sign-in code.
+                            className="h-14 w-48 text-center font-mono text-2xl tracking-[0.35em] tabular-nums"
                             onChange={(event) => {
                                 setCode(event.target.value);
                             }}
@@ -136,7 +151,6 @@ interface RequestRowProps {
 }
 
 function RequestRow({ request, onApprove, onDecline }: RequestRowProps) {
-    const menuLabel = m.access_actions_for({ name: request.displayName });
     const items: MenuEntry[] =
         onDecline === null
             ? []
@@ -151,36 +165,35 @@ function RequestRow({ request, onApprove, onDecline }: RequestRowProps) {
                   },
               ];
     return (
-        <li className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center">
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <li
+            className={cx(
+                'soft-surface flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3',
+                STATUS_TINT_CLASSES.warning,
+            )}
+        >
+            <Avatar name={request.displayName} size="md" />
+            <div className="flex min-w-0 flex-1 basis-48 flex-col gap-0.5">
                 {/* Name and email come from the dashboard's ticket: untrusted text, rendered as text. */}
-                <span className="font-medium break-words">{request.displayName}</span>
-                <span className="text-sm break-words text-text-muted">
-                    {request.email} · {m.access_asked()} <RelativeTime value={new Date(request.createdAt)} />
+                <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="text-sm font-medium break-words">{request.displayName}</span>
+                    <Badge>{m.access_proposed_role({ role: roleLabel(request.proposedRole) })}</Badge>
                 </span>
-                <span className="text-sm text-text-muted">
-                    {m.access_proposed_role({ role: roleLabel(request.proposedRole) })}
+                <span className="text-xs break-words text-text-muted">
+                    {request.email} · {m.access_asked()}{' '}
+                    <RelativeTime value={new Date(request.createdAt)} className="tabular-nums" />
                 </span>
             </div>
             {onApprove === null ? null : (
-                <div className="flex items-center gap-1">
-                    <Button size="sm" onClick={onApprove}>
+                <div className="ms-auto flex shrink-0 items-center gap-1">
+                    <Button size="sm" variant="primary" onClick={onApprove}>
                         <UserRoundCheck aria-hidden className="size-4" />
                         {m.access_approve()}
                     </Button>
-                    <Menu
-                        label={menuLabel}
-                        align="end"
+                    <ActionMenu
                         items={items}
-                        trigger={(triggerProps) => (
-                            <IconButton
-                                {...triggerProps}
-                                variant="ghost"
-                                size="sm"
-                                label={menuLabel}
-                                icon={<Ellipsis aria-hidden className="size-4" />}
-                            />
-                        )}
+                        label={m.access_actions_for({ name: request.displayName })}
+                        size="sm"
+                        variant="ghost"
                     />
                 </div>
             )}
@@ -224,7 +237,7 @@ export function AccessRequests({ query, canManage, mutations }: AccessRequestsPr
     };
     if (query.isError) {
         return (
-            <Card title={m.access_title()}>
+            <Section title={m.access_title()} divided={false}>
                 <ErrorState
                     message={m.access_load_failed()}
                     onRetry={() => {
@@ -232,7 +245,7 @@ export function AccessRequests({ query, canManage, mutations }: AccessRequestsPr
                     }}
                     retrying={query.isFetching}
                 />
-            </Card>
+            </Section>
         );
     }
     const dialog =
@@ -252,33 +265,35 @@ export function AccessRequests({ query, canManage, mutations }: AccessRequestsPr
     return (
         <>
             {requests === undefined || requests.length === 0 ? null : (
-                <Card title={m.access_title()}>
-                    <div className="flex flex-col gap-4">
-                        <p className="text-sm text-text-muted">{m.access_intro()}</p>
-                        <ul className="flex flex-col divide-y divide-divider">
-                            {requests.map((request) => (
-                                <RequestRow
-                                    key={request.id}
-                                    request={request}
-                                    onApprove={
-                                        canManage
-                                            ? () => {
-                                                  setChosen({ request, role: request.proposedRole, resumed: false });
-                                              }
-                                            : null
-                                    }
-                                    onDecline={
-                                        canManage
-                                            ? () => {
-                                                  mutations.declineAccess.mutate(request);
-                                              }
-                                            : null
-                                    }
-                                />
-                            ))}
-                        </ul>
-                    </div>
-                </Card>
+                <Section
+                    title={m.access_title()}
+                    count={requests.length}
+                    description={m.access_intro()}
+                    divided={false}
+                >
+                    <ul className="flex flex-col gap-2">
+                        {requests.map((request) => (
+                            <RequestRow
+                                key={request.id}
+                                request={request}
+                                onApprove={
+                                    canManage
+                                        ? () => {
+                                              setChosen({ request, role: request.proposedRole, resumed: false });
+                                          }
+                                        : null
+                                }
+                                onDecline={
+                                    canManage
+                                        ? () => {
+                                              mutations.declineAccess.mutate(request);
+                                          }
+                                        : null
+                                }
+                            />
+                        ))}
+                    </ul>
+                </Section>
             )}
             {dialog}
         </>

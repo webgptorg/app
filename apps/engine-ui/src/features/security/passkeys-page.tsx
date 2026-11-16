@@ -1,8 +1,10 @@
 import type { MemberId, PasskeyId, ReadPasskey } from '@ptbk/engine-api';
-import { ActionMenu, Badge, CodeText, ConfirmDialog, RelativeTime } from '@ptbk/ui';
+import { ActionMenu, ConfirmDialog, EmptyState, RelativeTime, StatusPill } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
+import { Cloud, Fingerprint, Key, KeyRound } from 'lucide-react';
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 
 import { unwrap } from '../../app/api-errors';
 import { useEngineApi } from '../../app/engine-api-context';
@@ -13,10 +15,11 @@ import { memberKeys } from '../members/members-keys';
 import { memberDetailQueryOptions } from '../members/members-queries';
 import { useCurrentMember } from '../session/use-current-member';
 import { usePermissions } from '../session/use-permissions';
-import { BackLink, Page } from '../shell/page';
+import { Crumb, Page } from '../shell/page';
 import { useResumedStepUp } from '../step-up/step-up';
 import { FactsSkeleton } from './facts';
-import { SectionCard } from './section-card';
+import { QuerySection } from './query-section';
+import { CredentialRow, MetaDot } from './security-parts';
 import { securityKeys } from './security-keys';
 import {
     allPasskeysQueryOptions,
@@ -60,22 +63,75 @@ function lastPasskeyIds(items: readonly ReadPasskey[], complete: boolean): Reado
     return new Set(items.filter(({ memberId }) => counts.get(memberId) === 1).map(({ id }) => id));
 }
 
-function authenticatorLabel(passkey: ReadPasskey): string {
-    const authenticator = passkey.authenticator;
-    if (authenticator === null) return m.passkeys_kind_unknown();
-    const kind =
-        authenticator.attachment === 'platform'
-            ? m.passkeys_kind_platform()
-            : authenticator.attachment === 'cross-platform'
-              ? m.passkeys_kind_roaming()
-              : m.passkeys_kind_unknown();
-    if (authenticator.backedUp === null) return kind;
-    return `${kind}, ${authenticator.backedUp ? m.passkeys_synced() : m.passkeys_device_bound()}`;
+function kindLabel(passkey: ReadPasskey): string {
+    const attachment = passkey.authenticator?.attachment ?? null;
+    if (attachment === 'platform') return m.passkeys_kind_platform();
+    if (attachment === 'cross-platform') return m.passkeys_kind_roaming();
+    return m.passkeys_kind_unknown();
+}
+
+/** Built-in authenticators unlock with the device's own check (Touch ID, Windows Hello); a roaming one is a key. */
+function KindIcon({ passkey }: { readonly passkey: ReadPasskey }) {
+    const attachment = passkey.authenticator?.attachment ?? null;
+    if (attachment === 'platform') return <Fingerprint />;
+    if (attachment === 'cross-platform') return <KeyRound />;
+    return <Key />;
+}
+
+/** Synced or bound to one device, in words with a small cloud for synced ones; nothing when the engine cannot tell. */
+function Backup({ passkey }: { readonly passkey: ReadPasskey }) {
+    const backedUp = passkey.authenticator?.backedUp ?? null;
+    if (backedUp === null) return null;
+    return (
+        <>
+            <MetaDot />
+            <span className="inline-flex items-center gap-1">
+                {backedUp ? <Cloud aria-hidden className="size-3" /> : null}
+                {backedUp ? m.passkeys_synced() : m.passkeys_device_bound()}
+            </span>
+        </>
+    );
 }
 
 function MemberName({ memberId }: { readonly memberId: MemberId }) {
     const member = useQuery(memberDetailQueryOptions(useEngineApi(), memberId));
-    return member.data === undefined ? <CodeText value={memberId} /> : <span>{member.data.displayName}</span>;
+    return member.data === undefined ? (
+        <span className="font-mono">{memberId}</span>
+    ) : (
+        <span className="font-medium text-text">{member.data.displayName}</span>
+    );
+}
+
+function PasskeyMeta({ passkey, showOwner }: { readonly passkey: ReadPasskey; readonly showOwner: boolean }) {
+    let owner: ReactNode = null;
+    if (showOwner)
+        owner = (
+            <>
+                <MemberName memberId={passkey.memberId} />
+                <MetaDot />
+            </>
+        );
+    return (
+        <>
+            {owner}
+            <span>{kindLabel(passkey)}</span>
+            <Backup passkey={passkey} />
+            <MetaDot />
+            <span>
+                {m.passkeys_created()} <RelativeTime value={new Date(passkey.createdAt)} />
+            </span>
+            <MetaDot />
+            <span>
+                {passkey.lastUsedAt === null ? (
+                    m.passkeys_never_used()
+                ) : (
+                    <>
+                        {m.passkeys_last_used()} <RelativeTime value={new Date(passkey.lastUsedAt)} />
+                    </>
+                )}
+            </span>
+        </>
+    );
 }
 
 interface PasskeyListProps {
@@ -101,52 +157,39 @@ function PasskeyList({
     emptyText,
 }: PasskeyListProps) {
     return (
-        <SectionCard title={title} query={query} skeleton={<FactsSkeleton rows={3} />}>
+        <QuerySection
+            title={title}
+            query={query}
+            skeleton={<FactsSkeleton rows={3} />}
+            count={({ items: listed }) => {
+                const shown = hide === undefined ? listed : listed.filter((passkey) => !hide(passkey));
+                return shown.length === 0 ? undefined : shown.length;
+            }}
+        >
             {({ items: listed, nextCursor }) => {
                 const lastOnes = lastPasskeyIds(listed, nextCursor === null);
                 const items = hide === undefined ? listed : listed.filter((passkey) => !hide(passkey));
                 return items.length === 0 ? (
-                    <p className="text-sm text-text-muted">{emptyText}</p>
+                    <EmptyState variant="inline" icon={<Key />} title={emptyText} />
                 ) : (
                     <div className="flex flex-col gap-3">
-                        <ul className="flex flex-col divide-y divide-divider">
+                        <ul className="flex flex-col divide-y divide-hairline">
                             {items.map((passkey) => {
                                 const current = passkey.id === currentPasskeyId;
                                 const name = displayName(passkey);
                                 const last = lastOnes.has(passkey.id);
                                 return (
-                                    <li
+                                    <CredentialRow
                                         key={passkey.id}
-                                        className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0 sm:items-center"
-                                    >
-                                        <div className="flex min-w-0 flex-col gap-1">
-                                            <span className="flex flex-wrap items-center gap-2 font-medium">
-                                                {name}
-                                                {current ? <Badge tone="accent">{m.passkeys_current()}</Badge> : null}
-                                            </span>
-                                            <span className="text-sm text-text-muted">
-                                                {showOwner ? (
-                                                    <>
-                                                        <MemberName memberId={passkey.memberId} />
-                                                        {' · '}
-                                                    </>
-                                                ) : null}
-                                                {authenticatorLabel(passkey)}
-                                                {' · '}
-                                                {m.passkeys_created()}{' '}
-                                                <RelativeTime value={new Date(passkey.createdAt)} />
-                                                {' · '}
-                                                {passkey.lastUsedAt === null ? (
-                                                    m.passkeys_never_used()
-                                                ) : (
-                                                    <>
-                                                        {m.passkeys_last_used()}{' '}
-                                                        <RelativeTime value={new Date(passkey.lastUsedAt)} />
-                                                    </>
-                                                )}
-                                            </span>
-                                        </div>
-                                        <span className="shrink-0">
+                                        icon={<KindIcon passkey={passkey} />}
+                                        name={name}
+                                        current={
+                                            current ? (
+                                                <StatusPill tone="success">{m.passkeys_current()}</StatusPill>
+                                            ) : undefined
+                                        }
+                                        meta={<PasskeyMeta passkey={passkey} showOwner={showOwner} />}
+                                        action={
                                             <ActionMenu
                                                 label={m.passkeys_actions({ name })}
                                                 variant="ghost"
@@ -165,20 +208,20 @@ function PasskeyList({
                                                     },
                                                 ]}
                                             />
-                                        </span>
-                                    </li>
+                                        }
+                                    />
                                 );
                             })}
                         </ul>
                         {nextCursor === null ? null : (
-                            <p className="text-sm text-text-muted">
+                            <p className="text-xs text-text-muted">
                                 {m.passkeys_more({ count: String(CREDENTIALS_PAGE_SIZE) })}
                             </p>
                         )}
                     </div>
                 );
             }}
-        </SectionCard>
+        </QuerySection>
     );
 }
 
@@ -243,7 +286,11 @@ export function PasskeysPage() {
         <Page
             title={m.passkeys_title()}
             description={m.passkeys_intro()}
-            back={<BackLink to="/security">{m.passkeys_back()}</BackLink>}
+            breadcrumbs={[
+                <Crumb key="security" to="/security">
+                    {m.security_title()}
+                </Crumb>,
+            ]}
         >
             <PasskeyList
                 query={mine}

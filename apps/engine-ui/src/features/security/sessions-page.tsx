@@ -1,33 +1,42 @@
 import type { Session } from '@ptbk/engine-api';
-import { Badge, Button, ConfirmDialog, EmptyState, IconButton, Menu, RelativeTime, useToast } from '@ptbk/ui';
-import type { MenuEntry } from '@ptbk/ui';
+import { ActionMenu, Button, ConfirmDialog, EmptyState, RelativeTime, StatusPill, useToast } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Ellipsis, LogOut, Monitor, MonitorSmartphone, Smartphone, Tablet } from 'lucide-react';
+import { Laptop, LogOut, Monitor, MonitorSmartphone, Smartphone, Tablet } from 'lucide-react';
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 
 import { unwrap } from '../../app/api-errors';
 import { useBrowser } from '../../app/browser-context';
 import { useEngineApi } from '../../app/engine-api-context';
-import { Link } from '../../app/link';
 import { isPageLevelFailure } from '../../app/list-errors';
 import { useStepUpAwareMutation } from '../../app/mutations';
 import { m } from '../../paraglide/messages';
-import { Page } from '../shell/page';
+import { Crumb, Page } from '../shell/page';
 import { signOut } from '../shell/sign-out';
 import { FactsSkeleton } from './facts';
-import { SectionCard } from './section-card';
+import { QuerySection } from './query-section';
+import { CredentialRow, MetaDot } from './security-parts';
 import { sessionDevice } from './session-device';
-import type { DeviceKind } from './session-device';
+import type { SessionDevice } from './session-device';
 import { securityKeys } from './security-keys';
 import { CREDENTIALS_PAGE_SIZE, mySessionsQueryOptions } from './security-queries';
 
 const MUTATION_TIMEOUT_MS = 30_000;
 
-const DEVICE_ICONS: Readonly<Record<DeviceKind, typeof Monitor>> = {
-    phone: Smartphone,
-    tablet: Tablet,
-    computer: Monitor,
+export type DeviceGlyph = 'laptop' | 'desktop' | 'phone' | 'tablet';
+
+const GLYPHS: Readonly<Record<DeviceGlyph, ReactNode>> = {
+    laptop: <Laptop />,
+    desktop: <Monitor />,
+    phone: <Smartphone />,
+    tablet: <Tablet />,
 };
+
+/** Macs and Chromebooks are almost always laptops; a Windows or Linux machine may as well be a desktop. */
+export function deviceGlyph({ kind, os }: SessionDevice): DeviceGlyph {
+    if (kind === 'phone' || kind === 'tablet') return kind;
+    return os === 'macOS' || os === 'ChromeOS' ? 'laptop' : 'desktop';
+}
 
 export function deviceLabel(session: Session): string {
     const { browser, os } = sessionDevice(session.client);
@@ -46,57 +55,50 @@ interface SessionRowProps {
 }
 
 function SessionRow({ session, label, onSignOut }: SessionRowProps) {
-    const Icon = DEVICE_ICONS[sessionDevice(session.client).kind];
-    const menuLabel = m.sessions_actions_for({ device: label });
-    const items: MenuEntry[] = [
-        {
-            kind: 'item',
-            id: 'sign-out',
-            label: session.current ? m.sessions_sign_out_here() : m.sessions_sign_out(),
-            icon: <LogOut aria-hidden />,
-            tone: 'danger',
-            onSelect: onSignOut,
-        },
-    ];
     return (
-        <li className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-            <Icon aria-hidden className="mt-0.5 size-5 shrink-0 text-text-muted" />
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className="flex flex-wrap items-center gap-2 font-medium">
-                    {label}
-                    {session.current ? <Badge tone="accent">{m.sessions_this_device()}</Badge> : null}
-                </span>
-                <span className="text-sm break-words text-text-muted">
-                    {session.client === null ? null : (
-                        <>
-                            <span className="tabular-nums">{session.client.ip}</span>
-                            {' · '}
-                        </>
-                    )}
-                    {m.sessions_signed_in()} <RelativeTime value={new Date(session.createdAt)} />
+        <CredentialRow
+            icon={GLYPHS[deviceGlyph(sessionDevice(session.client))]}
+            name={label}
+            current={session.current ? <StatusPill tone="success">{m.sessions_this_device()}</StatusPill> : undefined}
+            meta={
+                <>
+                    <span>
+                        {m.sessions_signed_in()} <RelativeTime value={new Date(session.createdAt)} />
+                    </span>
                     {session.current ? null : (
                         <>
-                            {' · '}
-                            {m.sessions_last_active()} <RelativeTime value={new Date(session.lastSeenAt)} />
+                            <MetaDot />
+                            <span>
+                                {m.sessions_last_active()} <RelativeTime value={new Date(session.lastSeenAt)} />
+                            </span>
                         </>
                     )}
-                </span>
-            </div>
-            <Menu
-                label={menuLabel}
-                align="end"
-                items={items}
-                trigger={(triggerProps) => (
-                    <IconButton
-                        {...triggerProps}
-                        variant="ghost"
-                        size="sm"
-                        label={menuLabel}
-                        icon={<Ellipsis aria-hidden className="size-4" />}
-                    />
-                )}
-            />
-        </li>
+                    {session.client === null ? null : (
+                        <>
+                            <MetaDot />
+                            <span className="font-mono">{session.client.ip}</span>
+                        </>
+                    )}
+                </>
+            }
+            action={
+                <ActionMenu
+                    label={m.sessions_actions_for({ device: label })}
+                    variant="ghost"
+                    size="sm"
+                    items={[
+                        {
+                            kind: 'item',
+                            id: 'sign-out',
+                            label: session.current ? m.sessions_sign_out_here() : m.sessions_sign_out(),
+                            icon: <LogOut aria-hidden />,
+                            tone: 'danger',
+                            onSelect: onSignOut,
+                        },
+                    ]}
+                />
+            }
+        />
     );
 }
 
@@ -139,21 +141,30 @@ export function SessionsPage() {
     return (
         <Page
             title={m.sessions_title()}
-            back={
-                <Link to="/security" variant="standalone" className="inline-flex items-center gap-1 text-sm">
-                    <ArrowLeft aria-hidden className="size-4" />
-                    {m.sessions_back()}
-                </Link>
-            }
+            description={m.sessions_intro()}
+            breadcrumbs={[
+                <Crumb key="security" to="/security">
+                    {m.security_title()}
+                </Crumb>,
+            ]}
         >
-            <p className="text-sm text-text-muted">{m.sessions_intro()}</p>
-            <SectionCard title={m.sessions_mine()} query={sessions} skeleton={<FactsSkeleton rows={3} />}>
+            <QuerySection
+                title={m.sessions_mine()}
+                query={sessions}
+                skeleton={<FactsSkeleton rows={3} />}
+                count={({ items }) => (items.length > 1 ? items.length : undefined)}
+            >
                 {({ items, nextCursor }) => (
-                    <div className="flex flex-col gap-4">
+                    <div className="flex flex-col gap-3">
                         {items.length === 0 ? (
-                            <EmptyState headingLevel={3} icon={<MonitorSmartphone />} title={m.sessions_empty()} />
+                            <EmptyState
+                                variant="inline"
+                                headingLevel={3}
+                                icon={<MonitorSmartphone />}
+                                title={m.sessions_empty()}
+                            />
                         ) : (
-                            <ul className="flex flex-col divide-y divide-divider">
+                            <ul className="flex flex-col divide-y divide-hairline">
                                 {items.map((session) => {
                                     const label = deviceLabel(session);
                                     return (
@@ -174,16 +185,20 @@ export function SessionsPage() {
                             </ul>
                         )}
                         {nextCursor === null ? null : (
-                            <p className="text-sm text-text-muted">
+                            <p className="text-xs text-text-muted">
                                 {m.sessions_more({ count: String(CREDENTIALS_PAGE_SIZE) })}
                             </p>
                         )}
                         {otherCount === 0 ? (
                             <p className="text-sm text-text-muted">{m.sessions_only_this_one()}</p>
                         ) : (
-                            <div className="flex flex-col items-start gap-2 border-t border-divider pt-4">
+                            // The bulk sign-out is for a lost device: findable, but quiet beside the list.
+                            <div className="flex flex-col gap-2 border-t border-hairline pt-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                                 <p className="text-sm text-text-muted">{m.sessions_others_hint()}</p>
                                 <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    className="self-start sm:self-auto"
                                     onClick={() => {
                                         setPending({ kind: 'others', count: otherCount });
                                     }}
@@ -195,7 +210,7 @@ export function SessionsPage() {
                         )}
                     </div>
                 )}
-            </SectionCard>
+            </QuerySection>
             {pending?.kind === 'one' ? (
                 <ConfirmDialog
                     open

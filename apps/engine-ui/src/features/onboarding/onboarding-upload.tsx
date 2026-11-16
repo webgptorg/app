@@ -1,7 +1,7 @@
 import { FileName } from '@ptbk/engine-api';
 import type { FileId } from '@ptbk/engine-api';
-import { Button, Spinner } from '@ptbk/ui';
-import { FileText, X } from 'lucide-react';
+import { Button, IconButton, Spinner } from '@ptbk/ui';
+import { FileText, Paperclip, X } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
@@ -74,11 +74,13 @@ export function OnboardingUpload({ maxFiles, files, onChange, onBusyChange }: On
             />
             <div className="flex flex-wrap items-center gap-3">
                 <Button
+                    size="sm"
                     disabled={uploading > 0 || files.length >= maxFiles}
                     onClick={() => {
                         input.current?.click();
                     }}
                 >
+                    <Paperclip aria-hidden className="size-4" />
                     {m.onboarding_files_add()}
                 </Button>
                 {uploading > 0 ? (
@@ -89,27 +91,31 @@ export function OnboardingUpload({ maxFiles, files, onChange, onBusyChange }: On
                 ) : null}
             </div>
             {files.length === 0 ? null : (
-                <ul aria-label={m.onboarding_files_list()} className="flex flex-col gap-1">
+                // Added files as quiet chips, like attachments waiting in a composer.
+                <ul aria-label={m.onboarding_files_list()} className="flex flex-wrap gap-1.5">
                     {files.map((file) => (
-                        <li key={file.id} className="flex min-w-0 items-center gap-2 text-sm">
-                            <FileText aria-hidden className="size-4 shrink-0 text-text-muted" />
-                            <span className="min-w-0 truncate">{file.name}</span>
-                            <Button
+                        <li
+                            key={file.id}
+                            className="flex max-w-full min-w-0 items-center gap-1.5 rounded-control bg-neutral-soft py-0.5 ps-2 pe-0.5 text-sm"
+                        >
+                            <FileText aria-hidden className="size-3.5 shrink-0 text-text-muted" />
+                            {/* File names are the member's own, but still text nodes. */}
+                            <span className="min-w-0 truncate font-mono text-xs">{file.name}</span>
+                            <IconButton
                                 variant="ghost"
                                 size="sm"
-                                aria-label={m.onboarding_files_remove({ name: file.name })}
+                                label={m.onboarding_files_remove({ name: file.name })}
+                                icon={<X aria-hidden className="size-3.5" />}
                                 onClick={() => {
                                     onChange(files.filter(({ id }) => id !== file.id));
                                 }}
-                            >
-                                <X aria-hidden className="size-4" />
-                            </Button>
+                            />
                         </li>
                     ))}
                 </ul>
             )}
             {refused.length === 0 ? null : (
-                <p className="text-sm text-danger">{m.onboarding_files_refused({ names: refused.join(', ') })}</p>
+                <p className="text-xs text-danger">{m.onboarding_files_refused({ names: refused.join(', ') })}</p>
             )}
         </div>
     );
