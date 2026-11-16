@@ -1,7 +1,7 @@
 import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type {
     AgentId,
-    AgentProfile,
+    AgentOrigin,
     ChatId,
     FileId,
     IntegrationId,
@@ -19,7 +19,9 @@ import type { ReactNode } from 'react';
 
 import type { FeatureRequirement } from '../../app/registry/feature';
 import { useAllows } from '../../app/registry/use-visible-features';
-import { AgentAvatar } from '../agents/agent-avatar';
+import { AgentAvatar, NO_AGENT_PROFILE } from '../agents/agent-avatar';
+import type { AgentAvatarProfile } from '../agents/agent-avatar';
+import { useAgentLook } from '../home/use-agent-look';
 import { agentColor } from '../chat/references/agent-color';
 import { splitTaskName } from '../tasks/task-name';
 import { CardFallback } from './card-fallback';
@@ -59,7 +61,9 @@ export type EntityChipProps = Common &
         | {
               readonly kind: 'agent';
               readonly id: AgentId | null;
-              readonly profile?: Pick<AgentProfile, 'avatarUrl' | 'color'> | undefined;
+              /** Without it, the chip looks the agent up in the shared agents query for its picture and colour. */
+              readonly profile?: AgentAvatarProfile | undefined;
+              readonly origin?: AgentOrigin | undefined;
           }
         | { readonly kind: 'task'; readonly id: TaskId | null }
         | { readonly kind: 'run'; readonly id: RunId | null }
@@ -164,6 +168,18 @@ function targetOf(props: EntityChipProps): Target | null {
 }
 
 export function EntityChip(props: EntityChipProps) {
+    if (props.kind === 'agent' && props.profile === undefined && props.id !== null) {
+        return <LookedUpAgentChip {...props} id={props.id} />;
+    }
+    return <KnownEntityChip {...props} />;
+}
+
+function LookedUpAgentChip(props: EntityChipProps & { readonly kind: 'agent'; readonly id: AgentId }) {
+    const look = useAgentLook(props.id);
+    return <KnownEntityChip {...props} profile={look.profile} origin={look.origin} />;
+}
+
+function KnownEntityChip(props: EntityChipProps) {
     const allowed = useAllows(ENTITY_REQUIREMENTS[props.kind]);
     const { name, status, statusLabel, wrap, className } = props;
     // A task's instance stamp stays on its card and detail page; in a chip only the readable name matters.
@@ -178,7 +194,8 @@ export function EntityChip(props: EntityChipProps) {
                       <AgentAvatar
                           name={name}
                           agentKey={props.id ?? name}
-                          profile={props.profile ?? { avatarUrl: null, color: null }}
+                          profile={props.profile ?? NO_AGENT_PROFILE}
+                          origin={props.origin}
                           size="2xs"
                       />
                   ),

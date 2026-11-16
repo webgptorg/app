@@ -103,10 +103,7 @@ export function AgentDetailFrame() {
     return (
         <section
             aria-labelledby="page-title"
-            className={cx(
-                'flex min-w-0 flex-col',
-                fill ? 'h-(--main-fill-height) min-h-[30rem] gap-3 md:gap-4' : 'gap-5',
-            )}
+            className={cx('flex min-w-0 flex-col', fill ? 'min-h-[30rem] flex-1 gap-3 md:gap-4' : 'gap-5')}
         >
             <header className={cx('flex min-w-0 flex-col', compact ? 'gap-2 pt-1' : 'gap-4 pt-3')}>
                 {compact ? null : <Breadcrumbs trail={[<AgentsCrumb key="agents" />]} />}

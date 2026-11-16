@@ -69,7 +69,7 @@ function useMemberColumns(myId: string): DataTableColumnDef<Member>[] {
                 header: m.members_column_name(),
                 enableSorting: false,
                 enableHiding: false,
-                meta: { icon: <UserRound className={ICON} />, priority: 0 },
+                meta: { icon: <UserRound className={ICON} />, priority: 0, grow: true },
                 cell: ({ row }) => (
                     <span className="flex min-w-0 items-center gap-2.5">
                         <Avatar name={row.original.displayName} size="sm" />

@@ -1,8 +1,10 @@
-import type { AgentProfile } from '@ptbk/engine-api';
+import type { AgentOrigin } from '@ptbk/engine-api';
 import { useQuery } from '@tanstack/react-query';
 
 import { useEngineApi } from '../../app/engine-api-context';
 import { useAllows } from '../../app/registry/use-visible-features';
+import { NO_AGENT_PROFILE } from '../agents/agent-avatar';
+import type { AgentAvatarProfile } from '../agents/agent-avatar';
 import { agentListQueryOptions } from '../agents/agents-queries';
 import { AGENT_LOOK_PARAMS } from '../home/agent-look-params';
 
@@ -12,13 +14,15 @@ import { AGENT_LOOK_PARAMS } from '../home/agent-look-params';
  */
 export function useAgentLookByName(name: string): {
     readonly key: string;
-    readonly profile: Pick<AgentProfile, 'avatarUrl' | 'color'>;
+    readonly profile: AgentAvatarProfile;
+    readonly origin: AgentOrigin | undefined;
 } {
     const allowed = useAllows({ permission: 'agents.read' });
     const agents = useQuery({ ...agentListQueryOptions(useEngineApi(), AGENT_LOOK_PARAMS), enabled: allowed });
     const agent = agents.data?.items.find((item) => item.name === name);
     return {
         key: agent?.id ?? name,
-        profile: { avatarUrl: agent?.profile.avatarUrl ?? null, color: agent?.profile.color ?? null },
+        profile: agent?.profile ?? NO_AGENT_PROFILE,
+        origin: agent?.origin,
     };
 }

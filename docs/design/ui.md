@@ -111,6 +111,8 @@ Visual identity v1 ([U-17](../plan/tasks/U-17-visual-identity.md), decided with 
 ### Surfaces and layout
 
 - **An open layout.** A `Section` is a heading over content, separated from its neighbours by space and a hairline. There are no border-plus-shadow cards; `Card` remains as a quiet hairline panel until its users move to `Section`.
+- **Use the screen.** Lists, tables and detail pages take the full content width, capped only on very wide screens (`max-w-page`, 1680px). Reading width is kept only where prose needs it: the chat column (`max-w-chat`, about 830px), Settings (`Page width="reading"`) and onboarding. A table's one name column takes the slack (`meta.grow`) and truncates with a tooltip; the other columns stay compact on one line, so nothing scrolls sideways at 1280px and up.
+- **Chats fit the screen.** A route with `staticData.fillViewport` (a thread, the book) gets exactly the viewport: the header stays, the thread scrolls inside itself and the document never does. The thread header spans the content area (title, breadcrumbs and participants on the left, controls on the right) while the messages and composer share the centred chat column.
 - **Soft surfaces** (`soft-surface` with `--tint`) are only for live or actionable things: running work, needs-you, errors.
 - **Empty sections** collapse to one quiet line (`EmptyState variant="inline"`) or disappear. A whole empty view gets one calm line, one action and a small monochrome icon.
 - **What floats lifts.** Menus, popovers, hovercards and dialogs keep a soft `--shadow-overlay` over a hairline border. Radii are `--radius-control` (6px), `--radius-surface` (10px) and `--radius-small` (4px).

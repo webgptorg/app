@@ -6,6 +6,7 @@ import {
     FAKE_CHAT_ID,
     FAKE_FILE_ID,
     FAKE_INTEGRATION_ID,
+    FAKE_LONG_CHAT_ID,
     FAKE_RUN_ID,
     FAKE_TRIGGER_ID,
     HOSTILE_AGENT_NAME,
@@ -13,6 +14,7 @@ import {
     HOSTILE_RUN_TEXT,
     HOSTILE_TARGET_NAME,
     HOSTILE_TOOL_TEXT,
+    LONG_TASK_NAME,
     RAW_HEARTBEAT,
     routeFakeEngineApi,
 } from './fake-engine-api.ts';
@@ -202,6 +204,45 @@ test.describe('the built bundle under the engine CSP', () => {
         await expect(history.getByText('<script>alert(1)</script>', { exact: false }).first()).toBeVisible();
         expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
         expect(foreign).toEqual([]);
+    });
+
+    for (const viewport of [
+        { width: 1440, height: 900 },
+        { width: 390, height: 844 },
+    ]) {
+        test(`a long thread scrolls inside itself at ${String(viewport.width)} px, never the document, and draws its agents`, async ({
+            page,
+            visit,
+        }) => {
+            await page.setViewportSize(viewport);
+            const report = await visit(`/chats/${FAKE_LONG_CHAT_ID}`);
+            const history = page.getByRole('region', { name: 'Messages' });
+            await expect(history.getByText('Point 12: what changed since last quarter?')).toBeVisible();
+            expect(await history.evaluate((region) => region.scrollHeight > region.clientHeight)).toBe(true);
+            expect(
+                await page.evaluate(() => (document.scrollingElement?.scrollHeight ?? 0) - window.innerHeight),
+            ).toBeLessThanOrEqual(0);
+            await expect(page.getByRole('textbox', { name: 'Message' })).toBeInViewport();
+            // Each author is drawn with the illustration their role picks (Ada researches), never an initial.
+            const author = history.locator('header').filter({ hasText: 'Ada' }).last();
+            await expect(author.locator('svg[data-illustration="analyst"]')).toBeVisible();
+            await expect(author.locator('[data-initial]')).toHaveCount(0);
+            expectCleanPage(report);
+        });
+    }
+
+    test('/tasks gives a long task name the free width and no sideways scroll at 1280 px', async ({ page, visit }) => {
+        await page.setViewportSize({ width: 1280, height: 800 });
+        const report = await visit('/tasks');
+        const name = page.getByRole('table', { name: 'Tasks' }).getByRole('link', { name: LONG_TASK_NAME });
+        await expect(name).toBeVisible();
+        await expect(name).toHaveAttribute('title', `${LONG_TASK_NAME} — 2026-09-30 09:00:00`);
+        expect(await name.evaluate((link) => link.scrollWidth > link.clientWidth)).toBe(true);
+        const sideways = await page
+            .getByRole('table', { name: 'Tasks' })
+            .evaluate((table) => (table.parentElement?.scrollWidth ?? 0) - (table.parentElement?.clientWidth ?? 0));
+        expect(sideways).toBeLessThanOrEqual(0);
+        expectCleanPage(report);
     });
 
     test("/security shows the engine's own values verbatim and meets the UX checks", async ({ page, visit }) => {

@@ -78,7 +78,13 @@ export function FileFilters({
                           value: agent.id,
                           label: agent.name,
                           icon: (
-                              <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />
+                              <AgentAvatar
+                                  name={agent.name}
+                                  agentKey={agent.id}
+                                  profile={agent.profile}
+                                  origin={agent.origin}
+                                  size="2xs"
+                              />
                           ),
                       })),
                       value: readOneParam(search.agentId),

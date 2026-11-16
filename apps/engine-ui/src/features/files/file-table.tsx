@@ -63,7 +63,7 @@ function useFileColumns({ global, nameCell, filterBar }: ColumnSetup): DataTable
             column.accessor('name', {
                 header: m.files_column_name(),
                 enableHiding: false,
-                meta: { priority: 0, icon: <FileIcon className={ICON} /> },
+                meta: { priority: 0, grow: true, icon: <FileIcon className={ICON} /> },
                 cell: ({ row }) => (
                     <span className="flex min-w-0 items-start gap-2.5">
                         <FileTypeIcon contentType={row.original.contentType} className="mt-0.5" />

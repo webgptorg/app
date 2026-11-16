@@ -233,7 +233,7 @@ export function ChatPanel({ chat, canWrite, fill = false }: ChatPanelProps) {
                     addressee={addressee}
                     onAddresseeChange={setAddressee}
                     textareaRef={textareaRef}
-                    className="relative z-10 mx-auto -mt-6 w-full max-w-3xl px-1 pb-1"
+                    className="relative z-10 mx-auto -mt-6 w-full max-w-chat px-1 pb-1"
                 />
             ) : null}
         </div>

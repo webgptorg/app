@@ -100,7 +100,7 @@ function TaskTitle({ task }: { readonly task: ReadTask }) {
                 <Link
                     to="/tasks/$taskId"
                     params={{ taskId: task.id }}
-                    title={stamp === null ? undefined : task.name}
+                    title={task.name}
                     className={cx(
                         'min-w-0 truncate font-medium hover:underline',
                         supporting ? 'text-text-muted' : 'text-text',
@@ -148,7 +148,7 @@ function columns(): DataTableColumnDef<ReadTask>[] {
         helper.accessor('name', {
             header: m.tasks_column_name(),
             enableSorting: false,
-            meta: { icon: <ListTodo className="size-3.5" />, priority: 0 },
+            meta: { icon: <ListTodo className="size-3.5" />, priority: 0, grow: true },
             cell: ({ row }) => <TaskTitle task={row.original} />,
         }),
         helper.accessor('state', {
@@ -170,7 +170,11 @@ function columns(): DataTableColumnDef<ReadTask>[] {
             meta: { icon: <Flag className="size-3.5" />, priority: 3 },
             cell: ({ row }) => {
                 const text = priorityText(row.original);
-                return text === null ? null : <span className="text-text-muted tabular-nums">{text}</span>;
+                return text === null ? null : (
+                    <span title={text} className="block max-w-40 truncate text-text-muted tabular-nums">
+                        {text}
+                    </span>
+                );
             },
         }),
         helper.accessor('updatedAt', {
@@ -291,7 +295,15 @@ function TaskFilters({
             options: (agents.data?.items ?? []).map((agent) => ({
                 value: agent.id,
                 label: agent.name,
-                icon: <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />,
+                icon: (
+                    <AgentAvatar
+                        name={agent.name}
+                        agentKey={agent.id}
+                        profile={agent.profile}
+                        origin={agent.origin}
+                        size="2xs"
+                    />
+                ),
             })),
             value: readOneParam(search.agentId),
             onChange: (value) => {

@@ -1,5 +1,5 @@
 import { BrandLockup, BrandMark, Drawer, IconButton, SkipLink } from '@ptbk/ui';
-import { Outlet } from '@tanstack/react-router';
+import { Outlet, useMatches } from '@tanstack/react-router';
 import { Menu as MenuIcon, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useState } from 'react';
 
@@ -28,8 +28,11 @@ export function AppShell() {
     const narrow = useMediaQuery(NARROW_QUERY);
     const palette = useCommandPalette();
     const sidebar = useSidebarState();
+    // A chat or the book fits the screen exactly and scrolls inside itself, so the document never gets a second
+    // scrollbar; every other screen grows with its content and the document scrolls.
+    const fill = useMatches({ select: (matches) => matches.some((match) => match.staticData.fillViewport === true) });
     return (
-        <div className={cx('flex min-h-dvh', narrow && 'flex-col pt-14')}>
+        <div className={cx('flex', fill ? 'h-dvh' : 'min-h-dvh', narrow && 'flex-col pt-14')}>
             <SkipLink targetId={MAIN_ID} />
             <FeatureEventSync />
             {narrow ? (
@@ -38,16 +41,17 @@ export function AppShell() {
                 <WideSidebar sidebar={sidebar} onOpenPalette={palette.openPalette} />
             )}
             <CommandPaletteHost state={palette} sidebar={narrow ? null : sidebar} />
-            {/* `--main-fill-height`: the viewport minus the narrow top bar and this padding, for screens that fit it. */}
             <main
                 id={MAIN_ID}
                 tabIndex={-1}
                 className={cx(
-                    'min-w-0 flex-1 px-4 pt-3 pb-10 outline-none md:px-8 md:pt-4 md:pb-12',
-                    '[--main-fill-height:calc(100dvh-6.5rem)] md:[--main-fill-height:calc(100dvh-4rem)]',
+                    'min-w-0 flex-1 px-4 pt-3 outline-none md:px-8 md:pt-4',
+                    fill ? 'flex min-h-0 flex-col pb-2 md:pb-3' : 'pb-10 md:pb-12',
                 )}
             >
-                <div className="mx-auto w-full max-w-6xl">
+                {/* Lists and tables use the screen; only very wide screens cap it, so rows stay scannable. Prose
+                    keeps its own reading width (`Page`'s `width="reading"`, the chat column). */}
+                <div className={cx('mx-auto w-full max-w-page', fill && 'flex min-h-0 flex-1 flex-col')}>
                     <Outlet />
                 </div>
             </main>

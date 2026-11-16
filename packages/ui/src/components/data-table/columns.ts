@@ -63,6 +63,11 @@ export interface DataTableColumnMeta {
     readonly priority?: number;
     /** On a narrow screen, at the end of the title line (e.g. a time or a status) rather than on the meta line. */
     readonly trailing?: boolean;
+    /**
+     * Takes the width the other columns leave, and never more: its content truncates (give it a `title`) instead of
+     * pushing the table wider than the page. For the one name column of a list.
+     */
+    readonly grow?: boolean;
     /** Leave the column out on a narrow screen (e.g. a long description already in the title). */
     readonly hideOnCard?: boolean;
     /**

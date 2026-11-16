@@ -35,6 +35,8 @@ import type { Page, Route } from '@playwright/test';
 export const FAKE_AGENT_ID = 'ada';
 /** The owner's chat with Ada, whose reply carries the hostile samples (spec, Security hardening 5). */
 export const FAKE_CHAT_ID = 'chat-hostile';
+/** A thread longer than any screen, with two agents taking turns. */
+export const FAKE_LONG_CHAT_ID = 'chat-long';
 
 /** Every way the spec and M-04's "Injection demo" agent try to make agent output load, run or navigate. */
 export const HOSTILE_REPLY = [
@@ -417,8 +419,50 @@ function fakeTasks(): NonNullable<InMemorySeed['tasks']> {
                 },
             ],
         },
+        {
+            task: {
+                id: 'task-long-name',
+                name: `${LONG_TASK_NAME} — 2026-09-30 09:00:00`,
+                kind: 'ordinary',
+                purpose: 'content',
+                core: false,
+                agentId: 'grace',
+                executor: null,
+                priority: { rank: 2, text: 'before the weekly sync' },
+                state: 'active',
+                stateReason: null,
+                next: null,
+                conditions: [],
+                repeat: null,
+                notBefore: null,
+                dueAt: null,
+                nextAt: null,
+                progress: null,
+                parent: null,
+                dependsOn: [],
+                origin: {
+                    kind: 'chat',
+                    chatId: FAKE_CHAT_ID,
+                    taskId: null,
+                    text: 'Show me everything you can render.',
+                },
+                doneCount: 0,
+                lastDoneAt: null,
+                reopened: false,
+                sourcePath: 'tasks/pull-requests.book',
+                allowedActions: [],
+                updatedAt: '2026-09-30T09:30:00.000Z',
+            },
+            links: [],
+            notes: [],
+            occurrences: [],
+        },
     ];
 }
+
+/** A task name as Reborn writes them for real work: one long sentence, no breaks. */
+export const LONG_TASK_NAME =
+    'Summarise every open pull request across the webgptorg repositories, flag the ones waiting on review for more than three days and post the digest to the team channel';
 
 function fakeRuns() {
     const base = {
@@ -971,6 +1015,17 @@ export async function routeFakeEngineApi(
                         { type: 'message', author: ADA, content: '+@User Do we ship to Brno?', choices: ['Yes', 'No'] },
                     ],
                 },
+                {
+                    id: FAKE_LONG_CHAT_ID,
+                    title: 'Quarterly review',
+                    createdAt: '2026-09-20T10:00:00.000Z',
+                    entries: [
+                        { type: 'joined', participant: USER },
+                        { type: 'joined', participant: ADA },
+                        { type: 'joined', participant: GRACE },
+                        ...longThread(),
+                    ],
+                },
             ],
         },
         uploadPolicies: { knowledge: { maxBytes: 10 * 1024 * 1024, accept: ['.md', '.pdf', 'text/plain'] } },
@@ -1033,6 +1088,23 @@ async function saveSecondBookVersion(engineApi: EngineApiClient): Promise<void> 
 
 const USER = { kind: 'user', key: 'user' } as const;
 const ADA = { kind: 'agent', key: FAKE_AGENT_ID } as const;
+const GRACE = { kind: 'agent', key: 'grace' } as const;
+
+function longThread() {
+    return Array.from({ length: 12 }, (_, turn) => {
+        const at = (minute: number) => `2026-09-20T10:${String(turn * 4 + minute).padStart(2, '0')}:00.000Z`;
+        return [
+            userSays(`Point ${String(turn + 1)}: what changed since last quarter?`, at(0)),
+            {
+                type: 'message' as const,
+                author: ADA,
+                content: 'Revenue grew in every region.\n\n'.repeat(3),
+                at: at(1),
+            },
+            { type: 'message' as const, author: GRACE, content: '@Ada The numbers check out.', at: at(2) },
+        ];
+    }).flat();
+}
 
 function userSays(content: string, at: string) {
     return { type: 'message' as const, author: USER, createdBy: 'member-owner', content, at };
