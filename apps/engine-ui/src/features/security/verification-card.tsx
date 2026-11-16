@@ -1,10 +1,11 @@
 import type { ReadSecurityOverview } from '@ptbk/engine-api';
-import { Card, ErrorState, RelativeTime, Skeleton, useLocale } from '@ptbk/ui';
+import { ErrorState, RelativeTime, Section, Skeleton, useLocale } from '@ptbk/ui';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { ChevronDown, CircleAlert, CircleCheck, Info, TriangleAlert } from 'lucide-react';
+import { ChevronRight, CircleAlert, CircleCheck, Info, TriangleAlert } from 'lucide-react';
 import { useId } from 'react';
 import type { ReactNode } from 'react';
 
+import { cx } from '../../app/cx';
 import { UI_VERSION } from '../../app/ui-version';
 import { m } from '../../paraglide/messages';
 import { HeartbeatDetails } from './heartbeat-details';
@@ -32,10 +33,10 @@ export interface Check {
 }
 
 const TONE_ICON = {
-    ok: <CircleCheck aria-hidden className="size-5 shrink-0 text-success" />,
-    info: <Info aria-hidden className="size-5 shrink-0 text-text-muted" />,
-    attention: <TriangleAlert aria-hidden className="size-5 shrink-0 text-warning" />,
-    problem: <CircleAlert aria-hidden className="size-5 shrink-0 text-danger" />,
+    ok: <CircleCheck aria-hidden className="size-4 shrink-0 text-success" />,
+    info: <Info aria-hidden className="size-4 shrink-0 text-text-subtle" />,
+    attention: <TriangleAlert aria-hidden className="size-4 shrink-0 text-warning" />,
+    problem: <CircleAlert aria-hidden className="size-4 shrink-0 text-danger" />,
 } as const satisfies Record<CheckTone, ReactNode>;
 
 function uiBundleCheck(overview: Overview): Pick<Check, 'tone' | 'summary'> {
@@ -163,20 +164,26 @@ function CheckRow({ check }: { readonly check: Check }) {
         <li id={`security-${check.id}`}>
             <section aria-labelledby={titleId}>
                 <details className="group" open={needsLook}>
-                    <summary className="flex cursor-pointer list-none items-start gap-3 rounded-small py-3 focus-visible:outline-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden">
-                        {TONE_ICON[check.tone]}
-                        <span className="flex min-w-0 flex-1 flex-col">
-                            <span id={titleId} className="font-medium">
+                    <summary
+                        className={cx(
+                            '-mx-2 flex cursor-pointer list-none items-start gap-3 rounded-control px-2 py-2.5 hover:bg-hover',
+                            'focus-visible:outline-2 focus-visible:outline-focus [&::-webkit-details-marker]:hidden',
+                            'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
+                        )}
+                    >
+                        <span className="mt-0.5 flex">{TONE_ICON[check.tone]}</span>
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-4">
+                            <span id={titleId} className="text-sm font-medium sm:w-48 sm:shrink-0">
                                 {check.title}
                             </span>
-                            <span className="text-sm break-words text-text-muted">{check.summary}</span>
+                            <span className="min-w-0 text-sm break-words text-text-muted">{check.summary}</span>
                         </span>
-                        <ChevronDown
+                        <ChevronRight
                             aria-hidden
-                            className="mt-0.5 size-4 shrink-0 text-text-muted group-open:rotate-180 motion-safe:transition-transform"
+                            className="mt-0.5 size-4 shrink-0 text-text-subtle group-open:rotate-90 motion-safe:transition-transform motion-safe:duration-(--motion-state)"
                         />
                     </summary>
-                    <div className="pb-4 sm:ps-8">{check.details}</div>
+                    <div className="pt-1 pb-4 ps-7">{check.details}</div>
                 </details>
             </section>
         </li>
@@ -192,7 +199,7 @@ export function VerificationCard({ query }: { readonly query: UseQueryResult<Ove
     let content: ReactNode;
     if (query.data !== undefined) {
         content = (
-            <ul className="-my-3 flex flex-col divide-y divide-divider">
+            <ul className="flex flex-col divide-y divide-hairline">
                 {securityChecks(query.data, (date) => locale.formatDate(date)).map((check) => (
                     <CheckRow key={check.id} check={check} />
                 ))}
@@ -210,12 +217,12 @@ export function VerificationCard({ query }: { readonly query: UseQueryResult<Ove
         );
     } else {
         content = (
-            <div aria-busy="true" className="flex flex-col gap-4">
+            <div aria-busy="true" className="flex flex-col gap-3">
                 {Array.from({ length: 7 }, (_, index) => (
-                    <Skeleton key={index} className="h-10 w-full" />
+                    <Skeleton key={index} className="h-7 w-full" />
                 ))}
             </div>
         );
     }
-    return <Card title={m.security_checks_title()}>{content}</Card>;
+    return <Section title={m.security_checks_title()}>{content}</Section>;
 }

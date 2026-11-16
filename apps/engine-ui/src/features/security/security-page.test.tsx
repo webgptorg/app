@@ -424,7 +424,9 @@ describe('security panel: access', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(router.state.location.pathname).toBe('/security/passkeys');
         });
-        await user.click(await screen.findByRole('link', { name: 'Back to security' }));
+        // The breadcrumb trail is the way back.
+        const trail = await screen.findByRole('navigation', { name: 'Breadcrumb' });
+        await user.click(within(trail).getByRole('link', { name: 'Security' }));
         await waitFor(() => {
             expect(router.state.location.pathname).toBe('/security');
         });

@@ -1,12 +1,13 @@
 import type { ReadSecurityOverview } from '@ptbk/engine-api';
-import { Badge, Banner, CodeText, RelativeTime, useLocale } from '@ptbk/ui';
-import type { BadgeTone } from '@ptbk/ui';
+import { Badge, CodeText, RelativeTime, StatusPill, useLocale } from '@ptbk/ui';
+import type { StatusTone } from '@ptbk/ui';
 
 import { UI_VERSION } from '../../app/ui-version';
 import { m } from '../../paraglide/messages';
 import { usePermissions } from '../session/use-permissions';
 import { Facts } from './facts';
 import { ReleaseLogEntry } from './release-log-entry';
+import { HashValue, SecurityNote } from './security-parts';
 import {
     certificateStatusLabel,
     checkOutcomeLabel,
@@ -66,25 +67,25 @@ function LastUpdateCheck({ check }: { readonly check: NonNullable<Overview['ui']
     );
     if (check.outcome !== 'refused') return <span>{summary}</span>;
     return (
-        <Banner tone="danger">
+        <SecurityNote tone="danger">
             <span className="flex flex-col gap-1">
-                <span>{summary}</span>
+                <span className="font-medium">{summary}</span>
                 {reason === null ? null : <span>{m.security_check_reason({ reason })}</span>}
                 {revocation === null ? null : <span>{m.security_check_revocation({ reason: revocation })}</span>}
-                <span>{m.security_check_refused_body()}</span>
+                <span className="text-text-muted">{m.security_check_refused_body()}</span>
             </span>
-        </Banner>
+        </SecurityNote>
     );
 }
 
 export function UiBundleDetails({ overview: { ui } }: { readonly overview: Overview }) {
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
             <p className="text-sm text-text-muted">{m.security_ui_hint()}</p>
             {ui.version === UI_VERSION ? null : (
-                <Banner tone="warning">
+                <SecurityNote tone="warning">
                     {m.security_ui_mismatch_body({ served: ui.version, compiled: UI_VERSION })}
-                </Banner>
+                </SecurityNote>
             )}
             <Facts
                 facts={[
@@ -92,14 +93,7 @@ export function UiBundleDetails({ overview: { ui } }: { readonly overview: Overv
                     { label: m.security_ui_compiled_version(), value: <CodeText value={UI_VERSION} /> },
                     {
                         label: m.security_sha256(),
-                        value: (
-                            <CodeText
-                                value={ui.bundleSha256}
-                                group={4}
-                                copyable
-                                copyLabel={m.security_copy_bundle_hash()}
-                            />
-                        ),
+                        value: <HashValue value={ui.bundleSha256} copyLabel={m.security_copy_bundle_hash()} />,
                     },
                     {
                         label: m.security_release_log(),
@@ -125,10 +119,10 @@ export function CertificateDetails({ overview: { tls } }: { readonly overview: O
     // Whoever may change the engine is the one who has to act, so only they get the remedy; everyone else gets a person.
     const canActOnEngine = usePermissions().can('settings.manage');
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
             <p className="text-sm text-text-muted">{m.security_tls_hint()}</p>
             {check?.result === 'unexpected-certificate' ? (
-                <Banner tone="danger">
+                <SecurityNote tone="danger">
                     <span className="flex flex-col gap-2">
                         <span>
                             {canActOnEngine
@@ -138,15 +132,13 @@ export function CertificateDetails({ overview: { tls } }: { readonly overview: O
                         {check.unexpectedCertificates.length === 0 ? null : (
                             <ul className="flex flex-col gap-2">
                                 {check.unexpectedCertificates.map((certificate) => (
-                                    <li key={certificate.sha256} className="flex flex-col gap-1">
-                                        <CodeText
+                                    <li key={certificate.sha256} className="flex min-w-0 flex-col gap-0.5">
+                                        <HashValue
                                             value={certificate.sha256}
-                                            group={4}
-                                            copyable
                                             copyLabel={m.security_copy_certificate_hash()}
                                         />
                                         <span>{m.security_ct_issuer({ issuer: certificate.issuer })}</span>
-                                        <span>
+                                        <span className="text-text-muted tabular-nums">
                                             <DateTime value={certificate.notBefore} /> –{' '}
                                             <DateTime value={certificate.notAfter} />
                                         </span>
@@ -155,22 +147,22 @@ export function CertificateDetails({ overview: { tls } }: { readonly overview: O
                             </ul>
                         )}
                     </span>
-                </Banner>
+                </SecurityNote>
             ) : null}
-            {check?.result === 'failed' ? <Banner tone="warning">{m.security_ct_failed_body()}</Banner> : null}
+            {check?.result === 'failed' ? (
+                <SecurityNote tone="warning">{m.security_ct_failed_body()}</SecurityNote>
+            ) : null}
             <Facts
                 facts={[
                     {
                         label: m.security_certificate_sha256(),
                         value: (
-                            <span className="flex flex-col gap-1">
-                                <CodeText
+                            <span className="flex min-w-0 flex-col gap-0.5">
+                                <HashValue
                                     value={tls.certificateSha256}
-                                    group={4}
-                                    copyable
                                     copyLabel={m.security_copy_certificate_hash()}
                                 />
-                                <span className="text-text-muted">{m.security_certificate_compare()}</span>
+                                <span className="text-xs text-text-muted">{m.security_certificate_compare()}</span>
                             </span>
                         ),
                     },
@@ -192,9 +184,9 @@ export function CertificateDetails({ overview: { tls } }: { readonly overview: O
     );
 }
 
-const RELAY_TONE: Readonly<Record<RelayStatus, BadgeTone>> = {
+const RELAY_TONE: Readonly<Record<RelayStatus, StatusTone>> = {
     connected: 'success',
-    connecting: 'warning',
+    connecting: 'waiting',
     disconnected: 'danger',
 };
 
@@ -203,14 +195,14 @@ export function RelaysDetails({ overview: { relays } }: { readonly overview: Ove
     return relays.length === 0 ? (
         <p className="text-sm text-text-muted">{m.security_relays_empty_body()}</p>
     ) : (
-        <ul className="flex flex-col divide-y divide-divider">
+        <ul className="flex flex-col divide-y divide-hairline">
             {relays.map((relay) => (
-                <li key={relay.hostname} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
+                <li key={relay.hostname} className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0">
                     <span className="flex flex-wrap items-center gap-2">
                         <CodeText value={relay.hostname} />
-                        <Badge tone={RELAY_TONE[relay.status]}>{relayStatusLabel(relay.status)}</Badge>
+                        <StatusPill tone={RELAY_TONE[relay.status]}>{relayStatusLabel(relay.status)}</StatusPill>
                     </span>
-                    <span className="text-sm text-text-muted">
+                    <span className="text-sm text-text-muted tabular-nums">
                         {m.security_relay_since()} <RelativeTime value={new Date(relay.since)} />
                         {' · '}
                         {relay.lastPingRttMs === null
@@ -226,10 +218,10 @@ export function RelaysDetails({ overview: { relays } }: { readonly overview: Ove
 export function HostnamesDetails({ overview: { hostnames } }: { readonly overview: Overview }) {
     const custom = hostnames.filter(({ kind }) => kind === 'custom');
     return (
-        <div className="flex flex-col gap-4">
-            <ul className="flex flex-col divide-y divide-divider">
+        <div className="flex flex-col gap-3">
+            <ul className="flex flex-col divide-y divide-hairline">
                 {hostnames.map((hostname) => (
-                    <li key={hostname.hostname} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
+                    <li key={hostname.hostname} className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0">
                         <span className="flex flex-wrap items-center gap-2">
                             <CodeText value={hostname.hostname} copyable copyLabel={m.security_copy_hostname()} />
                             <Badge>

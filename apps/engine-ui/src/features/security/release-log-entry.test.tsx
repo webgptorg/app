@@ -24,4 +24,21 @@ describe('ReleaseLogEntry', () => {
         expect(screen.queryByText('Log index')).toBeNull();
         expect(screen.queryByRole('link')).toBeNull();
     });
+
+    it('offers the Rekor lookup as a link out that cannot reach back into this page', () => {
+        renderUi(<ReleaseLogEntry logIndex={7} entryUuid={null} />);
+        const link = screen.getByRole('link', { name: /Look it up in Rekor/ });
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
+    it('keeps the whole UUID on one quiet line, copyable, instead of a slab of groups', () => {
+        const uuid = 'ab'.repeat(40);
+        renderUi(<ReleaseLogEntry logIndex={null} entryUuid={uuid} />);
+        const value = screen.getByText(uuid);
+        expect(value.tagName).toBe('CODE');
+        expect(value.getAttribute('title')).toBe(uuid);
+        expect(value.className).toContain('truncate');
+        expect(screen.getByRole('button', { name: 'Copy entry UUID' })).toBeDefined();
+    });
 });

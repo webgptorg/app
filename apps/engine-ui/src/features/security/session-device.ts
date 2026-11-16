@@ -14,7 +14,8 @@ const BROWSERS: readonly (readonly [RegExp, string])[] = [
     [/\bOPR\/|\bOpera\b/, 'Opera'],
     [/\bSamsungBrowser\//, 'Samsung Internet'],
     [/\bFirefox\/|\bFxiOS\//, 'Firefox'],
-    [/\bChrome\/|\bCriOS\/|\bChromium\//, 'Chrome'],
+    // Headless Chrome (automation, previews) names itself without a word boundary before "Chrome".
+    [/\bChrome\/|\bCriOS\/|\bChromium\/|\bHeadlessChrome\//, 'Chrome'],
     [/\bVersion\/[\d.]+.*\bSafari\//, 'Safari'],
 ];
 
