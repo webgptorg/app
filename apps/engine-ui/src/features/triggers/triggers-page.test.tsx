@@ -194,9 +194,8 @@ describe('triggers list', { timeout: TIMEOUT_MS }, () => {
         const inbox = rowOf('Support inbox');
         expect(within(inbox).getByText('Email')).toBeDefined();
         expect(within(inbox).getByText('trigger-inbox@engine.localhost')).toBeDefined();
-        // A quiet dash, named for screen readers.
-        expect(within(inbox).getAllByText('—').length).toBeGreaterThan(0);
-        expect(within(inbox).getByText('Not scheduled')).toBeDefined();
+        // Mail fires when it arrives: no next run, not even a dash for one.
+        expect(within(inbox).queryByText('Not scheduled')).toBeNull();
         expect(within(rowOf('Every quarter hour')).getByText('Paused')).toBeDefined();
         expect(within(rowOf('Every quarter hour')).getByText('Every 15 minutes')).toBeDefined();
         expect(within(rowOf('Calendar sync')).getByText('Failed')).toBeDefined();

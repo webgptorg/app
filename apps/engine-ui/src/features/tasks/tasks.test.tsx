@@ -177,9 +177,11 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
 
     it('links a run to the task it worked on', async () => {
         renderWithProviders({ path: '/runs/run-iris-weekly', engineApi: demoEngine() });
-        expect(
-            (await screen.findByRole('link', { name: 'Weekly report — 2026-10-01 08:00:00' })).getAttribute('href'),
-        ).toBe('/tasks/task-weekly-report');
+        // The chip shows the readable name; the instance stamp stays on the task's own page.
+        const fact = (await screen.findByText('Task', { selector: 'dt' })).parentElement as HTMLElement;
+        expect((await within(fact).findByRole('link', { name: 'Weekly report' })).getAttribute('href')).toBe(
+            '/tasks/task-weekly-report',
+        );
     });
 
     it('hides Tasks without tasks@1 or without tasks.read', async () => {

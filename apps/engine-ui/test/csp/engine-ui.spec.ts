@@ -148,18 +148,25 @@ test.describe('the built bundle under the engine CSP', () => {
         const report = await visit(`/agents/${FAKE_AGENT_ID}/chat`);
         await expect(page.getByRole('tab', { name: 'Chat' })).toHaveAttribute('aria-selected', 'true');
         await expect(page.getByRole('button', { name: 'New chat with Ada' })).toBeVisible();
-        const list = page.getByRole('list', { name: 'Chats' });
-        await expect(list.getByRole('link', { name: 'Injection demo' })).toBeVisible();
-        await expect(list.getByRole('link', { name: 'Shipping' })).toBeVisible();
+        const table = page.getByRole('table', { name: 'Chats' });
+        await expect(table.getByRole('link', { name: 'Injection demo' })).toBeVisible();
+        await expect(table.getByRole('link', { name: 'Shipping' })).toBeVisible();
         expectCleanPage(report);
     });
 
     test('/chats lists every thread, marks the one that needs you and meets the UX checks', async ({ page, visit }) => {
         const report = await visit('/chats');
-        const list = page.getByRole('list', { name: 'Chats' });
-        await expect(list.getByRole('link', { name: 'Injection demo' })).toBeVisible();
-        await expect(list.getByRole('listitem').filter({ hasText: 'Shipping' }).getByText('Needs you')).toBeVisible();
+        const table = page.getByRole('table', { name: 'Chats' });
+        await expect(table.getByRole('link', { name: 'Injection demo' })).toBeVisible();
+        await expect(table.getByRole('row').filter({ hasText: 'Shipping' }).getByText('Needs you')).toBeVisible();
         expectCleanPage(report);
+
+        const filtered = await visit('/chats?needs=you');
+        await expect(page.getByRole('button', { name: 'Attention: Needs you', exact: true })).toBeVisible();
+        await expect(
+            page.getByRole('table', { name: 'Chats' }).getByRole('link', { name: 'Injection demo' }),
+        ).toHaveCount(0);
+        expectCleanPage(filtered);
     });
 
     test('hostile agent output stays inert, before and after sending a message', async ({ page, visit }) => {
@@ -283,17 +290,20 @@ test.describe('the built bundle under the engine CSP', () => {
         });
     }
 
-    for (const [path, first] of [
-        ['/triggers', 'Morning report with a long name that has to wrap on a narrow screen'],
-        ['/integrations', 'Documentation search with a rather long name that has to wrap'],
+    for (const [path, bar, first] of [
+        ['/triggers', 'Trigger filters', 'Morning report with a long name that has to wrap on a narrow screen'],
+        ['/integrations', 'Filter integrations', 'Documentation search with a rather long name that has to wrap'],
+        ['/chats', 'Filter chats', 'Injection demo'],
     ] as const) {
-        test(`${path} puts its filters behind one button at 360 px, so the first item is in view`, async ({
+        test(`${path} keeps its filter bar on one line at 360 px, so the first item is in view`, async ({
             page,
             visit,
         }) => {
             await page.setViewportSize({ width: 360, height: 740 });
             expectCleanPage(await visit(path));
-            await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeVisible();
+            await expect(
+                page.getByRole('search', { name: bar }).getByRole('button', { name: 'Filter', exact: true }),
+            ).toBeVisible();
             await expect(page.getByRole('link', { name: first }).first()).toBeInViewport();
         });
     }
@@ -322,7 +332,8 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(report);
 
         const filtered = await visit('/files?scan=infected,failed');
-        await expect(page.getByRole('combobox', { name: 'Scan' })).toHaveValue('infected,failed');
+        // The counted values are read from a visually hidden node, which Chrome sets apart with a space.
+        await expect(page.getByRole('button', { name: /^Scan: Infected ?, Failed$/ })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: 'invoice.png' })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: 'photo.png' })).toHaveCount(0);
         expectCleanPage(filtered);
@@ -407,7 +418,7 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(report);
 
         const filtered = await visit('/triggers?lifecycle=paused');
-        await expect(page.getByRole('combobox', { name: 'State' })).toHaveValue('paused');
+        await expect(page.getByRole('button', { name: 'State: Paused', exact: true })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: 'Every quarter hour' })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: 'Support inbox' })).toHaveCount(0);
         expectCleanPage(filtered);
@@ -416,17 +427,21 @@ test.describe('the built bundle under the engine CSP', () => {
         await page.setViewportSize({ width: 360, height: 740 });
         // The table turns into cards on a media query change after the resize; a button found before that is detached.
         await expect(page.getByRole('table')).toHaveCount(0);
-        const pause = page.getByRole('button', { name: 'Pause Support inbox' });
-        await pause.scrollIntoViewIfNeeded();
-        await expect(pause).toBeInViewport();
-        const resume = page.getByRole('button', { name: 'Resume Every quarter hour' });
-        await resume.scrollIntoViewIfNeeded();
-        await expect(resume).toBeInViewport();
+        // Pause and resume live in each row's ⋯ menu, which stays on the card at 360 px.
+        const supportActions = page.getByRole('button', { name: 'Actions for Support inbox' });
+        await supportActions.scrollIntoViewIfNeeded();
+        await expect(supportActions).toBeInViewport();
+        const quarterActions = page.getByRole('button', { name: 'Actions for Every quarter hour' });
+        await quarterActions.scrollIntoViewIfNeeded();
+        await expect(quarterActions).toBeInViewport();
         expect(
             await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
         ).toBeLessThanOrEqual(0);
-        await pause.click();
-        await expect(page.getByRole('button', { name: 'Resume Support inbox' })).toBeVisible();
+        await supportActions.click();
+        await page.getByRole('menuitem', { name: 'Pause' }).click();
+        await supportActions.click();
+        await expect(page.getByRole('menuitem', { name: 'Resume' })).toBeVisible();
+        await page.keyboard.press('Escape');
         expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
     });
 
@@ -439,14 +454,17 @@ test.describe('the built bundle under the engine CSP', () => {
         await expect(page.getByText(`Write the morning report. ${HOSTILE_RUN_TEXT}`)).toBeVisible();
         const fires = page.getByRole('table', { name: 'History' });
         await expect(fires.getByText(`Nothing ran: ${HOSTILE_RUN_TEXT}`)).toBeVisible();
-        await expect(fires.getByRole('link', { name: 'Open run' })).toHaveAttribute('href', `/runs/${FAKE_RUN_ID}`);
+        await expect(fires.getByRole('link', { name: 'Run', exact: true })).toHaveAttribute(
+            'href',
+            `/runs/${FAKE_RUN_ID}`,
+        );
         expect(await page.locator('main img, main script, main iframe, main object, main embed').count()).toBe(0);
         expect(await page.locator('main a[href^="javascript:"]').count()).toBe(0);
         expectCleanPage(report);
 
         await page.setViewportSize({ width: 360, height: 740 });
         await page.mouse.wheel(0, 400);
-        await expect(page.getByRole('button', { name: /^Pause Morning report/ })).toBeInViewport();
+        await expect(page.getByRole('button', { name: 'More actions' })).toBeInViewport();
         expect(
             await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
         ).toBeLessThanOrEqual(0);
@@ -454,15 +472,21 @@ test.describe('the built bundle under the engine CSP', () => {
 
     test('/triggers/new previews a schedule as an estimate and meets the UX checks', async ({ page, visit }) => {
         const report = await visit('/triggers/new');
-        await page.getByRole('combobox', { name: /^Agent/ }).selectOption(FAKE_AGENT_ID);
+        const choose = async (field: RegExp, option: string) => {
+            await page.getByRole('combobox', { name: field }).click();
+            await page.getByRole('option', { name: option, exact: true }).click();
+        };
+        await choose(/^Agent/, 'Ada');
         await page.getByRole('textbox', { name: /^Name/ }).fill('Weekly digest');
-        await page.getByRole('combobox', { name: /^Time zone/ }).selectOption('Europe/Prague');
-        await page.getByRole('combobox', { name: /^Repeats/ }).selectOption('cron');
+        await choose(/^Time zone/, 'Europe/Prague');
+        await choose(/^Repeats/, 'Custom (cron)');
         await page.getByRole('textbox', { name: /^Cron expression/ }).fill('*/15 * * * *');
         const preview = page.getByRole('region', { name: 'Next runs' });
         await expect(preview.getByText('Every 15 minutes, Europe/Prague')).toBeVisible();
         await expect(preview.getByRole('listitem')).toHaveCount(5);
-        await expect(page.getByRole('combobox', { name: /^Kind/ }).locator('option[value="webhook"]')).toBeDisabled();
+        await page.getByRole('combobox', { name: /^Kind/ }).click();
+        await expect(page.getByRole('option', { name: /^Webhook/ })).toHaveAttribute('aria-disabled', 'true');
+        await page.keyboard.press('Escape');
         expectCleanPage(report);
     });
 
@@ -477,7 +501,7 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(report);
 
         const filtered = await visit('/integrations?status=needs-attention,error');
-        await expect(page.getByRole('button', { name: /^Status\s*2 selected$/ })).toBeVisible();
+        await expect(page.getByRole('button', { name: /^Status: Needs attention ?, Error$/ })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: 'Calendar' })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: /^Documentation search/ })).toHaveCount(0);
         expectCleanPage(filtered);
