@@ -1,10 +1,21 @@
 import type { AgentId, ReadIntegration } from '@ptbk/engine-api';
-import { Banner, Card, ErrorState, Skeleton } from '@ptbk/ui';
+import { STATUS_TINT_CLASSES } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
+import { Plug, TriangleAlert } from 'lucide-react';
 
+import { cx } from '../../app/cx';
 import { useEngineApi } from '../../app/engine-api-context';
 import { Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
+import {
+    OverviewFailed,
+    OverviewLoading,
+    OverviewRow,
+    OverviewRows,
+    OverviewSection,
+    overviewLinkClassName,
+} from '../agents/overview-parts';
+import { EntityChip } from '../entities/entity-chip';
 import { integrationListParams } from './integration-search';
 import { IntegrationStatusBadge, needsAttention } from './integration-status';
 import { integrationListQueryOptions } from './integrations-queries';
@@ -12,74 +23,70 @@ import { integrationListQueryOptions } from './integrations-queries';
 const SHOWN = 10;
 
 /**
- * The agent overview's card: what the agent may use, its own and the engine-wide integrations, with the ones that need
- * attention or failed first and called out, so an owner sees at a glance what to fix or switch off.
+ * The agent overview's integrations: what the agent may use, its own and the engine-wide ones, with the ones that need
+ * attention or failed first and called out on a soft surface, so an owner sees at a glance what to fix. An agent that
+ * uses none has no section.
  */
 export function IntegrationsCard({ agentId }: { readonly agentId: AgentId }) {
     const params = { ...integrationListParams({}, agentId), limit: SHOWN };
     const integrations = useQuery(integrationListQueryOptions(useEngineApi(), params));
     const items = integrations.data?.items ?? [];
+    if (integrations.isSuccess && items.length === 0) return null;
     const attention = items.filter(({ status }) => needsAttention(status));
     const ordered = [...attention, ...items.filter(({ status }) => !needsAttention(status))];
     return (
-        <Card
+        <OverviewSection
             title={m.integrations_card_title()}
-            actions={
-                <Link to="/agents/$agentId/integrations" params={{ agentId }}>
+            all={
+                <Link
+                    to="/agents/$agentId/integrations"
+                    params={{ agentId }}
+                    variant="standalone"
+                    className={overviewLinkClassName}
+                >
                     {m.integrations_card_all()}
                 </Link>
             }
         >
             {integrations.isPending ? (
-                <ul aria-busy="true" aria-label={m.integrations_card_title()} className="flex flex-col gap-2">
-                    {Array.from({ length: 3 }, (_, index) => (
-                        <li key={index}>
-                            <Skeleton shape="text" className="h-6 w-full" />
-                        </li>
-                    ))}
-                </ul>
+                <OverviewLoading label={m.integrations_card_title()} />
             ) : integrations.isError ? (
-                <ErrorState
+                <OverviewFailed
                     message={m.integrations_load_failed()}
                     onRetry={() => {
                         void integrations.refetch();
                     }}
                     retrying={integrations.isFetching}
                 />
-            ) : ordered.length === 0 ? (
-                <p className="text-sm text-text-muted">{m.integrations_card_none()}</p>
             ) : (
-                <div className="flex flex-col gap-3">
+                <>
                     {attention.length === 0 ? null : (
-                        <Banner tone="warning">{m.integrations_card_attention({ count: attention.length })}</Banner>
+                        <p
+                            className={cx(
+                                'soft-surface flex items-center gap-2 px-3 py-2 text-sm',
+                                STATUS_TINT_CLASSES.warning,
+                            )}
+                        >
+                            <TriangleAlert aria-hidden className="size-4 shrink-0 text-warning" />
+                            {m.integrations_card_attention({ count: attention.length })}
+                        </p>
                     )}
-                    <ul className="flex flex-col divide-y divide-divider">
+                    <OverviewRows>
                         {ordered.map((integration) => (
-                            <CardRow key={integration.id} integration={integration} />
+                            <IntegrationRow key={integration.id} integration={integration} />
                         ))}
-                    </ul>
-                </div>
+                    </OverviewRows>
+                </>
             )}
-        </Card>
+        </OverviewSection>
     );
 }
 
-function CardRow({ integration }: { readonly integration: ReadIntegration }) {
+function IntegrationRow({ integration }: { readonly integration: ReadIntegration }) {
     return (
-        <li className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 py-2 sm:grid-cols-[auto_1fr_auto]">
-            <span className="row-start-2 sm:row-start-1">
-                <IntegrationStatusBadge status={integration.status} />
-            </span>
-            <Link
-                to="/integrations/$integrationId"
-                params={{ integrationId: integration.id }}
-                className="col-span-2 min-w-0 break-words sm:col-span-1"
-            >
-                {integration.name}
-            </Link>
-            {integration.agentId === null ? (
-                <span className="text-sm text-text-muted">{m.integration_all_agents()}</span>
-            ) : null}
-        </li>
+        <OverviewRow lead={<Plug aria-hidden />} end={integration.agentId === null ? m.integration_all_agents() : null}>
+            <EntityChip kind="integration" id={integration.id} name={integration.name} />
+            <IntegrationStatusBadge status={integration.status} />
+        </OverviewRow>
     );
 }

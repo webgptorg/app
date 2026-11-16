@@ -1,30 +1,47 @@
-import { AGENT_RUN_STATES, AGENT_VISIBILITIES, KNOWN_CAPABILITIES } from '@ptbk/engine-api';
-import type { Agent } from '@ptbk/engine-api';
-import { Button, createDataTableColumnHelper, DataTable, LegacyFilterBar, RelativeTime } from '@ptbk/ui';
-import type { DataTableColumnDef, SortingState } from '@ptbk/ui';
+import { AGENT_RUN_STATES, AGENT_VISIBILITIES, FolderId, KNOWN_CAPABILITIES } from '@ptbk/engine-api';
+import type { Agent, AgentRunState, AgentVisibility } from '@ptbk/engine-api';
+import {
+    Button,
+    createDataTableColumnHelper,
+    DataTable,
+    EmptyState,
+    FilterBar,
+    filterField,
+    RelativeTime,
+    viewTransitionStyle,
+} from '@ptbk/ui';
+import type { DataTableColumnDef, DataTableView, FilterBarField, SortingState } from '@ptbk/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { getRouteApi } from '@tanstack/react-router';
-import { Plus } from 'lucide-react';
+import { getRouteApi, Link } from '@tanstack/react-router';
+import { Bot, CalendarClock, CircleDot, Eye, Folder, Layers, Plus, Text, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
 import { useBrowser } from '../../app/browser-context';
 import { useDebouncedSearch } from '../../app/debounced-search';
 import { useEngineApi } from '../../app/engine-api-context';
-import { ButtonLink, Link } from '../../app/link';
+import { ButtonLink } from '../../app/link';
 import { isForbidden, isStepUpRequired } from '../../app/mutations';
-import { m } from '../../paraglide/messages';
-import { Page } from '../shell/page';
 import { useAllows } from '../../app/registry/use-visible-features';
+import { readOneParam } from '../../app/search-filters';
+import { m } from '../../paraglide/messages';
 import { AGENT_WIZARD_REQUIREMENT } from '../agent-wizard/agent-wizard-feature';
+import { Page } from '../shell/page';
 import { useAgentActions } from './agent-actions';
 import { AgentAvatar } from './agent-avatar';
-import { AgentStatusBadge, AgentVisibilityBadge, stateLabel, visibilityLabel } from './agent-badges';
+import { AgentStatusBadge, AgentVisibilityBadge, stateLabel, VisibilityIcon, visibilityLabel } from './agent-badges';
 import { AgentCreator } from './agent-creator';
-import { BuiltInAgents } from './built-in-agents';
-import { agentListParams, DEFAULT_AGENT_SORT } from './agent-list-search';
-import type { AgentListSearch } from './agent-list-search';
-import { agentListQueryOptions } from './agents-queries';
+import {
+    AGENT_LIST_ORIGINS,
+    agentListGroups,
+    agentListParams,
+    builtInAgentParams,
+    DEFAULT_AGENT_SORT,
+    hasAgentFilters,
+} from './agent-list-search';
+import type { AgentListOrigin, AgentListSearch } from './agent-list-search';
+import { agentListQueryOptions, folderListQueryOptions } from './agents-queries';
 
 const route = getRouteApi('/agents/');
 
@@ -60,6 +77,31 @@ function isInvalidCursor(error: unknown): boolean {
     return failure.kind === 'problem' && failure.problem.code === 'invalid-cursor';
 }
 
+export function isBuiltInAgent(agent: Pick<Agent, 'origin'>): boolean {
+    return agent.origin !== 'content';
+}
+
+function originLabel(origin: AgentListOrigin): string {
+    return origin === 'own' ? m.agents_group_own() : m.agents_group_built_in();
+}
+
+/** Avatar and name, the way into the agent; the name morphs into the agent page's title. */
+function AgentNameCell({ agent }: { readonly agent: Agent }) {
+    return (
+        <Link
+            to="/agents/$agentId"
+            params={{ agentId: agent.id }}
+            className="inline-flex max-w-full min-w-0 items-center gap-2.5 rounded-control font-medium text-text hover:underline"
+        >
+            <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} />
+            {/* Names come from Books: React renders them as text. */}
+            <span className="truncate" style={viewTransitionStyle('agent-title', agent.id)}>
+                {agent.name}
+            </span>
+        </Link>
+    );
+}
+
 /** Visibility only means something where agents can be shared (`agent-management@1`). */
 function useAgentColumns(withVisibility: boolean): DataTableColumnDef<Agent>[] {
     return useMemo(() => {
@@ -67,38 +109,24 @@ function useAgentColumns(withVisibility: boolean): DataTableColumnDef<Agent>[] {
         return [
             column.accessor('name', {
                 header: m.agents_column_name(),
-                meta: { priority: 0 },
+                meta: { icon: <Bot className="size-3.5" />, priority: 0 },
                 enableHiding: false,
-                cell: ({ row }) => (
-                    <Link
-                        to="/agents/$agentId"
-                        params={{ agentId: row.original.id }}
-                        variant="standalone"
-                        className="inline-flex max-w-full items-center gap-2 font-medium"
-                    >
-                        <AgentAvatar
-                            name={row.original.name}
-                            agentKey={row.original.id}
-                            profile={row.original.profile}
-                        />
-                        <span className="truncate">{row.original.name}</span>
-                    </Link>
-                ),
+                cell: ({ row }) => <AgentNameCell agent={row.original} />,
             }),
             column.accessor((agent) => agent.profile.description, {
                 id: 'description',
-                header: m.agents_column_description(),
+                header: m.agents_column_role(),
                 enableSorting: false,
-                meta: { priority: 5 },
+                meta: { icon: <Text className="size-3.5" />, priority: 5 },
                 cell: ({ getValue }) => (
-                    <span className="line-clamp-2 max-w-sm text-text-muted">{getValue<string>()}</span>
+                    <span className="line-clamp-1 max-w-md break-words text-text-muted">{getValue<string>()}</span>
                 ),
             }),
             column.accessor('id', {
                 id: 'status',
                 header: m.agents_column_status(),
                 enableSorting: false,
-                meta: { priority: 1 },
+                meta: { icon: <CircleDot className="size-3.5" />, priority: 1, trailing: true },
                 cell: ({ row }) => <AgentStatusBadge agentId={row.original.id} />,
             }),
             ...(withVisibility
@@ -106,7 +134,7 @@ function useAgentColumns(withVisibility: boolean): DataTableColumnDef<Agent>[] {
                       column.accessor('visibility', {
                           header: m.agents_column_visibility(),
                           enableSorting: false,
-                          meta: { priority: 2 },
+                          meta: { icon: <Eye className="size-3.5" />, priority: 3 },
                           cell: ({ row }) => <AgentVisibilityBadge visibility={row.original.visibility} />,
                       }),
                   ]
@@ -114,19 +142,34 @@ function useAgentColumns(withVisibility: boolean): DataTableColumnDef<Agent>[] {
             column.accessor('createdBy', {
                 header: m.agents_column_created_by(),
                 enableSorting: false,
-                meta: { priority: 4 },
-                cell: ({ row }) => <AgentCreator memberId={row.original.createdBy} />,
+                meta: { icon: <UserRound className="size-3.5" />, priority: 4 },
+                // The engine prepares its own agents; nobody on the team created them.
+                cell: ({ row }) =>
+                    isBuiltInAgent(row.original) ? null : (
+                        <span className="text-text-muted">
+                            <AgentCreator memberId={row.original.createdBy} />
+                        </span>
+                    ),
             }),
             column.accessor('updatedAt', {
                 header: m.agents_column_updated(),
                 sortDescFirst: true,
-                meta: { priority: 3 },
-                cell: ({ row }) => <RelativeTime value={new Date(row.original.updatedAt)} />,
+                meta: { icon: <CalendarClock className="size-3.5" />, priority: 2, numeric: true },
+                cell: ({ row }) => (
+                    <RelativeTime
+                        value={new Date(row.original.updatedAt)}
+                        className="whitespace-nowrap text-text-muted"
+                    />
+                ),
             }),
         ];
     }, [withVisibility]);
 }
 
+/**
+ * The member's agents and, as a group of the same table, the engine's built-in ones. Search, filters, sort and page
+ * live in the URL; the engine does all the filtering and ordering.
+ */
 export function AgentsListPage() {
     const search = route.useSearch();
     const navigate = route.useNavigate();
@@ -143,34 +186,43 @@ export function AgentsListPage() {
         },
     });
     const columns = useAgentColumns(managesAgents);
-    const list = useQuery({
+    const shown = agentListGroups(search);
+    const own = useQuery({
         ...agentListQueryOptions(engineApi, agentListParams(search)),
+        enabled: shown.own,
         placeholderData: keepPreviousData,
         throwOnError: isPageLevel,
     });
+    // Quiet when it fails: the member's own agents are what the page is for, and the built-in ones are a chat away.
+    const builtIn = useQuery({
+        ...agentListQueryOptions(engineApi, builtInAgentParams(search)),
+        enabled: shown.builtIn,
+        placeholderData: keepPreviousData,
+    });
+    const ownAgents = shown.own ? (own.data?.items ?? NO_AGENTS) : NO_AGENTS;
+    const builtInAgents = shown.builtIn ? (builtIn.data?.items ?? NO_AGENTS) : NO_AGENTS;
+    const rows = useMemo(() => [...ownAgents, ...builtInAgents], [ownAgents, builtInAgents]);
+
     useEffect(() => {
         const id = deletedId.current;
-        if (id === null || list.data === undefined || list.data.items.some((agent) => agent.id === id)) return;
+        if (id === null || own.data === undefined || own.data.items.some((agent) => agent.id === id)) return;
         deletedId.current = null;
         searchRef.current?.focus();
-    }, [list.data]);
+    }, [own.data]);
     // Cursors only lead forward; remember where each page came from so "previous" can go back.
     const [previousCursors, setPreviousCursors] = useState<ReadonlyMap<string, string>>(() => new Map());
 
     const update = (change: Partial<AgentListSearch>, replace = false) => {
         void navigate({ search: (previous) => ({ ...previous, cursor: undefined, ...change }), replace });
     };
-    const [text, setText] = useDebouncedSearch(search.q, (q) => {
-        update({ q }, true);
-    });
 
-    const invalidCursor = list.isError && isInvalidCursor(list.error);
+    const invalidCursor = own.isError && isInvalidCursor(own.error);
     useEffect(() => {
         // An expired or foreign cursor: start again from the first page instead of showing an error.
         if (invalidCursor) void navigate({ search: (previous) => ({ ...previous, cursor: undefined }), replace: true });
     }, [invalidCursor, navigate]);
 
-    const filtered = search.q !== undefined || search.status !== undefined || search.visibility !== undefined;
+    const filtered = hasAgentFilters(search);
     const newAgent = canCreate ? (
         <ButtonLink to="/agents/new" variant="primary">
             <Plus aria-hidden className="size-4" />
@@ -178,74 +230,51 @@ export function AgentsListPage() {
         </ButtonLink>
     ) : null;
     const clear = () => {
-        setText('');
-        update({ q: undefined, status: undefined, visibility: undefined });
+        update({ q: undefined, status: undefined, visibility: undefined, origin: undefined, folderId: undefined });
     };
-    const clearFilters = <Button onClick={clear}>{m.agents_clear_filters()}</Button>;
+    // The built-in group keeps the table from ever being empty, so the invitation to make one's own sits above it.
+    const noOwnAgents =
+        !filtered &&
+        shown.own &&
+        search.cursor === undefined &&
+        own.data?.items.length === 0 &&
+        own.data.nextCursor === null &&
+        builtInAgents.length > 0;
+    const pending = shown.own ? own.isPending : builtIn.isPending;
 
     return (
         <Page title={m.agents_title()} actions={newAgent}>
-            <LegacyFilterBar
-                search={{
-                    label: m.agents_search_label(),
-                    placeholder: m.agents_search_placeholder(),
-                    value: text,
-                    onChange: setText,
-                    maxLength: 256,
-                    inputRef: searchRef,
-                }}
-                filters={[
-                    {
-                        kind: 'select',
-                        id: 'status',
-                        label: m.agents_column_status(),
-                        allLabel: m.agents_filter_all_statuses(),
-                        options: AGENT_RUN_STATES.map((state) => ({ value: state, label: stateLabel(state) })),
-                        value: search.status,
-                        onChange: (value) => {
-                            update({ status: AGENT_RUN_STATES.find((state) => state === value) });
-                        },
-                    },
-                    ...(managesAgents
-                        ? [
-                              {
-                                  kind: 'select' as const,
-                                  id: 'visibility',
-                                  label: m.agents_column_visibility(),
-                                  allLabel: m.agents_filter_all_visibilities(),
-                                  options: AGENT_VISIBILITIES.map((visibility) => ({
-                                      value: visibility,
-                                      label: visibilityLabel(visibility),
-                                  })),
-                                  value: search.visibility,
-                                  onChange: (value: string | undefined) => {
-                                      update({
-                                          visibility: AGENT_VISIBILITIES.find((visibility) => visibility === value),
-                                      });
-                                  },
-                              },
-                          ]
-                        : []),
-                ]}
-                onClear={clear}
-                empty={!list.isPending && search.cursor === undefined && list.data?.items.length === 0}
-            />
+            {noOwnAgents ? (
+                <EmptyState
+                    variant="inline"
+                    icon={<Bot aria-hidden />}
+                    title={m.agents_empty_title()}
+                    description={canCreate ? m.agents_empty_body() : m.agents_empty_body_chat()}
+                />
+            ) : null}
             <DataTable
                 caption={m.agents_title()}
                 columns={columns}
-                data={list.data?.items ?? NO_AGENTS}
+                data={rows}
                 getRowId={(agent) => agent.id}
                 getRowLabel={(agent) => agent.name}
                 sorting={sortingOf(search.sort)}
+                sortingRemoval={false}
                 onSortingChange={(sorting) => {
                     update({ sort: sortOf(sorting) });
                 }}
                 visibilityStorage={{ storage, key: AGENT_COLUMNS_STORAGE_KEY }}
-                page={{
-                    previousCursor:
-                        search.cursor === undefined ? null : (previousCursors.get(search.cursor) ?? FIRST_PAGE),
-                    nextCursor: list.data?.nextCursor ?? null,
-                }}
+                {...(shown.own
+                    ? {
+                          page: {
+                              previousCursor:
+                                  search.cursor === undefined
+                                      ? null
+                                      : (previousCursors.get(search.cursor) ?? FIRST_PAGE),
+                              nextCursor: own.data?.nextCursor ?? null,
+                          },
+                      }
+                    : {})}
                 onPageChange={(cursor, direction) => {
                     // A second click before the next page arrives would make the page its own predecessor.
                     if (cursor === search.cursor) return;
@@ -256,16 +285,16 @@ export function AgentsListPage() {
                         search: (previous) => ({ ...previous, cursor: cursor === FIRST_PAGE ? undefined : cursor }),
                     });
                 }}
-                loading={list.isPending}
-                fetching={list.isFetching && !list.isPending}
-                {...(list.isError && !invalidCursor
+                loading={pending}
+                fetching={(own.isFetching && !own.isPending) || (builtIn.isFetching && !builtIn.isPending)}
+                {...(shown.own && own.isError && !invalidCursor
                     ? {
                           error: {
                               message: m.agents_load_failed(),
                               onRetry: () => {
-                                  void list.refetch();
+                                  void own.refetch();
                               },
-                              retrying: list.isFetching,
+                              retrying: own.isFetching,
                           },
                       }
                     : {})}
@@ -274,7 +303,7 @@ export function AgentsListPage() {
                         ? {
                               title: m.agents_no_results(),
                               description: m.agents_no_results_hint(),
-                              action: clearFilters,
+                              action: <Button onClick={clear}>{m.agents_clear_filters()}</Button>,
                           }
                         : {
                               title: m.agents_empty_title(),
@@ -282,10 +311,123 @@ export function AgentsListPage() {
                               ...(newAgent === null ? {} : { action: newAgent }),
                           }
                 }
+                groups={{
+                    groups: AGENT_LIST_ORIGINS.map((origin) => ({ id: origin, label: originLabel(origin) })),
+                    getGroupId: (agent): AgentListOrigin => (isBuiltInAgent(agent) ? 'built-in' : 'own'),
+                }}
+                toolbar={(view) => (
+                    <AgentFilters
+                        view={view}
+                        search={search}
+                        managesAgents={managesAgents}
+                        searchRef={searchRef}
+                        onChange={(change) => {
+                            update(change, 'q' in change);
+                        }}
+                        onClear={clear}
+                    />
+                )}
                 rowActions={actions.menuEntries}
             />
-            <BuiltInAgents q={search.q} />
             {actions.dialogs}
         </Page>
+    );
+}
+
+/** Every filter lives in the URL, so a reload or a shared link restores the view. */
+function AgentFilters({
+    view,
+    search,
+    managesAgents,
+    searchRef,
+    onChange,
+    onClear,
+}: {
+    readonly view: DataTableView;
+    readonly search: AgentListSearch;
+    readonly managesAgents: boolean;
+    readonly searchRef: RefObject<HTMLInputElement | null>;
+    readonly onChange: (change: Partial<AgentListSearch>) => void;
+    readonly onClear: () => void;
+}) {
+    const [text, setText] = useDebouncedSearch(search.q, (q) => {
+        onChange({ q });
+    });
+    const folders = useQuery(folderListQueryOptions(useEngineApi())).data ?? [];
+    const fields: FilterBarField[] = [
+        filterField.enum<AgentRunState>({
+            id: 'status',
+            label: m.agents_column_status(),
+            icon: <CircleDot className="size-3.5" />,
+            options: AGENT_RUN_STATES.map((state) => ({ value: state, label: stateLabel(state) })),
+            value: search.status,
+            onChange: (status) => {
+                onChange({ status });
+            },
+        }),
+        filterField.enum<AgentListOrigin>({
+            id: 'origin',
+            label: m.agents_filter_origin(),
+            icon: <Layers className="size-3.5" />,
+            options: AGENT_LIST_ORIGINS.map((origin) => ({ value: origin, label: originLabel(origin) })),
+            value: search.origin,
+            onChange: (origin) => {
+                onChange({ origin });
+            },
+        }),
+        ...(managesAgents
+            ? [
+                  filterField.enum<AgentVisibility>({
+                      id: 'visibility',
+                      label: m.agents_column_visibility(),
+                      icon: <Eye className="size-3.5" />,
+                      options: AGENT_VISIBILITIES.map((visibility) => ({
+                          value: visibility,
+                          label: visibilityLabel(visibility),
+                          icon: <VisibilityIcon visibility={visibility} />,
+                      })),
+                      value: search.visibility,
+                      onChange: (visibility) => {
+                          onChange({ visibility });
+                      },
+                  }),
+              ]
+            : []),
+        // Only where the engine has folders: an empty field would offer a choice with nothing in it.
+        ...(folders.length === 0 && search.folderId === undefined
+            ? []
+            : [
+                  filterField.entity<string>({
+                      id: 'folder',
+                      label: m.agents_filter_folder(),
+                      icon: <Folder className="size-3.5" />,
+                      multiple: false,
+                      options: folders.map((folder) => ({ value: folder.id, label: folder.name })),
+                      value: readOneParam(search.folderId),
+                      onChange: (value) => {
+                          const picked = value.at(-1);
+                          onChange({ folderId: picked === undefined ? undefined : FolderId.safeParse(picked).data });
+                      },
+                  }),
+              ]),
+    ];
+    return (
+        <FilterBar
+            {...view}
+            label={m.agents_filters()}
+            search={{
+                label: m.agents_search_label(),
+                placeholder: m.agents_search_placeholder(),
+                value: text,
+                onChange: setText,
+                maxLength: 256,
+                inputRef: searchRef,
+            }}
+            fields={fields}
+            onClear={() => {
+                setText('');
+                onClear();
+            }}
+        />
     );
 }

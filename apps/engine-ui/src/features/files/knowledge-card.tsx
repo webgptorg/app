@@ -1,12 +1,15 @@
 import { FILE_PURPOSES } from '@ptbk/engine-api';
 import type { AgentId } from '@ptbk/engine-api';
-import { Card, RelativeTime, useLocale } from '@ptbk/ui';
+import { STATUS_TINT_CLASSES, useLocale } from '@ptbk/ui';
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { ShieldAlert } from 'lucide-react';
+import { FileText, ShieldAlert } from 'lucide-react';
 
+import { cx } from '../../app/cx';
 import { useEngineApi } from '../../app/engine-api-context';
 import { Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
+import { OverviewRow, OverviewRows, OverviewSection, overviewLinkClassName } from '../agents/overview-parts';
+import { EntityChip } from '../entities/entity-chip';
 import { purposeLabel } from './file-labels';
 import { fileListQueryOptions, fileStatsQueryOptions } from './files-queries';
 import { SCAN_PROBLEMS } from './files-search';
@@ -14,7 +17,10 @@ import { useFileScanning } from './use-file-scanning';
 
 const LATEST_OUTPUTS = 3;
 
-/** "Knowledge at a glance" on the agent overview: counts by purpose, scan problems and the newest outputs. */
+/**
+ * The agent's files at a glance on its overview: counts by purpose, scan problems on a soft surface (they need
+ * someone) and the newest outputs as rows. An agent with no files at all has no section.
+ */
 export function KnowledgeCard({ agentId }: { readonly agentId: AgentId }) {
     const engineApi = useEngineApi();
     const formatters = useLocale();
@@ -23,61 +29,58 @@ export function KnowledgeCard({ agentId }: { readonly agentId: AgentId }) {
         fileListQueryOptions(engineApi, { agentId, purpose: 'output', sort: '-createdAt', limit: LATEST_OUTPUTS }),
     );
     const scanning = useFileScanning();
-    const problems = stats.byScan.infected + stats.byScan.failed;
+    const problems = scanning ? stats.byScan.infected + stats.byScan.failed : 0;
+    const total = FILE_PURPOSES.reduce((sum, purpose) => sum + stats.byPurpose[purpose], 0);
+    if (total === 0 && problems === 0) return null;
     return (
-        <Card
+        <OverviewSection
             title={m.files_card_title()}
-            actions={
-                <Link to="/agents/$agentId/files" params={{ agentId }} variant="standalone">
+            all={
+                <Link
+                    to="/agents/$agentId/files"
+                    params={{ agentId }}
+                    variant="standalone"
+                    className={overviewLinkClassName}
+                >
                     {m.files_card_all()}
                 </Link>
             }
         >
-            <div className="flex flex-col gap-4">
-                <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    {FILE_PURPOSES.map((purpose) => (
-                        <div key={purpose} className="flex flex-col gap-1">
-                            <dt className="text-xs font-medium text-text-muted">{purposeLabel(purpose)}</dt>
-                            <dd className="text-xl font-semibold">
-                                {formatters.formatNumber(stats.byPurpose[purpose])}
-                            </dd>
-                        </div>
-                    ))}
-                </dl>
-                {!scanning ? null : problems === 0 ? (
-                    <p className="text-sm text-text-muted">{m.files_card_no_problems()}</p>
-                ) : (
-                    <p className="flex items-center gap-2 text-sm">
-                        <ShieldAlert aria-hidden className="size-4 text-danger" />
-                        <Link to="/files" search={{ agentId, scan: SCAN_PROBLEMS }} variant="standalone">
-                            {m.files_card_problems({ count: problems })}
-                        </Link>
-                    </p>
-                )}
-                <div className="flex flex-col gap-2">
-                    <h3 className="text-sm font-semibold">{m.files_card_latest_outputs()}</h3>
-                    {outputs.items.length === 0 ? (
-                        <p className="text-sm text-text-muted">{m.files_card_no_outputs()}</p>
-                    ) : (
-                        <ul className="flex flex-col gap-2">
-                            {outputs.items.map((file) => (
-                                <li key={file.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                                    <Link
-                                        to="/agents/$agentId/files"
-                                        params={{ agentId }}
-                                        search={{ file: file.id }}
-                                        variant="standalone"
-                                        className="min-w-0 break-all"
-                                    >
-                                        {file.name}
-                                    </Link>
-                                    <RelativeTime value={new Date(file.createdAt)} />
-                                </li>
-                            ))}
-                        </ul>
-                    )}
+            <dl className="flex flex-wrap gap-x-8 gap-y-3">
+                {FILE_PURPOSES.map((purpose) => (
+                    <div key={purpose} className="flex flex-col gap-0.5">
+                        <dt className="text-xs text-text-muted">{purposeLabel(purpose)}</dt>
+                        <dd
+                            className={cx(
+                                'text-lg font-semibold tabular-nums',
+                                stats.byPurpose[purpose] === 0 && 'text-text-muted',
+                            )}
+                        >
+                            {formatters.formatNumber(stats.byPurpose[purpose])}
+                        </dd>
+                    </div>
+                ))}
+            </dl>
+            {problems === 0 ? null : (
+                <p className={cx('soft-surface flex items-center gap-2 px-3 py-2 text-sm', STATUS_TINT_CLASSES.danger)}>
+                    <ShieldAlert aria-hidden className="size-4 shrink-0 text-danger" />
+                    <Link to="/files" search={{ agentId, scan: SCAN_PROBLEMS }} variant="standalone">
+                        {m.files_card_problems({ count: problems })}
+                    </Link>
+                </p>
+            )}
+            {outputs.items.length === 0 ? null : (
+                <div className="flex flex-col gap-1">
+                    <h3 className="text-xs font-medium text-text-muted">{m.files_card_latest_outputs()}</h3>
+                    <OverviewRows>
+                        {outputs.items.map((file) => (
+                            <OverviewRow key={file.id} lead={<FileText aria-hidden />} at={file.createdAt}>
+                                <EntityChip kind="file" id={file.id} name={file.name} />
+                            </OverviewRow>
+                        ))}
+                    </OverviewRows>
                 </div>
-            </div>
-        </Card>
+            )}
+        </OverviewSection>
     );
 }

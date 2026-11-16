@@ -89,20 +89,7 @@ export function PageHeader({ title, titleSuffix, breadcrumbs, back, actions, tit
                 'bg-[color-mix(in_oklab,var(--color-surface)_88%,transparent)] backdrop-blur-md',
             )}
         >
-            {trail.length === 0 ? null : (
-                <nav aria-label={m.breadcrumbs()} className="min-w-0">
-                    <ol className="flex min-w-0 flex-wrap items-center gap-1 text-sm text-text-muted">
-                        {trail.map((crumb, index) => (
-                            <Fragment key={index}>
-                                <li className="flex min-w-0 items-center">{crumb}</li>
-                                <li aria-hidden="true" className="flex items-center">
-                                    <ChevronRight className="size-3.5 opacity-70" />
-                                </li>
-                            </Fragment>
-                        ))}
-                    </ol>
-                </nav>
-            )}
+            <Breadcrumbs trail={trail} />
             {back === undefined ? null : <div className="flex">{back}</div>}
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                 <h1 id="page-title" className="min-w-0 text-xl font-semibold tracking-display [overflow-wrap:anywhere]">
@@ -120,6 +107,25 @@ export function PageHeader({ title, titleSuffix, breadcrumbs, back, actions, tit
                 )}
             </div>
         </header>
+    );
+}
+
+/** Where a screen sits, outermost first, as `Crumb` links; nothing for a top-level screen. */
+export function Breadcrumbs({ trail }: { readonly trail: readonly ReactNode[] }) {
+    if (trail.length === 0) return null;
+    return (
+        <nav aria-label={m.breadcrumbs()} className="min-w-0">
+            <ol className="flex min-w-0 flex-wrap items-center gap-1 text-sm text-text-muted">
+                {trail.map((crumb, index) => (
+                    <Fragment key={index}>
+                        <li className="flex min-w-0 items-center">{crumb}</li>
+                        <li aria-hidden="true" className="flex items-center">
+                            <ChevronRight className="size-3.5 opacity-70" />
+                        </li>
+                    </Fragment>
+                ))}
+            </ol>
+        </nav>
     );
 }
 

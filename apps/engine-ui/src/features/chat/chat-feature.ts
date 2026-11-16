@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { MessagesSquare } from 'lucide-react';
+import { lazy } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
 import { AGENT_TABS, defineFeature } from '../../app/registry/feature';
@@ -25,5 +26,13 @@ export const chatFeature = defineFeature({
         useBadge: useThreadsNeedingYou,
     },
     agentTabs: [{ ...AGENT_TABS.chat, label: m.agent_tab_chat, to: '/agents/$agentId/chat' }],
+    // Lazy, so the section's code loads with the agent page that shows it; the overview suspends around it.
+    agentOverviewCards: [
+        {
+            id: 'chats.recent',
+            order: 4,
+            component: lazy(() => import('./agent-chats-card').then((module) => ({ default: module.AgentChatsCard }))),
+        },
+    ],
     commands: [{ id: 'chats.open', label: m.nav_chats, keywords: () => [m.chat_new_label()], to: '/chats' }],
 });

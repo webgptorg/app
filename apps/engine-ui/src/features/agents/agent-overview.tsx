@@ -1,6 +1,6 @@
 import { KNOWN_CAPABILITIES, supports } from '@ptbk/engine-api';
 import type { Agent } from '@ptbk/engine-api';
-import { Card, RelativeTime } from '@ptbk/ui';
+import { RelativeTime, Section } from '@ptbk/ui';
 import { QueryErrorResetBoundary, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -14,37 +14,34 @@ import { useAgentIdParam } from './agent-detail-route';
 import { agentDetailQueryOptions, agentLastActivityQueryOptions, agentLatestRunQueryOptions } from './agents-queries';
 import { OverviewCardBoundary } from './overview-card-boundary';
 
-function Detail({
-    term,
-    wide = false,
-    children,
-}: {
-    readonly term: string;
-    readonly wide?: boolean;
-    readonly children: ReactNode;
-}) {
+function Property({ label, children }: { readonly label: string; readonly children: ReactNode }) {
     return (
-        <div className={wide ? 'col-span-2 flex min-w-0 flex-col gap-1 lg:col-span-3' : 'flex min-w-0 flex-col gap-1'}>
-            <dt className="text-sm text-text-muted">{term}</dt>
-            <dd className="min-w-0 break-words">{children}</dd>
+        <div className="grid grid-cols-[9rem_minmax(0,1fr)] items-baseline gap-x-6 py-1.5 sm:grid-cols-[11rem_minmax(0,1fr)]">
+            <dt className="text-sm text-text-subtle">{label}</dt>
+            <dd className="min-w-0 text-sm break-words">{children}</dd>
         </div>
     );
 }
 
 function LastActivity({ agent }: { readonly agent: Agent }) {
     const activity = useQuery(agentLastActivityQueryOptions(useEngineApi(), agent.id));
-    if (activity.data === undefined) return <span>{m.agent_value_unknown()}</span>;
-    if (activity.data === null) return <span>{m.agent_no_activity()}</span>;
-    return <RelativeTime value={new Date(activity.data)} />;
+    if (activity.data === undefined) return <span className="text-text-muted">{m.agent_value_unknown()}</span>;
+    if (activity.data === null) return <span className="text-text-muted">{m.agent_no_activity()}</span>;
+    return <RelativeTime value={new Date(activity.data)} className="tabular-nums" />;
 }
 
 /** The model the agent last ran on; runs carry it (`runs@1`), the agent record does not. */
 function LatestModel({ agent }: { readonly agent: Agent }) {
     const run = useQuery(agentLatestRunQueryOptions(useEngineApi(), agent.id));
-    return <span>{run.data?.model ?? m.agent_value_unknown()}</span>;
+    // A model ID is an identifier, so it is the one value here in mono.
+    if (run.data?.model == null) return <span className="text-text-muted">{m.agent_value_unknown()}</span>;
+    return <span className="font-mono text-xs">{run.data.model}</span>;
 }
 
-/** Identity and state of the agent, then every overview card the registry allows, each failing on its own. */
+/**
+ * What the agent is doing and has done, as the sections the registry allows (chats, tasks, runs, knowledge, triggers,
+ * integrations), each failing on its own and leaving the page when it has nothing to show; then its details.
+ */
 export function AgentOverview() {
     const agentId = useAgentIdParam();
     const { data: agent } = useSuspenseQuery(agentDetailQueryOptions(useEngineApi(), agentId));
@@ -56,40 +53,8 @@ export function AgentOverview() {
         .toSorted((a, b) => a.order - b.order);
 
     return (
-        <div className="flex flex-col gap-6">
-            <Card title={m.agent_overview_details()}>
-                <dl className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-                    <Detail term={m.agent_field_name()}>{agent.profile.fullname || agent.name}</Detail>
-                    <Detail term={m.agents_column_status()}>
-                        <AgentStatusBadge agentId={agent.id} />
-                    </Detail>
-                    <Detail term={m.agents_column_visibility()}>
-                        <AgentVisibilityBadge visibility={agent.visibility} />
-                    </Detail>
-                    <Detail term={m.agents_column_created_by()}>
-                        <AgentCreator memberId={agent.createdBy} />
-                    </Detail>
-                    <Detail term={m.agent_field_created()}>
-                        <RelativeTime value={new Date(agent.createdAt)} />
-                    </Detail>
-                    <Detail term={m.agent_field_updated()}>
-                        <RelativeTime value={new Date(agent.updatedAt)} />
-                    </Detail>
-                    <Detail term={m.agents_column_last_activity()}>
-                        <LastActivity agent={agent} />
-                    </Detail>
-                    {showModel ? (
-                        <Detail term={m.agent_field_model()}>
-                            <LatestModel agent={agent} />
-                        </Detail>
-                    ) : null}
-                    {agent.profile.description === '' ? null : (
-                        <Detail term={m.agents_column_description()} wide>
-                            <p className="max-w-prose whitespace-pre-line">{agent.profile.description}</p>
-                        </Detail>
-                    )}
-                </dl>
-            </Card>
+        // The tabs' line already separates the first section from the header.
+        <div className="flex flex-col gap-6 [&>*:first-child]:border-t-0 [&>*:first-child]:pt-1">
             {cards.map((card) => (
                 <QueryErrorResetBoundary key={`${agent.id}:${card.id}`}>
                     {({ reset }) => (
@@ -99,6 +64,45 @@ export function AgentOverview() {
                     )}
                 </QueryErrorResetBoundary>
             ))}
+            <Section title={m.agent_overview_details()}>
+                <dl className="flex max-w-2xl flex-col">
+                    {agent.profile.fullname === '' || agent.profile.fullname === agent.name ? null : (
+                        <Property label={m.agent_field_name()}>{agent.profile.fullname}</Property>
+                    )}
+                    <Property label={m.agents_column_status()}>
+                        <AgentStatusBadge agentId={agent.id} variant="quiet" />
+                    </Property>
+                    <Property label={m.agents_column_visibility()}>
+                        <AgentVisibilityBadge visibility={agent.visibility} />
+                    </Property>
+                    <Property label={m.agents_column_created_by()}>
+                        {agent.origin === 'content' ? (
+                            <AgentCreator memberId={agent.createdBy} />
+                        ) : (
+                            <span className="text-text-muted">{m.agent_created_by_engine()}</span>
+                        )}
+                    </Property>
+                    <Property label={m.agent_field_created()}>
+                        <RelativeTime value={new Date(agent.createdAt)} className="tabular-nums" />
+                    </Property>
+                    <Property label={m.agent_field_updated()}>
+                        <RelativeTime value={new Date(agent.updatedAt)} className="tabular-nums" />
+                    </Property>
+                    <Property label={m.agents_column_last_activity()}>
+                        <LastActivity agent={agent} />
+                    </Property>
+                    {showModel ? (
+                        <Property label={m.agent_field_model()}>
+                            <LatestModel agent={agent} />
+                        </Property>
+                    ) : null}
+                    {agent.profile.description === '' ? null : (
+                        <Property label={m.agents_column_role()}>
+                            <span className="whitespace-pre-line">{agent.profile.description}</span>
+                        </Property>
+                    )}
+                </dl>
+            </Section>
         </div>
     );
 }
