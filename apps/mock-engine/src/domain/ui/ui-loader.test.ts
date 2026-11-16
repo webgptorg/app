@@ -6,6 +6,7 @@ import { createMemoryBundleStore } from '../../testing/memory-bundle-store';
 import { createMemoryLogger } from '../../testing/memory-logger';
 import { createMemoryReleaseSource } from '../../testing/memory-release-source';
 import { createMemoryUpdateStateStore } from '../../testing/memory-update-state-store';
+import { createSeededRandom } from '../../testing/seeded-random';
 import type { TestReleaseKeys } from '../../testing/ui-releases';
 import {
     TEST_ARCHIVE_NAME,
@@ -61,6 +62,7 @@ async function setup(updatePolicy: UpdatePolicy) {
             checkIntervalS: 60,
             deps,
             clock,
+            random: createSeededRandom(1),
             logger: createMemoryLogger(),
             onActive: (bundle) => seen.push(bundle),
             onChecked: (outcome, atMs) => checks.push({ kind: outcome.kind, atMs }),

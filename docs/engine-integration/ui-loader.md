@@ -35,7 +35,8 @@ sequenceDiagram
 **Fetch**
 
 - Download the release record (`SignedRelease`: a DSSE envelope over the `ReleaseEntry` bytes plus the Sigstore bundle in `provenance`) and the current revocation list (a DSSE envelope over a `RevocationList`) from the release store or a configured mirror (`PTBK_UI_RELEASE_URL`), in the [release mirror layout v1](#release-mirror-layout-v1). Enterprise and offline installs mirror both. Every request has a timeout and a size cap.
-- Check for an update at startup, then periodically. The conformance suite triggers checks by restarting the engine.
+- Check for an update at startup, then periodically, at most 1 hour apart (the interval is the engine's choice). The conformance suite triggers checks by restarting the engine.
+- After a `delay-not-elapsed` refusal with an `eligibleAt` in the future, and unless the policy is `manual`, schedule one extra check at `eligibleAt` plus a few seconds of random jitter (the mock engine uses up to 5 s), so the release installs when it becomes eligible rather than up to an interval later. It comes on top of the periodic check and never replaces it. Keep at most one: every check, whatever its outcome, cancels the pending one, and a new delay refusal schedules it again. Do not persist it; a restart checks at startup anyway.
 - Pass the raw JSON to `verifyRelease`; it parses strictly itself, and only after a trusted signature over the PAE verifies.
 
 **Verify with `verifyRelease`**

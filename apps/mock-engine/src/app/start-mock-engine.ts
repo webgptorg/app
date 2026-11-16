@@ -224,6 +224,7 @@ function configuredUiLoader(
         deps: deps.ui,
         clock: deps.clock,
         logger: deps.logger,
+        random: deps.random,
         onActive: (bundle) => {
             if (bundle !== undefined) progress.ui(bundle.version);
             runtime.setUi(
