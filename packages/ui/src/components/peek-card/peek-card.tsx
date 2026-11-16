@@ -50,7 +50,7 @@ export interface PeekCardProps {
     readonly secondary?: ReactNode | undefined;
     /** The agent's or status's colour (`var(--color-…)` or `#rrggbb`) for the wash. */
     readonly tint?: string | null | undefined;
-    /** A class that sets `--tint` instead, e.g. `STATUS_TINT_CLASSES.danger`. */
+    /** A status's `--tint` class instead, e.g. `STATUS_TINT_CLASSES.danger`; it washes stronger in dark mode. */
     readonly tintClassName?: string | undefined;
     readonly className?: string | undefined;
 }
@@ -92,8 +92,12 @@ export function PeekCard({
             style={tintStyle(tint) ?? TINT_TEXT_RESET}
             className={cx(
                 '-m-3 flex w-80 max-w-[calc(100vw-1rem)] flex-col rounded-(--hovercard-radius) text-sm',
-                tintClassName ?? '[--tint:var(--peek-card-fallback-tint)]',
-                'bg-[color-mix(in_oklab,var(--tint)_var(--peek-card-wash),transparent)]',
+                tintClassName === undefined
+                    ? '[--tint:var(--peek-card-fallback-tint)] bg-[color-mix(in_oklab,var(--tint)_var(--peek-card-wash),transparent)]'
+                    : cx(
+                          tintClassName,
+                          'bg-[color-mix(in_oklab,var(--tint)_var(--peek-card-status-wash),transparent)]',
+                      ),
                 className,
             )}
         >

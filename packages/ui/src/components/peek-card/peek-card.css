@@ -1,6 +1,8 @@
 /* A peek card is a soft wash of its entity's tint (agent colour or status) over the hovercard's raised surface. */
 :root {
     --peek-card-wash: 6%;
+    /* Status tints (a failed run, a blocked task) say "look here", so they wash stronger than an agent's colour. */
+    --peek-card-status-wash: 6%;
     --peek-card-fallback-tint: var(--color-text-muted);
     --peek-card-kind: var(--color-text-muted);
     --peek-card-title: var(--color-text);
@@ -13,4 +15,6 @@
 
 .dark {
     --peek-card-wash: 9%;
+    /* Over dark graphite a hue fades fast: below this the danger and warning cards read as plain grey. */
+    --peek-card-status-wash: 16%;
 }

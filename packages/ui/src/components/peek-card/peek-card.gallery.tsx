@@ -86,6 +86,35 @@ const run = (
     />
 );
 
+// A failed run and a task waiting on someone: status tints wash stronger in dark mode, so they still read as colour.
+const failedRun = (
+    <PeekCard
+        kind="Run"
+        icon={<Play />}
+        status={{ tone: 'danger', label: 'Failed' }}
+        title="Write the weekly report"
+        description="The calendar integration was not reachable."
+        tintClassName={STATUS_TINT_CLASSES.danger}
+        facts={[
+            { label: 'Started', value: 'Yesterday 08:00' },
+            { label: 'Duration', value: '4 min 0 s' },
+        ]}
+        action={{ label: 'Open run', onSelect: () => undefined }}
+    />
+);
+
+const waitingTask = (
+    <PeekCard
+        kind="Task"
+        icon={<ListTodo />}
+        status={{ tone: 'warning', label: 'Needs you' }}
+        title="Approve the refund"
+        description="Max asks whether order 1042 may be refunded."
+        tintClassName={STATUS_TINT_CLASSES.warning}
+        action={{ label: 'Open task', onSelect: () => undefined }}
+    />
+);
+
 export const peekCardGallery: GalleryEntry = {
     id: 'peek-card',
     title: 'PeekCard',
@@ -95,6 +124,10 @@ export const peekCardGallery: GalleryEntry = {
                 <Frame>{agent}</Frame>
                 <Frame>{task}</Frame>
                 <Frame>{run}</Frame>
+            </div>
+            <div className="flex flex-wrap items-start gap-6">
+                <Frame>{failedRun}</Frame>
+                <Frame>{waitingTask}</Frame>
             </div>
             <p className="text-sm">
                 {'In a hovercard: '}

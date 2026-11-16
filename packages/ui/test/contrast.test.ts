@@ -95,3 +95,34 @@ describe('tinted labels', () => {
         }
     });
 });
+
+describe('status-tinted peek cards', () => {
+    /** The card's wash over the hovercard's raised surface, blended in sRGB as `checkContrast` blends washes. */
+    function washed(tint: string, surface: string, percent: string): string {
+        const alpha = Number.parseFloat(percent) / 100;
+        const rgb = (hex: string) => [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
+        const top = rgb(tint);
+        const blended = rgb(surface).map((base, index) => Math.round((top[index] ?? 0) * alpha + base * (1 - alpha)));
+        return `#${blended.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+    }
+
+    it('show their hue in both themes and keep every label AA on it', async () => {
+        const sheet = await loadTokenSheet();
+        for (const theme of ['light', 'dark'] as const) {
+            const token = (name: string) => resolveToken(sheet, name, theme) ?? '';
+            const raised = token('--hovercard-bg');
+            for (const tone of ['--status-danger', '--status-warning']) {
+                const card = washed(token(tone), raised, token('--peek-card-status-wash'));
+                // Seb found the dark danger card indistinguishable from a plain one: the wash must read as a colour.
+                expect(contrastRatio(card, raised), `${theme} ${tone} wash`).toBeGreaterThanOrEqual(
+                    theme === 'dark' ? 1.25 : 1.08,
+                );
+                for (const label of ['--peek-card-title', '--peek-card-muted', '--peek-card-kind']) {
+                    expect(contrastRatio(token(label), card), `${theme} ${label} on ${tone}`).toBeGreaterThanOrEqual(
+                        4.5,
+                    );
+                }
+            }
+        }
+    });
+});
