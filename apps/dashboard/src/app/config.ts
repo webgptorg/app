@@ -152,6 +152,16 @@ export const DEFAULT_WEBSITE_ORIGIN = 'https://www.ptbk.io';
 const websiteOriginSchema = originSchema.refine((origin) => origin.startsWith('https://'), 'must be https');
 
 /**
+ * The website page that starts the handoff (ADR 0021): the App sends the browser there with `?challenge=`, and the page
+ * calls the website's same-origin `POST /api/promptbook-billing/handoff` with the member's session. No default: the
+ * website has no such page yet, and a guessed URL would send people nowhere.
+ */
+const websiteHandoffUrlSchema = z
+    .url({ protocol: /^https$/ })
+    .max(512)
+    .refine((value) => !value.includes('#'), 'must not have a fragment');
+
+/**
  * The website's App credential (ADR 0021), shared with the website only; `wrangler secret put
  * PROMPTBOOK_APP_LICENSE_SECRET`, never a var, never sent to the SPA. The website trims its copy and wants at least 32
  * characters; here it must be exactly what it compares against, so no whitespace at all.
@@ -298,6 +308,7 @@ const varsSchema = z
         CERTSPOTTER_API_KEY: certSpotterKeySchema.optional(),
         WEB_RISK_API_KEY: webRiskKeySchema.optional(),
         WEBSITE_ORIGIN: websiteOriginSchema.optional(),
+        WEBSITE_HANDOFF_URL: websiteHandoffUrlSchema.optional(),
         PROMPTBOOK_APP_LICENSE_SECRET: licenseSecretSchema.optional(),
     })
     .superRefine((vars, ctx) => {
@@ -344,12 +355,18 @@ const varsSchema = z
                 ctx.addIssue({ code: 'custom', path: ['BILLING_OFF_PLAN'], message: 'only with billing off' });
             }
         }
-        if (vars.ADAPTERS.billing === 'website' && vars.PROMPTBOOK_APP_LICENSE_SECRET === undefined) {
-            ctx.addIssue({
-                code: 'custom',
-                path: ['PROMPTBOOK_APP_LICENSE_SECRET'],
-                message: 'required by the website billing adapter',
-            });
+        if (vars.ADAPTERS.billing === 'website') {
+            for (const name of ['WEBSITE_HANDOFF_URL', 'PROMPTBOOK_APP_LICENSE_SECRET'] as const) {
+                if (vars[name] === undefined) {
+                    ctx.addIssue({ code: 'custom', path: [name], message: 'required by the website billing adapter' });
+                }
+            }
+        }
+        // Refinements run on fields that already failed, which have their own issue.
+        const websiteOrigin = websiteOriginSchema.safeParse(vars.WEBSITE_ORIGIN ?? DEFAULT_WEBSITE_ORIGIN);
+        const handoffUrl = websiteHandoffUrlSchema.safeParse(vars.WEBSITE_HANDOFF_URL);
+        if (websiteOrigin.success && handoffUrl.success && new URL(handoffUrl.data).origin !== websiteOrigin.data) {
+            ctx.addIssue({ code: 'custom', path: ['WEBSITE_HANDOFF_URL'], message: 'must be on WEBSITE_ORIGIN' });
         }
         if (vars.ADAPTERS.billing === 'stripe') {
             for (const name of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'] as const) {
@@ -419,6 +436,8 @@ export type BillingConfig =
     | {
           readonly adapter: 'website';
           readonly websiteOrigin: string;
+          /** Where the handoff starts on the website; the App adds `challenge`. */
+          readonly handoffUrl: string;
           /** Secret: the website's App credential; server to server only. */
           readonly licenseSecret: string;
       }
@@ -539,6 +558,7 @@ function billingConfig(parsed: z.infer<typeof varsSchema>): BillingConfig {
         return Object.freeze({
             adapter,
             websiteOrigin: parsed.WEBSITE_ORIGIN ?? DEFAULT_WEBSITE_ORIGIN,
+            handoffUrl: parsed.WEBSITE_HANDOFF_URL as string,
             licenseSecret: parsed.PROMPTBOOK_APP_LICENSE_SECRET as string,
         });
     }

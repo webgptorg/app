@@ -49,3 +49,24 @@ export function inviteToken(
 ): string | null {
     return fromBody ?? request.secretCookie(INVITE_COOKIE);
 }
+
+/** The website handoff's challenge (D-30). Lax: it must come back on the top-level navigation from the website. */
+export const WEBSITE_STATE_COOKIE = '__Host-ptbk_website_state';
+/** A verified website identity waiting for this browser's sign-in or sign-up; read by same-origin calls only. */
+export const WEBSITE_LINK_COOKIE = '__Host-ptbk_website_link';
+
+export function websiteStateCookie(challenge: string, ttlMs: number): string {
+    return serialize(WEBSITE_STATE_COOKIE, challenge, Math.floor(ttlMs / 1000), 'Lax');
+}
+
+export function clearWebsiteStateCookie(): string {
+    return serialize(WEBSITE_STATE_COOKIE, '', 0, 'Lax');
+}
+
+export function websiteLinkCookie(token: string, ttlMs: number): string {
+    return serialize(WEBSITE_LINK_COOKIE, token, Math.floor(ttlMs / 1000), 'Strict');
+}
+
+export function clearWebsiteLinkCookie(): string {
+    return serialize(WEBSITE_LINK_COOKIE, '', 0, 'Strict');
+}

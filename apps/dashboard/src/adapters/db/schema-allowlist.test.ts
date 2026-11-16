@@ -178,6 +178,14 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     usage_daily_people: ['day', 'org_id', 'user_id'],
     // Live WebAuthn ceremonies, at most 5 minutes each.
     webauthn_challenges: ['id', 'challenge', 'purpose', 'user_id', 'token_hash', 'webauthn_user_id', 'expires_at'],
+    // Website licensing (D-30): which website account (its subject UUID) licenses the organization, who linked it, when.
+    website_links: ['org_id', 'subject', 'linked_by_user_id', 'linked_at'],
+    // The website's last licence snapshot: grant IDs, validity dates and numeric capacities, no prices and no content.
+    website_license_snapshots: ['org_id', 'subject', 'snapshot', 'fetched_at'],
+    // A handoff to the website in flight: its challenge only as SHA-256, a 10-minute lifetime.
+    website_handoff_states: ['challenge_hash', 'created_at', 'expires_at'],
+    // The website's verified address and subject, waiting 30 minutes for this browser's sign-in or sign-up.
+    website_pending_links: ['token_hash', 'subject', 'email', 'created_at', 'expires_at'],
 };
 
 async function storedColumns(): Promise<Record<string, string[]>> {

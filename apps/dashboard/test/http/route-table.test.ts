@@ -156,6 +156,30 @@ describe('route table', () => {
         expect(publicRoutes.sort()).toEqual(PUBLIC_ROUTES);
     });
 
+    it('adds exactly the website handoff as public with billing website, held to its own limit, and drops Stripe', () => {
+        const website = createAuthHarness({ store: createMemoryAuthStore(), billing: 'website' });
+        for (const route of website.routes) {
+            const mount = MOUNTS.find((candidate) => route.path.startsWith(`${candidate}/`)) ?? '';
+            expect(() => {
+                assertMountable(route, mount);
+            }, `${route.method} ${route.path}`).not.toThrow();
+        }
+        const publicRoutes = website.routes
+            .filter((route) => route.auth === 'public')
+            .map((route) => `${route.method} ${route.path} ${String(route.rateLimit)} ${route.responseType ?? 'json'}`);
+        expect(publicRoutes.filter((route) => !PUBLIC_ROUTES.some((known) => route.startsWith(`${known} `)))).toEqual([
+            'GET /api/website-access/start website-access-ip redirect',
+            'GET /api/website-access/return website-access-ip redirect',
+            'GET /api/website-access/pending website-access-ip json',
+        ]);
+        expect(website.routes.filter((route) => route.auth === 'stripe-signature')).toEqual([]);
+        const sessionRoutes = website.routes
+            .filter((route) => route.path.startsWith('/api/website-access') || route.path === '/api/license')
+            .filter((route) => route.auth === 'session')
+            .map((route) => `${route.method} ${route.path} ${String(route.permission)}`);
+        expect(sessionRoutes).toEqual(['POST /api/website-access/link license.link', 'GET /api/license license.read']);
+    });
+
     it('does not mount the dev outbox without the fake email adapter', async () => {
         const production = createAuthHarness({ store: createMemoryAuthStore(), email: 'cloudflare' });
         expect(production.routes.map((route) => route.path)).not.toContain('/api/__dev/emails');

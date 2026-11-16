@@ -348,6 +348,11 @@ describe('route binder', () => {
                 input: { ...NO_INPUT, body: RAW_BODY, maxBodyBytes: 64 },
             },
         ],
+        ['a redirect from a session route', { responseType: 'redirect' }],
+        [
+            'a redirect answering a POST',
+            { method: 'POST', auth: 'public', permission: null, rateLimit: 'public-read-ip', responseType: 'redirect' },
+        ],
         [
             'a signed route without rate limit',
             {
@@ -363,6 +368,45 @@ describe('route binder', () => {
         expect(() => {
             binder.bind(new Hono(), '/api', contract, () => Promise.resolve({ kind: 'ok', body: {} }));
         }).toThrow(/refusing to mount/);
+    });
+
+    describe('redirect routes', () => {
+        const redirectRoute = defineRoute({
+            method: 'GET',
+            path: '/api/go',
+            auth: 'public',
+            permission: null,
+            rateLimit: 'public-read-ip',
+            input: NO_INPUT,
+            output: NO_CONTENT,
+            responseType: 'redirect',
+            errorCodes: [],
+        });
+
+        it('answers 303 to the handler’s location with its cookies, uncached and without a referrer', async () => {
+            const binder = harness().binder;
+            const router = new Hono();
+            binder.bind(router, '/api', redirectRoute, () =>
+                Promise.resolve({ kind: 'redirect', location: 'https://example.test/next', setCookies: ['a=1'] }),
+            );
+            const response = await new Hono().route('/api', router).request('/api/go');
+            expect(response.status).toBe(303);
+            expect(response.headers.get('location')).toBe('https://example.test/next');
+            expect(response.headers.get('cache-control')).toBe('no-store');
+            expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+            expect(response.headers.getSetCookie()).toEqual(['a=1']);
+        });
+
+        it('refuses to redirect from a route not declared as one', async () => {
+            const binder = harness().binder;
+            const router = new Hono();
+            binder.bind(router, '/api', { ...redirectRoute, responseType: 'text' }, () =>
+                Promise.resolve({ kind: 'redirect', location: 'https://example.test/next' }),
+            );
+            const app = new Hono().route('/api', router);
+            app.onError(() => new Response(null, { status: 500 }));
+            expect((await app.request('/api/go')).status).toBe(500);
+        });
     });
 
     describe('signed routes', () => {

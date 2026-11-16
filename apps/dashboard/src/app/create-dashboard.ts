@@ -1,4 +1,3 @@
-import { createAdvisoryEntitlements } from '../domain/licensing/advisory-entitlements';
 import type { Hono } from 'hono';
 
 import { createFakeBillingProvider } from '../adapters/billing/fake-billing-provider';
@@ -22,6 +21,7 @@ import {
 import { createD1UsageStore } from '../adapters/db/d1-usage-store';
 import { createD1RelayPresenceStore } from '../adapters/db/d1-relay-presence-store';
 import { createD1TeamStore } from '../adapters/db/d1-team-store';
+import { createD1WebsiteLicensingStore } from '../adapters/db/d1-website-licensing-store';
 import { memberKeySource } from '../domain/teams/member-key';
 import { createD1RegistryReader, createD1RelayTokenStore } from '../adapters/db/d1-registry-store';
 import { createD1HeartbeatEngineReader } from '../adapters/db/d1-status-store';
@@ -39,6 +39,7 @@ import {
     type Entitlements,
 } from '../domain/billing/entitlements';
 import { DASHBOARD_POLICY } from '../domain/authz/policy';
+import { createAdvisoryEntitlements } from '../domain/licensing/advisory-entitlements';
 import type { Logger } from '../domain/ports/logger';
 import type { DashboardMetrics } from '../domain/monitoring/dashboard-metrics';
 import { ConfigError, parseConfig, type DashboardConfig } from './config';
@@ -197,6 +198,16 @@ export function createDashboard(
         return misconfigured(logger, ['STRIPE_SECRET_KEY']);
     }
     const customHostnames = createD1CustomHostnameStore(db);
+    const licensing: DashboardDeps['licensing'] =
+        config.billing.adapter === 'website'
+            ? {
+                  store: createD1WebsiteLicensingStore(db, {
+                      websiteOrigin: config.billing.websiteOrigin,
+                      clock: systemClock,
+                  }),
+                  fetch: (input, init) => fetch(input, init),
+              }
+            : null;
     const deps: DashboardDeps = {
         config,
         clock: systemClock,
@@ -221,6 +232,7 @@ export function createDashboard(
         engineStatus: createDurableObjectEngineStatus(env.ENGINE_STATUS),
         relayPresence: createD1RelayPresenceStore(db),
         usage: createUsageRecorder({ store: createD1UsageStore(db), clock: systemClock, random: cryptoRandom, logger }),
+        licensing,
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: config.dashboardOrigin, rpName: RP_NAME }),
         rateLimiter: rateLimiter(env, config, dev),
         links: authLinks(config.dashboardOrigin),

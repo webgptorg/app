@@ -34,6 +34,7 @@ export const RULE_ADAPTERS = {
     'recovery-request-ip': 'durable-object',
     'recovery-request-email': 'durable-object',
     'registration-ip': 'durable-object',
+    'website-access-ip': 'durable-object',
     'options-ip': 'binding',
     'verify-ip': 'binding',
     'public-read-ip': 'binding',

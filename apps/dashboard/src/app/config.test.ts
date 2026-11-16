@@ -285,6 +285,7 @@ describe('parseConfig', () => {
         const stagingWebsite = {
             ...without(stagingVars, 'BILLING_PLANS', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'),
             ADAPTERS: { ...stagingVars.ADAPTERS, billing: 'website' },
+            WEBSITE_HANDOFF_URL: 'https://www.ptbk.io/cs/app/pripojit',
             PROMPTBOOK_APP_LICENSE_SECRET: secret,
         };
 
@@ -293,13 +294,19 @@ describe('parseConfig', () => {
             expect(config.billing).toEqual({
                 adapter: 'website',
                 websiteOrigin: 'https://www.ptbk.io',
+                handoffUrl: 'https://www.ptbk.io/cs/app/pripojit',
                 licenseSecret: secret,
             });
             expect(Object.isFrozen(config.billing)).toBe(true);
         });
 
         it('takes another https website origin, for staging', () => {
-            const config = parseConfig({ ...bindings, ...stagingWebsite, WEBSITE_ORIGIN: 'https://staging.ptbk.io/' });
+            const config = parseConfig({
+                ...bindings,
+                ...stagingWebsite,
+                WEBSITE_ORIGIN: 'https://staging.ptbk.io/',
+                WEBSITE_HANDOFF_URL: 'https://staging.ptbk.io/app?from=app',
+            });
             expect(config.billing.adapter === 'website' ? config.billing.websiteOrigin : null).toBe(
                 'https://staging.ptbk.io',
             );
@@ -311,6 +318,17 @@ describe('parseConfig', () => {
             ['not a URL', 'www.ptbk.io'],
         ])('refuses a website origin with %s', (_, origin) => {
             expect(failedPaths({ ...bindings, ...stagingWebsite, WEBSITE_ORIGIN: origin })).toEqual(['WEBSITE_ORIGIN']);
+        });
+
+        it('requires a handoff page on the website origin, without a guessed default', () => {
+            expect(failedPaths({ ...bindings, ...without(stagingWebsite, 'WEBSITE_HANDOFF_URL') })).toEqual([
+                'WEBSITE_HANDOFF_URL',
+            ]);
+            for (const url of ['https://evil.example/app', 'http://www.ptbk.io/app', 'https://www.ptbk.io/app#x']) {
+                expect(failedPaths({ ...bindings, ...stagingWebsite, WEBSITE_HANDOFF_URL: url })).toEqual([
+                    'WEBSITE_HANDOFF_URL',
+                ]);
+            }
         });
 
         it('refuses to start without the website credential, or with a weak one', () => {
