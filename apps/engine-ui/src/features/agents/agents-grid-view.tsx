@@ -1,6 +1,7 @@
 import type { Agent, AgentId } from '@ptbk/engine-api';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import type { ReactNode } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
@@ -39,12 +40,16 @@ export function AgentsGridView({
 }: AgentsGridViewProps) {
     const activity = useAgentActivity();
     const [shownId, setShownId] = useState<AgentId | null>(openId);
-    const shownRef = useRef(shownId);
+    const [morphId, setMorphId] = useState<AgentId | null>(openId);
+    // Where the panel is headed, set before the URL follows, so the URL catching up starts no second transition (a
+    // second one would skip the first, and the card would never morph).
+    const intended = useRef(openId);
     useEffect(() => {
-        shownRef.current = shownId;
-    }, [shownId]);
-    useEffect(() => {
-        if (openId === shownRef.current) return;
+        if (openId === intended.current) return;
+        const target = openId ?? intended.current;
+        intended.current = openId;
+        // Not flushed (this is an effect): the transition captures its old state after this commit.
+        if (target !== null) setMorphId(target);
         morph(() => {
             setShownId(openId);
         });
@@ -59,12 +64,18 @@ export function AgentsGridView({
     const shown = listed ?? (shownId === null ? undefined : fetched.data);
 
     const open = (agent: Agent) => {
+        intended.current = agent.id;
+        // Named first, outside the transition, so the old snapshot holds this card and no other.
+        flushSync(() => {
+            setMorphId(agent.id);
+        });
         morph(() => {
             setShownId(agent.id);
         });
         onOpenChange(agent.id);
     };
     const close = () => {
+        intended.current = null;
         morph(() => {
             setShownId(null);
         });
@@ -80,6 +91,7 @@ export function AgentsGridView({
                 loading={loading}
                 activity={activity}
                 openId={shown === undefined ? null : shown.id}
+                morphId={morphId}
                 onOpen={open}
                 pager={pager}
                 empty={empty}

@@ -75,8 +75,12 @@ export function StatusLine({
 interface CardProps {
     readonly agent: Agent;
     readonly activity: AgentActivity;
-    /** The open agent's card gives its names to the panel, which morphs out of it. */
-    readonly open: boolean;
+    /**
+     * Whether this card carries the View Transition names: only the card that opens or closes the panel, and only
+     * while the panel is not open (then the panel holds them). Named cards would each paint as their own layer above
+     * the backdrop for the length of the transition.
+     */
+    readonly named: boolean;
     readonly onOpen: (agent: Agent) => void;
 }
 
@@ -85,7 +89,7 @@ interface CardProps {
  * character pulses while it works or blinks once when idle (motion only where it is allowed, in agents-grid.css). The
  * role and last activity fade in under the name. Clicking opens the agent's panel, which morphs out of the card.
  */
-function AgentCard({ agent, activity, open, onOpen }: CardProps) {
+function AgentCard({ agent, activity, named, onOpen }: CardProps) {
     const tint = agentColor(agent.profile.color, agent.id);
     const working = isWorking(activity);
     const detailsId = useId();
@@ -101,7 +105,7 @@ function AgentCard({ agent, activity, open, onOpen }: CardProps) {
                 onClick={() => {
                     onOpen(agent);
                 }}
-                style={{ ...tintStyle(tint), ...(open ? {} : viewTransitionStyle('agent-card', agent.id)) }}
+                style={{ ...tintStyle(tint), ...(named ? viewTransitionStyle('agent-card', agent.id) : {}) }}
                 className={cx(
                     'agent-card group flex w-full min-w-0 cursor-pointer flex-col items-start gap-3 rounded-surface border border-hairline p-4 text-left',
                     'bg-[color-mix(in_oklab,var(--tint)_4%,var(--color-surface))] hover:bg-[color-mix(in_oklab,var(--tint)_9%,var(--color-surface))]',
@@ -113,7 +117,7 @@ function AgentCard({ agent, activity, open, onOpen }: CardProps) {
                 <span
                     className="agent-card-art flex"
                     data-working={working ? '' : undefined}
-                    style={open ? undefined : viewTransitionStyle('agent-art', agent.id)}
+                    style={named ? viewTransitionStyle('agent-art', agent.id) : undefined}
                 >
                     <AgentAvatar
                         name={agent.name}
@@ -168,6 +172,8 @@ export interface AgentsGridProps {
     readonly loading: boolean;
     readonly activity: ReadonlyMap<string, AgentActivity>;
     readonly openId: string | null;
+    /** The card the panel last morphed out of or into, which alone carries the transition's names. */
+    readonly morphId: string | null;
     readonly onOpen: (agent: Agent) => void;
     /** Under the member's own agents: their pager, when there is more than one page. */
     readonly pager?: ReactNode;
@@ -183,6 +189,7 @@ export function AgentsGrid({
     loading,
     activity,
     openId,
+    morphId,
     onOpen,
     pager,
     empty,
@@ -208,7 +215,7 @@ export function AgentsGrid({
             key={agent.id}
             agent={agent}
             activity={activity.get(agent.id) ?? NO_ACTIVITY}
-            open={agent.id === openId}
+            named={agent.id === morphId && agent.id !== openId}
             onOpen={onOpen}
         />
     );
