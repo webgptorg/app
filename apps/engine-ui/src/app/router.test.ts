@@ -36,8 +36,13 @@ describe('preloadMatchedRouteChunks', () => {
 
 describe('view transitions', () => {
     it('animate a change of route, never a change of search params alone', () => {
-        expect(ROUTE_VIEW_TRANSITION.types({ pathChanged: true })).toEqual(['route']);
-        expect(ROUTE_VIEW_TRANSITION.types({ pathChanged: false })).toBe(false);
+        const from = { pathname: '/agents' };
+        expect(ROUTE_VIEW_TRANSITION.types({ fromLocation: from, pathChanged: true })).toEqual(['route']);
+        expect(ROUTE_VIEW_TRANSITION.types({ fromLocation: from, pathChanged: false })).toBe(false);
+    });
+
+    it('leave the first load alone, which has no route to morph from', () => {
+        expect(ROUTE_VIEW_TRANSITION.types({ fromLocation: undefined, pathChanged: true })).toBe(false);
     });
 
     it('are off under reduced motion', () => {
