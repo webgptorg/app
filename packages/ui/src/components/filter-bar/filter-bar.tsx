@@ -295,7 +295,7 @@ function FilterChip({
         onRemove();
     };
     return (
-        <li className="flex min-h-7 max-w-72 shrink-0 items-stretch overflow-hidden rounded-(--filter-bar-chip-radius) border border-(--filter-bar-chip-border) bg-(--filter-bar-chip-bg) text-sm text-(--filter-bar-text)">
+        <li className="flex min-h-8 max-w-72 shrink-0 items-stretch overflow-hidden rounded-(--filter-bar-chip-radius) border border-(--filter-bar-chip-border) bg-(--filter-bar-chip-bg) text-sm text-(--filter-bar-text)">
             <button
                 type="button"
                 aria-haspopup="dialog"

@@ -1,6 +1,6 @@
 import type { Ref, SelectHTMLAttributes } from 'react';
 
-import { controlClassName, invalidAttribute } from '../../internal/control';
+import { CONTROL_HEIGHT, controlClassName, invalidAttribute } from '../../internal/control';
 import { cx } from '../../internal/cx';
 
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
@@ -14,7 +14,7 @@ export function Select({ invalid, className, children, ...rest }: SelectProps) {
         <select
             {...rest}
             aria-invalid={invalidAttribute(invalid, rest['aria-invalid'])}
-            className={controlClassName(cx('min-h-10 cursor-pointer pe-8', className))}
+            className={controlClassName(cx(CONTROL_HEIGHT.md, 'cursor-pointer pe-8', className))}
         >
             {children}
         </select>

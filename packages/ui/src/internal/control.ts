@@ -1,5 +1,11 @@
 import { cx } from './cx';
 
+/**
+ * One height for every control that can sit on a line with another: `Button`, `Input`, `Select`, `Textarea` (one row),
+ * `Combobox` and `DateInput`. 36px, and 32px where a control has a compact size.
+ */
+export const CONTROL_HEIGHT = { sm: 'min-h-8', md: 'min-h-9' } as const;
+
 /** The look `Input`, `Textarea` and `Select` share, from Input's tokens (`--input-*`). */
 export function controlClassName(className?: string): string {
     return cx(

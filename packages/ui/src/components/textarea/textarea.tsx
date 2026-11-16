@@ -1,6 +1,6 @@
 import type { Ref, TextareaHTMLAttributes } from 'react';
 
-import { controlClassName, invalidAttribute } from '../../internal/control';
+import { CONTROL_HEIGHT, controlClassName, invalidAttribute } from '../../internal/control';
 import { cx } from '../../internal/cx';
 
 export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
@@ -14,7 +14,7 @@ export function Textarea({ invalid, className, rows = 4, ...rest }: TextareaProp
             {...rest}
             rows={rows}
             aria-invalid={invalidAttribute(invalid, rest['aria-invalid'])}
-            className={controlClassName(cx('min-h-10 py-2', className))}
+            className={controlClassName(cx(CONTROL_HEIGHT.md, 'py-2', className))}
         />
     );
 }
