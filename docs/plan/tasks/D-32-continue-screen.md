@@ -2,7 +2,7 @@
 
 - **Lane:** Dashboard · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-09
-- **Status:** in progress (feat/continue-screen)
+- **Status:** in progress (feat/continue-screen, #305)
 - **Spec:** [D-02](D-02-accounts-passkeys.md) email-first signup; design: [onboarding.md](../../design/onboarding.md)
 
 ## Goal

@@ -140,7 +140,7 @@ function SentState(props: {
             <div className="flex flex-wrap gap-3">
                 {props.retry === undefined ? null : (
                     <Button
-                        variant="primary"
+                        variant="secondary"
                         loading={retrying}
                         onClick={() => {
                             setRetrying(true);
