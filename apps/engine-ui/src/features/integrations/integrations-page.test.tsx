@@ -1,7 +1,8 @@
 import { KNOWN_CAPABILITIES, PERMISSIONS } from '@ptbk/engine-api';
 import type { Permission } from '@ptbk/engine-api';
 import { screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import type { UserEvent } from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { createIntegrationsEngine, FILLER_INTEGRATIONS } from '../../testing/integrations-engine';
@@ -29,6 +30,12 @@ const rowNames = () =>
         .slice(1)
         .map((row) => row.querySelector('a[href^="/integrations/"]')?.textContent ?? '');
 const lastListQuery = (engine: IntegrationsEngine) => engine.spies.list.mock.calls.at(-1)?.[0];
+const dialog = () => screen.getByRole('dialog');
+/** "+ Filter", then a field; the dialog then lists the field's values. */
+async function addFilter(user: UserEvent, field: string) {
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(within(dialog()).getByRole('option', { name: field }));
+}
 
 describe('integrations list', { timeout: TIMEOUT_MS }, () => {
     it('lists every integration newest first and pages through the rest on the engine', async () => {
@@ -55,7 +62,8 @@ describe('integrations list', { timeout: TIMEOUT_MS }, () => {
         expect(within(docs).getByText('MCP server')).toBeDefined();
         expect(within(docs).getByText('All agents')).toBeDefined();
         expect(within(docs).getByText('Connected')).toBeDefined();
-        expect(within(docs).getByText('docs:read, docs:search')).toBeDefined();
+        expect(within(docs).getByText('docs:read')).toBeDefined();
+        expect(within(docs).getByText('docs:search')).toBeDefined();
         const billing = within(table()).getByText('Billing repository').closest('tr') as HTMLElement;
         expect(within(billing).getByText('Repository')).toBeDefined();
         expect(within(billing).getByText('Needs attention')).toBeDefined();
@@ -69,9 +77,9 @@ describe('integrations list', { timeout: TIMEOUT_MS }, () => {
 
     it('writes kind, status and agent to the URL, sends them to the engine and restores them on reload', async () => {
         const { user, engine, router } = await renderIntegrations();
-        await user.click(screen.getByRole('button', { name: 'Status' }));
-        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Error' }));
-        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Needs attention' }));
+        await addFilter(user, 'Status');
+        await user.click(within(dialog()).getByRole('option', { name: 'Error' }));
+        await user.click(within(dialog()).getByRole('option', { name: 'Needs attention' }));
         await user.keyboard('{Escape}');
         await waitFor(() => {
             expect(router.state.location.search).toMatchObject({ status: 'needs-attention,error' });
@@ -81,8 +89,10 @@ describe('integrations list', { timeout: TIMEOUT_MS }, () => {
         });
         expect(lastListQuery(engine)).toMatchObject({ status: 'needs-attention,error' });
 
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Kind' }), 'calendar');
-        await user.selectOptions(await screen.findByRole('combobox', { name: 'Agent' }), 'agent-ada');
+        await addFilter(user, 'Kind');
+        await user.click(within(dialog()).getByRole('option', { name: 'Calendar' }));
+        await addFilter(user, 'Agent');
+        await user.click(await within(dialog()).findByRole('option', { name: 'Ada' }));
         await waitFor(() => {
             expect(router.state.location.search).toEqual({
                 status: 'needs-attention,error',
@@ -106,7 +116,8 @@ describe('integrations list', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(reloaded.spies.list).toHaveBeenCalledWith(filtered, expect.anything());
         });
-        expect(screen.getAllByRole('button', { name: /^Status\s*2 selected$/ })).not.toHaveLength(0);
+        expect(screen.getAllByRole('button', { name: 'Status: Needs attention, Error' })).not.toHaveLength(0);
+        expect(await screen.findAllByRole('button', { name: 'Agent: Ada' })).not.toHaveLength(0);
     });
 
     it('opens the attention link with exactly what needs attention', async () => {
@@ -136,11 +147,12 @@ describe('integrations list', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('shows what an agent may use on its tab: its own and the engine-wide integrations', async () => {
-        const { engine } = await renderIntegrations('/agents/agent-ada/integrations?agentId=agent-max');
+        const { engine, user } = await renderIntegrations('/agents/agent-ada/integrations?agentId=agent-max');
         await within(table()).findByText('Docs search');
         expect(rowNames()).toEqual(['Docs search', 'Billing repository', 'Ada’s calendar']);
         expect(lastListQuery(engine)).toEqual({ limit: 50, agentId: 'agent-ada', includeEngineWide: 'true' });
-        expect(screen.queryByRole('combobox', { name: 'Agent' })).toBeNull();
+        await user.click(screen.getByRole('button', { name: 'Filter' }));
+        expect(within(dialog()).queryByRole('option', { name: 'Agent' })).toBeNull();
     });
 
     it('shows a skeleton while the first page loads', async () => {
@@ -232,6 +244,19 @@ describe('integrations access', { timeout: TIMEOUT_MS }, () => {
         expect(within(nav).queryByRole('link', { name: 'Integrations' })).toBeNull();
     });
 
+    it('without agents.read: agents by ID, no agent filter and no agent list asked for', async () => {
+        const engine = createIntegrationsEngine({ permissions: allBut('agents.read') });
+        const agentList = vi.spyOn(engine.client.agents, 'list');
+        const { user } = await renderIntegrations('/integrations', engine);
+        const billing = (await within(table()).findByText('Billing repository')).closest('tr') as HTMLElement;
+        expect(within(billing).getByText('agent-ada')).toBeDefined();
+        expect(within(billing).queryByRole('link', { name: 'agent-ada' })).toBeNull();
+        await user.click(screen.getByRole('button', { name: 'Filter' }));
+        expect(within(dialog()).queryByRole('option', { name: 'Agent' })).toBeNull();
+        expect(within(dialog()).getByRole('option', { name: 'Status' })).toBeDefined();
+        expect(agentList).not.toHaveBeenCalled();
+    });
+
     it('without integrations.manage: no add, row or detail actions', async () => {
         const engine = createIntegrationsEngine({ permissions: allBut('integrations.manage') });
         await renderIntegrations('/integrations', engine);
@@ -241,7 +266,7 @@ describe('integrations access', { timeout: TIMEOUT_MS }, () => {
 
         renderWithProviders({ path: '/integrations/int-docs', engineApi: engine.client });
         await screen.findByRole('heading', { level: 1, name: 'Docs search' });
-        for (const name of ['Disable', 'Enable', 'Check connection', 'Edit', 'More actions']) {
+        for (const name of ['Enable', 'Check connection', 'Edit', 'More actions']) {
             expect(screen.queryByRole('button', { name })).toBeNull();
         }
     });

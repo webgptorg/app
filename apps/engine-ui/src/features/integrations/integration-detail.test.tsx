@@ -47,7 +47,8 @@ describe('integration detail', { timeout: TIMEOUT_MS }, () => {
     it('shows an MCP server’s URL as a safe link, its scopes, tools as text and its secrets by name', async () => {
         await renderDetail(INTEGRATION_IDS.docs);
         expect(screen.getByRole('heading', { level: 1, name: 'Docs search' })).toBeDefined();
-        expect(screen.getByRole('link', { name: 'Back to integrations' }).getAttribute('href')).toBe('/integrations');
+        const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
+        expect(within(trail).getByRole('link', { name: 'Integrations' }).getAttribute('href')).toBe('/integrations');
         await waitFor(() => {
             expect(document.title).toBe('Docs search · Integrations · Test engine');
         });
@@ -57,8 +58,8 @@ describe('integration detail', { timeout: TIMEOUT_MS }, () => {
         expect(url.getAttribute('href')).toBe('https://mcp.example.com/sse');
         expect(url.getAttribute('rel')).toBe('noopener noreferrer');
 
-        expect(within(region('Scopes')).getByText('docs:read')).toBeDefined();
-        expect(within(region('Scopes')).getByText('docs:search')).toBeDefined();
+        expect(within(settings).getByText('docs:read')).toBeDefined();
+        expect(within(settings).getByText('docs:search')).toBeDefined();
         const tools = region('Tools');
         expect(within(tools).getByText('fetch_page')).toBeDefined();
         expect(within(tools).getByText(HOSTILE_TEXT)).toBeDefined();
@@ -76,7 +77,7 @@ describe('integration detail', { timeout: TIMEOUT_MS }, () => {
         expect(repository.getAttribute('href')).toBe('https://github.com/acme/billing');
         expect(screen.getByText('Secrets not available: GITHUB_TOKEN.')).toBeDefined();
         expect((await screen.findByRole('link', { name: 'Ada' })).getAttribute('href')).toBe('/agents/agent-ada');
-        expect(within(region('Scopes')).getByText('contents:read')).toBeDefined();
+        expect(within(region('Settings')).getByText('contents:read')).toBeDefined();
         const secrets = region('Secrets it uses');
         expect(within(secrets).getByText('Missing')).toBeDefined();
         expect(within(secrets).getByText('GITHUB_TOKEN')).toBeDefined();
@@ -108,7 +109,21 @@ describe('integration detail', { timeout: TIMEOUT_MS }, () => {
         const settings = region('Settings');
         expect(within(settings).getAllByText('slack-workspace').length).toBeGreaterThan(0);
         expect(within(settings).getByText(/does not know this kind/)).toBeDefined();
-        expect(within(region('Scopes')).getByText('chat:write')).toBeDefined();
+        expect(within(settings).getByText('chat:write')).toBeDefined();
+    });
+
+    it('leaves out what an integration does not have: no scopes row, no secrets, one quiet line for tools', async () => {
+        const engine = createIntegrationsEngine();
+        engine.spies.get.mockResolvedValue({
+            kind: 'ok',
+            data: readIntegration({ kind: 'mcp-server', config: { url: 'https://a.example/' } } as never),
+        });
+        await renderDetail('int-odd', engine);
+        expect(within(region('Settings')).queryByText('Scopes')).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Secrets it uses' })).toBeNull();
+        const tools = region('Tools');
+        expect(within(tools).getByText('This integration offers no tools.')).toBeDefined();
+        expect(within(tools).queryByRole('list')).toBeNull();
     });
 
     it('renders a javascript: MCP URL as text without an href', async () => {
@@ -213,7 +228,8 @@ describe('integration actions', { timeout: TIMEOUT_MS }, () => {
         // The status, and the activity lines that say "Connected" as their outcome.
         await screen.findAllByText('Connected');
         const connected = screen.getAllByText('Connected').length;
-        await user.click(screen.getByRole('button', { name: 'Disable' }));
+        await user.click(screen.getByRole('button', { name: 'More actions' }));
+        await user.click(await screen.findByRole('menuitem', { name: 'Disable' }));
         expect(await screen.findByText('Disabled')).toBeDefined();
         act(() => {
             refuse?.();
@@ -234,7 +250,8 @@ describe('integration actions', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByText('Disabled')).toBeDefined();
 
         await user.click(screen.getByRole('button', { name: 'Enable' }));
-        expect(await screen.findByRole('button', { name: 'Disable' })).toBeDefined();
+        expect(await screen.findByRole('button', { name: 'Check connection' })).toBeDefined();
+        expect(screen.queryByRole('button', { name: 'Enable' })).toBeNull();
         expect(engine.spies.enable).toHaveBeenCalledTimes(2);
     });
 
@@ -273,7 +290,8 @@ describe('integration actions', { timeout: TIMEOUT_MS }, () => {
 
     it('links back to the list, and not to itself from its own activity', async () => {
         await renderDetail(INTEGRATION_IDS.docs);
-        expect(screen.getByRole('link', { name: 'Back to integrations' }).getAttribute('href')).toBe('/integrations');
+        const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
+        expect(within(trail).getByRole('link', { name: 'Integrations' }).getAttribute('href')).toBe('/integrations');
         await screen.findByRole('list', { name: 'Recent activity' });
         expect(screen.queryByRole('link', { name: 'Open integration' })).toBeNull();
         const url = within(region('Settings')).getByRole('link', { name: /mcp\.example\.com/ });

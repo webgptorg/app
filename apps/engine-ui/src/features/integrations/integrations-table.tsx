@@ -1,37 +1,94 @@
-import { INTEGRATION_KINDS, INTEGRATION_STATUSES } from '@ptbk/engine-api';
-import type { AgentId, ReadIntegration } from '@ptbk/engine-api';
-import { Button, ConfirmDialog, createDataTableColumnHelper, DataTable, LegacyFilterBar, RelativeTime } from '@ptbk/ui';
-import type { DataTableColumnDef, LegacyFilterBarFilter, FilterBarOption, MenuEntry } from '@ptbk/ui';
+import { AgentId, INTEGRATION_KINDS, INTEGRATION_STATUSES } from '@ptbk/engine-api';
+import type { ReadAgent, ReadIntegration } from '@ptbk/engine-api';
+import {
+    Button,
+    ConfirmDialog,
+    createDataTableColumnHelper,
+    DataTable,
+    FilterBar,
+    filterField,
+    RelativeTime,
+    StatusDot,
+} from '@ptbk/ui';
+import type { DataTableColumnDef, DataTableView, FilterBarField, FilterBarOption, MenuEntry } from '@ptbk/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plug, PlugZap, RefreshCw, Trash2 } from 'lucide-react';
+import {
+    Bot,
+    CalendarClock,
+    CircleDot,
+    Hash,
+    KeyRound,
+    Pencil,
+    Plug,
+    PlugZap,
+    RefreshCw,
+    Shapes,
+    Trash2,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useBrowser } from '../../app/browser-context';
 import { useCursorPages } from '../../app/cursor-pages';
 import { useEngineApi } from '../../app/engine-api-context';
 import { Link } from '../../app/link';
+import { useAllows } from '../../app/registry/use-visible-features';
+import { readListParam, readOneParam, writeListParam } from '../../app/search-filters';
 import { isInvalidCursor } from '../../app/list-errors';
 import { m } from '../../paraglide/messages';
+import { AgentAvatar } from '../agents/agent-avatar';
+import { EntityChip } from '../entities/entity-chip';
 import { usePermissions } from '../session/use-permissions';
-import { hasIntegrationFilters, integrationListParams, selectedStatuses } from './integration-search';
+import { hasIntegrationFilters, integrationListParams } from './integration-search';
 import type { IntegrationSearch } from './integration-search';
-import { IntegrationStatusBadge, integrationKindLabel, integrationStatusLabel, kindNameOf } from './integration-status';
+import {
+    IntegrationStatusBadge,
+    integrationKindIcon,
+    integrationKindLabel,
+    integrationStatusLabel,
+    integrationStatusTone,
+    kindNameOf,
+    ScopePill,
+} from './integration-status';
 import { integrationListQueryOptions, useIntegrations } from './integrations-queries';
 import { LazyIntegrationFormDialog } from './lazy-integration-form-dialog';
-import { useAgentNames } from './use-agent-names';
+import { useAgents } from './use-agent-names';
 import { useIntegrationMutations } from './use-integration-mutations';
 import type { IntegrationMutations } from './use-integration-mutations';
 
 const NO_INTEGRATIONS: readonly ReadIntegration[] = [];
 export const INTEGRATION_COLUMNS_STORAGE_KEY = 'ptbk.integrations.columns';
+const ICON = 'size-3.5';
+/** Scopes a row shows before "+N"; the detail page lists them all. */
+const ROW_SCOPES = 2;
 
 function AgentCell({ agentId }: { readonly agentId: AgentId | null }) {
-    const agentNames = useAgentNames();
-    if (agentId === null) return m.integration_all_agents();
+    const agents = useAgents();
+    const agent = agentId === null ? undefined : agents.get(agentId);
+    if (agentId === null) return <span className="text-sm text-text-muted">{m.integration_all_agents()}</span>;
     return (
-        <Link to="/agents/$agentId" params={{ agentId }} className="break-words">
-            {agentNames.get(agentId) ?? agentId}
-        </Link>
+        <EntityChip
+            kind="agent"
+            id={agentId}
+            name={agent?.name ?? agentId}
+            {...(agent === undefined ? {} : { profile: agent.profile })}
+        />
+    );
+}
+
+function ScopesCell({ scopes }: { readonly scopes: readonly string[] }) {
+    if (scopes.length === 0) return null;
+    const rest = scopes.length - ROW_SCOPES;
+    return (
+        <span title={scopes.join(', ')} className="flex min-w-0 flex-wrap items-center gap-1">
+            {scopes.slice(0, ROW_SCOPES).map((scope) => (
+                <ScopePill key={scope} scope={scope} />
+            ))}
+            {rest > 0 ? (
+                <span className="text-xs text-text-muted tabular-nums">
+                    {m.integrations_scopes_more({ count: rest })}
+                </span>
+            ) : null}
+        </span>
     );
 }
 
@@ -44,65 +101,66 @@ function useIntegrationColumns(): DataTableColumnDef<ReadIntegration>[] {
                 header: m.integrations_column_name(),
                 enableSorting: false,
                 enableHiding: false,
-                meta: { priority: 0 },
+                meta: { priority: 0, icon: <Hash className={ICON} /> },
                 cell: ({ row }) => (
-                    <Link
-                        to="/integrations/$integrationId"
-                        params={{ integrationId: row.original.id }}
-                        variant="standalone"
-                        className="break-words"
-                    >
-                        {row.original.name}
-                    </Link>
+                    <span className="flex min-w-0 items-start gap-2.5">
+                        <span aria-hidden="true" className="mt-0.5 flex shrink-0 text-text-muted [&>svg]:size-4">
+                            {integrationKindIcon(kindNameOf(row.original))}
+                        </span>
+                        <Link
+                            to="/integrations/$integrationId"
+                            params={{ integrationId: row.original.id }}
+                            variant="standalone"
+                            className="line-clamp-2 min-w-0 font-medium break-words text-text"
+                        >
+                            {row.original.name}
+                        </Link>
+                    </span>
                 ),
-            }),
-            column.accessor((integration) => kindNameOf(integration), {
-                id: 'kind',
-                header: m.integrations_column_kind(),
-                enableSorting: false,
-                meta: { priority: 3 },
-                cell: ({ row }) => (
-                    <span className="break-words">{integrationKindLabel(kindNameOf(row.original))}</span>
-                ),
-            }),
-            column.accessor('agentId', {
-                header: m.integrations_column_agent(),
-                enableSorting: false,
-                meta: { priority: 2 },
-                cell: ({ row }) => <AgentCell agentId={row.original.agentId} />,
             }),
             column.accessor('status', {
                 header: m.integrations_column_status(),
                 enableSorting: false,
                 enableHiding: false,
-                meta: { priority: 1 },
+                meta: { priority: 1, icon: <CircleDot className={ICON} /> },
                 cell: ({ row }) => <IntegrationStatusBadge status={row.original.status} />,
+            }),
+            column.accessor((integration) => kindNameOf(integration), {
+                id: 'kind',
+                header: m.integrations_column_kind(),
+                enableSorting: false,
+                meta: { priority: 3, icon: <Shapes className={ICON} /> },
+                cell: ({ row }) => (
+                    <span className="break-words text-text-muted">
+                        {integrationKindLabel(kindNameOf(row.original))}
+                    </span>
+                ),
+            }),
+            column.accessor('agentId', {
+                header: m.integrations_column_agent(),
+                enableSorting: false,
+                meta: { priority: 2, icon: <Bot className={ICON} /> },
+                cell: ({ row }) => <AgentCell agentId={row.original.agentId} />,
             }),
             column.accessor((integration) => integration.scopes.join(', '), {
                 id: 'scopes',
                 header: m.integrations_column_scopes(),
                 enableSorting: false,
-                meta: { priority: 5 },
-                cell: ({ row }) => {
-                    const scopes = row.original.scopes.join(', ');
-                    return scopes === '' ? (
-                        <span className="text-text-muted">—</span>
-                    ) : (
-                        <span title={scopes} className="line-clamp-2 max-w-64 break-words">
-                            {scopes}
-                        </span>
-                    );
-                },
+                meta: { priority: 5, icon: <KeyRound className={ICON} /> },
+                cell: ({ row }) => <ScopesCell scopes={row.original.scopes} />,
             }),
             column.accessor('lastActivityAt', {
                 header: m.integrations_column_last_activity(),
                 enableSorting: false,
-                meta: { priority: 4 },
+                meta: { priority: 4, trailing: true, numeric: true, icon: <CalendarClock className={ICON} /> },
                 cell: ({ row }) =>
                     row.original.lastActivityAt === null ? (
-                        <span className="text-text-muted">{m.integration_never()}</span>
+                        <span className="whitespace-nowrap text-text-muted">{m.integration_never()}</span>
                     ) : (
-                        <RelativeTime value={new Date(row.original.lastActivityAt)} className="whitespace-nowrap" />
+                        <RelativeTime
+                            value={new Date(row.original.lastActivityAt)}
+                            className="whitespace-nowrap text-text-muted"
+                        />
                     ),
             }),
         ];
@@ -193,7 +251,7 @@ export function IntegrationsTable({ search, onSearchChange, agentId }: Integrati
     const params = integrationListParams(search, agentId);
     const list = useIntegrations(params);
     const scope = agentId === undefined ? 'global' : 'agent';
-    const agentNames = useAgentNames();
+    const agents = useAgents();
     const columns = useIntegrationColumns();
     const mutations = useIntegrationMutations();
     const [pending, setPending] = useState<PendingRowAction>(null);
@@ -215,14 +273,7 @@ export function IntegrationsTable({ search, onSearchChange, agentId }: Integrati
     };
 
     return (
-        <div className="flex flex-col gap-4">
-            <IntegrationFilters
-                search={search}
-                scope={scope}
-                agentNames={agentNames}
-                onChange={filter}
-                onClear={clear}
-            />
+        <>
             <DataTable
                 caption={m.integrations_title()}
                 columns={columns}
@@ -230,6 +281,16 @@ export function IntegrationsTable({ search, onSearchChange, agentId }: Integrati
                 getRowId={(integration) => integration.id}
                 getRowLabel={(integration) => integration.name}
                 visibilityStorage={{ storage, key: INTEGRATION_COLUMNS_STORAGE_KEY }}
+                toolbar={(view) => (
+                    <IntegrationFilters
+                        view={view}
+                        search={search}
+                        scope={scope}
+                        agents={agents}
+                        onChange={filter}
+                        onClear={clear}
+                    />
+                )}
                 rowActions={rowActions}
                 page={paging.page}
                 onPageChange={paging.onPageChange}
@@ -298,72 +359,80 @@ export function IntegrationsTable({ search, onSearchChange, agentId }: Integrati
                 tone="danger"
                 loading={mutations.remove.isPending}
             />
-        </div>
+        </>
     );
 }
 
 interface IntegrationFiltersProps {
+    readonly view: DataTableView;
     readonly search: IntegrationSearch;
     readonly scope: 'global' | 'agent';
-    readonly agentNames: ReadonlyMap<AgentId, string>;
+    readonly agents: ReadonlyMap<AgentId, ReadAgent>;
     readonly onChange: (change: Partial<IntegrationSearch>) => void;
     readonly onClear: () => void;
 }
 
-/** Every filter reads from and writes to the search params; on a phone they sit behind one "Filters" button. */
-function IntegrationFilters({ search, scope, agentNames, onChange, onClear }: IntegrationFiltersProps) {
+/** Every filter reads from and writes to the search params, so a reload or a shared link restores the view. */
+function IntegrationFilters({ view, search, scope, agents, onChange, onClear }: IntegrationFiltersProps) {
+    const agentsVisible = useAllows({ permission: 'agents.read' });
     const kind = search.kind;
-    const kindOptions: FilterBarOption[] = INTEGRATION_KINDS.map((known) => ({
-        value: known,
-        label: integrationKindLabel(known),
+    // A kind a newer engine added stays selectable from a link, by the name it sent.
+    const kindOptions: FilterBarOption[] = [
+        ...(kind === undefined || INTEGRATION_KINDS.some((known) => known === kind) ? [] : [kind]),
+        ...INTEGRATION_KINDS,
+    ].map((value) => ({
+        value,
+        label: integrationKindLabel(value),
+        icon: <span className="flex [&>svg]:size-3.5">{integrationKindIcon(value)}</span>,
     }));
-    if (kind !== undefined && !kindOptions.some((option) => option.value === kind))
-        kindOptions.unshift({ value: kind, label: kind });
-    const agentId = search.agentId;
-    const agentOptions = [...agentNames].map(([id, name]) => ({ value: id, label: name }));
-    if (agentId !== undefined && !agentNames.has(agentId)) agentOptions.unshift({ value: agentId, label: agentId });
-    const filters: LegacyFilterBarFilter[] = [
-        {
-            kind: 'multi',
+    const fields: FilterBarField[] = [
+        filterField.multiEnum({
             id: 'status',
             label: m.integrations_filter_status(),
-            options: INTEGRATION_STATUSES.map((status) => ({ value: status, label: integrationStatusLabel(status) })),
-            value: [...selectedStatuses(search)],
+            icon: <CircleDot className={ICON} />,
+            options: INTEGRATION_STATUSES.map((status) => ({
+                value: status,
+                label: integrationStatusLabel(status),
+                icon: <StatusDot tone={integrationStatusTone(status)} />,
+            })),
+            value: readListParam(search.status, INTEGRATION_STATUSES),
             onChange: (value) => {
-                const next = INTEGRATION_STATUSES.filter((status) => value.includes(status));
-                onChange({ status: next.length === 0 ? undefined : next.join(',') });
+                onChange({ status: writeListParam(value, INTEGRATION_STATUSES) });
             },
-        },
-        {
-            kind: 'select',
+        }),
+        filterField.enum({
             id: 'kind',
             label: m.integrations_filter_kind(),
-            allLabel: m.integrations_filter_all_kinds(),
+            icon: <Shapes className={ICON} />,
             options: kindOptions,
             value: kind,
             onChange: (value) => {
                 onChange({ kind: value });
             },
-        },
-        ...(scope === 'global'
+        }),
+        ...(scope === 'global' && agentsVisible
             ? [
-                  {
-                      kind: 'select',
+                  filterField.entity<string>({
                       id: 'agent',
                       label: m.integrations_filter_agent(),
-                      allLabel: m.integrations_filter_all_agents(),
-                      options: agentOptions,
-                      value: agentId,
+                      icon: <Bot className={ICON} />,
+                      multiple: false,
+                      options: [...agents.values()].map((agent) => ({
+                          value: agent.id,
+                          label: agent.name,
+                          icon: (
+                              <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />
+                          ),
+                      })),
+                      value: readOneParam(search.agentId),
                       onChange: (value) => {
-                          onChange({
-                              agentId:
-                                  [...agentNames.keys()].find((id) => id === value) ??
-                                  (value === agentId ? agentId : undefined),
-                          });
+                          // An agent beyond the first page stays selected by its ID from the URL until it is removed.
+                          const picked = value.at(-1);
+                          onChange({ agentId: picked === undefined ? undefined : AgentId.safeParse(picked).data });
                       },
-                  } satisfies LegacyFilterBarFilter,
+                  }),
               ]
             : []),
     ];
-    return <LegacyFilterBar label={m.integrations_filters()} filters={filters} onClear={onClear} />;
+    return <FilterBar {...view} label={m.integrations_filters()} fields={fields} onClear={onClear} />;
 }

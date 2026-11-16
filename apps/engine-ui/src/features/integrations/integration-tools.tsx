@@ -1,5 +1,6 @@
 import type { ReadIntegration } from '@ptbk/engine-api';
-import { Card, CodeText } from '@ptbk/ui';
+import { EmptyState, Section } from '@ptbk/ui';
+import { Wrench } from 'lucide-react';
 
 import { m } from '../../paraglide/messages';
 
@@ -9,16 +10,26 @@ import { m } from '../../paraglide/messages';
  */
 export function IntegrationTools({ tools }: { readonly tools: ReadIntegration['tools'] }) {
     return (
-        <Card title={m.integration_tools_title()} titleLevel={2}>
+        <Section title={m.integration_tools_title()} {...(tools.length === 0 ? {} : { count: tools.length })}>
             {tools.length === 0 ? (
-                <p className="text-sm text-text-muted">{m.integration_tools_none()}</p>
+                <EmptyState
+                    variant="inline"
+                    headingLevel={3}
+                    icon={<Wrench aria-hidden />}
+                    title={m.integration_tools_none()}
+                />
             ) : (
-                <ul className="flex flex-col divide-y divide-divider">
+                <ul className="flex flex-col divide-y divide-hairline">
                     {tools.map((tool) => (
-                        <li key={tool.name} className="flex flex-col gap-1 py-2">
-                            <CodeText value={tool.name} />
+                        <li
+                            key={tool.name}
+                            className="flex min-h-10 flex-col gap-x-4 gap-y-1 py-2 sm:flex-row sm:items-baseline"
+                        >
+                            <span className="w-fit max-w-full shrink-0 rounded-small bg-neutral-soft px-1.5 py-0.5 font-mono text-xs break-all text-text sm:max-w-64">
+                                {tool.name}
+                            </span>
                             {tool.description === null ? null : (
-                                <p className="text-sm break-words whitespace-pre-wrap text-text-muted">
+                                <p className="min-w-0 text-sm break-words whitespace-pre-wrap text-text-muted">
                                     {tool.description}
                                 </p>
                             )}
@@ -26,6 +37,6 @@ export function IntegrationTools({ tools }: { readonly tools: ReadIntegration['t
                     ))}
                 </ul>
             )}
-        </Card>
+        </Section>
     );
 }
