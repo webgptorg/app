@@ -5,13 +5,16 @@ import { flushSync } from 'react-dom';
 import type { ReactNode } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
-import { NO_ACTIVITY, useAgentActivity } from './agent-activity';
+import { NO_ACTIVITY } from './agent-activity';
+import type { AgentActivity } from './agent-activity';
 import { AgentPanel } from './agent-panel';
 import { morph } from './agent-view';
 import { AgentsGrid } from './agents-grid';
 import { agentDetailQueryOptions } from './agents-queries';
 
 export interface AgentsGridViewProps {
+    /** Every agent's live work, from the page's three lists. */
+    readonly activity: ReadonlyMap<string, AgentActivity>;
     readonly own: readonly Agent[];
     readonly builtIn: readonly Agent[];
     readonly showOwn: boolean;
@@ -37,8 +40,8 @@ export function AgentsGridView({
     onOpenChange,
     pager,
     empty,
+    activity,
 }: AgentsGridViewProps) {
-    const activity = useAgentActivity();
     const [shownId, setShownId] = useState<AgentId | null>(openId);
     const [morphId, setMorphId] = useState<AgentId | null>(openId);
     // Where the panel is headed, set before the URL follows, so the URL catching up starts no second transition (a

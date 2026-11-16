@@ -299,7 +299,7 @@ describe('agent live state', { timeout: TIMEOUT_MS }, () => {
             capabilities: [],
         });
         const header = agentHeader();
-        expect(await within(header).findByText('Running')).toBeDefined();
+        expect(await within(header).findByText('Working')).toBeDefined();
         const calls = engine.spies.getStatus.mock.calls.length;
         engine.controller.emit({
             type: 'agent.status',
@@ -354,7 +354,7 @@ describe('agent live state', { timeout: TIMEOUT_MS }, () => {
 
     it('offers no Stop without agents.run', async () => {
         await renderAgent('/agents/agent-001', { capabilities: [], permissions: allBut('agents.run') });
-        expect(await within(agentHeader()).findByText('Running')).toBeDefined();
+        expect(await within(agentHeader()).findByText('Working')).toBeDefined();
         expect(within(agentHeader()).queryByRole('button', { name: 'Stop' })).toBeNull();
     });
 });

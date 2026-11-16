@@ -1,7 +1,7 @@
 import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { ReadChat, ReadRun, ReadTask } from '@ptbk/engine-api';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { createContext, useContext, useMemo } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
 import { useAllows } from '../../app/registry/use-visible-features';
@@ -104,4 +104,11 @@ export function useAgentActivity(): ReadonlyMap<string, AgentActivity> {
 /** Working when it writes a reply or runs a task or a run; the card and the panel say so before anything else. */
 export function isWorking(activity: AgentActivity): boolean {
     return activity.working.length > 0 || activity.tasks.length > 0 || activity.runs.length > 0;
+}
+
+/** The page's activity map, for cells deep in a table that cannot take it as a prop without rebuilding the columns. */
+export const AgentActivityContext = createContext<ReadonlyMap<string, AgentActivity>>(new Map());
+
+export function useAgentActivityOf(agentId: string): AgentActivity {
+    return useContext(AgentActivityContext).get(agentId) ?? NO_ACTIVITY;
 }

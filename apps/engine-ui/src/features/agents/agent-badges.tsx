@@ -1,13 +1,10 @@
-import type { AgentId, AgentRunState, AgentVisibility } from '@ptbk/engine-api';
-import { Skeleton, StatusPill } from '@ptbk/ui';
+import type { AgentRunState, AgentVisibility } from '@ptbk/engine-api';
 import type { StatusTone } from '@ptbk/ui';
 import { Globe, Link2, Lock } from 'lucide-react';
 
 import { cx } from '../../app/cx';
 import type { AgentLiveState as ProvidedState } from '../../app/registry/feature';
 import { m } from '../../paraglide/messages';
-import { AgentLiveState } from './agent-live-state';
-import type { AgentLiveStatus } from './agent-live-state';
 
 /** C-04's run states plus the states a registered provider reports. */
 type KnownState = AgentRunState | ProvidedState;
@@ -28,61 +25,8 @@ const LOOKS: Readonly<Record<KnownState, () => StateLook>> = {
     failed: () => ({ label: m.agent_state_failed(), tone: 'danger' }),
 };
 
-function isKnownState(state: string): state is KnownState {
-    return Object.hasOwn(LOOKS, state);
-}
-
 export function stateLabel(state: KnownState): string {
     return LOOKS[state]().label;
-}
-
-/** A state as a pill with words; a state from a newer engine shows as "unknown" with its raw value. */
-export function AgentStateBadge({
-    status,
-    variant = 'soft',
-}: {
-    readonly status: AgentLiveStatus;
-    readonly variant?: 'soft' | 'quiet';
-}) {
-    switch (status.kind) {
-        case 'pending':
-            return <Skeleton shape="text" className="h-5 w-16" />;
-        case 'unavailable':
-            return (
-                <StatusPill tone="neutral" variant={variant}>
-                    {m.agent_state_unknown()}
-                </StatusPill>
-            );
-        case 'state': {
-            if (!isKnownState(status.state)) {
-                return (
-                    <StatusPill tone="neutral" variant={variant}>
-                        {m.agent_state_unknown_value({ value: status.state })}
-                    </StatusPill>
-                );
-            }
-            const look = LOOKS[status.state]();
-            return (
-                <StatusPill tone={look.tone} variant={variant}>
-                    {look.label}
-                </StatusPill>
-            );
-        }
-    }
-}
-
-export function AgentStatusBadge({
-    agentId,
-    variant,
-}: {
-    readonly agentId: AgentId;
-    readonly variant?: 'soft' | 'quiet';
-}) {
-    return (
-        <AgentLiveState agentId={agentId}>
-            {(status) => <AgentStateBadge status={status} {...(variant === undefined ? {} : { variant })} />}
-        </AgentLiveState>
-    );
 }
 
 export function visibilityLabel(visibility: AgentVisibility): string {

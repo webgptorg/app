@@ -20,7 +20,7 @@ import { splitTaskName } from '../tasks/task-name';
 import { TaskStateBadge } from '../tasks/task-state';
 import type { AgentActivity, AgentWorking } from './agent-activity';
 import { AgentAvatar } from './agent-avatar';
-import { activityStatus, StatusLine } from './agents-grid';
+import { AgentStatusLine, AgentStatusPill } from './agent-status';
 import { OverviewRow, OverviewRows } from './overview-parts';
 
 const SHOWN_CHATS = 5;
@@ -166,7 +166,6 @@ export function AgentPanel({ agent, activity, onClose }: AgentPanelProps) {
     const titleId = useId();
     const { can } = usePermissions();
     const newChat = useNewChat();
-    const status = activityStatus(activity);
     const tint = agentColor(agent.profile.color, agent.id);
     const chats = activity.chats.slice(0, SHOWN_CHATS);
     // A run of a task or a chat reply is already shown as that task or reply.
@@ -203,7 +202,7 @@ export function AgentPanel({ agent, activity, onClose }: AgentPanelProps) {
                             <h2 id={titleId} className="min-w-0 text-xl font-semibold tracking-display break-words">
                                 {agent.name}
                             </h2>
-                            <StatusPill tone={status.tone}>{status.label}</StatusPill>
+                            <AgentStatusPill agentId={agent.id} activity={activity} />
                         </div>
                         {agent.profile.description === '' ? null : (
                             <p className="text-sm break-words text-text-muted">{agent.profile.description}</p>
@@ -237,7 +236,12 @@ export function AgentPanel({ agent, activity, onClose }: AgentPanelProps) {
                 </div>
                 <PanelSection title={m.agent_panel_now()}>
                     {activity.working.length === 0 && looseRuns.length === 0 ? (
-                        <StatusLine activity={activity} withLastActive className="py-1 text-sm" />
+                        <AgentStatusLine
+                            agentId={agent.id}
+                            activity={activity}
+                            withLastActive
+                            className="py-1 text-sm"
+                        />
                     ) : (
                         <ul className="soft-surface flex flex-col divide-y divide-hairline [--tint:var(--color-live)]">
                             {activity.working.map((entry) => (

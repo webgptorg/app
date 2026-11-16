@@ -1,6 +1,5 @@
 import type { Agent } from '@ptbk/engine-api';
-import { EmptyState, RelativeTime, Section, Skeleton, StatusDot, tintStyle, viewTransitionStyle } from '@ptbk/ui';
-import type { StatusTone } from '@ptbk/ui';
+import { EmptyState, Section, Skeleton, tintStyle, viewTransitionStyle } from '@ptbk/ui';
 import { Bot } from 'lucide-react';
 import { useId } from 'react';
 import type { ReactNode } from 'react';
@@ -11,66 +10,9 @@ import { agentColor } from '../chat/references/agent-color';
 import { isWorking, NO_ACTIVITY } from './agent-activity';
 import type { AgentActivity } from './agent-activity';
 import { AgentAvatar } from './agent-avatar';
+import { AgentStatusLine } from './agent-status';
 
 const SKELETON_CARDS = 6;
-
-/** The words and dot a card and the panel lead with, from the activity alone, so no card asks the engine anything. */
-export function activityStatus(activity: AgentActivity): { readonly tone: StatusTone; readonly label: string } {
-    if (isWorking(activity)) return { tone: 'live', label: m.agent_state_working() };
-    if (activity.chats.some((chat) => chat.questions.length > 0)) return { tone: 'warning', label: m.chat_needs_you() };
-    return { tone: 'neutral', label: m.agent_state_idle() };
-}
-
-/** "2 chats, 1 task" for working agents; nothing otherwise. */
-export function workSummary(activity: AgentActivity): string | null {
-    const chats = new Set(activity.working.map(({ chat }) => chat.id)).size;
-    // A run of a task or a chat reply is already counted as that task or reply.
-    const runs = activity.runs.filter((run) => (run.taskId ?? null) === null && run.chatId === null).length;
-    const parts: string[] = [];
-    if (chats > 0) parts.push(m.agents_card_chats({ count: chats }));
-    if (activity.tasks.length > 0) parts.push(m.agents_card_tasks({ count: activity.tasks.length }));
-    if (runs > 0) parts.push(m.agents_card_runs({ count: runs }));
-    return parts.length === 0 ? null : parts.join(', ');
-}
-
-/** When the agent last spoke in a thread in view: "last active 3 hours ago". */
-function LastActive({ activity }: { readonly activity: AgentActivity }) {
-    if (activity.lastActiveAt === null) return null;
-    return (
-        <>
-            {m.agents_card_last_active()} <RelativeTime value={new Date(activity.lastActiveAt)} />
-        </>
-    );
-}
-
-/**
- * "Working · 2 chats, 1 task", else "Idle", with "· last active 3 hours ago" where there is room for it (the panel):
- * a light line, in tabular figures.
- */
-export function StatusLine({
-    activity,
-    withLastActive = false,
-    className,
-}: {
-    readonly activity: AgentActivity;
-    readonly withLastActive?: boolean;
-    readonly className?: string;
-}) {
-    const status = activityStatus(activity);
-    const summary = workSummary(activity);
-    let detail: ReactNode = summary;
-    if (summary === null && withLastActive && activity.lastActiveAt !== null)
-        detail = <LastActive activity={activity} />;
-    return (
-        <span className={cx('flex min-w-0 items-center gap-1.5 text-xs text-text-muted tabular-nums', className)}>
-            <StatusDot tone={status.tone} />
-            <span className="truncate">
-                <span className={status.tone === 'neutral' ? undefined : 'font-medium text-text'}>{status.label}</span>
-                {detail === null ? null : <span> · {detail}</span>}
-            </span>
-        </span>
-    );
-}
 
 interface CardProps {
     readonly agent: Agent;
@@ -85,9 +27,10 @@ interface CardProps {
 }
 
 /**
- * One agent as a card: its picture large, its name and a light status line. Hover lifts it and deepens its tint; the
- * character pulses while it works or blinks once when idle (motion only where it is allowed, in agents-grid.css). The
- * role and last activity fade in under the name. Clicking opens the agent's panel, which morphs out of the card.
+ * One agent as a card: its picture large, its name, its role on one line and a light status line with how long it has
+ * worked or when it was last active. Hover lifts it and deepens its tint; the character breathes while it works or
+ * blinks once when idle (motion only where it is allowed, in agents-grid.css). Clicking opens the agent's panel, which
+ * morphs out of the card.
  */
 function AgentCard({ agent, activity, named, onOpen }: CardProps) {
     const tint = agentColor(agent.profile.color, agent.id);
@@ -127,26 +70,12 @@ function AgentCard({ agent, activity, named, onOpen }: CardProps) {
                         size="xl"
                     />
                 </span>
-                <span className="flex w-full min-w-0 flex-col gap-1">
+                <span className="flex w-full min-w-0 flex-col gap-0.5">
                     {/* Names and roles come from Books: React renders them as text. */}
                     <span className="truncate text-sm font-semibold">{agent.name}</span>
-                    <span id={detailsId} className="flex min-w-0 flex-col gap-1">
-                        <StatusLine activity={activity} />
-                        {/* Read by screen readers always; on a device with hover it fades in with the pointer. */}
-                        <span
-                            className={cx(
-                                'flex min-h-12 flex-col gap-0.5 pt-1 text-xs text-text-muted',
-                                '[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-visible:opacity-100',
-                                'motion-safe:transition-opacity motion-safe:duration-(--motion-state)',
-                            )}
-                        >
-                            <span className="line-clamp-2 break-words">{agent.profile.description}</span>
-                            {isWorking(activity) || activity.lastActiveAt === null ? null : (
-                                <span className="truncate tabular-nums">
-                                    <LastActive activity={activity} />
-                                </span>
-                            )}
-                        </span>
+                    <span id={detailsId} className="flex min-w-0 flex-col gap-1.5">
+                        <span className="truncate text-xs text-text-muted">{agent.profile.description}</span>
+                        <AgentStatusLine agentId={agent.id} activity={activity} withTime />
                     </span>
                 </span>
             </button>

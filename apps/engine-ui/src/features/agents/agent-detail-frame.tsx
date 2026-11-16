@@ -15,9 +15,11 @@ import { Breadcrumbs, Crumb } from '../shell/page';
 import { NARROW_QUERY, useMediaQuery } from '../shell/use-media-query';
 import { useAgentActions } from './agent-actions';
 import { AgentAvatar } from './agent-avatar';
-import { AgentStateBadge, AgentVisibilityBadge } from './agent-badges';
+import { AgentVisibilityBadge } from './agent-badges';
+import { NO_ACTIVITY, useAgentActivity } from './agent-activity';
+import { AgentStatusPill } from './agent-status';
 import { useAgentIdParam } from './agent-detail-route';
-import { AgentLiveState, AgentStop } from './agent-live-state';
+import { AgentStop } from './agent-live-state';
 import { useAgentTabs } from './agent-tabs';
 import { agentDetailQueryOptions } from './agents-queries';
 
@@ -83,6 +85,7 @@ export function AgentDetailFrame() {
         },
     });
     const tabs = useAgentTabs();
+    const activity = useAgentActivity().get(agentId) ?? NO_ACTIVITY;
     const matchRoute = useMatchRoute();
     // A tab owns its nested pages too (a chat under Chat); the most specific matching tab wins over Overview.
     const selected =
@@ -134,9 +137,7 @@ export function AgentDetailFrame() {
                                     {/* The list row's name morphs into this title. */}
                                     <span style={viewTransitionStyle('agent-title', agent.id)}>{agent.name}</span>
                                 </h1>
-                                <AgentLiveState agentId={agent.id}>
-                                    {(status) => <AgentStateBadge status={status} />}
-                                </AgentLiveState>
+                                <AgentStatusPill agentId={agent.id} activity={activity} />
                                 {/* Only public is worth a word up here: anyone with the link can talk to it. */}
                                 {agent.visibility === 'public' ? <AgentVisibilityBadge visibility="public" /> : null}
                             </div>

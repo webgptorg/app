@@ -59,7 +59,7 @@ describe('agents grid', { timeout: TIMEOUT_MS }, () => {
         });
         expect(card('Ada').textContent).toContain('Working · 1 task');
         expect(card('Chatter').textContent).toContain('Working · 1 chat');
-        expect(card('Iris').textContent).toContain('Needs you');
+        expect(card('Iris').textContent).toContain('Idle');
         expect(card('Copywriter').textContent).toContain('Idle');
         expect(engine.spies.listAllChats).toHaveBeenCalledTimes(1);
         expect(engine.spies.listAgentChats).not.toHaveBeenCalled();

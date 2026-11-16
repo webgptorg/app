@@ -109,10 +109,14 @@ describe('router conventions', () => {
         if (intent === 'hover') await user.hover(link);
         else link.focus();
 
+        // The member's own agents and, beside them, the built-in ones.
         await waitFor(() => {
-            expect(list).toHaveBeenCalledOnce();
+            expect(list).toHaveBeenCalledTimes(2);
         });
-        expect(list.mock.calls[0]?.[0]).toEqual({ origin: 'content', sort: '-updatedAt' });
+        expect(list.mock.calls.map(([query]) => query)).toEqual([
+            { origin: 'content', sort: '-updatedAt' },
+            { origin: 'core,system', sort: '-updatedAt', limit: 50 },
+        ]);
         expect(router.state.location.pathname).toBe('/nowhere');
     });
 

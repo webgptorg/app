@@ -32,7 +32,9 @@ import { AGENT_WIZARD_REQUIREMENT } from '../agent-wizard/agent-wizard-feature';
 import { Page } from '../shell/page';
 import { useAgentActions } from './agent-actions';
 import { AgentAvatar } from './agent-avatar';
-import { AgentStatusBadge, AgentVisibilityBadge, stateLabel, VisibilityIcon, visibilityLabel } from './agent-badges';
+import { AgentVisibilityBadge, stateLabel, VisibilityIcon, visibilityLabel } from './agent-badges';
+import { AgentActivityContext, useAgentActivity, useAgentActivityOf } from './agent-activity';
+import { AgentStatusPill } from './agent-status';
 import { AgentCreator } from './agent-creator';
 import {
     AGENT_LIST_ORIGINS,
@@ -108,6 +110,10 @@ function AgentNameCell({ agent }: { readonly agent: Agent }) {
     );
 }
 
+function StatusCell({ agentId }: { readonly agentId: Agent['id'] }) {
+    return <AgentStatusPill agentId={agentId} activity={useAgentActivityOf(agentId)} />;
+}
+
 /** Visibility only means something where agents can be shared (`agent-management@1`). */
 function useAgentColumns(withVisibility: boolean): DataTableColumnDef<Agent>[] {
     return useMemo(() => {
@@ -133,7 +139,7 @@ function useAgentColumns(withVisibility: boolean): DataTableColumnDef<Agent>[] {
                 header: m.agents_column_status(),
                 enableSorting: false,
                 meta: { icon: <CircleDot className="size-3.5" />, priority: 1, trailing: true },
-                cell: ({ row }) => <AgentStatusBadge agentId={row.original.id} />,
+                cell: ({ row }) => <StatusCell agentId={row.original.id} />,
             }),
             ...(withVisibility
                 ? [
@@ -192,6 +198,8 @@ export function AgentsListPage() {
         },
     });
     const columns = useAgentColumns(managesAgents);
+    // Three lists for the whole page, shared by every row and card, so the views say the same about each agent.
+    const activity = useAgentActivity();
     const shown = agentListGroups(search);
     const own = useQuery({
         ...agentListQueryOptions(engineApi, agentListParams(search)),
@@ -305,8 +313,62 @@ export function AgentsListPage() {
 
     if (view === 'grid') {
         return (
+            <AgentActivityContext value={activity}>
+                <Page title={m.agents_title()} actions={header}>
+                    {filters({})}
+                    {noOwnAgents ? (
+                        <EmptyState
+                            variant="inline"
+                            icon={<Bot aria-hidden />}
+                            title={m.agents_empty_title()}
+                            description={canCreate ? m.agents_empty_body() : m.agents_empty_body_chat()}
+                        />
+                    ) : null}
+                    {shown.own && own.isError && !invalidCursor ? (
+                        <ErrorState
+                            message={m.agents_load_failed()}
+                            onRetry={() => {
+                                void own.refetch();
+                            }}
+                            retrying={own.isFetching}
+                        />
+                    ) : (
+                        <AgentsGridView
+                            activity={activity}
+                            own={ownAgents}
+                            builtIn={builtInAgents}
+                            showOwn={shown.own && !noOwnAgents}
+                            loading={pending}
+                            openId={search.agent ?? null}
+                            onOpenChange={(agent) => {
+                                void navigate({ search: (previous) => ({ ...previous, agent }) });
+                            }}
+                            pager={
+                                previousCursor === null && nextCursor === null ? null : (
+                                    <Pagination
+                                        hasPrevious={previousCursor !== null}
+                                        hasNext={nextCursor !== null}
+                                        onPrevious={() => {
+                                            if (previousCursor !== null) goToPage(previousCursor, 'previous');
+                                        }}
+                                        onNext={() => {
+                                            if (nextCursor !== null) goToPage(nextCursor, 'next');
+                                        }}
+                                    />
+                                )
+                            }
+                            empty={emptyState}
+                        />
+                    )}
+                    {actions.dialogs}
+                </Page>
+            </AgentActivityContext>
+        );
+    }
+
+    return (
+        <AgentActivityContext value={activity}>
             <Page title={m.agents_title()} actions={header}>
-                {filters({})}
                 {noOwnAgents ? (
                     <EmptyState
                         variant="inline"
@@ -315,105 +377,56 @@ export function AgentsListPage() {
                         description={canCreate ? m.agents_empty_body() : m.agents_empty_body_chat()}
                     />
                 ) : null}
-                {shown.own && own.isError && !invalidCursor ? (
-                    <ErrorState
-                        message={m.agents_load_failed()}
-                        onRetry={() => {
-                            void own.refetch();
-                        }}
-                        retrying={own.isFetching}
-                    />
-                ) : (
-                    <AgentsGridView
-                        own={ownAgents}
-                        builtIn={builtInAgents}
-                        showOwn={shown.own && !noOwnAgents}
-                        loading={pending}
-                        openId={search.agent ?? null}
-                        onOpenChange={(agent) => {
-                            void navigate({ search: (previous) => ({ ...previous, agent }) });
-                        }}
-                        pager={
-                            previousCursor === null && nextCursor === null ? null : (
-                                <Pagination
-                                    hasPrevious={previousCursor !== null}
-                                    hasNext={nextCursor !== null}
-                                    onPrevious={() => {
-                                        if (previousCursor !== null) goToPage(previousCursor, 'previous');
-                                    }}
-                                    onNext={() => {
-                                        if (nextCursor !== null) goToPage(nextCursor, 'next');
-                                    }}
-                                />
-                            )
-                        }
-                        empty={emptyState}
-                    />
-                )}
+                <DataTable
+                    caption={m.agents_title()}
+                    columns={columns}
+                    data={rows}
+                    getRowId={(agent) => agent.id}
+                    getRowLabel={(agent) => agent.name}
+                    sorting={sortingOf(search.sort)}
+                    sortingRemoval={false}
+                    onSortingChange={(sorting) => {
+                        update({ sort: sortOf(sorting) });
+                    }}
+                    visibilityStorage={{ storage, key: AGENT_COLUMNS_STORAGE_KEY }}
+                    {...(shown.own ? { page: { previousCursor, nextCursor } } : {})}
+                    onPageChange={goToPage}
+                    loading={pending}
+                    fetching={(own.isFetching && !own.isPending) || (builtIn.isFetching && !builtIn.isPending)}
+                    {...(shown.own && own.isError && !invalidCursor
+                        ? {
+                              error: {
+                                  message: m.agents_load_failed(),
+                                  onRetry: () => {
+                                      void own.refetch();
+                                  },
+                                  retrying: own.isFetching,
+                              },
+                          }
+                        : {})}
+                    empty={
+                        filtered
+                            ? {
+                                  title: m.agents_no_results(),
+                                  description: m.agents_no_results_hint(),
+                                  action: <Button onClick={clear}>{m.agents_clear_filters()}</Button>,
+                              }
+                            : {
+                                  title: m.agents_empty_title(),
+                                  description: canCreate ? m.agents_empty_body() : m.agents_empty_body_chat(),
+                                  ...(newAgent === null ? {} : { action: newAgent }),
+                              }
+                    }
+                    groups={{
+                        groups: AGENT_LIST_ORIGINS.map((origin) => ({ id: origin, label: originLabel(origin) })),
+                        getGroupId: (agent): AgentListOrigin => (isBuiltInAgent(agent) ? 'built-in' : 'own'),
+                    }}
+                    toolbar={filters}
+                    rowActions={actions.menuEntries}
+                />
                 {actions.dialogs}
             </Page>
-        );
-    }
-
-    return (
-        <Page title={m.agents_title()} actions={header}>
-            {noOwnAgents ? (
-                <EmptyState
-                    variant="inline"
-                    icon={<Bot aria-hidden />}
-                    title={m.agents_empty_title()}
-                    description={canCreate ? m.agents_empty_body() : m.agents_empty_body_chat()}
-                />
-            ) : null}
-            <DataTable
-                caption={m.agents_title()}
-                columns={columns}
-                data={rows}
-                getRowId={(agent) => agent.id}
-                getRowLabel={(agent) => agent.name}
-                sorting={sortingOf(search.sort)}
-                sortingRemoval={false}
-                onSortingChange={(sorting) => {
-                    update({ sort: sortOf(sorting) });
-                }}
-                visibilityStorage={{ storage, key: AGENT_COLUMNS_STORAGE_KEY }}
-                {...(shown.own ? { page: { previousCursor, nextCursor } } : {})}
-                onPageChange={goToPage}
-                loading={pending}
-                fetching={(own.isFetching && !own.isPending) || (builtIn.isFetching && !builtIn.isPending)}
-                {...(shown.own && own.isError && !invalidCursor
-                    ? {
-                          error: {
-                              message: m.agents_load_failed(),
-                              onRetry: () => {
-                                  void own.refetch();
-                              },
-                              retrying: own.isFetching,
-                          },
-                      }
-                    : {})}
-                empty={
-                    filtered
-                        ? {
-                              title: m.agents_no_results(),
-                              description: m.agents_no_results_hint(),
-                              action: <Button onClick={clear}>{m.agents_clear_filters()}</Button>,
-                          }
-                        : {
-                              title: m.agents_empty_title(),
-                              description: canCreate ? m.agents_empty_body() : m.agents_empty_body_chat(),
-                              ...(newAgent === null ? {} : { action: newAgent }),
-                          }
-                }
-                groups={{
-                    groups: AGENT_LIST_ORIGINS.map((origin) => ({ id: origin, label: originLabel(origin) })),
-                    getGroupId: (agent): AgentListOrigin => (isBuiltInAgent(agent) ? 'built-in' : 'own'),
-                }}
-                toolbar={filters}
-                rowActions={actions.menuEntries}
-            />
-            {actions.dialogs}
-        </Page>
+        </AgentActivityContext>
     );
 }
 

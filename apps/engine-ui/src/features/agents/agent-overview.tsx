@@ -8,7 +8,9 @@ import { useEngineApi } from '../../app/engine-api-context';
 import { useEngineCapabilities, useVisibleFeatures } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
 import { usePermissions } from '../session/use-permissions';
-import { AgentStatusBadge, AgentVisibilityBadge } from './agent-badges';
+import { NO_ACTIVITY, useAgentActivity } from './agent-activity';
+import { AgentVisibilityBadge } from './agent-badges';
+import { AgentStatusPill } from './agent-status';
 import { AgentCreator } from './agent-creator';
 import { useAgentIdParam } from './agent-detail-route';
 import { agentDetailQueryOptions, agentLastActivityQueryOptions, agentLatestRunQueryOptions } from './agents-queries';
@@ -47,6 +49,7 @@ export function AgentOverview() {
     const { data: agent } = useSuspenseQuery(agentDetailQueryOptions(useEngineApi(), agentId));
     const { can } = usePermissions();
     const capabilities = useEngineCapabilities();
+    const activity = useAgentActivity().get(agent.id) ?? NO_ACTIVITY;
     const showModel = supports({ capabilities }, KNOWN_CAPABILITIES.runs) && can('runs.read');
     const cards = useVisibleFeatures()
         .flatMap((feature) => feature.agentOverviewCards ?? [])
@@ -70,7 +73,7 @@ export function AgentOverview() {
                         <Property label={m.agent_field_name()}>{agent.profile.fullname}</Property>
                     )}
                     <Property label={m.agents_column_status()}>
-                        <AgentStatusBadge agentId={agent.id} variant="quiet" />
+                        <AgentStatusPill agentId={agent.id} activity={activity} variant="quiet" />
                     </Property>
                     <Property label={m.agents_column_visibility()}>
                         <AgentVisibilityBadge visibility={agent.visibility} />

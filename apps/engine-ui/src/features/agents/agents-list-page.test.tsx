@@ -248,7 +248,7 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
             since: TEST_NOW.toISOString(),
         });
 
-        expect(await within(row()).findByText('Running')).toBeDefined();
+        expect(await within(row()).findByText('Working')).toBeDefined();
         expect(engine.spies.getStatus.mock.calls.length).toBe(statusCalls);
         expect(engine.spies.list.mock.calls.length).toBe(listCalls);
     });
