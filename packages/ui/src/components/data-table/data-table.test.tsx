@@ -459,11 +459,17 @@ describe('DataTable states', () => {
         rerender(
             table({
                 data: [],
-                empty: { title: 'No agents yet', description: 'Create one', action: <a href="/new">{'New'}</a> },
+                empty: {
+                    title: 'No agents yet',
+                    description: 'Create one',
+                    icon: <svg data-testid="agents-icon" />,
+                    action: <a href="/new">{'New'}</a>,
+                },
             }),
         );
         expect(screen.getByText('No agents yet')).toBeDefined();
         expect(screen.getByRole('link', { name: 'New' })).toBeDefined();
+        expect(screen.getByTestId('agents-icon').closest('[aria-hidden="true"]')).not.toBeNull();
     });
 
     it('says no results when filters are active and nothing matches', () => {

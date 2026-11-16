@@ -321,6 +321,7 @@ export function IntegrationsTable({ search, onSearchChange, agentId }: Integrati
                               action: <Button onClick={clear}>{m.integrations_clear_filters()}</Button>,
                           }
                         : {
+                              icon: <Plug />,
                               title: m.integrations_empty_title(),
                               description:
                                   scope === 'agent' ? m.integrations_empty_agent_body() : m.integrations_empty_body(),

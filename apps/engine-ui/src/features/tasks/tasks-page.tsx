@@ -224,7 +224,7 @@ function TaskInventory({
                               description: m.tasks_no_results_hint(),
                               action: <Button onClick={clear}>{m.tasks_clear_filters()}</Button>,
                           }
-                        : { title: m.tasks_empty_title(), description: m.tasks_empty_body() }
+                        : { icon: <ListTodo />, title: m.tasks_empty_title(), description: m.tasks_empty_body() }
                 }
                 groups={{
                     groups: TASK_SECTIONS.map((section) => ({ id: section, label: taskSectionLabel(section) })),

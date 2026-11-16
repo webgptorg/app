@@ -11,7 +11,7 @@ import {
 } from '@ptbk/ui';
 import type { DataTableColumnDef, DataTableView, FilterBarField } from '@ptbk/ui';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { Bot, CalendarClock, CircleDot, MessageSquare } from 'lucide-react';
+import { Bot, CalendarClock, CircleDot, MessageSquare, MessagesSquare } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { useDebouncedSearch } from '../../app/debounced-search';
@@ -178,7 +178,7 @@ export function ThreadList({ params, empty, filters }: ThreadListProps) {
                           description: m.chat_no_results_hint(),
                           action: <Button onClick={clear}>{m.chat_clear_filters()}</Button>,
                       }
-                    : { title: m.chat_empty_title(), description: m.chat_empty_body() }
+                    : { icon: <MessagesSquare />, title: m.chat_empty_title(), description: m.chat_empty_body() }
             }
             {...(filters === undefined
                 ? {}

@@ -4,7 +4,7 @@ import { Button, Dialog, FilterBar, filterField } from '@ptbk/ui';
 import type { ColumnFiltersState, DataTableView, FilterBarField, MenuEntry } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { Bot, PanelRightOpen, ShieldCheck, Tag, Trash2, Upload } from 'lucide-react';
+import { Bot, Files, PanelRightOpen, ShieldCheck, Tag, Trash2, Upload } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { useCursorPages } from '../../app/cursor-pages';
@@ -186,7 +186,7 @@ export function FilesPage() {
                               description: m.files_no_results_hint(),
                               action: <Button onClick={clear}>{m.files_clear_filters()}</Button>,
                           }
-                        : { title: m.files_empty_title(), description: m.files_empty_body() }
+                        : { icon: <Files />, title: m.files_empty_title(), description: m.files_empty_body() }
                 }
                 rowActions={rowActions}
             />

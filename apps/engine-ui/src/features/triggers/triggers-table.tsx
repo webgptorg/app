@@ -294,6 +294,7 @@ export function TriggersTable({ search, onSearchChange, agentId }: TriggersTable
                               action: <Button onClick={clear}>{m.triggers_clear_filters()}</Button>,
                           }
                         : {
+                              icon: <CalendarClock />,
                               title: m.triggers_empty_title(),
                               description: scope === 'agent' ? m.triggers_empty_agent_body() : m.triggers_empty_body(),
                           }
