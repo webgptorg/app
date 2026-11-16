@@ -14,7 +14,7 @@ export function Select({ invalid, className, children, ...rest }: SelectProps) {
         <select
             {...rest}
             aria-invalid={invalidAttribute(invalid, rest['aria-invalid'])}
-            className={controlClassName(cx('min-h-9 cursor-pointer pe-8', className))}
+            className={controlClassName(cx('min-h-10 cursor-pointer pe-8', className))}
         >
             {children}
         </select>

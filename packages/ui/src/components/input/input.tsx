@@ -14,7 +14,7 @@ export function Input({ invalid, className, type = 'text', ...rest }: InputProps
             {...rest}
             type={type}
             aria-invalid={invalidAttribute(invalid, rest['aria-invalid'])}
-            className={controlClassName(cx('min-h-9', className))}
+            className={controlClassName(cx('min-h-10', className))}
         />
     );
 }

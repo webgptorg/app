@@ -26,7 +26,7 @@ export interface ComboboxProps {
     readonly searchPlaceholder?: string;
     readonly invalid?: boolean;
     readonly disabled?: boolean;
-    /** Matches Button's sizes: 32px or 40px tall. */
+    /** 32px, or 40px like `Input`, `Select` and `DateInput`. */
     readonly size?: 'sm' | 'md';
     /** Posts the value with a form through a hidden input. */
     readonly name?: string;

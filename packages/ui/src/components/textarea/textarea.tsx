@@ -14,7 +14,7 @@ export function Textarea({ invalid, className, rows = 4, ...rest }: TextareaProp
             {...rest}
             rows={rows}
             aria-invalid={invalidAttribute(invalid, rest['aria-invalid'])}
-            className={controlClassName(cx('py-2', className))}
+            className={controlClassName(cx('min-h-10 py-2', className))}
         />
     );
 }
