@@ -1,8 +1,7 @@
-import { EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
+import { BrandRobot, EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
 import { useQueryErrorResetBoundary } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import type { ErrorComponentProps } from '@tanstack/react-router';
-import { SearchX } from 'lucide-react';
 import { useEffect } from 'react';
 
 import { m } from '../../paraglide/messages';
@@ -22,6 +21,7 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
             <h1 className="sr-only">{m.error_title()}</h1>
             <ErrorState
                 title={m.error_title()}
+                illustration={<BrandRobot pose="resting" size="md" />}
                 message={unreachable ? m.api_error_unreachable() : m.error_body()}
                 onRetry={() => {
                     reset();
@@ -62,7 +62,7 @@ export function RouteNotFound() {
     return (
         <div className="py-8">
             <EmptyState
-                icon={<SearchX aria-hidden />}
+                illustration={<BrandRobot pose="thinking" size="md" />}
                 title={m.not_found_title()}
                 description={m.not_found_body()}
                 headingLevel={1}

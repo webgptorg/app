@@ -115,7 +115,6 @@
   "admin_tools_title": "Tools",
   "api_error_rate_limited": "Too many attempts. Wait a minute and try again.",
   "api_error_unreachable": "Promptbook could not be reached. Check your connection and try again.",
-  "app_name": "Promptbook",
   "billing_already_subscribed": "This organization already has a subscription. Manage it through Manage billing.",
   "billing_checkout_cancel": "Checkout was cancelled. Nothing was charged.",
   "billing_checkout_success_body": "It can take a moment until the new plan shows here.",

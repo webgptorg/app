@@ -24,6 +24,8 @@ function pendingEngine(options: InMemoryEngineApiOptions = {}) {
 }
 
 const continueButton = () => screen.getByRole('button', { name: 'Continue' });
+/** The robot guiding setup is decoration; its pose is the one thing about it worth checking. */
+const robotPose = () => document.querySelector('svg[data-pose]')?.getAttribute('data-pose');
 
 describe('onboarding', { timeout: TIMEOUT_MS }, () => {
     it('opens a new engine on its setup, and renders whatever the engine asks, with its progress', async () => {
@@ -34,6 +36,8 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         });
         expect(await screen.findByRole('heading', { level: 1, name: 'Your project' })).toBeDefined();
         expect(screen.getByText('Step 1 of 4')).toBeDefined();
+        expect(screen.getByText(/Tell me a little about your project/)).toBeDefined();
+        expect(robotPose()).toBe('thinking');
         await expectNoAxeViolations(container);
 
         await user.type(screen.getByRole('textbox', { name: 'What are you working on?' }), 'Books for my bakery');
@@ -44,6 +48,7 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         await user.click(continueButton());
 
         expect(await screen.findByRole('heading', { level: 1, name: 'Sign in to Claude Code' })).toBeDefined();
+        expect(screen.getByText(/Sign in to your AI tool/)).toBeDefined();
         const link = screen.getByRole('link', { name: /Open the Claude Code sign-in page/ });
         expect(link.getAttribute('href')).toBe('https://claude.ai/oauth/authorize');
         expect(link.getAttribute('rel')).toBe('noopener noreferrer');
@@ -56,8 +61,11 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
 
         expect(await screen.findByRole('heading', { level: 1, name: 'Files' })).toBeDefined();
         expect(screen.getByText('Step 4 of 4')).toBeDefined();
+        expect(robotPose()).toBe('assembling');
         await user.click(continueButton());
         expect(await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' })).toBeDefined();
+        expect(screen.getByText('Done. Your agents can get to work.')).toBeDefined();
+        expect(robotPose()).toBe('finished');
         expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull();
     });
 

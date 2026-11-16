@@ -122,7 +122,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         ]);
     });
 
-    it('asks as Chatter, keeps Enter for new lines in a long answer, and continues on Ctrl+Enter', async () => {
+    it('is guided by the robot, keeps Enter for new lines in a long answer, and continues on Ctrl+Enter', async () => {
         const { client, answers } = scripted([
             pending({
                 ...base,
@@ -139,7 +139,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         ]);
         const { user } = renderWithProviders({ path: '/onboarding', engineApi: client });
         const answer = await screen.findByRole('textbox', { name: 'What are you working on?' });
-        expect(screen.getByText('Chatter')).toBeDefined();
+        expect(screen.getByText(/Tell me a little about your project/)).toBeDefined();
         expect(screen.getByText('Step 1 of 2')).toBeDefined();
         await user.type(answer, 'Bread{Enter}Cakes');
         expect(answers).toEqual([]);
@@ -148,7 +148,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         expect(answers).toEqual([{ kind: 'text', text: 'Bread\nCakes', fileIds: [] }]);
     });
 
-    it('shows Chatter by its initial without agents.read, and never asks for the agent list', async () => {
+    it('guides without agents.read, and never asks for the agent list', async () => {
         const { client } = scripted(
             [pending({ ...base, id: 'p1', kind: 'confirm', question: 'Go?', confirmLabel: 'Yes', declineLabel: 'No' })],
             { permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'agents.read') },
@@ -156,7 +156,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         const list = vi.spyOn(client.agents, 'list');
         renderWithProviders({ path: '/onboarding', engineApi: client });
         expect(await screen.findByRole('button', { name: 'Yes' })).toBeDefined();
-        expect(screen.getByText('Chatter')).toBeDefined();
+        expect(screen.getByText(/confirm when it seems right/)).toBeDefined();
         expect(list).not.toHaveBeenCalled();
     });
 

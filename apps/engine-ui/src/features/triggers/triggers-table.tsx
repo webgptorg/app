@@ -1,6 +1,7 @@
 import { AgentId, TRIGGER_KINDS, TRIGGER_LIFECYCLES } from '@ptbk/engine-api';
 import type { ReadAgent, ReadTrigger } from '@ptbk/engine-api';
 import {
+    BrandRobot,
     Button,
     createDataTableColumnHelper,
     DataTable,
@@ -295,6 +296,7 @@ export function TriggersTable({ search, onSearchChange, agentId }: TriggersTable
                           }
                         : {
                               icon: <CalendarClock />,
+                              ...(scope === 'agent' ? {} : { illustration: <BrandRobot pose="thinking" /> }),
                               title: m.triggers_empty_title(),
                               description: scope === 'agent' ? m.triggers_empty_agent_body() : m.triggers_empty_body(),
                           }

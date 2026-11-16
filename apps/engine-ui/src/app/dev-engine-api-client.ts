@@ -1,6 +1,7 @@
 import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { EngineApiClient } from '@ptbk/engine-api';
 import { createDemoSeed, createInMemoryEngineApiClient, demoReplyScript } from '@ptbk/engine-api/in-memory';
+import type { InMemorySeed } from '@ptbk/engine-api/in-memory';
 
 import { demoAdminExtras } from './dev-demo-extras';
 
@@ -11,7 +12,17 @@ import { demoAdminExtras } from './dev-demo-extras';
  */
 export function createDevEngineApiClient(): EngineApiClient {
     const now = new Date();
-    const seed = createDemoSeed(now);
+    const demo = createDemoSeed(now);
+    // `fresh`: a brand-new engine (only the built-in agents, no chats, nobody invited, the Wallet never set up), to
+    // work on what Home offers before anything exists.
+    const fresh = import.meta.env.VITE_ENGINE_SEED === 'fresh';
+    const seed: InMemorySeed = fresh
+        ? {
+              ...(demo.engine === undefined ? {} : { engine: demo.engine }),
+              agents: (demo.agents ?? []).filter(({ origin }) => origin === 'core' || origin === 'system'),
+              wallet: { state: 'empty' },
+          }
+        : demo;
     // The browser is the client here, so this session reads as the device it really is.
     const userAgent = navigator.userAgent.slice(0, 512);
     return createInMemoryEngineApiClient({
@@ -19,7 +30,7 @@ export function createDevEngineApiClient(): EngineApiClient {
         client: { ip: '127.0.0.1', userAgent },
         seed: {
             ...seed,
-            ...demoAdminExtras(now, userAgent),
+            ...(fresh ? {} : demoAdminExtras(now, userAgent)),
             engine: {
                 ...seed.engine,
                 name: 'Dev engine',

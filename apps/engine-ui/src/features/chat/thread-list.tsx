@@ -1,6 +1,7 @@
 import { AgentId } from '@ptbk/engine-api';
 import type { ReadChat } from '@ptbk/engine-api';
 import {
+    BrandRobot,
     Button,
     createDataTableColumnHelper,
     DataTable,
@@ -178,7 +179,12 @@ export function ThreadList({ params, empty, filters }: ThreadListProps) {
                           description: m.chat_no_results_hint(),
                           action: <Button onClick={clear}>{m.chat_clear_filters()}</Button>,
                       }
-                    : { icon: <MessagesSquare />, title: m.chat_empty_title(), description: m.chat_empty_body() }
+                    : {
+                          icon: <MessagesSquare />,
+                          illustration: <BrandRobot pose="working" />,
+                          title: m.chat_empty_title(),
+                          description: m.chat_empty_body(),
+                      }
             }
             {...(filters === undefined
                 ? {}

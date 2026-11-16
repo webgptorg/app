@@ -1,7 +1,7 @@
-import { Banner, Button, CopyButton, createDataTableColumnHelper, DataTable, EmptyState } from '@ptbk/ui';
+import { Banner, BrandRobot, Button, CopyButton, createDataTableColumnHelper, DataTable, EmptyState } from '@ptbk/ui';
 import type { DataTableColumnDef } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Plus, Server } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
@@ -123,7 +123,7 @@ function engineColumns(now: Date): DataTableColumnDef<EngineView>[] {
 function NoEngines(props: { readonly canLink: boolean }) {
     return (
         <EmptyState
-            icon={<Server aria-hidden className="size-6" />}
+            illustration={<BrandRobot pose="assembling" size="md" />}
             title={m.engines_empty_title()}
             headingLevel={2}
             description={m.engines_empty_body()}

@@ -25,6 +25,10 @@ The whole app gets the identity the chat introduced in U-16: calm, precise and r
   - No border-plus-shadow cards.
 - **Motion:** 150–250ms ease-out, no bounce. Subtle View Transitions between pages: a crossfade, and a row's title morphs into the detail title. All of it is off under reduced motion, and all of it is CSS only (CSP).
 
+### Brand kit accents (2026-11-16, Seb)
+
+The official [Promptbook brand kit](https://www.ptbk.io/en/branding) lands as accents on the graphite identity: ink blue `#17386C` replaces teal (focus, links, selection, the soft main button's tint), Exo 2 for titles and h1–h3 with Inter for text, the official symbol and lockup as `BrandMark` and `BrandLockup`, and the kit's robot as Promptbook's own voice (onboarding, the Home guide, empty main lists, sign-in, errors). Czech copy addresses the user formally (Vy, Vás, Váš). See [ui.md](../../design/ui.md#brand).
+
 ## Patterns
 
 - **Entity chips everywhere.** Agents, tasks, chats, runs, files, triggers, integrations and members render as chips:

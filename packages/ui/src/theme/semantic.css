@@ -20,8 +20,8 @@
     --color-selected: color-mix(in oklab, var(--color-text) 8%, transparent);
 
     /*
-     * Soft buttons: the main action is a wash of the brand's ink blue, a destructive one a wash of the
-     * danger colour; hover and press deepen them. Washes, so they sit on any surface (U-17 rev 1: no inverted fills).
+     * Soft buttons: the main action is a wash of the brand's ink blue, a destructive one a wash of the danger colour;
+     * hover and press deepen them. Washes, so they sit on any surface (U-17 rev 1: no inverted fills).
      */
     --color-wash-strong: color-mix(in oklab, var(--color-brand) 9%, transparent);
     --color-wash-strong-hover: color-mix(in oklab, var(--color-brand) 13%, transparent);
@@ -181,8 +181,8 @@
     --color-selected: color-mix(in oklab, var(--color-text) 8%, transparent);
 
     /*
-     * Soft buttons: the main action is a wash of the brand's ink blue, a destructive one a wash of the
-     * danger colour; hover and press deepen them. Washes, so they sit on any surface (U-17 rev 1: no inverted fills).
+     * Soft buttons: the main action is a wash of the brand's ink blue, a destructive one a wash of the danger colour;
+     * hover and press deepen them. Washes, so they sit on any surface (U-17 rev 1: no inverted fills).
      */
     --color-wash-strong: color-mix(in oklab, var(--color-brand) 9%, transparent);
     --color-wash-strong-hover: color-mix(in oklab, var(--color-brand) 13%, transparent);

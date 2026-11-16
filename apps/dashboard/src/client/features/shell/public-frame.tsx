@@ -1,3 +1,4 @@
+import { BrandLockup } from '@ptbk/ui';
 import { useLocation } from '@tanstack/react-router';
 
 import { m } from '../../../paraglide/messages';
@@ -10,11 +11,8 @@ const WIDTH = { narrow: 'max-w-3xl', wide: 'max-w-5xl' } as const;
 /** Brand, language and theme for the pages anyone can open signed out: sign-in, sign-up, recovery, trust and abuse. */
 export function PublicHeader(props: { readonly width: 'narrow' | 'wide' }) {
     return (
-        <header className={`mx-auto flex w-full items-center justify-between gap-4 px-4 py-2.5 ${WIDTH[props.width]}`}>
-            <span className="flex items-center gap-2 text-sm font-semibold">
-                <img src="/favicon.svg" alt="" className="size-6 shrink-0 rounded-small" />
-                {m.app_name()}
-            </span>
+        <header className={`mx-auto flex w-full items-center justify-between gap-4 px-4 py-1 ${WIDTH[props.width]}`}>
+            <BrandLockup />
             <div className="flex items-center gap-1">
                 <HeaderLanguageSwitch />
                 <ThemeMenu />

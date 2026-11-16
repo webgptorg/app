@@ -83,18 +83,23 @@ Visual identity v1 ([U-17](../plan/tasks/U-17-visual-identity.md), decided with 
 ### Colour
 
 - **Graphite chrome.** Neutrals are the `--ptbk-graphite-*` scale. The page is `--color-surface`; panels and popovers are `--color-raised`. Hover and selection are quiet washes of the text colour, not fills: `--color-hover` (5%) and `--color-selected` (8%). They read the same on any surface.
-- **No inverted fills.** Buttons are soft (see Parts); nothing is a near-black slab in light or a near-white one in dark. `--color-primary` (graphite) is left for small marks that need weight: a checked box, a switch that is on, a tab's indicator. The older `--color-accent*` names resolve to it, so nothing built on them turns teal.
+- **No inverted fills.** Buttons are soft (see Parts); nothing is a near-black slab in light or a near-white one in dark. `--color-primary` (graphite) is left for small marks that need weight: a checked box, a switch that is on, a tab's indicator. The older `--color-accent*` names resolve to it, so nothing built on them turns colourful.
 - **Colour comes from agents and status.**
   - Agents: `--color-agent-1..8`, or the agent's profile colour.
   - Status: `--color-success`, `--color-warning`, `--color-danger` and `--color-info`, each with a quiet `-soft` fill. `--color-live` marks running work.
-- **Teal has three jobs:** `--color-focus` (focus rings), `--color-link` (links in prose) and `--color-selection` (selected text). Nothing else is teal.
+- **Ink blue is the brand accent** ([Promptbook brand kit](https://www.ptbk.io/en/branding), `#17386C`; a lighter ink blue in dark). It has four jobs: `--color-focus` (focus rings), `--color-link` (links in prose), `--color-selection` (selected text) and the tint of the soft main button's wash. The kit's soft blue `#EEF4FB` is `--color-neutral-soft` in light.
 - **Dark mode is calm, never loud.** There is no bright cyan. Neutral pills sit on `--color-neutral-soft`, never on a black slab. Status fills are a trace of their hue over graphite.
 - **Lines.** `--color-hairline` separates sections and rows. `--color-divider` is a stronger separator. `--color-border` is only for control boundaries (inputs, checkboxes), at 3:1.
 - **Contrast.** Every text pair is AA (4.5:1) and every graphic pair 3:1, in both themes. `packages/ui/test/contrast.test.ts` enforces this, including the washes composited over the page.
 
+### Brand
+
+- **Logo.** `BrandMark` (the symbol) and `BrandLockup` (symbol and "promptbook" wordmark) in `@ptbk/ui` draw the kit's paths: ink blue in light, the kit's white artwork in dark. They keep a quarter of the symbol's height clear, never go below 32px (symbol) or 160px (lockup), and are never stretched, rotated or recoloured. They sit at the top of the engine UI's sidebar, in the dashboard's header and public pages, and are both apps' favicons. The trust mark stays separate.
+- **Robot.** The kit's robot (`BrandRobot`, `RobotGuide` with a speech bubble) is Promptbook speaking for itself: onboarding, the Home guide, empty main lists, sign-in and error pages. Agents keep their own characters. It is still and modest; its poses change only its pixel face.
+
 ### Type
 
-- **Inter everywhere.** Outfit is gone, and `font-display` is Inter too.
+- **Inter for text, Exo 2 for titles.** The brand kit's Exo 2 (600, self-hosted) is `font-display`: page titles and h1–h3. Everything else is Inter; the kit's Barlow is not used.
 - **Headings** (h1–h4) use `--heading-weight` (600) and tighter tracking (`--tracking-heading`, and `--tracking-display` for h1).
 - **Comfortable density:**
   - 14px body (`text-sm`, the `body` default);
