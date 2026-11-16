@@ -432,8 +432,8 @@ body {
 .wordmark {
     color: var(--color-text);
     font-family: var(--font-display);
-    font-weight: 600;
-    letter-spacing: 0.01em;
+    font-weight: var(--heading-weight);
+    letter-spacing: var(--tracking-display);
 }
 
 .masthead-host {
@@ -448,9 +448,8 @@ body {
     max-width: 30rem;
     padding: calc(var(--spacing) * 8);
     background: var(--color-raised);
-    border: 1px solid var(--color-divider);
+    border: 1px solid var(--color-hairline);
     border-radius: var(--radius-surface);
-    box-shadow: var(--shadow-raised);
 }
 
 @media (max-width: 30rem) {
@@ -470,7 +469,8 @@ h1 {
     margin: 0 0 calc(var(--spacing) * 3);
     font-family: var(--font-display);
     font-size: var(--text-2xl);
-    font-weight: 600;
+    font-weight: var(--heading-weight);
+    letter-spacing: var(--tracking-display);
     line-height: var(--text-2xl--line-height);
     text-wrap: balance;
     overflow-wrap: anywhere;
@@ -510,8 +510,12 @@ code {
 }
 
 a {
-    color: var(--color-accent-text);
+    color: var(--color-link);
     text-underline-offset: 0.15em;
+}
+
+a:hover {
+    color: var(--color-link-hover);
 }
 
 a:focus-visible,
@@ -530,19 +534,23 @@ button:focus-visible {
     justify-content: center;
     min-height: 2.75rem;
     padding: 0 calc(var(--spacing) * 5);
-    border: 0;
+    border: 1px solid var(--color-divider);
     border-radius: var(--radius-control);
-    background: var(--color-accent);
-    color: var(--color-on-accent);
+    background: var(--color-wash-strong);
+    color: var(--color-text);
     font: inherit;
-    font-weight: 600;
+    font-weight: 500;
     text-decoration: none;
     cursor: pointer;
     transition: background-color var(--motion-state) var(--ease-standard);
 }
 
 .button:hover {
-    background: var(--color-accent-hover);
+    background: var(--color-wash-strong-hover);
+}
+
+.button:active {
+    background: var(--color-wash-strong-active);
 }
 
 @media (max-width: 30rem) {
@@ -558,6 +566,7 @@ button:focus-visible {
     grid-template-columns: auto minmax(0, 1fr);
     gap: calc(var(--spacing) * 3) calc(var(--spacing) * 4);
     align-items: center;
+    border: 1px solid var(--color-hairline);
     border-radius: var(--radius-control);
     background: var(--color-sunken);
 }
