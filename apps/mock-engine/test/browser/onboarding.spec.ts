@@ -1,8 +1,25 @@
 import { createHash, X509Certificate } from 'node:crypto';
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 
-import type { Browser, Page } from '@playwright/test';
+import type { Browser, BrowserContext, Page } from '@playwright/test';
 import { chromium, expect, test } from '@playwright/test';
-import { EngineVersion, Heartbeat, Hostname, RelayId, createCryptoRandom, defaultHostname } from '@ptbk/protocol';
+import type { Member } from '@ptbk/engine-api';
+import { PERMISSIONS, createEngineApiClient } from '@ptbk/engine-api';
+import type { Signer } from '@ptbk/protocol';
+import {
+    EngineVersion,
+    Heartbeat,
+    Hostname,
+    RelayId,
+    Timestamp,
+    createCryptoRandom,
+    createWebCryptoSigner,
+    defaultHostname,
+    ed25519PublicKeyFromBytes,
+    generateEd25519KeyPair,
+    signAccessTicket,
+} from '@ptbk/protocol';
 
 import { createDevCa, createDevCaCertificateSource } from '../../src/adapters/dev-ca';
 import { loadGatewayPageFiles } from '../../src/adapters/http/gateway-page-files';
@@ -46,11 +63,18 @@ interface Stack {
     readonly spki: string;
 }
 
+interface StackOptions {
+    /** `seeded` starts with the scenario's owner already set up; `none` waits for `/setup`. */
+    readonly passkeys: 'none' | 'seeded';
+    /** The dashboard's member key, pinned at registration, so the engine accepts its access tickets. */
+    readonly memberKey?: Signer;
+}
+
 /**
  * The whole onboarding path in one process: the engine registers with a link code, dials the in-test relay, and is
  * reached through the relay's SNI passthrough by a real Chromium, exactly as through a production relay.
  */
-async function startStack(): Promise<Stack> {
+async function startStack(options: StackOptions = { passkeys: 'none' }): Promise<Stack> {
     const relayCa = createTestCa('M-08 browser relay CA');
     const identityStore = createMemoryIdentityStore();
     const identity = await identityStore.loadOrCreate();
@@ -65,6 +89,9 @@ async function startStack(): Promise<Stack> {
         clock: systemClock,
         engineDomain: ENGINE_DOMAIN,
         relays: [Hostname.parse(RELAY)],
+        ...(options.memberKey === undefined
+            ? {}
+            : { memberKey: ed25519PublicKeyFromBytes(options.memberKey.publicKey()) }),
     });
     const linkCode = dashboard.issueLinkCode('org-a');
     const logger = createMemoryLogger();
@@ -84,7 +111,7 @@ async function startStack(): Promise<Stack> {
         certificateSource: { kind: 'dev-ca' },
         logLevel: 'info',
         ...DEFAULT_MOCK_SETTINGS,
-        passkeys: 'none',
+        passkeys: options.passkeys,
         dashboard: { url: 'https://app.ptbk.test', linkCode: oneTimeSecret(linkCode), heartbeatIntervalS: 60 },
     };
     const engine = await startMockEngine(config, {
@@ -141,6 +168,44 @@ function watchPolicy(page: Page): string[] {
     return violations;
 }
 
+/** Headless, and never near the login keychain or the profile's password store. */
+function launch(current: Stack): Promise<Browser> {
+    return chromium.launch({
+        headless: true,
+        args: [
+            `--host-resolver-rules=MAP ${current.hostname} 127.0.0.1`,
+            `--ignore-certificate-errors-spki-list=${current.spki}`,
+            '--use-mock-keychain',
+            '--password-store=basic',
+        ],
+    });
+}
+
+async function addVirtualAuthenticator(context: BrowserContext, page: Page): Promise<void> {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('WebAuthn.enable');
+    await cdp.send('WebAuthn.addVirtualAuthenticator', {
+        options: {
+            protocol: 'ctap2',
+            transport: 'internal',
+            hasResidentKey: true,
+            hasUserVerification: true,
+            isUserVerified: true,
+            automaticPresenceSimulation: true,
+        },
+    });
+}
+
+/** Only when asked for, so CI writes no files: `PTBK_SCREENSHOTS_DIR=<dir>`. */
+async function screenshot(page: Page, name: string): Promise<void> {
+    const directory = process.env['PTBK_SCREENSHOTS_DIR'];
+    if (directory === undefined || directory === '') return;
+    await mkdir(directory, { recursive: true });
+    await page.screenshot({ path: join(directory, `${name}.png`), fullPage: true, animations: 'disabled' });
+}
+
+const iso = (ms: number) => Timestamp.parse(new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z'));
+
 let stack: Stack | undefined;
 let browser: Browser | undefined;
 
@@ -160,27 +225,11 @@ test.afterEach(async () => {
 test('the owner sets up a passkey through /setup#<secret>, then signs in with it, under the engine CSP', async () => {
     stack = await startStack();
     const { engine, hostname, passthrough } = stack;
-    browser = await chromium.launch({
-        args: [
-            `--host-resolver-rules=MAP ${hostname} 127.0.0.1`,
-            `--ignore-certificate-errors-spki-list=${stack.spki}`,
-        ],
-    });
+    browser = await launch(stack);
     const context = await browser.newContext({ locale: 'en-GB' });
     const page = await context.newPage();
     const violations = watchPolicy(page);
-    const cdp = await context.newCDPSession(page);
-    await cdp.send('WebAuthn.enable');
-    await cdp.send('WebAuthn.addVirtualAuthenticator', {
-        options: {
-            protocol: 'ctap2',
-            transport: 'internal',
-            hasResidentKey: true,
-            hasUserVerification: true,
-            isUserVerified: true,
-            automaticPresenceSimulation: true,
-        },
-    });
+    await addVirtualAuthenticator(context, page);
     const origin = `https://${hostname}:${String(passthrough.port)}`;
 
     const link = await engine.operator.setupLink();
@@ -266,4 +315,77 @@ test('the owner sets up a passkey through /setup#<secret>, then signs in with it
     expect(stack.logger.entries.map(({ event }) => event)).toEqual(
         expect.arrayContaining(['engine.identity', 'owner.none', 'engine.ready', 'setup-link.issued', 'owner.set-up']),
     );
+});
+
+test('an invited person joins with a ticket, reads out the code, and is signed in once approved, under the engine CSP', async () => {
+    const memberKey = await createWebCryptoSigner(await generateEd25519KeyPair({ extractable: false }));
+    stack = await startStack({ passkeys: 'seeded', memberKey });
+    const { engine, hostname, passthrough } = stack;
+    await expect.poll(() => engine.registration?.memberKey ?? null, { timeout: 10_000 }).not.toBeNull();
+    browser = await launch(stack);
+    const context = await browser.newContext({ locale: 'en-GB', viewport: { width: 720, height: 760 } });
+    const page = await context.newPage();
+    const violations = watchPolicy(page);
+    await addVirtualAuthenticator(context, page);
+    const origin = `https://${hostname}:${String(passthrough.port)}`;
+
+    const issuedAt = Date.now();
+    const ticket = await signAccessTicket(memberKey, {
+        v: 1,
+        engineId: engine.identity.engineId,
+        ticketId: 'ticket-browser-000001',
+        dashboardUserId: 'user-browser-jana',
+        displayName: 'Jana Dvořák',
+        email: 'jana@example.com',
+        proposedRole: 'member',
+        issuedAt: iso(issuedAt),
+        expiresAt: iso(issuedAt + 15 * 60_000),
+    });
+
+    await page.goto(`${origin}/auth/join#${ticket}`);
+    await expect(page.getByRole('heading', { name: `Join ${hostname}` })).toBeVisible();
+    expect(new URL(page.url()).hash).toBe('');
+    await expect(
+        page.getByText('This engine has its own secure address, so your browser asks for one more passkey here.'),
+    ).toBeVisible();
+    await screenshot(page, 'join');
+
+    await page.locator('button[data-action="create"]').click();
+    await expect(page.getByRole('heading', { name: 'Waiting for approval' })).toBeVisible();
+    const shown = page.locator('[data-join-code]');
+    await expect(shown).toHaveText(/^\d{3} \d{3}$/);
+    await expect(page.getByText('Tell this code to the person approving you')).toBeVisible();
+    await screenshot(page, 'waiting');
+    const code = (await shown.textContent())?.replace(' ', '') ?? '';
+
+    const controller = engine.runtime.controller();
+    const owner = controller.inspect().members.find((member) => member.role === 'owner' && member.status === 'active');
+    const [request] = controller.inspect().accessRequests;
+    if (owner === undefined || request === undefined) throw new Error('no owner or no pending request');
+    const ownerApi = createEngineApiClient(
+        engine.runtime.core().transport({
+            memberId: owner.id,
+            sessionId: 'session-browser-owner' as never,
+            client: { ip: '127.0.0.1', userAgent: 'browser test' },
+            permissions: new Set(PERMISSIONS),
+            stepUpFresh: true,
+        }),
+    );
+    const approved = await ownerApi.members.approveAccessRequest(
+        request.id,
+        { code, role: 'member' },
+        AbortSignal.timeout(10_000),
+    );
+    expect(approved.kind).toBe('ok');
+
+    // The page's own status poll picks the approval up and signs in without another prompt.
+    await page.waitForURL(`${origin}/`, { timeout: 15_000 });
+    expect(await meStatus(page)).toBe(200);
+    const joined: Member | undefined = controller
+        .inspect()
+        .members.find((member) => member.dashboardUserId === 'user-browser-jana');
+    expect(joined?.status).toBe('active');
+    expect(violations).toEqual([]);
+    const logs = stack.logger.text();
+    for (const secretText of [ticket, code]) expect(logs).not.toContain(secretText);
 });

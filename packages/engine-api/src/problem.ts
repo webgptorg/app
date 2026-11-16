@@ -8,6 +8,7 @@ export interface ProblemExtras {
     readonly errors?: readonly { readonly path: string; readonly message: string }[];
     readonly requiredPermission?: Permission;
     readonly diagnostics?: readonly Diagnostic[];
+    readonly attemptsRemaining?: number;
 }
 
 /** A problem with the status, `type` and title its code always has, so engines cannot drift apart. */
@@ -22,5 +23,6 @@ export function createProblem(code: ProblemCode, extras: ProblemExtras = {}): Pr
         ...(extras.errors === undefined ? {} : { errors: [...extras.errors] }),
         ...(extras.requiredPermission === undefined ? {} : { requiredPermission: extras.requiredPermission }),
         ...(extras.diagnostics === undefined ? {} : { diagnostics: [...extras.diagnostics] }),
+        ...(extras.attemptsRemaining === undefined ? {} : { attemptsRemaining: extras.attemptsRemaining }),
     };
 }

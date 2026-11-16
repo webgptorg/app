@@ -223,13 +223,37 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
                 .getByRole('link', { name: 'Review' })
                 .getAttribute('href'),
         ).toBe('/wallet');
-        expect(await within(region).findByText('1 person asks to join')).toBeDefined();
+        const waiting = await within(region).findByText('Petr Svoboda is waiting for access');
+        const item = waiting.closest('li') ?? region;
+        expect(within(item).getByText('petr@example.com')).toBeDefined();
+        expect(within(item).getByRole('link', { name: 'Approve' }).getAttribute('href')).toBe(
+            '/members?request=access-petr',
+        );
         const failed = await within(region).findByText(/failed run/);
         expect(
             within(failed.closest('li') ?? region)
                 .getByRole('link', { name: 'Review' })
                 .getAttribute('href'),
         ).toBe('/runs?status=failed');
+    });
+
+    it('opens the approval with its code input from a waiting person’s Approve', async () => {
+        const { user } = renderWithProviders({ path: '/', engineApi: demoEngine() });
+        const region = await needsYou();
+        const waiting = await within(region).findByText('Petr Svoboda is waiting for access');
+        await user.click(within(waiting.closest('li') ?? region).getByRole('link', { name: 'Approve' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Approve Petr Svoboda' });
+        expect(within(dialog).getByRole('textbox', { name: /Code/ })).toBeDefined();
+    });
+
+    it('lists nobody waiting for access without members.manage', async () => {
+        renderWithProviders({
+            path: '/',
+            engineApi: demoEngine({ member: { permissions: allBut('members.manage') } }),
+        });
+        const region = await needsYou();
+        await within(region).findByText('Iris asks you');
+        expect(within(region).queryByText(/is waiting for access/)).toBeNull();
     });
 
     it('names a provider’s count by its label, else by its nav label, linking to exactly what it counts', async () => {

@@ -65,7 +65,9 @@ describe('members', { timeout: TIMEOUT_MS }, () => {
         expect(screen.queryByRole('checkbox', { name: /Select/ })).toBeNull();
         expect(screen.queryByRole('combobox', { name: /role/i })).toBeNull();
         expect(screen.queryByRole('button', { name: /remove|edit/i })).toBeNull();
-        expect(screen.getByText('Owners and admins invite people and change their roles.')).toBeDefined();
+        expect(
+            screen.getByText('Owners and admins invite people from the dashboard and change their roles.'),
+        ).toBeDefined();
         await expectNoAxeViolations(container);
     });
 

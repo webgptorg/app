@@ -370,8 +370,8 @@
   "members_load_failed": "Členy se nepodařilo načíst.",
   "members_empty_title": "Zatím žádní členové",
   "members_empty_body": "Členové se zde objeví, jakmile se k tomuto enginu připojí.",
-  "members_intro": "Lidé se připojují přes pozvánku a přihlašují se vlastním přístupovým klíčem. Co smějí dělat, určuje jejich role.",
-  "members_intro_read_only": "Lidi zvou a mění jim role vlastníci a správci.",
+  "members_intro": "Lidé se zvou z dashboardu vaší organizace a tady se přihlašují vlastním přístupovým klíčem. Co smějí dělat, určuje jejich role.",
+  "members_intro_read_only": "Lidi zvou z dashboardu a mění jim role vlastníci a správci.",
   "members_intro_no_invites": "Tento engine zatím nepodporuje pozvánky ani změny rolí.",
   "members_change_role": "Změnit roli",
   "members_change_role_title": "Změnit roli: {name}",
@@ -398,7 +398,7 @@
   "access_approve_title": "Schválit přístup: {name}",
   "access_approve_body": "Požádejte osobu {name} o šestimístný kód, který vidí na své obrazovce. Ověříte tím, že žádost je opravdu její.",
   "access_code_label": "Kód",
-  "access_code_hint": "6 číslic, které Vám přečtou.",
+  "access_code_hint": "6 číslic, které Vám přečtou. Poslední číslice schválí přístup s rolí výše.",
   "access_code_invalid": "Zadejte 6 číslic.",
   "access_code_mismatch": "Kód nesouhlasí. Ověřte ho s osobou {name}. Po 5 chybných kódech se žádost smaže a osoba musí engine znovu otevřít z dashboardu.",
   "access_removed_after_codes": "Příliš mnoho chybných kódů, proto se žádost osoby {name} smazala. Požádejte ji, ať engine znovu otevře z dashboardu.",
@@ -415,29 +415,6 @@
   "removals_on": "Organizace teď smí odebírat členy",
   "removals_off": "Členy teď odebírá jen tento engine",
   "removals_failed": "Nastavení se nepodařilo změnit.",
-  "invites_new": "Pozvat člena",
-  "invites_title": "Pozvat člena",
-  "invites_body": "Dostanete odkaz, který pošlete dál. Kdo ho otevře, přidá si přístupový klíč a připojí se se zvolenou rolí. Engine si pozvánku nechá potvrdit Vaším přístupovým klíčem.",
-  "invites_expiry_label": "Odkaz platí",
-  "invites_expiry_days": [
-    {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "{count} den",
-        "countPlural=few": "{count} dny",
-        "countPlural=many": "{count} dne",
-        "countPlural=other": "{count} dní"
-      }
-    }
-  ],
-  "invites_create": "Vytvořit odkaz",
-  "invites_create_failed": "Pozvánku se nepodařilo vytvořit.",
-  "invites_created_title": "Pozvánka je připravená",
-  "invites_created_body": "Zkopírujte si ji hned, znovu už se nezobrazí. Kdokoli s odkazem se může připojit jako {role}; odkaz platí {expiry}.",
-  "invites_link_label": "Odkaz s pozvánkou",
-  "invites_copy": "Kopírovat odkaz",
-  "invites_done": "Hotovo",
   "invites_pending": "Nevyužité pozvánky",
   "invites_row_title": "Pozvánka: {role}",
   "invites_actions_for": "Akce pro {invite}",
@@ -450,7 +427,7 @@
   "invites_revoked": "Pozvánka ({role}) zrušena",
   "invites_revoke_failed": "Pozvánku se nepodařilo zrušit.",
   "invites_empty_title": "Pozvěte svůj tým",
-  "invites_empty_body": "Vytvořte pozvánku s rolí. Kdo odkaz otevře, přidá si vlastní přístupový klíč a připojí se k enginu.",
+  "invites_empty_body": "Pozvěte lidi z dashboardu vaší organizace. Tady požádají o přístup a vy je pustíte dál s kódem z jejich obrazovky.",
   "passkeys_title": "Přístupové klíče",
   "passkeys_intro": "Přístupovými klíči se přihlašujete k tomuto enginu. Přidáváte je při přihlášení na novém zařízení; zde je můžete zkontrolovat a odvolat.",
   "passkeys_mine": "Vaše přístupové klíče",
@@ -2123,18 +2100,6 @@
   "task_history_column_when": "Kdy",
   "task_history_column_summary": "Shrnutí",
   "task_history_column_runs": "Běhy",
-  "members_attention_access": [
-    {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "{count} člověk žádá o přístup",
-        "countPlural=few": "{count} lidé žádají o přístup",
-        "countPlural=many": "{count} člověka žádá o přístup",
-        "countPlural=other": "{count} lidí žádá o přístup"
-      }
-    }
-  ],
   "home_ask_label": "Zeptejte se Chattera",
   "home_ask_placeholder": "Zeptejte se Chattera na cokoli…",
   "home_guide_create_agent": "Začněte jedním agentem: řekněte mu, o co se má starat, a on se do toho pustí.",
@@ -2208,5 +2173,22 @@
   "entity_fact_joined": "Připojen",
   "task_priority_short": "P{rank}",
   "task_priority_short_text": "P{rank} · {text}",
-  "task_subtasks_done": "Hotovo {completed} z {total} podúkolů"
+  "task_subtasks_done": "Hotovo {completed} z {total} podúkolů",
+  "members_invite_in_dashboard": "Pozvat v dashboardu",
+  "access_reported_by_organization": "{email}, jak uvádí vaše organizace",
+  "access_code_mismatch_left": [
+    {
+      "declarations": ["input name", "input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Kód nesouhlasí. Ověřte ho s osobou {name}: zbývá 1 pokus, pak se žádost smaže.",
+        "countPlural=few": "Kód nesouhlasí. Ověřte ho s osobou {name}: zbývají {count} pokusy, pak se žádost smaže.",
+        "countPlural=many": "Kód nesouhlasí. Ověřte ho s osobou {name}: zbývá {count} pokusu, pak se žádost smaže.",
+        "countPlural=other": "Kód nesouhlasí. Ověřte ho s osobou {name}: zbývá {count} pokusů, pak se žádost smaže."
+      }
+    }
+  ],
+  "access_link_gone_title": "Tato žádost už nečeká",
+  "access_link_gone_body": "Byla schválena, zamítnuta, nebo vypršela. Všichni, kdo ještě čekají, jsou na této stránce.",
+  "home_waiting_for_access": "{name} čeká na přístup"
 }

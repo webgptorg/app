@@ -147,7 +147,13 @@ sequenceDiagram
 - An engine keeps at most 20 pending requests; the 21st ticket is refused with "too many pending requests".
 - A ticket for a `dashboardUserId` that is already an active member just signs them in, or asks them to sign in.
 
-**Engines without a dashboard, or older engines.** The engine's own invite link (`POST /invites`) stays as the way to add people. Those members have no `dashboardUserId`, and the dashboard can neither see nor remove them.
+**Engines without a dashboard, or older engines.** The engine's own invite link (`POST /invites`) stays in the engine API as the way to add people. Those members have no `dashboardUserId`, and the dashboard can neither see nor remove them. Since everyone has a dashboard account, the engine UI no longer creates these links: its "Invite in the dashboard" opens the dashboard, and it still lists and revokes links made before.
+
+**Smoothing the steps** (D-31):
+
+- The approver's email links to `https://<engine>/members?request=<accessRequestId>`, which opens that request's approval in the engine UI. Opening it changes nothing: the dialog waits for the code. Home's "Needs you" lists each waiting person with the same link.
+- The approval dialog has the role and the code on one screen: six digit cells that take a pasted code and approve with the sixth digit, then the step-up. A wrong code says how many tries remain (`attemptsRemaining` on `access-code-mismatch`).
+- The join page says in one line why a second passkey is needed; the waiting page shows the code large, as "482 913", asks for status every few seconds and signs the person in as soon as they are approved.
 
 ## Removing a person
 

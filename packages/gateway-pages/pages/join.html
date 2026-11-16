@@ -127,6 +127,13 @@
                     Vaše organizace Vás pozvala do tohoto enginu. Vytvořte si pro něj přístupový klíč; někdo z enginu
                     pak Váš přístup schválí.
                 </p>
+                <p data-lang="en" class="muted">
+                    This engine has its own secure address, so your browser asks for one more passkey here.
+                </p>
+                <p data-lang="cs" class="muted">
+                    Tento engine má vlastní zabezpečenou adresu, a tak si tu prohlížeč řekne o ještě jeden přístupový
+                    klíč.
+                </p>
                 <div class="actions">
                     <button type="button" class="button" data-action="create">
                         <span data-lang="en">Create passkey</span><span data-lang="cs">Vytvořit přístupový klíč</span>
@@ -141,17 +148,22 @@
                         <span data-lang="en">Waiting for approval</span><span data-lang="cs">Čekáme na schválení</span>
                     </h1>
                 </div>
-                <p data-lang="en">Tell this code to the person approving you:</p>
-                <p data-lang="cs">Řekněte tento kód tomu, kdo Vás schvaluje:</p>
                 <p class="join-code" data-join-code></p>
-                <p data-lang="en" class="muted">Keep this page open; it signs you in once you are approved.</p>
-                <p data-lang="cs" class="muted">Nechte tuto stránku otevřenou; jakmile Vás schválí, přihlásí Vás.</p>
+                <p data-lang="en" class="join-code-hint">Tell this code to the person approving you</p>
+                <p data-lang="cs" class="join-code-hint">Řekněte tento kód tomu, kdo Vás schvaluje</p>
+                <p data-lang="en" class="muted">Keep this page open; it signs you in as soon as you are approved.</p>
+                <p data-lang="cs" class="muted">
+                    Nechte tuto stránku otevřenou; jakmile Vás schválí, sama Vás přihlásí.
+                </p>
             </section>
 
             <section data-state="done" hidden>
-                <h1 tabindex="-1"><span data-lang="en">You are in</span><span data-lang="cs">Jste uvnitř</span></h1>
-                <p data-lang="en">Your access was approved. Opening the engine…</p>
-                <p data-lang="cs">Váš přístup byl schválen. Otevíráme engine…</p>
+                <div class="progress">
+                    <span class="spinner" aria-hidden="true"></span>
+                    <h1 tabindex="-1"><span data-lang="en">You're in</span><span data-lang="cs">Jste uvnitř</span></h1>
+                </div>
+                <p data-lang="en">Opening the engine…</p>
+                <p data-lang="cs">Otevíráme engine…</p>
                 <div class="actions">
                     <a class="button" href="/" data-next-link
                         ><span data-lang="en">Open the engine</span><span data-lang="cs">Otevřít engine</span></a

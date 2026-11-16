@@ -655,12 +655,20 @@ button:focus-visible {
 
 /* The join code is read aloud to whoever approves: large, spaced and in digits that cannot be mistaken. */
 .join-code {
-    margin-block: calc(var(--spacing) * 4);
+    margin-block: calc(var(--spacing) * 6) calc(var(--spacing) * 2);
     font-family: var(--font-mono);
-    font-size: 2.25rem;
+    font-size: clamp(2.5rem, 12vw, 3.5rem);
     font-weight: 600;
-    letter-spacing: 0.12em;
+    line-height: 1.1;
+    letter-spacing: 0.08em;
     font-variant-numeric: tabular-nums;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.join-code-hint {
+    margin-bottom: calc(var(--spacing) * 6);
+    color: var(--color-text-muted);
     text-align: center;
 }
 

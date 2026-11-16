@@ -253,7 +253,7 @@ Gap: there is no customer-facing status between steps 3 and 5. The engine's term
 
 ## Journey 5: members later
 
-Members are added on the engine, never through the dashboard ([spec](../spec/zero-trust-spec.md#pairing-and-identity)). The owner creates an invite link in the engine UI (Members, `POST /invites`, step-up); the invitee opens it on the engine's address and creates their own passkey there. The dashboard learns only the member count from the heartbeat. Dashboard organization members (billing colleagues) are a separate, later feature and grant nothing on engines.
+Members are granted on the engine, never by the dashboard ([spec](../spec/zero-trust-spec.md#pairing-and-identity)). People are invited in the dashboard; they ask the engine for access with their own passkey, and someone on the engine approves them with the code on their screen ([teams](../spec/teams.md#adding-a-person)). The engine UI's Members page links to the dashboard for inviting and no longer creates the engine's own invite links (`POST /invites`). The dashboard learns only the member count from the heartbeat. Dashboard organization members (billing colleagues) are a separate, later feature and grant nothing on engines.
 
 ## Failures and edge cases
 
