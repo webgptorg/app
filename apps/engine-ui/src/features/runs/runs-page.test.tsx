@@ -34,8 +34,11 @@ const rowTitles = () =>
         .slice(1)
         .map((row) => row.querySelector('a[href^="/runs/"]')?.textContent ?? '');
 // The agent header's Stop lists the agent's active runs on its own; that query is not the timeline's.
+// The shell's live indicator and the agent header's status read running work too; the table's query is the other one.
 const lastListQuery = (engine: RunsEngine) =>
-    engine.spies.list.mock.calls.filter(([query]) => query.status !== 'queued,running').at(-1)?.[0];
+    engine.spies.list.mock.calls
+        .filter(([query]) => query.status !== 'queued,running' && query.status !== 'running')
+        .at(-1)?.[0];
 
 describe('runs timeline', { timeout: TIMEOUT_MS }, () => {
     it('lists every run newest first and pages through the rest on the engine', async () => {

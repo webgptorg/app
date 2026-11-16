@@ -14,4 +14,5 @@ export const agentKeys = {
     lastActivity: (agentId: AgentId) => [...agentKeys.all, 'last-activity', agentId] as const,
     latestRun: (agentId: AgentId) => [...agentKeys.all, 'latest-run', agentId] as const,
     creator: (memberId: MemberId) => [...agentKeys.all, 'creator', memberId] as const,
+    folders: () => [...agentKeys.all, 'folders'] as const,
 };

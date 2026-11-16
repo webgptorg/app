@@ -2,7 +2,9 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { createAgentsEngine } from '../../testing/agents-engine';
+import { createMemoryStorage } from '../../testing/memory-storage';
 import { renderWithProviders } from '../../testing/render-with-providers';
+import { AGENT_VIEW_STORAGE_KEY } from './agent-view';
 import { FORMER_CORE_CAPABILITIES, problemResponse } from '../../testing/test-engine-api';
 
 // Each test renders the whole app on the in-memory engine; a shared CI runner is several times slower than a laptop.
@@ -11,7 +13,10 @@ const TIMEOUT_MS = 20_000;
 const rowOf = (name: string) => screen.getByRole('link', { name }).closest('tr') as HTMLElement;
 
 async function renderList(engine = createAgentsEngine({ agentCount: 6 })) {
-    const app = renderWithProviders({ path: '/agents', engineApi: engine.client });
+    // The row menu lives in the table view.
+    const storage = createMemoryStorage();
+    storage.setItem(AGENT_VIEW_STORAGE_KEY, 'table');
+    const app = renderWithProviders({ path: '/agents', engineApi: engine.client, storage });
     await screen.findByRole('link', { name: 'Agent 001' });
     return { ...app, engine };
 }

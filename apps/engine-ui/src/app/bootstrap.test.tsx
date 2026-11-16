@@ -69,7 +69,7 @@ describe('bootstrap', () => {
         app = await bootstrap(container, browser);
 
         expect(await screen.findByRole('heading', { name: 'Agents' })).toBeDefined();
-        expect(screen.getByText('Ada')).toBeDefined();
+        expect(screen.getAllByText('Ada').length).toBeGreaterThan(0);
         expect(fetch.mock.calls.map(([input]) => urlOf(input).pathname)).toContain(`${ENGINE_API_PREFIX}/agents`);
     });
 

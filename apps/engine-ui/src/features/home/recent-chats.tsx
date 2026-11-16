@@ -13,7 +13,8 @@ import { chatPreview } from './chat-preview';
 
 export const RECENT_CHAT_COUNT = 6;
 
-function ChatRow({ chat }: { readonly chat: ReadChat }) {
+/** One thread as a rich row: its agents, title, a calm preview (never step text) and when it last moved. */
+export function ChatRow({ chat }: { readonly chat: ReadChat }) {
     // Only what the thread already has in the cache: Home never fetches every thread's entries for a preview.
     const cached = useInfiniteQuery({ ...chatEntriesQueryOptions(useEngineApi(), chat.id), enabled: false }).data;
     const preview = chatPreview(

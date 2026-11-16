@@ -1,5 +1,5 @@
 import type { AgentId, RevisionId, RevisionSummary } from '@ptbk/engine-api';
-import { Badge, Button, createDataTableColumnHelper, DataTable, RelativeTime, useLocale } from '@ptbk/ui';
+import { Button, createDataTableColumnHelper, DataTable, RelativeTime, StatusPill, useLocale } from '@ptbk/ui';
 import type { DataTableColumnDef } from '@ptbk/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
@@ -76,9 +76,11 @@ function useRevisionColumns(
                 meta: { priority: 0 },
                 cell: ({ row }) => (
                     <span className="inline-flex flex-wrap items-center gap-2">
-                        <RelativeTime value={new Date(row.original.createdAt)} />
+                        <RelativeTime value={new Date(row.original.createdAt)} className="tabular-nums" />
                         {row.original.id === currentRevisionId ? (
-                            <Badge tone="success">{m.book_history_current()}</Badge>
+                            <StatusPill tone="success" variant="quiet">
+                                {m.book_history_current()}
+                            </StatusPill>
                         ) : null}
                     </span>
                 ),
@@ -109,7 +111,7 @@ function useRevisionColumns(
                 cell: ({ row }) => (
                     <Button
                         size="sm"
-                        variant="secondary"
+                        variant="ghost"
                         onClick={() => {
                             onOpen(row.original);
                         }}
@@ -151,8 +153,8 @@ export function BookHistory({ agentId, currentRevisionId, onOpen }: BookHistoryP
     const locale = useLocale();
 
     return (
-        <section aria-labelledby="book-history-title" className="flex min-w-0 flex-col gap-3">
-            <h2 id="book-history-title" className="text-base font-semibold">
+        <section aria-labelledby="book-history-title" className="flex min-w-0 flex-col gap-1.5">
+            <h2 id="book-history-title" className="text-sm font-semibold">
                 {m.book_history_title()}
             </h2>
             <DataTable

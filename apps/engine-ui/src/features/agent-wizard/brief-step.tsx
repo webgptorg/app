@@ -5,6 +5,7 @@ import type { Ref } from 'react';
 import { z } from 'zod';
 
 import { m } from '../../paraglide/messages';
+import { AgentAvatar } from '../agents/agent-avatar';
 import { StepFrame } from './step-frame';
 
 export const MAX_AGENT_NAME_LENGTH = 256;
@@ -46,6 +47,11 @@ export function BriefStep({ form, headingRef, serverErrors, onCancel }: BriefSte
                 description={m.wizard_brief_body()}
                 headingRef={headingRef}
                 width="form"
+                aside={
+                    <form.Subscribe selector={(state) => state.values}>
+                        {(values) => <AgentPreview name={values.name} description={values.description} />}
+                    </form.Subscribe>
+                }
                 actions={
                     <>
                         <Button variant="ghost" onClick={onCancel}>
@@ -77,5 +83,41 @@ export function BriefStep({ form, headingRef, serverErrors, onCancel }: BriefSte
                 </FormField>
             </StepFrame>
         </Form>
+    );
+}
+
+/**
+ * The agent as the brief describes it so far, the way it will look in lists and chats: its picture, name and role.
+ * The text is the member's own and renders as text.
+ */
+function AgentPreview({ name, description }: { readonly name: string; readonly description: string }) {
+    const shownName = name.trim();
+    const shownRole = description.trim();
+    return (
+        <div className="sticky top-24 flex flex-col gap-4">
+            <p className="text-xs font-medium text-text-muted">{m.wizard_preview_title()}</p>
+            <div className="flex flex-col items-start gap-3 rounded-surface border border-hairline p-5">
+                <AgentAvatar
+                    name={shownName}
+                    profile={{ avatarUrl: null, color: null, description: shownRole }}
+                    size="xl"
+                />
+                <div className="flex min-w-0 flex-col gap-1">
+                    <p
+                        className={
+                            shownName === ''
+                                ? 'text-base font-semibold text-text-subtle'
+                                : 'text-base font-semibold break-words'
+                        }
+                    >
+                        {shownName === '' ? m.wizard_preview_name() : shownName}
+                    </p>
+                    <p className="line-clamp-3 text-sm break-words text-text-muted">
+                        {shownRole === '' ? m.wizard_preview_role() : shownRole}
+                    </p>
+                </div>
+            </div>
+            <p className="text-xs text-text-muted">{m.wizard_preview_next()}</p>
+        </div>
     );
 }

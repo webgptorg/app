@@ -10,7 +10,7 @@ import { FEATURES } from '../../app/features';
 import { defineFeature } from '../../app/registry/feature';
 import type { AgentLiveState, FeatureDefinition, RoutePath } from '../../app/registry/feature';
 import { expectNoAxeViolations } from '../../testing/axe';
-import { createAgentsEngine } from '../../testing/agents-engine';
+import { createAgentsEngine, seededAgent } from '../../testing/agents-engine';
 import type { AgentsEngineOptions } from '../../testing/agents-engine';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { FORMER_CORE_CAPABILITIES, problemResponse, TEST_NOW } from '../../testing/test-engine-api';
@@ -299,7 +299,7 @@ describe('agent live state', { timeout: TIMEOUT_MS }, () => {
             capabilities: [],
         });
         const header = agentHeader();
-        expect(await within(header).findByText('Running')).toBeDefined();
+        expect(await within(header).findByText('Working')).toBeDefined();
         const calls = engine.spies.getStatus.mock.calls.length;
         engine.controller.emit({
             type: 'agent.status',
@@ -354,7 +354,7 @@ describe('agent live state', { timeout: TIMEOUT_MS }, () => {
 
     it('offers no Stop without agents.run', async () => {
         await renderAgent('/agents/agent-001', { capabilities: [], permissions: allBut('agents.run') });
-        expect(await within(agentHeader()).findByText('Running')).toBeDefined();
+        expect(await within(agentHeader()).findByText('Working')).toBeDefined();
         expect(within(agentHeader()).queryByRole('button', { name: 'Stop' })).toBeNull();
     });
 });
@@ -403,28 +403,32 @@ describe('agent header', { timeout: TIMEOUT_MS }, () => {
 describe('agent settings', { timeout: TIMEOUT_MS }, () => {
     it('changes visibility, asking first only when making the agent public', async () => {
         const { user, engine } = await renderAgent('/agents/agent-003/settings');
-        const select = await screen.findByRole('combobox', { name: 'Visibility' });
-        expect((select as HTMLSelectElement).value).toBe('private');
+        const visibility = await screen.findByRole('combobox', { name: 'Visibility' });
+        expect(visibility.textContent).toContain('Private');
 
-        await user.selectOptions(select, 'unlisted');
+        await user.click(visibility);
+        await user.click(screen.getByRole('option', { name: /^Unlisted/ }));
         await waitFor(() => {
-            expect((select as HTMLSelectElement).value).toBe('unlisted');
+            expect(visibility.textContent).toContain('Unlisted');
         });
         expect(engine.spies.update).toHaveBeenLastCalledWith(
             'agent-003',
             { visibility: 'unlisted' },
             expect.anything(),
         );
+        // Only a public agent says so in the header: anyone with the link can talk to it.
+        expect(within(agentHeader()).queryByText('Public')).toBeNull();
 
-        await user.selectOptions(select, 'public');
+        await user.click(visibility);
+        await user.click(screen.getByRole('option', { name: /^Public/ }));
         const dialog = await screen.findByRole('dialog', { name: 'Make Agent 003 public?' });
-        expect((select as HTMLSelectElement).value).toBe('unlisted');
+        expect(visibility.textContent).toContain('Unlisted');
         await user.click(within(dialog).getByRole('button', { name: 'Make public' }));
         await waitFor(() => {
-            expect((select as HTMLSelectElement).value).toBe('public');
+            expect(visibility.textContent).toContain('Public');
         });
         expect(within(agentHeader()).getByText('Public')).toBeDefined();
-        expect(document.activeElement).toBe(select);
+        expect(document.activeElement).toBe(visibility);
     });
 
     it('deletes the agent, then returns to the list and reports it', async () => {
@@ -439,8 +443,8 @@ describe('agent settings', { timeout: TIMEOUT_MS }, () => {
             expect(router.state.location.pathname).toBe('/agents');
         });
         expect(await screen.findByText('Agent 002 deleted')).toBeDefined();
-        expect(await screen.findByRole('link', { name: 'Agent 001' })).toBeDefined();
-        expect(screen.queryByRole('link', { name: 'Agent 002' })).toBeNull();
+        expect(await screen.findByRole('button', { name: 'Agent 001' })).toBeDefined();
+        expect(screen.queryByRole('button', { name: 'Agent 002' })).toBeNull();
     });
 
     it('opens the step-up dialog when delete needs a fresh passkey check', async () => {
@@ -466,6 +470,23 @@ describe('agent settings', { timeout: TIMEOUT_MS }, () => {
         expect(screen.queryByRole('combobox', { name: 'Visibility' })).toBeNull();
         expect(screen.queryByRole('region', { name: 'Name and description' })).toBeNull();
         expect(within(agentHeader()).queryByRole('button', { name: /Start|Stop/ })).toBeNull();
+    });
+
+    it('shows the agent’s picture and how it was picked, with choosing not offered yet', async () => {
+        await renderAgent('/agents/agent-001/settings', {
+            agents: [seededAgent(1), { ...seededAgent(2), illustration: 'analyst' }],
+        });
+        const picture = await screen.findByRole('region', { name: 'Picture' });
+        expect(within(picture).getByText("Picked automatically from the agent's name and role.")).toBeDefined();
+        expect(within(picture).getByRole('button', { name: 'Change' }).hasAttribute('disabled')).toBe(true);
+    });
+
+    it('says the engine chose the picture when the agent carries one', async () => {
+        await renderAgent('/agents/agent-002/settings', {
+            agents: [seededAgent(1), { ...seededAgent(2), illustration: 'analyst' }],
+        });
+        const picture = await screen.findByRole('region', { name: 'Picture' });
+        expect(within(picture).getByText('Chosen for this agent on the engine.')).toBeDefined();
     });
 
     it('points to the book for the name and description, under a title that is not the field label', async () => {

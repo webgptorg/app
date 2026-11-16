@@ -3,7 +3,7 @@ import { Avatar } from './avatar';
 import type { AvatarSize } from './avatar';
 
 const AGENTS = ['Ada', 'Brief', 'Copywriter', 'Daily', 'Echo', 'Fiona', 'Gatekeeper', 'Iris'];
-const SIZES: readonly AvatarSize[] = ['2xs', 'xs', 'sm', 'md', 'lg'];
+const SIZES: readonly AvatarSize[] = ['2xs', 'xs', 'sm', 'md', 'lg', 'xl'];
 
 export const avatarGallery: GalleryEntry = {
     id: 'avatar',

@@ -5,8 +5,10 @@ import { describe, expect, it } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { createAgentsEngine, SECOND_MEMBER_NAME, seededAgent } from '../../testing/agents-engine';
+import { createMemoryStorage } from '../../testing/memory-storage';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
+import { AGENT_VIEW_STORAGE_KEY } from './agent-view';
 import { AGENT_COLUMNS_STORAGE_KEY } from './agents-list-page';
 
 // Each test renders the whole app on the in-memory engine; a shared CI runner is several times slower than a laptop.
@@ -16,10 +18,18 @@ const table = () => screen.getByRole('table', { name: 'Agents' });
 const agentLinks = () =>
     within(table())
         .queryAllByRole('link')
-        .map((link) => link.querySelector('span:not([aria-hidden])')?.textContent);
+        .map((link) => link.textContent)
+        .filter((name) => /^Agent \d{3}$/.test(name));
+
+/** These tests are about the table; the grid, the default view, has its own (agents-grid.test.tsx). */
+function tableStorage() {
+    const storage = createMemoryStorage();
+    storage.setItem(AGENT_VIEW_STORAGE_KEY, 'table');
+    return storage;
+}
 
 async function renderList(path = '/agents', engine = createAgentsEngine()) {
-    const app = renderWithProviders({ path, engineApi: engine.client });
+    const app = renderWithProviders({ path, engineApi: engine.client, storage: tableStorage() });
     await screen.findAllByRole('link', { name: /Agent \d{3}/ });
     return { ...app, engine };
 }
@@ -89,8 +99,13 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
 
     it('combines the status and visibility filters with search, all sent to the engine', async () => {
         const { user, router, engine } = await renderList('/agents?q=support');
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'stopped');
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Visibility' }), 'unlisted');
+        await user.click(screen.getByRole('button', { name: 'Filter' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Status' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Stopped' }));
+        await user.keyboard('{Escape}');
+        await user.click(screen.getByRole('button', { name: 'Filter' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Visibility' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Unlisted' }));
 
         await waitFor(() => {
             expect(router.state.location.search).toEqual({ q: 'support', status: 'stopped', visibility: 'unlisted' });
@@ -113,11 +128,33 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
                 'Agent 110',
             ]);
         });
+    });
 
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'running');
-        // The filters live in the FilterBar now, so the page's own "nothing matches" state answers, with its way back.
+    it('says nothing matches, with the way back, when the filters exclude every agent', async () => {
+        renderWithProviders({
+            path: '/agents?q=support&status=running&visibility=unlisted',
+            engineApi: createAgentsEngine().client,
+            storage: tableStorage(),
+        });
         expect(await screen.findByText('No agents match')).toBeDefined();
         expect(screen.getByRole('button', { name: 'Clear search and filters' })).toBeDefined();
+    });
+
+    it('narrows to the built-in agents or to the member’s own with the Origin filter', async () => {
+        const engine = createAgentsEngine({
+            agents: [seededAgent(1), ...builtInAgents('member-owner', '2026-09-01T00:00:00.000Z')],
+        });
+        const { user, router } = await renderList('/agents', engine);
+        await user.click(screen.getByRole('button', { name: 'Filter' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Origin' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Built-in' }));
+        await waitFor(() => {
+            expect(router.state.location.search).toEqual({ origin: 'built-in' });
+        });
+        await waitFor(() => {
+            expect(within(table()).queryByRole('link', { name: 'Agent 001' })).toBeNull();
+        });
+        expect(within(table()).getByRole('link', { name: 'Chatter' })).toBeDefined();
     });
 
     it('falls back to defaults for an unknown status or a garbage cursor instead of crashing', async () => {
@@ -168,16 +205,16 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
 
     it('keeps a hidden column hidden after a reload', async () => {
         const { user, storage, unmount } = await renderList();
-        expect(screen.getByRole('columnheader', { name: 'Description' })).toBeDefined();
-        await user.click(screen.getByRole('button', { name: 'Columns' }));
-        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Description' }));
-        expect(screen.queryByRole('columnheader', { name: 'Description' })).toBeNull();
+        expect(screen.getByRole('columnheader', { name: 'Role' })).toBeDefined();
+        await user.click(screen.getByRole('button', { name: 'View options' }));
+        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Role' }));
+        expect(screen.queryByRole('columnheader', { name: 'Role' })).toBeNull();
         expect(storage.getItem(AGENT_COLUMNS_STORAGE_KEY)).toContain('description');
         unmount();
 
         renderWithProviders({ path: '/agents', engineApi: createAgentsEngine().client, storage });
         await screen.findByRole('link', { name: 'Agent 001' });
-        expect(screen.queryByRole('columnheader', { name: 'Description' })).toBeNull();
+        expect(screen.queryByRole('columnheader', { name: 'Role' })).toBeNull();
     });
 
     it('fetches an agent’s detail once when its row link is hovered, before any navigation', async () => {
@@ -211,7 +248,7 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
             since: TEST_NOW.toISOString(),
         });
 
-        expect(await within(row()).findByText('Running')).toBeDefined();
+        expect(await within(row()).findByText('Working')).toBeDefined();
         expect(engine.spies.getStatus.mock.calls.length).toBe(statusCalls);
         expect(engine.spies.list.mock.calls.length).toBe(listCalls);
     });
@@ -236,20 +273,25 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
 
 describe('agents list states', { timeout: TIMEOUT_MS }, () => {
     it('invites the first agent when there are none', async () => {
-        renderWithProviders({ path: '/agents', engineApi: createAgentsEngine({ agentCount: 0 }).client });
+        renderWithProviders({
+            path: '/agents',
+            engineApi: createAgentsEngine({ agentCount: 0 }).client,
+            storage: tableStorage(),
+        });
         expect(await screen.findByText('No agents yet')).toBeDefined();
         const cta = within(table()).getByRole('link', { name: 'New agent' });
         expect(cta.getAttribute('href')).toBe('/agents/new');
-        expect(screen.queryByRole('search', { name: 'Filters' })).toBeNull();
+        expect(screen.queryByRole('search', { name: 'Agent filters' })).toBeNull();
     });
 
     it('says when a search finds nothing, with a way back', async () => {
         const { user, router } = renderWithProviders({
             path: '/agents?q=zebra',
             engineApi: createAgentsEngine().client,
+            storage: tableStorage(),
         });
         expect(await screen.findByText('No agents match')).toBeDefined();
-        expect(screen.getByRole('search', { name: 'Filters' })).toBeDefined();
+        expect(screen.getByRole('search', { name: 'Agent filters' })).toBeDefined();
         await user.click(screen.getByRole('button', { name: 'Clear search and filters' }));
         await waitFor(() => {
             expect(router.state.location.search).toEqual({});
@@ -260,7 +302,7 @@ describe('agents list states', { timeout: TIMEOUT_MS }, () => {
     it('shows an error with retry when the list cannot be loaded, and recovers', async () => {
         const engine = createAgentsEngine();
         engine.spies.list.mockImplementation(() => problemResponse('validation-failed'));
-        const { user } = renderWithProviders({ path: '/agents', engineApi: engine.client });
+        const { user } = renderWithProviders({ path: '/agents', engineApi: engine.client, storage: tableStorage() });
         expect(await screen.findByText('The agents could not be loaded.')).toBeDefined();
         engine.spies.list.mockRestore();
 
@@ -290,46 +332,42 @@ describe('agents list permissions', { timeout: TIMEOUT_MS }, () => {
         expect(screen.getByRole('link', { name: 'New agent' }).getAttribute('href')).toBe('/agents/new');
     });
 
-    it('lists the member’s agents first, then a quiet Built-in section with each agent’s role', async () => {
+    it('lists the member’s agents first, then the built-in ones as a group of the same table with their role', async () => {
         const engine = createAgentsEngine({
             agents: [seededAgent(1), seededAgent(2), ...builtInAgents('member-owner', '2026-09-01T00:00:00.000Z')],
             capabilities: [KNOWN_CAPABILITIES.files],
         });
         const { container } = await renderList('/agents', engine);
         expect(agentLinks()).toEqual(['Agent 001', 'Agent 002']);
-        const builtIn = await screen.findByRole('region', { name: 'Built-in' });
-        expect(
-            within(builtIn)
-                .getAllByRole('link')
-                .map((link) => link.textContent),
-        ).toEqual(['Chatter', 'Adam', 'Fixer', 'Router', 'Tasker', 'Teacher', 'Expert']);
-        expect(
-            within(builtIn)
-                .getByRole('link', { name: /Chatter/ })
-                .getAttribute('href'),
-        ).toBe('/agents/builtin-chatter');
-        expect(within(builtIn).getByText('Knows Promptbook and this engine, and sets up new projects.')).toBeDefined();
+        const chatter = await within(table()).findByRole('link', { name: 'Chatter' });
+        expect(chatter.getAttribute('href')).toBe('/agents/builtin-chatter');
+        const groups = within(table())
+            .getAllByRole('rowheader')
+            .concat(within(table()).queryAllByRole('cell'))
+            .map((cell) => cell.textContent);
+        expect(groups.some((text) => text.startsWith('Built-in'))).toBe(true);
+        expect(within(table()).getByText('Knows Promptbook and this engine, and sets up new projects.')).toBeDefined();
         // Without agent-management@1 nothing can be shared or created from a form.
-        expect(screen.queryByRole('combobox', { name: 'Visibility' })).toBeNull();
         expect(screen.queryByRole('columnheader', { name: 'Visibility' })).toBeNull();
         expect(screen.queryByRole('link', { name: 'New agent' })).toBeNull();
         await expectNoAxeViolations(container);
     });
 
-    it('narrows the built-in agents with the search, and hides the section when none match', async () => {
+    it('narrows the built-in agents with the search, and leaves the group out when none match', async () => {
         const engine = createAgentsEngine({
             agents: [
                 seededAgent(1),
                 { id: 'builtin-chatter', source: 'Chatter\nPERSONA Talks with you first.', origin: 'core' },
             ],
         });
-        await renderList('/agents?q=agent', engine);
+        renderWithProviders({ path: '/agents?q=agent', engineApi: engine.client, storage: tableStorage() });
         await waitFor(() => {
             expect(engine.spies.list).toHaveBeenCalledWith(
-                { origin: 'core,system', sort: 'name', limit: 50, q: 'agent' },
+                { origin: 'core,system', sort: '-updatedAt', q: 'agent', limit: 50 },
                 expect.anything(),
             );
         });
-        expect(screen.queryByRole('region', { name: 'Built-in' })).toBeNull();
+        await screen.findByRole('link', { name: 'Agent 001' });
+        expect(within(table()).queryByRole('link', { name: 'Chatter' })).toBeNull();
     });
 });

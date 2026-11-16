@@ -73,11 +73,22 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
             },
         ],
         agents: [
-            { id: 'agent-ada', source: 'Ada\nPERSONA Reviews pull requests carefully', createdAt: ago(60 * 24 * 20) },
-            { id: 'agent-max', source: 'Max\nPERSONA Answers support email', createdAt: ago(60 * 24 * 14) },
+            {
+                id: 'agent-ada',
+                source: 'Ada\nPERSONA Reviews pull requests carefully',
+                illustration: 'developer',
+                createdAt: ago(60 * 24 * 20),
+            },
+            {
+                id: 'agent-max',
+                source: 'Max\nPERSONA Answers support email',
+                illustration: 'support',
+                createdAt: ago(60 * 24 * 14),
+            },
             {
                 id: 'agent-iris',
                 source: 'Iris\nPERSONA Writes the weekly report',
+                illustration: 'analyst',
                 createdAt: ago(60 * 24 * 7),
                 createdBy: 'member-jana',
             },

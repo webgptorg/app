@@ -1,20 +1,20 @@
-import { Card, ErrorState, Skeleton } from '@ptbk/ui';
 import { Component, Suspense } from 'react';
 import type { ReactNode } from 'react';
 
 import { m } from '../../paraglide/messages';
+import { OverviewFailed, OverviewLoading } from './overview-parts';
 
 interface BoundaryState {
     readonly failed: boolean;
 }
 
 interface BoundaryProps {
-    /** Clears failed queries under the card (`QueryErrorResetBoundary`), so a retry fetches again. */
+    /** Clears failed queries under the section (`QueryErrorResetBoundary`), so a retry fetches again. */
     readonly onReset: () => void;
     readonly children: ReactNode;
 }
 
-/** One registered overview card: its failure or its loading stays inside its own frame, never blanking the page. */
+/** One registered overview section: its failure or its loading stays a quiet line of its own, never blanking the page. */
 export class OverviewCardBoundary extends Component<BoundaryProps, BoundaryState> {
     override state: BoundaryState = { failed: false };
 
@@ -25,28 +25,15 @@ export class OverviewCardBoundary extends Component<BoundaryProps, BoundaryState
     override render() {
         if (this.state.failed) {
             return (
-                <Card>
-                    <ErrorState
-                        title={m.agent_card_failed_title()}
-                        message={m.agent_card_failed_body()}
-                        onRetry={() => {
-                            this.props.onReset();
-                            this.setState({ failed: false });
-                        }}
-                    />
-                </Card>
+                <OverviewFailed
+                    message={m.agent_card_failed_title()}
+                    onRetry={() => {
+                        this.props.onReset();
+                        this.setState({ failed: false });
+                    }}
+                />
             );
         }
-        return (
-            <Suspense
-                fallback={
-                    <Card>
-                        <Skeleton shape="block" className="h-24 w-full" />
-                    </Card>
-                }
-            >
-                {this.props.children}
-            </Suspense>
-        );
+        return <Suspense fallback={<OverviewLoading label={m.loading()} rows={2} />}>{this.props.children}</Suspense>;
     }
 }

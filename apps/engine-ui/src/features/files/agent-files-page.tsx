@@ -1,5 +1,5 @@
 import type { AgentId, FileMetadata } from '@ptbk/engine-api';
-import { Button, Card, Field, Input, Tabs } from '@ptbk/ui';
+import { Button, FilterBar, Tabs } from '@ptbk/ui';
 import type { ColumnFiltersState, MenuEntry } from '@ptbk/ui';
 import { getRouteApi } from '@tanstack/react-router';
 import { Trash2 } from 'lucide-react';
@@ -149,35 +149,31 @@ export function AgentFilesPage() {
               },
           ]
         : undefined;
+    // The list first, then a quiet drop area under it: adding knowledge is the second thing anyone does here.
     const panel = (section: AgentFileSection) =>
         search.section === section ? (
-            <div className="flex flex-col gap-4 pt-4">
-                {section === 'knowledge' && writable ? (
-                    <Card title={m.files_upload_knowledge()}>
-                        <KnowledgeUpload agentId={agentId} />
-                    </Card>
-                ) : null}
+            <div className="flex flex-col gap-4">
                 <FileSection agentId={agentId} section={section} onClear={clear} rowActions={rowActions} />
+                {section === 'knowledge' && writable ? (
+                    <section aria-label={m.files_upload_knowledge()}>
+                        <KnowledgeUpload agentId={agentId} />
+                    </section>
+                ) : null}
             </div>
         ) : null;
 
     return (
-        <div className="flex flex-col gap-6">
-            <Field label={m.files_search_label()} className="w-full sm:max-w-sm">
-                {(control) => (
-                    <Input
-                        {...control}
-                        type="search"
-                        value={text}
-                        placeholder={m.files_search_placeholder()}
-                        autoComplete="off"
-                        maxLength={255}
-                        onChange={(event) => {
-                            setText(event.target.value);
-                        }}
-                    />
-                )}
-            </Field>
+        <div className="flex flex-col gap-3">
+            <FilterBar
+                search={{
+                    label: m.files_search_label(),
+                    placeholder: m.files_search_placeholder(),
+                    value: text,
+                    onChange: setText,
+                    maxLength: 255,
+                }}
+                onClear={clear}
+            />
             <Tabs
                 label={m.files_sections()}
                 selectedId={search.section}

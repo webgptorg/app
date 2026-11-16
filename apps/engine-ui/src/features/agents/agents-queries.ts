@@ -1,3 +1,4 @@
+import { MAX_PAGE_LIMIT } from '@ptbk/engine-api';
 import type { AgentId, EngineApiClient, MemberId } from '@ptbk/engine-api';
 import { queryOptions } from '@tanstack/react-query';
 
@@ -67,5 +68,18 @@ export function agentCreatorQueryOptions(engineApi: EngineApiClient, memberId: M
         queryFn: async ({ signal }) => unwrap(await engineApi.members.get(memberId, signal)),
         // Display names change rarely; a stale one is harmless.
         staleTime: 5 * 60_000,
+    });
+}
+
+/**
+ * The engine's agent folders, for the list's Folder filter: one page of the most there may be. An engine without
+ * folders answers with none (or an error), and the filter is simply not offered.
+ */
+export function folderListQueryOptions(engineApi: EngineApiClient) {
+    return queryOptions({
+        queryKey: agentKeys.folders(),
+        queryFn: async ({ signal }) => unwrap(await engineApi.folders.list({ limit: MAX_PAGE_LIMIT }, signal)).items,
+        staleTime: 5 * 60_000,
+        retry: false,
     });
 }

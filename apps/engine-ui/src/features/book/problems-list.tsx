@@ -40,13 +40,15 @@ export function ProblemsList(props: ProblemsListProps) {
     const Heading = headingLevel === 3 ? 'h3' : 'h2';
     const headingId = useId();
     return (
-        <section aria-labelledby={headingId} className="flex flex-col gap-2">
-            <Heading id={headingId} className="text-base font-semibold">
-                {m.book_problems_title()}
-            </Heading>
-            <p role="status" className="text-sm text-text-muted">
-                {summary(props)}
-            </p>
+        <section aria-labelledby={headingId} className="flex flex-col gap-1.5">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <Heading id={headingId} className="text-sm font-semibold">
+                    {m.book_problems_title()}
+                </Heading>
+                <p role="status" className="text-xs text-text-muted tabular-nums">
+                    {summary(props)}
+                </p>
+            </div>
             {diagnostics.length === 0 ? null : (
                 <ul className="flex flex-col gap-1">
                     {diagnostics.map((diagnostic, index) => {
@@ -55,7 +57,7 @@ export function ProblemsList(props: ProblemsListProps) {
                             <li key={`${String(index)}-${diagnostic.code}`}>
                                 <button
                                     type="button"
-                                    className="flex w-full min-w-0 items-start gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-hover focus-visible:outline-2 focus-visible:outline-focus"
+                                    className="-mx-2 flex w-[calc(100%+1rem)] min-w-0 items-start gap-2 rounded-control px-2 py-1 text-left text-sm hover:bg-hover focus-visible:outline-2 focus-visible:outline-focus"
                                     onClick={() => {
                                         onSelect(diagnostic);
                                     }}
@@ -65,7 +67,7 @@ export function ProblemsList(props: ProblemsListProps) {
                                         className={cx('mt-0.5 size-4 shrink-0', TONES[diagnostic.severity])}
                                     />
                                     <span className="sr-only">{severityLabel(diagnostic.severity)}</span>
-                                    <span className="shrink-0 text-text-muted">
+                                    <span className="shrink-0 text-text-muted tabular-nums">
                                         {m.book_problem_line({ line: diagnostic.range.startLine })}
                                     </span>
                                     <span className="min-w-0 break-words">{diagnostic.message}</span>

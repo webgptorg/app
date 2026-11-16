@@ -252,7 +252,11 @@ export const HANDLERS: Handlers = {
         saveAgent(ctx, {
             ...agent,
             name: book.name,
-            profile: book.profile,
+            // The owner chose the illustration, not the book, so a new source keeps it.
+            profile:
+                agent.profile.illustration === undefined
+                    ? book.profile
+                    : { ...book.profile, illustration: agent.profile.illustration },
             currentRevisionId: revisionId,
             updatedAt: now,
         });

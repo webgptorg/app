@@ -156,6 +156,8 @@ export interface InMemorySeedAgent {
     readonly visibility?: AgentVisibility;
     /** `content` unless given: the built-in agents are `core` or `system`. */
     readonly origin?: AgentOrigin;
+    /** The owner's choice of illustration, which no book sets. */
+    readonly illustration?: string;
     readonly folderId?: string;
     readonly createdAt?: string;
     readonly deletedAt?: string;
@@ -1529,7 +1531,10 @@ function createState(
             id,
             permanentId: AgentPermanentId.parse(`p-${id}`),
             name: book.name,
-            profile: book.profile,
+            profile: {
+                ...book.profile,
+                ...(seedAgent.illustration === undefined ? {} : { illustration: seedAgent.illustration }),
+            },
             origin: seedAgent.origin ?? 'content',
             visibility: seedAgent.visibility ?? settings.defaultAgentVisibility,
             folderId: seedAgent.folderId === undefined ? null : FolderId.parse(seedAgent.folderId),

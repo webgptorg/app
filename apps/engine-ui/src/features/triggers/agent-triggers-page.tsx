@@ -20,8 +20,8 @@ export function AgentTriggersPage() {
         [navigate],
     );
     return (
-        <div className="flex flex-col gap-4">
-            <div className="flex justify-end">
+        <div className="flex flex-col gap-3">
+            <div className="flex min-h-8 items-center justify-end empty:hidden">
                 <NewTriggerLink agentId={agentId} />
             </div>
             <TriggersTable search={search} onSearchChange={onSearchChange} agentId={agentId} />

@@ -151,21 +151,65 @@
   "agents_search_placeholder": "Name or description",
   "agents_column_name": "Name",
   "agents_column_description": "Description",
+  "agents_column_role": "Role",
+  "agents_group_own": "Your agents",
+  "agents_group_built_in": "Built-in",
+  "agents_filters": "Agent filters",
+  "agents_filter_origin": "Origin",
+  "agents_filter_folder": "Folder",
+  "agents_built_in_hint": "The engine's own agents. They set up your project and keep the work moving.",
+  "agents_view_label": "View",
+  "agents_view_grid": "Grid",
+  "agents_view_table": "Table",
+  "agents_card_chats": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} chat",
+        "countPlural=other": "{count} chats"
+      }
+    }
+  ],
+  "agents_card_tasks": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} task",
+        "countPlural=other": "{count} tasks"
+      }
+    }
+  ],
+  "agents_card_runs": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} run",
+        "countPlural=other": "{count} runs"
+      }
+    }
+  ],
+  "agents_card_last_active": "last active",
+  "agent_panel_close": "Close",
+  "agent_panel_open": "Open agent",
+  "agent_panel_now": "Now",
+  "agent_panel_replying_in": "Replying in",
+  "agent_panel_tasks": "Running tasks",
+  "agent_panel_chats": "Chats",
+  "agent_panel_no_chats": "No chats yet.",
   "agents_column_status": "Status",
   "agents_column_visibility": "Visibility",
   "agents_column_created_by": "Created by",
   "agents_column_last_activity": "Last activity",
   "agents_column_updated": "Updated",
-  "agents_filter_all_statuses": "All statuses",
-  "agents_filter_all_visibilities": "All visibilities",
   "agents_empty_title": "No agents yet",
   "agents_empty_body": "Agents you and your team create on this engine appear here.",
   "agents_no_results": "No agents match",
   "agents_no_results_hint": "Try another search or clear the filters.",
   "agents_clear_filters": "Clear search and filters",
   "agents_load_failed": "The agents could not be loaded.",
-  "agents_builtin_title": "Built-in",
-  "agents_builtin_hint": "The engine's own agents. They set up your project and keep the work moving.",
   "agents_empty_body_chat": "Chatter and the other built-in agents create the agents your work needs. Ask in a chat.",
   "agent_state_idle": "Idle",
   "agent_state_running": "Running",
@@ -205,6 +249,9 @@
   "agent_tab_overview": "Overview",
   "agent_tab_settings": "Settings",
   "agent_overview_details": "Details",
+  "agent_overview_chats": "Chats",
+  "agent_overview_tasks": "Tasks",
+  "agent_overview_all_tasks": "All tasks",
   "agent_field_name": "Full name",
   "agent_field_created": "Created",
   "agent_field_updated": "Updated",
@@ -212,11 +259,18 @@
   "agent_no_activity": "No activity yet",
   "agent_value_unknown": "Not known",
   "agent_created_by_you": "You",
+  "agent_created_by_engine": "The engine",
   "agent_card_failed_title": "This card could not be shown",
   "agent_card_failed_body": "The rest of the page is fine. Try again in a moment.",
   "agent_settings_visibility": "Sharing",
   "agent_settings_danger": "Delete agent",
   "agent_settings_identity": "Name and description",
+  "agent_settings_picture": "Picture",
+  "agent_settings_picture_auto": "Picked automatically from the agent's name and role.",
+  "agent_settings_picture_chosen": "Chosen for this agent on the engine.",
+  "agent_settings_picture_own": "The agent's own picture, from its book.",
+  "agent_settings_picture_change": "Change",
+  "agent_settings_picture_later": "Choosing a picture comes in a later version.",
   "agent_settings_identity_body": "{name}'s name and description are part of its book.",
   "agent_settings_identity_link": "Edit the book",
   "agent_not_found_title": "Agent not found",
@@ -1188,7 +1242,7 @@
   "files_activity_created": "{name} added ({purpose})",
   "files_activity_deleted": "{name} deleted",
   "files_activity_scan_failed": "The virus scan of {name} failed",
-  "files_card_title": "Knowledge at a glance",
+  "files_card_title": "Files",
   "files_card_all": "All files",
   "files_card_latest_outputs": "Latest outputs",
   "files_card_no_outputs": "This agent has produced no files yet.",
@@ -1641,6 +1695,10 @@
   "unsaved_body": "Your changes are not saved anywhere and will be lost.",
   "unsaved_leave": "Leave and lose changes",
   "wizard_steps_label": "Steps",
+  "wizard_preview_title": "Preview",
+  "wizard_preview_name": "Your new agent",
+  "wizard_preview_role": "What it does appears here.",
+  "wizard_preview_next": "Next you shape its book, give it knowledge and try it in a chat. You can change everything later.",
   "wizard_step_brief": "Brief",
   "wizard_step_book": "Book",
   "wizard_step_knowledge": "Knowledge",
@@ -1997,7 +2055,10 @@
     {
       "declarations": ["input count", "local countPlural = count: plural"],
       "selectors": ["countPlural"],
-      "match": { "countPlural=one": "{count} person asks to join", "countPlural=other": "{count} people ask to join" }
+      "match": {
+        "countPlural=one": "{count} person asks to join",
+        "countPlural=other": "{count} people ask to join"
+      }
     }
   ],
   "home_ask_label": "Ask Chatter",

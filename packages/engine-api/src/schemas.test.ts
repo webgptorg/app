@@ -1050,3 +1050,26 @@ describe('AgentReader (agent origin)', () => {
         }
     });
 });
+
+describe('AgentProfile.illustration', () => {
+    const withIllustration = (illustration: unknown) => ({ ...agent, profile: { ...agent.profile, illustration } });
+
+    it('lets engines send an illustration ID, null or nothing, and nothing else', () => {
+        for (const illustration of ['analyst', 'a', `a${'b'.repeat(47)}`, 'new-style-2', null]) {
+            expect(Agent.safeParse(withIllustration(illustration)).success, String(illustration)).toBe(true);
+        }
+        expect(Agent.safeParse(agent).success).toBe(true);
+        for (const illustration of ['', 'Analyst', '2d', '-x', 'a_b', `a${'b'.repeat(48)}`, '<svg>', 7]) {
+            expect(Agent.safeParse(withIllustration(illustration)).success, String(illustration)).toBe(false);
+        }
+    });
+
+    it('reads a missing or malformed illustration as null, so the UI picks one', () => {
+        expect(AgentReader.parse(agent).profile.illustration).toBeNull();
+        expect(AgentReader.parse(withIllustration(null)).profile.illustration).toBeNull();
+        expect(AgentReader.parse(withIllustration('<svg onload=x>')).profile.illustration).toBeNull();
+        expect(AgentReader.parse(withIllustration(42)).profile.illustration).toBeNull();
+        expect(AgentReader.parse(withIllustration('analyst')).profile.illustration).toBe('analyst');
+        expect(AgentReader.parse(withIllustration('from-a-newer-ui')).profile.illustration).toBe('from-a-newer-ui');
+    });
+});

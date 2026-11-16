@@ -43,6 +43,12 @@ export const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 /** Book source text. May be empty or invalid; validity is reported as diagnostics, not as a schema error. */
 export const BookSource = z.string().max(MAX_BOOK_SOURCE_LENGTH);
 
+/**
+ * One of the UI's curated agent illustrations, e.g. `analyst`. An ID, never markup: the UI draws only the set it ships
+ * and picks one itself for an agent without one, or with one it does not know yet.
+ */
+export const AgentIllustrationId = z.string().regex(/^[a-z][a-z0-9-]{0,47}$/);
+
 /** Derived by the engine from the book source; read-only through this API. */
 export const AgentProfile = z.strictObject({
     fullname: z.string().max(256),
@@ -51,6 +57,8 @@ export const AgentProfile = z.strictObject({
     avatarUrl: z.string().max(2048).nullable(),
     color: HexColor.nullable(),
     initialMessage: z.string().max(4096).nullable(),
+    /** The illustration the agent's owner chose; absent or `null` lets the UI choose. */
+    illustration: AgentIllustrationId.nullable().optional(),
 });
 export type AgentProfile = z.infer<typeof AgentProfile>;
 
@@ -83,8 +91,22 @@ const ReadAgentOrigin = z
     .optional()
     .transform((value): AgentOrigin => AGENT_ORIGINS.find((origin) => origin === value) ?? 'content');
 
+/**
+ * `illustration` as the client reads it: absent, or malformed, reads as `null`, so the UI picks one itself. It is
+ * cosmetic, so a bad value must not cost the whole agent.
+ */
+const ReadAgentIllustration = z
+    .unknown()
+    .optional()
+    .transform((value): string | null => (AgentIllustrationId.safeParse(value).success ? (value as string) : null));
+
 /** Agents as the client reads them; engines still answer with the strict `Agent`. */
-export const AgentReader = toTolerant(Agent.extend({ origin: ReadAgentOrigin }));
+export const AgentReader = toTolerant(
+    Agent.extend({
+        origin: ReadAgentOrigin,
+        profile: AgentProfile.extend({ illustration: ReadAgentIllustration }),
+    }),
+);
 export type ReadAgent = z.output<typeof AgentReader>;
 export const AgentPageReader = z.object({ items: z.array(AgentReader), nextCursor: Cursor.nullable() });
 

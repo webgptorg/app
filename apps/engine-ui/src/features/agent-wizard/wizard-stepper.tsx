@@ -33,7 +33,7 @@ export function WizardStepper({ current }: { readonly current: WizardStep }) {
                     name: stepLabel(current),
                 })}
             </p>
-            <ol aria-label={m.wizard_steps_label()} className="flex flex-wrap gap-x-4 gap-y-2 text-sm max-sm:hidden">
+            <ol aria-label={m.wizard_steps_label()} className="flex items-center gap-2 text-sm max-sm:hidden">
                 {WIZARD_STEPS.map((step, index) => {
                     const done = index < currentIndex;
                     const isCurrent = index === currentIndex;
@@ -43,17 +43,21 @@ export function WizardStepper({ current }: { readonly current: WizardStep }) {
                             aria-current={isCurrent ? 'step' : undefined}
                             className={cx(
                                 'flex items-center gap-2',
-                                isCurrent ? 'font-semibold text-text' : 'text-text-muted',
+                                isCurrent ? 'font-medium text-text' : 'text-text-muted',
                             )}
                         >
+                            {index === 0 ? null : <span aria-hidden className="h-px w-6 bg-divider lg:w-10" />}
+                            {/* A quiet ring, never an inverted disc: the current step's ring is in the text colour. */}
                             <span
                                 aria-hidden
                                 className={cx(
-                                    'flex size-6 items-center justify-center rounded-full border text-xs',
-                                    isCurrent || done ? 'border-accent bg-accent text-on-accent' : 'border-border',
+                                    'flex size-5 shrink-0 items-center justify-center rounded-full text-2xs tabular-nums',
+                                    done && 'bg-success-soft text-success',
+                                    isCurrent && 'border-[1.5px] border-text',
+                                    !done && !isCurrent && 'border border-border',
                                 )}
                             >
-                                {done ? <Check className="size-3.5" /> : String(index + 1)}
+                                {done ? <Check className="size-3" strokeWidth={3} /> : String(index + 1)}
                             </span>
                             {stepLabel(step)}
                             {done ? <span className="sr-only">{m.wizard_step_completed()}</span> : null}

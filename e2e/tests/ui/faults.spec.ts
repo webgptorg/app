@@ -39,7 +39,7 @@ test('an API 500 shows the error state with a retry that recovers', async ({ pag
     const faults = need(engine, 'faults');
     await signIn();
     await faults.set({ errorRate: 1, errorStatus: 500, routes: ['/api/v1/agents'] });
-    await page.goto(appUrl('/agents'));
+    await page.goto(appUrl('/agents?view=table'));
     const retry = page.getByRole('button', { name: 'Try again' }).first();
     await expect(retry).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/could not be loaded|Something went wrong/).first()).toBeVisible();
@@ -81,7 +81,7 @@ test('losing relay-a mid-session leaves the app usable after a retry', async ({
         const cookie = await engine.session({ kind: 'owner' });
         await context.addCookies([{ ...cookie, url: appUrl('/'), secure: true, httpOnly: true, sameSite: 'Strict' }]);
         const page = await context.newPage();
-        await page.goto(appUrl('/agents'));
+        await page.goto(appUrl('/agents?view=table'));
         await expect(page.getByRole('table', { name: 'Agents' }).getByRole('link').first()).toBeVisible();
 
         await compose.kill(RELAY_A.service);

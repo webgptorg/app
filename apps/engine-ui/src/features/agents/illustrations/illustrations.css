@@ -1,0 +1,57 @@
+/*
+ * Agent illustrations (illustrations.tsx). Lines take the text colour, which an avatar sets to its tint's AA label
+ * colour; fills mix it with the raised surface, so they stay opaque over the avatar's wash in both themes. Props reach
+ * past the drawing's edge on purpose, so the SVG does not clip them.
+ */
+.agent-art {
+    overflow: visible;
+}
+
+.agent-art .art-body,
+.agent-art .art-paper,
+.agent-art .art-shade,
+.agent-art .art-line {
+    stroke: currentColor;
+    stroke-width: 2.6;
+    stroke-linejoin: round;
+}
+
+.agent-art .art-body {
+    fill: color-mix(in oklab, currentColor 18%, var(--color-raised));
+}
+
+.agent-art .art-paper {
+    fill: var(--color-raised);
+    stroke-linecap: round;
+}
+
+.agent-art .art-shade {
+    fill: color-mix(in oklab, currentColor 45%, var(--color-raised));
+}
+
+.agent-art .art-line {
+    fill: none;
+    stroke-linecap: round;
+}
+
+.agent-art .art-thin {
+    stroke-width: 2.1;
+}
+
+.agent-art .art-thick {
+    stroke-width: 4;
+}
+
+.agent-art .art-ink {
+    fill: currentColor;
+}
+
+.agent-art .art-cheek {
+    fill: color-mix(in oklab, currentColor 30%, transparent);
+}
+
+/* Eyes scale around their own centre, so a blink (`scale: 1 0.1`) closes them in place. */
+.agent-art .art-eye {
+    transform-box: fill-box;
+    transform-origin: center;
+}

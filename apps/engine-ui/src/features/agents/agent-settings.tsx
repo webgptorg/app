@@ -1,18 +1,19 @@
 import { AGENT_VISIBILITIES, AgentVisibility } from '@ptbk/engine-api';
-import { Button, Card, Field, Select } from '@ptbk/ui';
+import { Button, Combobox, Field, Section } from '@ptbk/ui';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { Trash2 } from 'lucide-react';
+import { BookOpen, Trash2 } from 'lucide-react';
 
 import { useEngineApi } from '../../app/engine-api-context';
-import { Link } from '../../app/link';
+import { ButtonLink } from '../../app/link';
 import { AGENT_TABS } from '../../app/registry/feature';
 import { m } from '../../paraglide/messages';
 import { usePermissions } from '../session/use-permissions';
 import { useAgentActions } from './agent-actions';
-import { visibilityLabel } from './agent-badges';
+import { VisibilityIcon, visibilityLabel } from './agent-badges';
 import { useAgentIdParam } from './agent-detail-route';
 import { useAgentTabs } from './agent-tabs';
+import { AgentAvatar } from './agent-avatar';
 import { agentDetailQueryOptions } from './agents-queries';
 
 function visibilityHint(visibility: AgentVisibility): string {
@@ -43,51 +44,86 @@ export function AgentSettings() {
     });
 
     return (
-        <div className="flex flex-col gap-6">
-            {bookTab === undefined || !canEditBook ? null : (
-                <Card title={m.agent_settings_identity()}>
-                    <p className="max-w-prose text-sm text-text-muted">
-                        {m.agent_settings_identity_body({ name: agent.name })}
-                    </p>
-                    <div>
-                        <Link to={bookTab.to} params={{ agentId: agent.id } as never}>
-                            {m.agent_settings_identity_link()}
-                        </Link>
+        // The tabs' line already separates the first section from the header.
+        <div className="flex max-w-3xl flex-col gap-6 [&>*:first-child]:border-t-0 [&>*:first-child]:pt-1">
+            <Section title={m.agent_settings_picture()}>
+                <div className="flex flex-wrap items-center gap-5">
+                    <AgentAvatar
+                        name={agent.name}
+                        agentKey={agent.id}
+                        profile={agent.profile}
+                        origin={agent.origin}
+                        size="xl"
+                    />
+                    <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
+                        <p className="text-sm text-text-muted">
+                            {agent.profile.avatarUrl !== null
+                                ? m.agent_settings_picture_own()
+                                : agent.profile.illustration === null
+                                  ? m.agent_settings_picture_auto()
+                                  : m.agent_settings_picture_chosen()}
+                        </p>
+                        {/* Choosing comes later (the contract already carries the choice); the place is shown now. */}
+                        <Button size="sm" disabled aria-describedby="agent-picture-later">
+                            {m.agent_settings_picture_change()}
+                        </Button>
+                        <p id="agent-picture-later" className="text-xs text-text-subtle">
+                            {m.agent_settings_picture_later()}
+                        </p>
                     </div>
-                </Card>
+                </div>
+            </Section>
+            {bookTab === undefined || !canEditBook ? null : (
+                <Section
+                    title={m.agent_settings_identity()}
+                    description={m.agent_settings_identity_body({ name: agent.name })}
+                    actions={
+                        <ButtonLink
+                            to={bookTab.to}
+                            params={{ agentId: agent.id } as never}
+                            variant="secondary"
+                            size="sm"
+                        >
+                            <BookOpen aria-hidden className="size-4" />
+                            {m.agent_settings_identity_link()}
+                        </ButtonLink>
+                    }
+                />
             )}
             {actions.canChangeVisibility ? (
-                <Card title={m.agent_settings_visibility()}>
+                <Section title={m.agent_settings_visibility()}>
                     <Field
                         label={m.agents_column_visibility()}
                         hint={visibilityHint(agent.visibility)}
                         className="w-full sm:max-w-sm"
                     >
                         {(control) => (
-                            <Select
+                            <Combobox
                                 {...control}
                                 value={agent.visibility}
-                                onChange={(event) => {
-                                    const next = AgentVisibility.safeParse(event.target.value);
+                                options={AGENT_VISIBILITIES.map((visibility) => ({
+                                    value: visibility,
+                                    label: visibilityLabel(visibility),
+                                    description: visibilityHint(visibility),
+                                    leading: <VisibilityIcon visibility={visibility} />,
+                                }))}
+                                onChange={(value) => {
+                                    const next = AgentVisibility.safeParse(value);
                                     if (next.success) actions.changeVisibility(agent, next.data);
                                 }}
-                            >
-                                {AGENT_VISIBILITIES.map((visibility) => (
-                                    <option key={visibility} value={visibility}>
-                                        {visibilityLabel(visibility)}
-                                    </option>
-                                ))}
-                            </Select>
+                            />
                         )}
                     </Field>
-                </Card>
+                </Section>
             ) : null}
             {actions.canDelete ? (
-                <Card title={m.agent_settings_danger()}>
-                    <p className="max-w-prose text-sm text-text-muted">{m.agent_delete_body({ name: agent.name })}</p>
-                    <div>
+                <Section
+                    title={m.agent_settings_danger()}
+                    description={m.agent_delete_body({ name: agent.name })}
+                    actions={
                         <Button
-                            className="text-danger"
+                            variant="danger"
+                            size="sm"
                             onClick={() => {
                                 actions.requestDelete(agent);
                             }}
@@ -95,8 +131,8 @@ export function AgentSettings() {
                             <Trash2 aria-hidden className="size-4" />
                             {m.agent_delete_named({ name: agent.name })}
                         </Button>
-                    </div>
-                </Card>
+                    }
+                />
             ) : null}
             {actions.dialogs}
         </div>

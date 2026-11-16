@@ -129,14 +129,14 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByRole('menuitem', { name: 'Mark as seen' })).toBeDefined();
     });
 
-    it('shows the asking agent by its initial without agents.read, and never asks for the agent list', async () => {
+    it('shows the asking agent by its picture without agents.read, and never asks for the agent list', async () => {
         const engine = walletEngine(PERMISSIONS.filter((permission) => permission !== 'agents.read'));
         const list = vi.spyOn(engine.client.agents, 'list');
         renderWithProviders({ path: '/wallet', engineApi: engine.client });
         const requests = await screen.findByRole('region', { name: 'Agents are waiting' });
         expect(within(requests).getByText('Ada needs a login for linear.app')).toBeDefined();
-        // The avatar's initial is CSS content, so the mark is found by the letter it carries.
-        expect(requests.querySelector('[data-initial="A"]')).not.toBeNull();
+        // The avatar draws the agent's illustration, picked from its name alone when the agent list is out of reach.
+        expect(requests.querySelector('svg.agent-art')).not.toBeNull();
         expect(list).not.toHaveBeenCalled();
     });
 

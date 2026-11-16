@@ -20,7 +20,7 @@ test('the actions taken in the UI are audited and the filters find them', async 
     test.setTimeout(60_000);
     const site = `audit-${crypto.randomUUID().slice(0, 8)}.example`;
     await signIn();
-    await page.goto(appUrl('/agents'));
+    await page.goto(appUrl('/agents?view=table'));
     const agent = required(
         (await apiList<Agent>(page, '/agents?origin=content')).find((candidate) => candidate.visibility === 'private'),
         'private agent',
