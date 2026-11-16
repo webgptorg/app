@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-16: UI loader checks again when a delayed release becomes eligible
+
+- **Changed:** [ui-loader.md, Fetch](ui-loader.md#what-the-engine-must-do): after a `delay-not-elapsed` refusal, the engine schedules one extra check at `eligibleAt` plus a few seconds of jitter, on top of the periodic check (at most 1 hour apart). Each check replaces the pending one; it is not persisted. Checklist ENG-120. No conformance check: the harness triggers checks by restarting the engine.
+- **Redo:** in `src/app/web/ui-loader.ts`, in the `delay-not-elapsed` branch where `verdict.eligibleAt` is known, set one timer for `eligibleAt` plus jitter that calls `this.check()`; clear it at the start of every check and on stop. Keep the hourly interval.
+
 ### 2026-11-16: Gateway pages follow the new visual identity
 
 - **Changed:** [`gateway.css`](../../packages/gateway-pages/pages/gateway.css) now carries the new design tokens (Inter, graphite) and soft buttons, hairline borders and teal only for links. The HTML, script, endpoints and CSP are unchanged.

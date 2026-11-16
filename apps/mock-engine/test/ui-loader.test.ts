@@ -14,6 +14,7 @@ import type { MemoryReleaseSource } from '../src/testing/memory-release-source';
 import { createMemoryReleaseSource } from '../src/testing/memory-release-source';
 import { createMemoryUpdateStateStore } from '../src/testing/memory-update-state-store';
 import { createMemoryLogger } from '../src/testing/memory-logger';
+import { createSeededRandom } from '../src/testing/seeded-random';
 import type { TestBundleInput, TestReleaseKeys } from '../src/testing/ui-releases';
 import {
     TEST_ARCHIVE_NAME,
@@ -78,6 +79,7 @@ async function start(options: { readonly pinned?: string } = {}): Promise<Engine
             trust: keys.policy,
         },
         clock,
+        random: createSeededRandom(1),
         logger: createMemoryLogger(),
         onActive: (bundle) => {
             onActive(bundle);
