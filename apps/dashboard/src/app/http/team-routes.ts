@@ -8,7 +8,6 @@ import type { EngineCreationPolicy } from '../../domain/registration/engine-crea
 import {
     acceptInvite,
     createInvites,
-    previewInvite,
     resendInvite,
     revokeInvite,
     type InviteDeps,
@@ -372,16 +371,15 @@ export function bindTeamRoutes(
 
     bind(router, mount, apiRoutes.acceptInvite, async ({ input, request, session }) => {
         const token = inviteToken(input.body.token, request);
-        const preview = token === null ? null : await previewInvite(deps, token);
         const outcome =
-            token === null || preview === null
+            token === null
                 ? ({ kind: 'invalid' } as const)
                 : await acceptInvite(inviteDeps, { userId: session.user.id, email: session.user.email }, token);
         switch (outcome.kind) {
             case 'accepted':
                 return {
                     kind: 'ok',
-                    body: { orgId: outcome.orgId, teamIds: [...(preview?.invite.teamIds ?? [])] },
+                    body: { orgId: outcome.orgId, teamIds: [...outcome.teamIds] },
                     setCookies: [clearInviteCookie()],
                 };
             case 'invalid':

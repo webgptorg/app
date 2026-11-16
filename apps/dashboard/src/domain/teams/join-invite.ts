@@ -105,9 +105,6 @@ export function createInviteJoinFlow(deps: InviteJoinDeps) {
                 return { kind: 'invite-invalid' };
             }
             const { invite } = found.preview;
-            if ((await deps.store.accounts.findUserByEmail(invite.email)) !== null) {
-                return { kind: 'account-exists' };
-            }
             const now = deps.clock.nowMs();
             const userId = newUserId(deps.random);
             const session = await newSession(deps, { userId, orgId: invite.orgId, steppedUp: false });
@@ -148,6 +145,7 @@ export function createInviteJoinFlow(deps: InviteJoinDeps) {
                     return { kind: 'ok', session, joined: { orgId: outcome.orgId, teamIds: invite.teamIds } };
                 case 'invalid':
                     return { kind: 'invite-invalid' };
+                // The address signed up since the options: its unique address fails the whole transaction.
                 case 'conflict':
                     return { kind: 'account-exists' };
             }
@@ -169,13 +167,12 @@ export function createInviteJoinFlow(deps: InviteJoinDeps) {
             if (asserted.kind === 'webauthn-failed') {
                 return asserted;
             }
-            const found = await pending(input.token);
             const accepted = await acceptInvite(
                 deps,
                 { userId: asserted.user.id, email: asserted.user.email },
                 input.token,
             );
-            if (found === null || accepted.kind === 'invalid') {
+            if (accepted.kind === 'invalid') {
                 return { kind: 'invite-invalid' };
             }
             if (accepted.kind === 'email-mismatch') {
@@ -195,7 +192,7 @@ export function createInviteJoinFlow(deps: InviteJoinDeps) {
             return {
                 kind: 'ok',
                 session,
-                joined: { orgId: accepted.orgId, teamIds: found.preview.invite.teamIds },
+                joined: { orgId: accepted.orgId, teamIds: accepted.teamIds },
             };
         },
     };

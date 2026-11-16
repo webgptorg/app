@@ -46,7 +46,7 @@ async function setup(memberKey: MemberKeySource, status: 'active' | 'suspended' 
         orgRole: 'owner' as const,
         email: account.user.email,
     };
-    return { deps, actor, teamId, engine, teams };
+    return { deps, actor, teamId, engine, teams, registration };
 }
 
 const noKey: MemberKeySource = () => Promise.resolve(null);
@@ -97,5 +97,35 @@ describe('issueAccessTicket', () => {
     it('refuses a suspended engine', async () => {
         const { deps, actor, teamId } = await setup(noKey, 'suspended');
         expect(await issueAccessTicket(deps, actor, teamId)).toEqual({ kind: 'not-found' });
+    });
+});
+
+describe('access emails', () => {
+    it('sends none for an engine the dashboard no longer finds in the organization', async () => {
+        const { deps, actor, teamId, engine, teams, registration } = await setup(
+            memberKeySource(new Uint8Array(32).fill(7)),
+        );
+        const ticketId = 'ticket-00000000000001';
+        await teams.recordTicket({
+            id: ticketId,
+            teamId,
+            engineId: engine.engineId,
+            userId: actor.userId,
+            issuedAt: NOW,
+            expiresAt: NOW + 60_000,
+        });
+        registration.state.engines.delete(engine.engineId);
+        const heartbeat = { accessRequests: 1, acks: [{ id: ticketId, outcome: 'approved' as const }] };
+        const sent: unknown[] = [];
+        const { deliver } = await handleHeartbeatV2(
+            deps,
+            engine.engineId,
+            heartbeat as Parameters<typeof handleHeartbeatV2>[2],
+        );
+        await deliver((message) => {
+            sent.push(message);
+            return Promise.resolve();
+        });
+        expect(sent).toEqual([]);
     });
 });

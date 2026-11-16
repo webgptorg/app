@@ -445,6 +445,39 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
                 );
             });
 
+            it('refuses a passkey the ceremony did not ask for', async () => {
+                const { email, token } = await invited();
+                const browser = harness.browser({ ip: '203.0.113.207' });
+                const { verify } = await registerWith(
+                    browser,
+                    JOIN_OPTIONS,
+                    JOIN_VERIFY,
+                    { token },
+                    { origin: 'https://evil.example' },
+                );
+                expect([verify.status, problemCode(verify)]).toEqual([401, 'webauthn-failed']);
+
+                const joiner = await person(email);
+                await joiner.browser.request('POST', '/api/auth/signout');
+                const options = requestOptions(await joiner.browser.request('POST', '/api/auth/signin/options'));
+                const forged = await joiner.browser.authenticator.assert(options, { origin: 'https://evil.example' });
+                expectProblem(
+                    await joiner.browser.request('POST', SIGNIN_VERIFY, { token, response: forged }),
+                    401,
+                    'webauthn-failed',
+                );
+                // No challenge from this browser: a replayed assertion has nothing to answer.
+                const replayed = await joiner.browser.authenticator.assert(options);
+                expectProblem(
+                    await harness.browser({ ip: '203.0.113.208' }).request('POST', SIGNIN_VERIFY, {
+                        token,
+                        response: replayed,
+                    }),
+                    400,
+                    'challenge-invalid',
+                );
+            });
+
             it('accepts with the cookie when already signed in, and says which teams it was for', async () => {
                 const { boss, email, teamIds, token } = await invited();
                 const joiner = await person(email);

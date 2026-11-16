@@ -164,7 +164,8 @@ export async function previewInvite(
 }
 
 export type AcceptOutcome =
-    | { readonly kind: 'accepted'; readonly orgId: OrgId }
+    /** `teamIds`: the teams the invitation named, for the page that continues to their engines. */
+    | { readonly kind: 'accepted'; readonly orgId: OrgId; readonly teamIds: readonly TeamId[] }
     | { readonly kind: 'invalid' }
     /** The invitation was for another address: a forwarded link does not let someone else in. */
     | { readonly kind: 'email-mismatch' };
@@ -183,5 +184,9 @@ export async function acceptInvite(
     if (preview.invite.email !== actor.email.toLowerCase()) {
         return { kind: 'email-mismatch' };
     }
-    return deps.teams.acceptInvite(tokenHash, actor.userId, { id: newOrgAuditEntryId(deps.random), at: now });
+    const accepted = await deps.teams.acceptInvite(tokenHash, actor.userId, {
+        id: newOrgAuditEntryId(deps.random),
+        at: now,
+    });
+    return accepted.kind === 'accepted' ? { ...accepted, teamIds: preview.invite.teamIds } : accepted;
 }
