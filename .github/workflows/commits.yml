@@ -23,7 +23,8 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: package.json
-      - run: bun install --frozen-lockfile
+      # Commitlint uses only the root tools; do not install every application workspace.
+      - run: bun install --frozen-lockfile --filter './'
       # The PR title becomes the squash-merge commit on main, so it must pass the same rules.
       # Untrusted values go through env, never straight into the script.
       - name: Lint PR title

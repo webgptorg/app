@@ -62,7 +62,16 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      # Formatting-only changes need the root tools, not every app's runtime and browser dependencies.
+      - name: Install check dependencies
+        env:
+          CHECK_MODE: ${{ needs.changes.outputs.check }}
+        run: |
+          if [ "$CHECK_MODE" = format ]; then
+            bun install --frozen-lockfile --filter './'
+          else
+            bun install --frozen-lockfile
+          fi
       # The root `check` script, so whatever runs locally runs in CI and new checks cannot be forgotten here: whole
       # for a full run, with tests only for the affected workspaces, or only Prettier and the plan and engine guide
       # checks when no workspace is affected.
@@ -90,11 +99,15 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/engine-ui...'
       - name: Install Chromium
         working-directory: apps/engine-ui
         run: bunx --no-install playwright install --with-deps chromium
-      - run: bun run --filter @ptbk/engine-ui test:csp
+      # A failing PR is already blocked; stop at the first browser failure. Main and nightly keep every diagnostic.
+      - run: |
+          args=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--max-failures=1); fi
+          bun run --filter @ptbk/engine-ui test:csp "${args[@]}"
 
   # The built dashboard (SPA and Worker in workerd) in Chromium under its production CSP, with a virtual WebAuthn
   # authenticator for the sign-up, sign-in and recovery flows (D-09).
@@ -114,12 +127,16 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/dashboard...'
       - run: bun run --filter @ptbk/dashboard generate
       - name: Install Chromium
         working-directory: apps/dashboard
         run: bunx --no-install playwright install --with-deps chromium
-      - run: bun run --filter @ptbk/dashboard test:csp
+      # A failing PR is already blocked; stop at the first browser failure. Main and nightly keep every diagnostic.
+      - run: |
+          args=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--max-failures=1); fi
+          bun run --filter @ptbk/dashboard test:csp "${args[@]}"
 
   # The owner's setup and passkey sign-in on the mock engine's reference gateway pages, in Chromium with a virtual
   # authenticator, through an in-process relay under the engine's CSP (M-08).
@@ -139,11 +156,15 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/mock-engine...'
       - name: Install Chromium
         working-directory: apps/mock-engine
         run: bunx --no-install playwright install --with-deps chromium
-      - run: bun run --filter @ptbk/mock-engine test:browser
+      # A failing PR is already blocked; stop at the first browser failure. Main and nightly keep every diagnostic.
+      - run: |
+          args=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--max-failures=1); fi
+          bun run --filter @ptbk/mock-engine test:browser "${args[@]}"
 
   # Browsers through both relays to the mock engine in Docker Compose (X-01). Separate from `check`, which never needs
   # Docker. Every image is built from scratch on each run: no actions/cache, no Buildx cache.
@@ -193,7 +214,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/mock-engine...' --filter '@ptbk/conformance...'
       - name: Build the mock engine and the conformance CLI
         run: |
           bun run --filter @ptbk/mock-engine build
@@ -260,7 +281,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/relay...'
       - run: bun run --filter @ptbk/relay check:metrics
 
   # The relay host's real user data booted in a Debian 13 cloud image under KVM, with secrets placed and a test relay
@@ -283,7 +304,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/relay...'
       - run: bun run --filter @ptbk/relay build
       - name: Install QEMU and the test tools
         run: |
@@ -320,7 +341,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/mock-engine...' --filter '@ptbk/relay...'
       - run: bun run --filter @ptbk/mock-engine build
       - run: infra/relay/test/deploy-test.sh
 
