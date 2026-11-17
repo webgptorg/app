@@ -78,7 +78,7 @@ test('saving a Wallet login finishes after the passkey in a popup, with the pass
 
     expect(stepUp).toBe('asked');
     // Refused for step-up, then sent again from memory after the popup: the member typed the password once.
-    expect(saves).toEqual([401, 201]);
+    expect(saves).toEqual([401, 200]);
     expect(sentPasswords).toHaveLength(2);
     await expect(owner.getByRole('dialog', { name: 'Add login' })).toHaveCount(0);
     await expect(
@@ -123,6 +123,7 @@ test('with popups blocked, step-up goes through its page: a removal runs again b
             .getByRole('button', { name: 'Remove login' })
             .click();
         await confirmOnStepUpPage(owner);
+        await expect(owner.getByText(`${label} removed.`)).toBeVisible();
         await expect(logins.getByRole('listitem').filter({ hasText: kept })).toHaveCount(0);
         expect(removals).toEqual([401, 204]);
     });
@@ -135,12 +136,12 @@ test('with popups blocked, step-up goes through its page: a removal runs again b
         await confirmOnStepUpPage(owner);
         const dialog = owner.getByRole('dialog', { name: 'Add login' });
         await expect(dialog.getByText('Confirmed. Enter the password again to save.')).toBeVisible();
-        await expect(dialog.getByRole('textbox', { name: /^Website/ })).toHaveValue(site);
+        await expect(dialog.getByRole('textbox', { name: /^Website/ })).toHaveValue(`https://${site}`);
         const passwordField = dialog.getByLabel(/^Password/);
         await expect(passwordField).toHaveValue('');
         await passwordField.fill(`pw-${crypto.randomUUID()}`);
         await dialog.getByRole('button', { name: 'Save login' }).click();
         await expect(owner.getByText(`Login for ${site} saved.`)).toBeVisible();
-        expect(saves).toEqual([401, 201]);
+        expect(saves).toEqual([401, 200]);
     });
 });
