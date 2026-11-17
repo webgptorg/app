@@ -5,7 +5,7 @@ import { newInviteId, newOrgAuditEntryId, type InviteId, type OrgId, type TeamId
 import type { Locale } from '../locale';
 import type { EmailMessage, EmailSender } from '../ports/email-sender';
 import type { OrgRole } from '../roles';
-import type { InvitePreview, InviteRecord, TeamStore } from './team-store';
+import type { InviteRecord, TeamStore } from './team-store';
 import { teamAudit, type TeamActor, type TeamDeps } from './teams';
 
 /** How long an emailed invitation works (teams spec): long enough for a colleague on holiday, then it lapses. */
@@ -154,13 +154,6 @@ export async function resendInvite(
 
 export function revokeInvite(deps: InviteDeps, actor: TeamActor, inviteId: InviteId) {
     return deps.teams.revokeInvite(actor.orgId, inviteId, teamAudit(deps, actor));
-}
-
-export async function previewInvite(
-    deps: Pick<InviteDeps, 'teams' | 'clock'>,
-    token: string,
-): Promise<InvitePreview | null> {
-    return deps.teams.previewInvite(await sha256Hex(token), deps.clock.nowMs());
 }
 
 export type AcceptOutcome =

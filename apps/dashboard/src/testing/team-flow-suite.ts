@@ -404,8 +404,8 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
 
             it('signs an existing account in to the organization and accepts, and refuses another account', async () => {
                 const { boss, email, teamIds, token } = await invited();
+                // Still signed in to the account's own organization: signing in to join replaces that session.
                 const joiner = await person(email);
-                await joiner.browser.request('POST', '/api/auth/signout');
 
                 const stranger = await person();
                 const strangerOptions = requestOptions(
@@ -476,6 +476,17 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
                     400,
                     'challenge-invalid',
                 );
+            });
+
+            it('signs in and joins from a browser that has no session', async () => {
+                const { boss, email, token } = await invited();
+                const joiner = await person(email);
+                await joiner.browser.request('POST', '/api/auth/signout');
+                const options = requestOptions(await joiner.browser.request('POST', '/api/auth/signin/options'));
+                const response = await joiner.browser.authenticator.assert(options);
+                const verify = await joiner.browser.request('POST', SIGNIN_VERIFY, { token, response });
+                expect(verify.status).toBe(200);
+                expect((verify.body as Joined).session.activeOrg.id).toBe(boss.orgId);
             });
 
             it('accepts with the cookie when already signed in, and says which teams it was for', async () => {

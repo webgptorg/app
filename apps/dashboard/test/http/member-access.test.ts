@@ -115,17 +115,16 @@ describe('access emails', () => {
             expiresAt: NOW + 60_000,
         });
         registration.state.engines.delete(engine.engineId);
-        const heartbeat = { accessRequests: 1, acks: [{ id: ticketId, outcome: 'approved' as const }] };
+        type Heartbeat = Parameters<typeof handleHeartbeatV2>[2];
         const sent: unknown[] = [];
-        const { deliver } = await handleHeartbeatV2(
-            deps,
-            engine.engineId,
-            heartbeat as Parameters<typeof handleHeartbeatV2>[2],
-        );
-        await deliver((message) => {
+        const send = (message: unknown) => {
             sent.push(message);
             return Promise.resolve();
-        });
+        };
+        const waiting = { accessRequests: 1, acks: [] } as unknown as Heartbeat;
+        await (await handleHeartbeatV2(deps, engine.engineId, waiting)).deliver(send);
+        const approved = { accessRequests: 0, acks: [{ id: ticketId, outcome: 'approved' }] } as unknown as Heartbeat;
+        await (await handleHeartbeatV2(deps, engine.engineId, approved)).deliver(send);
         expect(sent).toEqual([]);
     });
 });
