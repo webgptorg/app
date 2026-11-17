@@ -61,8 +61,8 @@ export interface DashboardSteps {
     /** Creates a link code on `/engines/new` and reads the install command and the code from the page. */
     createLinkCode(): Promise<LinkCodeView>;
     signOut(): Promise<void>;
-    /** Usernameless sign-in with the passkey the authenticator holds. */
-    signIn(): Promise<void>;
+    /** Continue with the address of the account whose passkey the virtual authenticator holds. */
+    signIn(email: string): Promise<void>;
     /** The engine list's rows once it has loaded, fetched anew (the list refreshes itself only every 60 s). */
     reloadEngineRows(): Promise<Locator>;
     /** Everything the dev outbox holds for `email`, oldest first. */
@@ -119,7 +119,7 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
     return {
         origin: DASHBOARD_ORIGIN,
         async signUp(email) {
-            await page.goto(`${DASHBOARD_ORIGIN}/signup`);
+            await page.goto(`${DASHBOARD_ORIGIN}/continue`);
             await page.getByLabel('Email').fill(email);
             // A run signs up more often than the per-IP limit allows; each sign-up comes from its own address.
             await page.route('**/api/auth/signup/start', (route) =>
@@ -130,7 +130,8 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
                     },
                 }),
             );
-            await page.getByRole('button', { name: 'Send the link' }).click();
+            // The virtual authenticator holds no passkey for a new address, so Continue falls back to the email.
+            await page.getByRole('button', { name: 'Continue' }).click();
             await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
             await page.goto(await outboxLink(email, 'signup-link'));
             await page.getByRole('button', { name: 'Create passkey' }).click();
@@ -162,10 +163,16 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
         async signOut() {
             await page.getByRole('button', { name: /^Account menu for / }).click();
             await page.getByRole('menuitem', { name: 'Sign out' }).click();
-            await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+            await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
         },
-        async signIn() {
-            await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
+        async signIn(email) {
+            await page.getByLabel('Email').fill(email);
+            // The virtual authenticator may answer the field's passkey autofill on its own, the one-tap sign-in, and the
+            // page leaves before Continue can be clicked; Continue covers a browser where it does not.
+            await page
+                .getByRole('button', { name: 'Continue' })
+                .click({ timeout: 5_000 })
+                .catch(() => undefined);
             await expect(landing).toBeVisible();
         },
         async emails(email) {

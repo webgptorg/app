@@ -55,13 +55,22 @@ export async function registerWithEmailToken(
     return verified.kind === 'ok' ? { kind: 'ok', value: verified.data } : apiFailure(verified);
 }
 
-/** Usernameless sign-in: the authenticator offers the passkeys it holds for this site. */
-export async function signInWithPasskey(deps: CeremonyDeps): Promise<CeremonyResult<SessionView>> {
+/**
+ * Usernameless sign-in: the authenticator offers the passkeys it holds for this site, in a prompt or, with `autofill`,
+ * in the email field's suggestions once the person picks one there.
+ */
+export async function signInWithPasskey(
+    deps: CeremonyDeps,
+    mode: 'prompt' | 'autofill' = 'prompt',
+): Promise<CeremonyResult<SessionView>> {
     const options = await deps.api.call(apiRoutes.signinOptions, {});
     if (options.kind !== 'ok') {
         return apiFailure(options);
     }
-    const asserted = await deps.passkeys.authenticate(options.data.options);
+    const asserted =
+        mode === 'prompt'
+            ? await deps.passkeys.authenticate(options.data.options)
+            : await deps.passkeys.autofill(options.data.options);
     if (asserted.kind === 'failed') {
         return passkeyFailure(asserted.reason);
     }

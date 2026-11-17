@@ -35,6 +35,33 @@ async function signedUp(deps: TestAuthDeps) {
     return { session: outcome.session, user };
 }
 
+describe('signup/start behind the Continue screen', () => {
+    // The response goes out before any lookup or send, so its timing cannot tell an existing address from a new one.
+    it('looks nothing up and sends nothing until the deferred delivery runs, for either kind of address', async () => {
+        const deps = createTestAuthDeps();
+        await signedUp(deps);
+        const fresh = emailAddressSchema.parse('new@example.test');
+        const signup = createSignupFlow(deps);
+        const sentBefore = deps.email.sent.length;
+        const lookups: string[] = [];
+        const findUserByEmail = deps.store.accounts.findUserByEmail.bind(deps.store.accounts);
+        deps.store.accounts.findUserByEmail = (address) => {
+            lookups.push(address);
+            return findUserByEmail(address);
+        };
+        const deliveries = [signup.start({ email, locale: 'en' }), signup.start({ email: fresh, locale: 'en' })];
+        expect(lookups).toEqual([]);
+        expect(deps.email.sent).toHaveLength(sentBefore);
+        for (const deliver of deliveries) {
+            await deliver();
+        }
+        expect(deps.email.sent.slice(sentBefore).map((message) => message.template)).toEqual([
+            'account-exists',
+            'signup-link',
+        ]);
+    });
+});
+
 describe('auth flows when state changes underneath', () => {
     it('signup reports a conflict when the store refuses the account', async () => {
         const deps = createTestAuthDeps();

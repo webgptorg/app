@@ -31,6 +31,8 @@ export interface RenderAppOptions {
      * for screens that change with time. The test installs them (`vi.useFakeTimers({ shouldAdvanceTime: true })`).
      */
     readonly fakeTimers?: { readonly advance: (ms: number) => unknown };
+    /** Scripts the authenticator before the first render, for ceremonies a screen starts on mount. */
+    readonly passkeys?: (passkeys: FakePasskeys) => void;
 }
 
 export interface RenderedApp extends RenderResult {
@@ -57,6 +59,7 @@ export function renderApp(options: RenderAppOptions = {}): RenderedApp {
     api.on(apiRoutes.listLinkCodes, ok({ linkCodes: [] }));
     options.script?.(api);
     const passkeys = createFakePasskeys();
+    options.passkeys?.(passkeys);
     const storage = options.storage ?? createMemoryStorage();
     const history = createMemoryHistory({ initialEntries: [options.path ?? '/'] });
     const user =

@@ -18,7 +18,7 @@ import { safeReturnTo } from './return-to';
 export async function leaveSignedInArea(queryClient: QueryClient, router: AnyRouter, returnTo?: string): Promise<void> {
     queryClient.setQueryData(queryKeys.session, null);
     queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== queryKeys.session[0] });
-    await router.navigate({ to: '/signin', search: returnTo === undefined ? {} : { returnTo }, replace: true });
+    await router.navigate({ to: '/continue', search: returnTo === undefined ? {} : { returnTo }, replace: true });
 }
 
 /** For the query client's 401 handler: the session ended elsewhere, so come back here after signing in again. */

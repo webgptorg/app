@@ -48,5 +48,21 @@ export function createBrowserPasskeyAuthenticator(): PasskeyAuthenticator {
                     optionsJSON: options as Parameters<typeof WebAuthnBrowser.startAuthentication>[0]['optionsJSON'],
                 }),
             ),
+        supportsAutofill: async () => {
+            try {
+                const webAuthn = await import('@simplewebauthn/browser');
+                return await webAuthn.browserSupportsWebAuthnAutofill();
+            } catch {
+                return false;
+            }
+        },
+        // The library aborts this request itself when a modal ceremony starts (its WebAuthnAbortService).
+        autofill: (options) =>
+            run(authenticationResponseSchema, (webAuthn) =>
+                webAuthn.startAuthentication({
+                    optionsJSON: options as Parameters<typeof WebAuthnBrowser.startAuthentication>[0]['optionsJSON'],
+                    useBrowserAutofill: true,
+                }),
+            ),
     };
 }

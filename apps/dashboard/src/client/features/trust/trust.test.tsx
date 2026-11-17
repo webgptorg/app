@@ -40,7 +40,7 @@ describe('trust page', () => {
 
 describe('signed-out frame', () => {
     it('shows the language and links only to pages that exist', async () => {
-        renderApp({ path: '/signin' });
+        renderApp({ path: '/continue' });
         expect(await screen.findByRole('button', { name: 'EN, Language: English' })).toBeTruthy();
         const footer = screen.getByRole('navigation', { name: 'About Promptbook' });
         const links = within(footer).getAllByRole('link');
@@ -51,7 +51,7 @@ describe('signed-out frame', () => {
     });
 
     it('tells someone new what Promptbook is before asking for an email', async () => {
-        renderApp({ path: '/signup' });
+        renderApp({ path: '/continue' });
         expect(
             await screen.findByText(
                 'Run AI agents on your own server and use them from anywhere. Your data stays with you.',

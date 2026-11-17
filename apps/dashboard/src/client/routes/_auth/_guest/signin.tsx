@@ -1,20 +1,11 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
-import { SignInPage } from '../../../features/auth/signin-page';
 import { safeReturnTo } from '../../../features/session/return-to';
 
-interface SignInSearch {
-    readonly returnTo?: string;
-}
-
+/** The old sign-in address, kept for bookmarks and older emails: Continue signs in now. */
 export const Route = createFileRoute('/_auth/_guest/signin')({
-    validateSearch: (search: Readonly<Record<string, unknown>>): SignInSearch => {
-        const returnTo = safeReturnTo(search['returnTo']);
-        return returnTo === undefined ? {} : { returnTo };
-    },
-    // Vetted again where it is used: TanStack merges this route's validated search over its parents' raw search, so
-    // a rejected `returnTo` would otherwise still reach the component.
-    component: function SignIn() {
-        return <SignInPage returnTo={safeReturnTo(Route.useSearch().returnTo)} />;
+    beforeLoad: ({ search }) => {
+        const returnTo = safeReturnTo((search as Readonly<Record<string, unknown>>)['returnTo']);
+        throw redirect({ to: '/continue', search: returnTo === undefined ? {} : { returnTo }, replace: true });
     },
 });

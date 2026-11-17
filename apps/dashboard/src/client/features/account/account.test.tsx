@@ -145,8 +145,8 @@ describe('account page', () => {
         await app.user.click(signOutEverywhere);
         const dialog = await screen.findByRole('dialog', { name: 'Sign out everywhere?' });
         await app.user.click(within(dialog).getByRole('button', { name: 'Sign out everywhere' }));
-        expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
-        expect(app.history.location.pathname).toBe('/signin');
+        expect(await screen.findByRole('heading', { name: 'Sign in or create an account' })).toBeTruthy();
+        expect(app.history.location.pathname).toBe('/continue');
         expect(app.api.callsTo(apiRoutes.revokeAllSessions)).toHaveLength(1);
     });
 
@@ -322,7 +322,7 @@ describe('step-up and refusals', () => {
                 api.on(apiRoutes.listPasskeys, problem(401, 'unauthorized'));
             },
         });
-        expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Sign in or create an account' })).toBeTruthy();
         expect(app.history.location.search).toBe('?returnTo=%2Faccount');
     });
 });

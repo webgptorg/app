@@ -117,8 +117,8 @@ afterEach(() => {
 describe('new engine page', () => {
     it('sends a signed-out visitor to sign in first', async () => {
         const app = renderApp({ path: '/engines/new' });
-        expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
-        expect(app.history.location.pathname).toBe('/signin');
+        expect(await screen.findByRole('heading', { name: 'Sign in or create an account' })).toBeTruthy();
+        expect(app.history.location.pathname).toBe('/continue');
     });
 
     it('is reachable from the empty engine list', async () => {

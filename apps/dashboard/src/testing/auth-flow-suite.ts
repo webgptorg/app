@@ -110,7 +110,7 @@ export function describeAuthFlows(
                 const exists = lastEmail(harness, existing);
                 expect(exists).toMatchObject({
                     template: 'account-exists',
-                    signInLink: `${ORIGIN}/signin`,
+                    signInLink: `${ORIGIN}/continue`,
                     recoveryLink: `${ORIGIN}/recover`,
                 });
             });
@@ -721,7 +721,7 @@ export function describeAuthFlows(
                     template: 'recovery-notice',
                     recoveredAt,
                     cooldownEndsAt: recoveredAt + RECOVERY_COOLDOWN_MS,
-                    signInLink: `${ORIGIN}/signin`,
+                    signInLink: `${ORIGIN}/continue`,
                 });
 
                 const listed = (await lost.request('GET', '/api/passkeys')).body as {
@@ -776,6 +776,65 @@ export function describeAuthFlows(
                 expect((await browser.request('POST', '/api/auth/recovery/request', { email: 'nope' })).status).toBe(
                     400,
                 );
+            });
+        });
+
+        // The Continue screen (D-32): a passkey first, and only if that fails the one email signup/start sends.
+        describe('continue', () => {
+            it('signs in an account with a passkey on this device, and mails nothing', async () => {
+                const { email } = await signUp(harness, browser);
+                await browser.request('POST', '/api/auth/signout');
+                const before = harness.outbox.sentTo(email).length;
+                const { verify } = await signIn(browser);
+                expect(verify.status).toBe(200);
+                expect((verify.body as SessionView).user.email).toBe(email);
+                expect(harness.outbox.sentTo(email)).toHaveLength(before);
+            });
+
+            it('mails an account without a passkey on this device how to sign in or recover', async () => {
+                const { email } = await signUp(harness, browser);
+                const elsewhere = harness.browser({ ip: '203.0.113.50' });
+                const response = await elsewhere.request('POST', '/api/auth/signup/start', { email });
+                expect(response.status).toBe(202);
+                expect(lastEmail(harness, email)).toMatchObject({
+                    template: 'account-exists',
+                    signInLink: `${ORIGIN}/continue`,
+                    recoveryLink: `${ORIGIN}/recover`,
+                });
+                expect(await harness.store.accounts.findUserByEmail(email)).not.toBeNull();
+            });
+
+            it('mails a new address the link that finishes creating its account', async () => {
+                const email = uniqueEmail();
+                const response = await browser.request('POST', '/api/auth/signup/start', { email });
+                expect(response.status).toBe(202);
+                const message = lastEmail(harness, email);
+                expect(message.template).toBe('signup-link');
+                expect(await harness.store.accounts.findUserByEmail(email)).toBeNull();
+                const token = linkToken(harness, email);
+                const { verify } = await registerWith(browser, '/api/auth/signup/options', '/api/auth/signup/verify', {
+                    token,
+                });
+                expect(verify.status).toBe(200);
+            });
+
+            it('answers an existing and a new address alike, status, body, cookies and headers', async () => {
+                const { email: existing } = await signUp(harness, browser);
+                const answers = [];
+                for (const email of [existing, uniqueEmail()]) {
+                    const before = harness.outbox.sent.length;
+                    const response = await harness
+                        .browser({ ip: '203.0.113.60' })
+                        .request('POST', '/api/auth/signup/start', { email });
+                    answers.push({
+                        status: response.status,
+                        body: JSON.stringify(response.body),
+                        cookies: response.setCookies,
+                        headers: [...response.headers.keys()].sort(),
+                    });
+                    expect(harness.outbox.sent.length).toBe(before + 1);
+                }
+                expect(answers[1]).toEqual(answers[0]);
             });
         });
 
