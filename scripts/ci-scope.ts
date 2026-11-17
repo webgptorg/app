@@ -1,5 +1,5 @@
-// Decides which CI jobs a pull request needs, from the files it changes (`changes`), runs the matching part of
-// `bun run check` (`check`), and decides whether the nightly full run is needed (`nightly`). Every
+// Decides which CI jobs a run needs, from the files a pull request or a push to main changes (`changes`), and runs
+// the matching part of `bun run check` (`check`). Every
 // guess errs towards running more: a file this script cannot attribute to a workspace or a job makes the run full.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
@@ -64,6 +64,7 @@ const MANIFEST_METADATA = new Set(['description', 'repository', 'homepage', 'bug
 const FORMAT_PARTS = new Set(['bun run format:check', 'bun run plan --check', 'bun run engine-guide']);
 const CHECK_PART = /^bun run [\w:-]+(?: --[\w-]+)*$/;
 const LOCK_SECTIONS_ATTRIBUTED = new Set(['workspaces', 'packages', 'catalog']);
+const COMMIT = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 
 function git(...args: readonly string[]): string {
     return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -240,11 +241,20 @@ function isDoc(file: string): boolean {
     return file.endsWith('.md') || file.startsWith('docs/');
 }
 
-// A pull request's merge commit is compared with the base it merges into; the nightly full run catches what scoping
-// cannot. Every other event runs everything.
-function rangeFor(eventName: string | undefined): Range {
+function isAncestor(base: string, head: string): boolean {
+    return spawnSync('git', ['merge-base', '--is-ancestor', base, head], { stdio: 'ignore' }).status === 0;
+}
+
+// A pull request's merge commit is compared with the base it merges into. A push to main is compared with `since`, the
+// last main commit a CI run completed on: main's runs cancel each other, so the run that completes covers every commit
+// the cancelled ones skipped. Without that commit, or with one that is not an ancestor (a force-push), and for every
+// other event, the run checks everything.
+function rangeFor(eventName: string | undefined, since: string | undefined): Range {
     if (eventName === undefined || eventName === 'pull_request') return { base: 'HEAD^1', head: 'HEAD' };
-    return { full: `a ${eventName} run checks everything` };
+    if (eventName !== 'push') return { full: `a ${eventName} run checks everything` };
+    if (since === undefined || !COMMIT.test(since)) return { full: 'no CI run on main has completed' };
+    if (!isAncestor(since, 'HEAD')) return { full: `${since} is not an ancestor of HEAD` };
+    return { base: since, head: 'HEAD' };
 }
 
 function scope(base: string, head: string): Scope {
@@ -371,27 +381,12 @@ function runCheck(mode: string, workspaces: readonly string[]): void {
     }
 }
 
-// The nightly full run on main is skipped when main is still at the commit the last nightly ran on, whether it passed
-// or failed: rerunning an unchanged main only spends minutes. A manual run of ci.yml retries a flaky night.
-function nightly(head: string, lastRan: string): { run: boolean; reason: string } {
-    if (lastRan === '') return { run: true, reason: 'no nightly has run yet' };
-    if (lastRan === head) return { run: false, reason: `main is still at ${head}, where the last nightly ran` };
-    return { run: true, reason: `main moved from ${lastRan} to ${head}` };
-}
-
-function runNightly(head: string, lastRan: string): void {
-    const { run, reason } = nightly(head, lastRan);
-    console.log(`${reason}\nrun: ${String(run)}`);
-    const outputFile = process.env['GITHUB_OUTPUT'];
-    if (outputFile !== undefined) appendFileSync(outputFile, `run=${String(run)}\n`);
-}
-
 const { positionals, values } = parseArgs({
     allowPositionals: true,
     options: {
         base: { type: 'string' },
         head: { type: 'string' },
-        last: { type: 'string', default: '' },
+        since: { type: 'string' },
     },
 });
 
@@ -399,18 +394,14 @@ const command = positionals[0];
 if (command === 'changes') {
     runChanges(
         values.base === undefined
-            ? rangeFor(process.env['GITHUB_EVENT_NAME'])
+            ? rangeFor(process.env['GITHUB_EVENT_NAME'], values.since)
             : { base: values.base, head: values.head ?? 'HEAD' },
     );
-} else if (command === 'nightly') {
-    runNightly(values.head ?? process.env['GITHUB_SHA'] ?? git('rev-parse', 'HEAD').trim(), values.last);
 } else if (command === 'check') {
     runCheck(
         process.env['CHECK_MODE'] ?? 'full',
         (process.env['WORKSPACES'] ?? '').split(' ').filter((name) => name.startsWith('@ptbk/')),
     );
 } else {
-    throw new Error(
-        'usage: node scripts/ci-scope.ts changes [--base <rev>] [--head <rev>] | nightly --last <commit> | check',
-    );
+    throw new Error('usage: node scripts/ci-scope.ts changes [--since <commit> | --base <rev> [--head <rev>]] | check');
 }

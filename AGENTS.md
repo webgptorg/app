@@ -99,7 +99,7 @@ Several agents work in parallel, and `main` has no branch protection yet: **you 
    git push origin --delete <branch>
    ```
    Without the `run-ci` label a PR runs only commitlint and the workflow audit, so the local checks are the gate; add `run-ci` (`gh pr edit <PR> --add-label run-ci`) when a change needs CI's browsers, Docker or VM. Pass `--subject` and `--body` explicitly: the repo's default would use a commit subject and list every commit. Never merge with red or pending checks, never force-push `main`, never bypass hooks (`--no-verify`).
-10. **Verify `main`.** Pushes to main run no CI; the next nightly (`gh run list --workflow nightly.yml --limit 1`) must be green. If your merge broke it, fix it right away or revert your PR.
+10. **Verify `main`.** The next completed CI run on main (`gh run list --workflow ci.yml --branch main --limit 1`) must be green; runs on main cancel each other, so it may be a later merge's run that covers yours. If your merge broke it, fix it right away or revert your PR.
 11. **Clean up** from the primary checkout: `git worktree remove ../app-<task-id>` and `git branch -D <branch>`.
 
 **When to stop and ask a human instead:** the brief is ambiguous in a way that changes behaviour; a rule above would bend; a dependency needs install scripts beyond the approved list or adds a runtime service; the task needs a decision listed under "Still needed" in the plan.

@@ -1,51 +1,79 @@
 name: CI
 
 # Pull requests run only the cheap jobs (`changes`, `workflows`) unless they carry the `run-ci` label; with it, the jobs
-# their changes reach. Main has no run per push: the nightly (nightly.yml) runs everything once main moved, and a
-# manual run does too. Local `bun run check` is the gate before merging.
+# their changes reach. Main runs the jobs its pushes reach, one run at a time for the newest commit. A manual run runs
+# everything.
 on:
+  push:
+    branches: [main]
   # ready_for_review: a draft runs nothing (see `changes`), so marking it ready must start its run. labeled: adding
   # `run-ci` starts the full run.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled]
-  # The nightly full run on main (nightly.yml), and a full run by hand.
-  workflow_call: {}
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
-# A pull request cancels its superseded run; the nightly and a manual run each have their own group.
+# A newer run cancels the one it supersedes, on a pull request and on main alike, so a burst of merges collapses into
+# one run of the newest commit; `changes` scopes that run to cover the cancelled ones. Manual runs are never cancelled.
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.event_name, github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'push' && 'main' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 # Actions are pinned to full commit SHAs and nothing is cached between runs (spec, Security hardening item 10).
-# A pull request with `run-ci` runs only the jobs its changes reach (scripts/ci-scope.ts); the nightly and a manual run
-# run every job. Each job's `if` reads only the `changes` outputs.
+# Pull requests with `run-ci` and pushes to main run only the jobs their changes reach (scripts/ci-scope.ts); a manual
+# run and a push that cannot be scoped run every job. Each job's `if` reads only the `changes` outputs.
 jobs:
   # Skipped for a draft, and with it every job below; `ci-passed` then fails, so a draft never looks green.
   changes:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read # the last completed run on main
     outputs:
       full: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci') }}
       check: ${{ steps.scope.outputs.check }}
       workspaces: ${{ steps.scope.outputs.workspaces }}
       jobs: ${{ steps.scope.outputs.jobs }}
     steps:
-      # A pull request needs depth 2: its merge commit and both parents, so HEAD^1 is the base it merges into.
+      # A pull request needs depth 2: its merge commit and both parents, so HEAD^1 is the base it merges into. A push
+      # needs the history back to the last completed run, which a force-push may not even contain.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 2
+          fetch-depth: ${{ github.event_name == 'push' && '0' || '2' }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      # Reads the event from GITHUB_EVENT_NAME: the nightly and a manual run run everything.
+      # The last main commit a run completed on, passed or failed: not cancelled, and with every job GitHub started
+      # (it refuses jobs when billing fails). Cancelled runs leave their commits to this one.
+      - id: since
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          since=''
+          while read -r id sha; do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs?filter=latest&per_page=100" \
+              --jq '.jobs | any(.name == "changes" and .conclusion == "success")
+                and all(.conclusion != "failure" or (.steps | length) > 0)' | grep -qx true; then
+              since=$sha
+              break
+            fi
+          done < <(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --status completed \
+            --limit 30 --json databaseId,headSha,conclusion,event \
+            --jq '.[] | select(.event != "pull_request" and (.conclusion == "success" or .conclusion == "failure"))
+              | "\(.databaseId) \(.headSha)"')
+          echo "since=$since" >> "$GITHUB_OUTPUT"
+      # Reads the event from GITHUB_EVENT_NAME: a push without a completed run to start from runs everything, as does a
+      # manual run.
       - id: scope
-        run: node scripts/ci-scope.ts changes
+        env:
+          SINCE: ${{ steps.since.outputs.since }}
+        run: node scripts/ci-scope.ts changes --since="$SINCE"
 
   check:
     needs: changes
@@ -104,7 +132,7 @@ jobs:
       - name: Install Chromium
         working-directory: apps/engine-ui
         run: bunx --no-install playwright install --with-deps chromium
-      # A failing PR is already blocked; stop at the first browser failure. The nightly keeps every diagnostic.
+      # A failing PR is already blocked; stop at the first browser failure. Main and manual runs keep every diagnostic.
       - run: |
           args=()
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--max-failures=1); fi
@@ -133,7 +161,7 @@ jobs:
       - name: Install Chromium
         working-directory: apps/dashboard
         run: bunx --no-install playwright install --with-deps chromium
-      # A failing PR is already blocked; stop at the first browser failure. The nightly keeps every diagnostic.
+      # A failing PR is already blocked; stop at the first browser failure. Main and manual runs keep every diagnostic.
       - run: |
           args=()
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--max-failures=1); fi
@@ -161,7 +189,7 @@ jobs:
       - name: Install Chromium
         working-directory: apps/mock-engine
         run: bunx --no-install playwright install --with-deps chromium
-      # A failing PR is already blocked; stop at the first browser failure. The nightly keeps every diagnostic.
+      # A failing PR is already blocked; stop at the first browser failure. Main and manual runs keep every diagnostic.
       - run: |
           args=()
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--max-failures=1); fi
@@ -186,10 +214,10 @@ jobs:
         with:
           node-version-file: .nvmrc
       # Needs no install on the runner: the driver uses only node: modules, and the images install inside Docker.
-      # Firefox runs in the nightly and manual runs only.
+      # Firefox runs in manual runs only.
       - run: |
           args=()
-          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--project=chromium); fi
+          if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then args+=(--project=chromium); fi
           bun run --filter @ptbk/e2e e2e "${args[@]}"
       - name: Upload e2e results
         if: failure()
