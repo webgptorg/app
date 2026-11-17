@@ -59,7 +59,8 @@ sequenceDiagram
 
 ### Step-up
 
-- For routes flagged `stepUp`, require a fresh passkey assertion. Without one, answer 401 problem+json with code `step-up-required`; the UI sends the member to `STEP_UP_PATH` with a return address and retries ([engine-api.md](engine-api.md#step-up)).
+- For routes flagged `stepUp`, require a fresh passkey assertion. Without one, answer 401 problem+json with code `step-up-required` ([engine-api.md](engine-api.md#step-up)). The UI then opens `STEP_UP_PATH?mode=popup&nonce=…&returnTo=…` in a small window and, once that page answers, sends the same request again; secrets the member typed stay in the UI's memory for that. Only if the browser blocks the window does the UI navigate to `STEP_UP_PATH?returnTo=…` and come back.
+- Serve the step-up page for both. Accept `mode=popup` and a `nonce` of 16 to 64 base64url characters in its query (a strict parser must not refuse them). In popup mode the reference page (`step-up.html` and `gateway.js` in `@ptbk/gateway-pages`) starts the prompt at once and, after verify succeeds, posts `{ type: 'step-up-confirmed', nonce }` on the same-origin `BroadcastChannel('ptbk-step-up')` and to `window.opener`, then closes; it never navigates. Nothing changes on the server: verify answers as before.
 - Changing the update policy always needs step-up and is audited.
 - How long a sign-in counts as a fresh assertion is engine policy; the mock engine uses 5 minutes ([open points](README.md#open-points)).
 

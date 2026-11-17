@@ -190,7 +190,7 @@ Capability `access-requests@1`, since API 1.12.0. People an organization invites
 
 ## Step-up
 
-- Routes flagged `stepUp` (`x-step-up` in OpenAPI) need a fresh passkey assertion. Without one, the engine answers 401 `step-up-required`; the UI sends the member to `STEP_UP_PATH` and retries. The in-memory engine audits a refused step-up as `denied`; the engine should too.
+- Routes flagged `stepUp` (`x-step-up` in OpenAPI) need a fresh passkey assertion. Without one, the engine answers 401 `step-up-required`; the UI asks for the passkey in a popup on `STEP_UP_PATH` ([gateway.md, Step-up](gateway.md#step-up)) and sends the same request again. The in-memory engine audits a refused step-up as `denied`; the engine should too.
 - Flagged today: `PUT /settings/update-policy`, `PUT /settings/dashboard-removals`, `POST /api-tokens`, `DELETE /passkeys/{passkeyId}`, `DELETE /me/passkeys/{passkeyId}`, `PATCH /members/{memberId}`, `DELETE /members/{memberId}`, `POST /invites` and `POST /access-requests/{accessRequestId}/approve`. Which further routes need it is an open point.
 
 ## Audit

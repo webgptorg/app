@@ -3,11 +3,13 @@ import type { Permission } from '@ptbk/engine-api';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { createFakePopups } from '../../testing/fake-popups';
 import { createMemoryStorage } from '../../testing/memory-storage';
 import { createSecurityEngine, documentText } from '../../testing/security-engine';
 import type { SecurityEngine } from '../../testing/security-engine';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { problemResponse } from '../../testing/test-engine-api';
+import { STEP_UP_INTENT_KEY } from '../step-up/step-up-intent';
 
 const TIMEOUT_MS = 30_000;
 /** The dialog is a lazy chunk; on a loaded runner it takes longer than the default second. */
@@ -312,7 +314,12 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
     it('asks for a passkey to save, and reopens the form without the password on return', async () => {
         const storage = createMemoryStorage();
         const engine = walletEngine(undefined, 'required');
-        const first = renderWithProviders({ path: '/wallet', engineApi: engine.client, storage });
+        const first = renderWithProviders({
+            path: '/wallet',
+            engineApi: engine.client,
+            storage,
+            popups: createFakePopups({ blocked: true }),
+        });
         const requests = await screen.findByRole('region', { name: 'Agents are waiting' });
         await first.user.click(within(requests).getByRole('button', { name: 'Add login' }));
         const form = await screen.findByRole('dialog', { name: 'Add login' }, DIALOG_WAIT);
@@ -321,11 +328,14 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
         const stepUp = await screen.findByRole('dialog', { name: 'Confirm it is you' });
         await first.user.click(within(stepUp).getByRole('button', { name: 'Continue with passkey' }));
         expect(first.location.assign).toHaveBeenCalledOnce();
+        // What survives the round trip reopens the form; the password is never in it.
+        expect(storage.getItem(STEP_UP_INTENT_KEY)).toContain('linear.app');
+        expect(storage.getItem(STEP_UP_INTENT_KEY)).not.toContain('step-up-canary');
         first.unmount();
 
         renderWithProviders({ path: '/wallet', engineApi: engine.client, storage });
         const resumed = await screen.findByRole('dialog', { name: 'Add login' }, DIALOG_WAIT);
-        expect(within(resumed).getByText(/Type the password again/)).toBeDefined();
+        expect(within(resumed).getByText('Confirmed. Enter the password again to save.')).toBeDefined();
         expect(within(resumed).getByRole('textbox', { name: /^Website/ })).toHaveProperty(
             'value',
             'https://linear.app',
@@ -337,10 +347,40 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
         expect(within(resumed).getByLabelText(/^Password/)).toHaveProperty('value', '');
     });
 
-    it('asks for a passkey to remove a login, and asks again on return', async () => {
+    it('saves with the password typed before, once the passkey is confirmed in the popup', async () => {
         const storage = createMemoryStorage();
-        const engine = walletEngine(undefined, 'required');
-        const first = renderWithProviders({ path: '/wallet', engineApi: engine.client, storage });
+        const engine = walletEngine();
+        const add = vi
+            .spyOn(engine.client.wallet, 'add')
+            .mockImplementationOnce(() => problemResponse('step-up-required'));
+        const popups = createFakePopups();
+        const { user } = renderWithProviders({ path: '/wallet', engineApi: engine.client, storage, popups });
+        const requests = await screen.findByRole('region', { name: 'Agents are waiting' });
+        await user.click(within(requests).getByRole('button', { name: 'Add login' }));
+        const form = await screen.findByRole('dialog', { name: 'Add login' }, DIALOG_WAIT);
+        await user.type(within(form).getByLabelText(/^Password/), 'step-up-canary');
+        await user.click(within(form).getByRole('button', { name: 'Save login' }));
+        const stepUp = await screen.findByRole('dialog', { name: 'Confirm it is you' });
+        await user.click(within(stepUp).getByRole('button', { name: 'Continue with passkey' }));
+        popups.confirm();
+        await waitFor(() => {
+            expect(add).toHaveBeenCalledTimes(2);
+        });
+        expect(add.mock.calls[1]?.[0]).toMatchObject({ origin: 'https://linear.app', password: 'step-up-canary' });
+        expect(await screen.findByText(/^Login for linear\.app saved/)).toBeDefined();
+        expect(storage.getItem(STEP_UP_INTENT_KEY)).toBeNull();
+    });
+
+    it('removes the login by itself on return when the popup was blocked', async () => {
+        const storage = createMemoryStorage();
+        const engine = walletEngine();
+        vi.spyOn(engine.client.wallet, 'delete').mockImplementationOnce(() => problemResponse('step-up-required'));
+        const first = renderWithProviders({
+            path: '/wallet',
+            engineApi: engine.client,
+            storage,
+            popups: createFakePopups({ blocked: true }),
+        });
         const logins = await screen.findByRole('region', { name: 'Saved logins' });
         await first.user.click(within(logins).getByRole('button', { name: /^More for github\.com/ }));
         await first.user.click(await screen.findByRole('menuitem', { name: 'Remove login' }));
@@ -351,9 +391,11 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
         first.unmount();
 
         renderWithProviders({ path: '/wallet', engineApi: engine.client, storage });
-        expect(await screen.findByRole('dialog', { name: /^Remove github\.com/ })).toBeDefined();
-        const wallet = await engine.client.wallet.get(AbortSignal.timeout(1000));
-        expect(wallet.kind === 'ok' && wallet.data.records).toHaveLength(1);
+        await waitFor(async () => {
+            const wallet = await engine.client.wallet.get(AbortSignal.timeout(1000));
+            expect(wallet.kind === 'ok' && wallet.data.records).toHaveLength(0);
+        });
+        expect(screen.queryByRole('dialog', { name: /^Remove github\.com/ })).toBeNull();
     });
 
     it('validates a new login from the header before sending anything', async () => {

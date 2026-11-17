@@ -47,6 +47,18 @@ const NO_QUERY = z.strictObject({});
 const PAGE_HEADERS = z.strictObject({ 'accept-language': z.string().max(1024).optional() });
 const CEREMONY_HEADERS = z.strictObject({ host: z.string().max(260), 'user-agent': z.string().max(4096).optional() });
 const NEXT = z.string().max(2048);
+/**
+ * The step-up page's query: where to return, and in popup mode the opener's nonce, which the page echoes back when it
+ * signals the confirmation (`@ptbk/gateway-pages`).
+ */
+export const STEP_UP_PAGE_QUERY = z.strictObject({
+    returnTo: NEXT.optional(),
+    mode: z.literal('popup').optional(),
+    nonce: z
+        .string()
+        .regex(/^[A-Za-z0-9_-]{16,64}$/)
+        .optional(),
+});
 /** WebAuthn responses are a few KiB; the cap leaves room for large attestation objects. */
 const CEREMONY_BODY_MAX_BYTES = 32 * 1024;
 const SMALL_BODY_MAX_BYTES = 1024;
@@ -326,7 +338,7 @@ export function createPasskeyRoutes(deps: PasskeyRouteDeps): readonly Route[] {
             permission: null,
             rateLimit: 'gateway-ip',
             params: null,
-            query: z.strictObject({ returnTo: NEXT.optional() }),
+            query: STEP_UP_PAGE_QUERY,
             headers: PAGE_HEADERS,
             body: null,
             handle: ({ connection, headers }) => page('step-up.html', connection, headers['accept-language']),

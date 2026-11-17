@@ -23,7 +23,7 @@ import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
 import type { LoginDialogTarget } from './login-dialog';
 import { useResumedStepUp } from '../step-up/step-up';
-import { REMOVE_LOGIN_ACTION, SAVE_LOGIN_ACTION, useWalletMutations } from './use-wallet-mutations';
+import { SAVE_LOGIN_ACTION, useWalletMutations } from './use-wallet-mutations';
 import type { WalletMutations } from './use-wallet-mutations';
 import { loginTitle } from './login-title';
 import { useAgentLookByName } from './use-agent-look-by-name';
@@ -306,12 +306,6 @@ function parseResumedSave(data: unknown): ResumedSave | undefined {
     };
 }
 
-function parseResumedRemove(data: unknown): string | undefined {
-    return typeof data === 'object' && data !== null
-        ? optionalId((data as Record<string, unknown>)['recordId'])
-        : undefined;
-}
-
 const withRecord = (record: ReadWalletRecord | undefined) => (record === undefined ? {} : { record });
 const withRequest = (request: ReadWalletRequest | undefined) => (request === undefined ? {} : { request });
 
@@ -340,7 +334,6 @@ export function WalletPage() {
         }
     };
     const resumedSave = useResumedStepUp(SAVE_LOGIN_ACTION, parseResumedSave);
-    const resumedRemove = useResumedStepUp(REMOVE_LOGIN_ACTION, parseResumedRemove);
     const [resumeDone, setResumeDone] = useState(false);
     const records = wallet.data?.records ?? NO_RECORDS;
     const resumedTarget: LoginDialogTarget | null =
@@ -351,15 +344,11 @@ export function WalletPage() {
                   ...withRequest(wallet.data?.pending.find(({ id }) => id === resumedSave.requestId)),
                   resumed: resumedSave.values,
               };
-    const resumedRecord =
-        resumedRemove === undefined || resumeDone || !canManage
-            ? undefined
-            : records.find(({ id }) => id === resumedRemove);
     const loginTarget: LoginDialogTarget | null =
         pending?.kind === 'login'
             ? pending.target
             : (resumedTarget ?? (search.dialog === 'new' && canManage && ready ? {} : null));
-    const removing = pending?.kind === 'remove' ? pending.record : resumedRecord;
+    const removing = pending?.kind === 'remove' ? pending.record : undefined;
 
     const addLogin =
         canManage && ready ? (

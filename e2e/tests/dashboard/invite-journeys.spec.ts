@@ -117,7 +117,7 @@ test('a new colleague joins from the invite in one step and is let in from the a
         const stepUp = await withStepUp(
             owner,
             async () => {
-                // Back from step-up, the page reopens the approval on its own, a moment after it loads.
+                // The step-up runs in a popup; the dialog stays open and the same approval is sent again after it.
                 await expect(dialog).toBeVisible();
                 // As shown on the waiting page, with its space; the sixth digit approves.
                 await paste(owner, dialog.getByLabel('Code'), code);

@@ -4,6 +4,8 @@ export const STEP_UP_INTENT_KEY = 'ptbk.step-up-intent';
 
 /** Long enough for a passkey prompt, short enough that a stale intent never resurfaces on a later visit. */
 export const STEP_UP_INTENT_MAX_AGE_MS = 10 * 60_000;
+/** An intent the page performs by itself on return must be this fresh; an older one is dropped, not run. */
+export const STEP_UP_AUTO_MAX_AGE_MS = 2 * 60_000;
 
 /**
  * What the member was about to do when the engine asked for a fresh passkey: an action name, the page it belongs to
@@ -12,6 +14,8 @@ export const STEP_UP_INTENT_MAX_AGE_MS = 10 * 60_000;
 export interface StepUpIntent {
     readonly action: string;
     readonly data: unknown;
+    /** `data` is the action's complete, non-secret input: on return the action runs again by itself, once. */
+    readonly auto?: boolean;
 }
 
 interface StoredIntent extends StepUpIntent {
@@ -26,6 +30,7 @@ function isStoredIntent(value: unknown): value is StoredIntent {
         typeof record['action'] === 'string' &&
         typeof record['path'] === 'string' &&
         typeof record['at'] === 'number' &&
+        (record['auto'] === undefined || typeof record['auto'] === 'boolean') &&
         'data' in record
     );
 }
@@ -67,19 +72,22 @@ function readStored(storage: PreferenceStorage, now: number): StoredIntent | und
 
 /**
  * The saved intent for `action` on `path`, at most once: a matching intent is removed on reading, and a stale or
- * malformed one whenever it is seen. The caller restores its form or dialog; it never runs the action itself.
+ * malformed one whenever it is seen. Without `auto` the caller restores its form or dialog and never runs the action;
+ * with `auto` only intents saved for an automatic rerun match, and only within `STEP_UP_AUTO_MAX_AGE_MS`.
  */
 export function takeStepUpIntent(
     storage: PreferenceStorage | undefined,
     action: string,
     path: string,
     now: number,
+    { auto = false }: { readonly auto?: boolean } = {},
 ): unknown {
     if (storage === undefined) return undefined;
     try {
         const stored = readStored(storage, now);
-        if (stored?.action !== action || stored.path !== path) return undefined;
+        if (stored?.action !== action || stored.path !== path || (stored.auto ?? false) !== auto) return undefined;
         clear(storage);
+        if (auto && now - stored.at > STEP_UP_AUTO_MAX_AGE_MS) return undefined;
         return stored.data;
     } catch {
         return undefined;

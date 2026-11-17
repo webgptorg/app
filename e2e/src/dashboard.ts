@@ -1,6 +1,6 @@
 // Fixtures for the dashboard scenario (X-05): a virtual passkey authenticator, the dashboard's screens as steps, and
 // mock engines started from the on-demand `mock-engine` service with what a test learned on the way (a link code).
-import type { Locator, Page, TestInfo } from '@playwright/test';
+import type { CDPSession, Locator, Page, TestInfo } from '@playwright/test';
 
 import type { OneOffContainer } from './compose.ts';
 import { expect, test as base } from './fixtures.ts';
@@ -80,6 +80,8 @@ interface DashboardFixtures {
     mockEngines: MockEngines;
 }
 
+const authenticators = new WeakMap<Page, { readonly cdp: CDPSession; readonly id: string }>();
+
 /** A CTAP2 platform authenticator for one page's passkey ceremonies: each person and relying party holds its own. */
 export async function addPasskeyAuthenticator(page: Page): Promise<string> {
     const cdp = await page.context().newCDPSession(page);
@@ -94,7 +96,24 @@ export async function addPasskeyAuthenticator(page: Page): Promise<string> {
             automaticPresenceSimulation: true,
         },
     });
+    authenticators.set(page, { cdp, id: authenticatorId });
     return authenticatorId;
+}
+
+/**
+ * A popup is a tab of its own with no authenticator: give it one holding the passkeys of `from`, as a person's
+ * platform authenticator serves every window of the browser.
+ */
+export async function sharePasskeys(from: Page, to: Page): Promise<void> {
+    const source = authenticators.get(from);
+    if (source === undefined) throw new Error('the page has no authenticator to share');
+    await addPasskeyAuthenticator(to);
+    const target = authenticators.get(to);
+    if (target === undefined) throw new Error('no authenticator on the popup');
+    const { credentials } = await source.cdp.send('WebAuthn.getCredentials', { authenticatorId: source.id });
+    for (const credential of credentials) {
+        await target.cdp.send('WebAuthn.addCredential', { authenticatorId: target.id, credential });
+    }
 }
 
 function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {

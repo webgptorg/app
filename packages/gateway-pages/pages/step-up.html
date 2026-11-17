@@ -126,10 +126,15 @@
                         ><span data-lang="cs">Potvrdit přístupovým klíčem</span>
                     </button>
                 </div>
-                <p class="muted">
+                <p class="muted" data-unless-popup>
                     <a href="/" data-next-link
                         ><span data-lang="en">Cancel and go back</span><span data-lang="cs">Zrušit a vrátit se</span></a
                     >
+                </p>
+                <p class="muted" data-if-popup hidden>
+                    <button type="button" class="link" data-action="close">
+                        <span data-lang="en">Cancel</span><span data-lang="cs">Zrušit</span>
+                    </button>
                 </p>
             </section>
 
@@ -283,6 +288,17 @@
                 <div class="actions">
                     <button type="button" class="button" data-action="retry">
                         <span data-lang="en">Try again</span><span data-lang="cs">Zkusit znovu</span>
+                    </button>
+                </div>
+            </section>
+
+            <section data-state="confirmed" hidden>
+                <h1 tabindex="-1"><span data-lang="en">Confirmed</span><span data-lang="cs">Ověřeno</span></h1>
+                <p data-lang="en">You can close this window; the change goes ahead in the other one.</p>
+                <p data-lang="cs">Toto okno můžete zavřít; změna pokračuje v tom druhém.</p>
+                <div class="actions">
+                    <button type="button" class="button" data-action="close">
+                        <span data-lang="en">Close</span><span data-lang="cs">Zavřít</span>
                     </button>
                 </div>
             </section>

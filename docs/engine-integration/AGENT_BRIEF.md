@@ -24,6 +24,14 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-17: Step-up confirmed in a popup, then the action goes on
+
+- **Changed:** [`step-up.html` and `gateway.js`](../../packages/gateway-pages/pages/) in `@ptbk/gateway-pages` support `mode=popup`. The engine UI opens `STEP_UP_PATH?mode=popup&nonce=<16–64 base64url characters>&returnTo=…` in a small window. The page starts the passkey prompt at once and, after verify succeeds, posts `{ type: 'step-up-confirmed', nonce }` on `BroadcastChannel('ptbk-step-up')` and to `window.opener` (same origin), then closes itself. The UI sends the original request again with the input still in memory (a Wallet password included). If the popup is blocked, the UI falls back to the full-page redirect as before ([gateway.md, Step-up](gateway.md#step-up)).
+- **Redo:**
+  1. Copy `step-up.html` and `gateway.js` from `packages/gateway-pages/pages/` again.
+  2. Make the step-up page accept `mode=popup` and `nonce` in its query next to `returnTo`; if your gateway parses page queries strictly, it must not refuse them.
+  3. Nothing else changes on the server: options and verify answer as before, and a popup step-up confirms the same session.
+
 ### 2026-11-16: Smoother join: waiting page signs in, tries left, UI invites in the dashboard
 
 - **Changed:**

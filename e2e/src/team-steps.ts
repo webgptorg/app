@@ -7,7 +7,7 @@ import { devices } from '@playwright/test';
 
 import type { OneOffContainer } from './compose.ts';
 import type { DashboardSteps } from './dashboard.ts';
-import { ENGINE_CLI, addPasskeyAuthenticator, expect, uniqueEmail } from './dashboard.ts';
+import { ENGINE_CLI, addPasskeyAuthenticator, expect, sharePasskeys, uniqueEmail } from './dashboard.ts';
 import type { OutboxEmail } from './dashboard-outputs.ts';
 import { devInstallLinkCode, parseSetupLink, terminalIdentity } from './dashboard-outputs.ts';
 import { DASHBOARD_ORIGIN, DASHBOARD_TIMING, MOCK_ENGINE_CONTROL } from './stack.ts';
@@ -51,8 +51,8 @@ export async function meStatus(page: Page, engineOrigin?: string): Promise<numbe
 }
 
 /**
- * Runs `act`, then answers the engine's step-up if it asks: the passkey page, back to the app, and `act` again where
- * the app needs the input anew. Ends when `done` shows, and says whether the engine asked.
+ * Runs `act`, then answers the engine's step-up if it asks: the passkey in the gateway's popup, after which the app
+ * runs the same action again by itself. Ends when `done` shows, and says whether the engine asked.
  */
 export async function withStepUp(
     page: Page,
@@ -67,10 +67,17 @@ export async function withStepUp(
     finished.catch(() => undefined);
     asked.catch(() => undefined);
     if ((await Promise.race([finished, asked])) === 'done') return 'not-asked';
+    const opened = page.waitForEvent('popup');
     await stepUp.click();
-    await page.locator('section[data-state="ready"] button[data-action="confirm"]').click();
-    await page.waitForURL((url) => !url.pathname.startsWith('/auth/'));
-    await act();
+    const popup = await opened;
+    await sharePasskeys(page, popup);
+    // The page starts the prompt by itself; if that ran before the popup had the passkey, it offers the button.
+    const closed = popup.waitForEvent('close');
+    const confirm = popup.locator('section[data-state="ready"] button[data-action="confirm"]');
+    const ready = confirm.waitFor().then(() => 'ready' as const);
+    ready.catch(() => undefined);
+    if ((await Promise.race([closed.then(() => 'closed' as const), ready])) === 'ready') await confirm.click();
+    await closed;
     await done();
     return 'asked';
 }
