@@ -368,6 +368,9 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
         });
         expect(add.mock.calls[1]?.[0]).toMatchObject({ origin: 'https://linear.app', password: 'step-up-canary' });
         expect(await screen.findByText(/^Login for linear\.app saved/)).toBeDefined();
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: 'Add login' })).toBeNull();
+        });
         expect(storage.getItem(STEP_UP_INTENT_KEY)).toBeNull();
     });
 
@@ -390,11 +393,32 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
         await first.user.click(within(stepUp).getByRole('button', { name: 'Continue with passkey' }));
         first.unmount();
 
+        // The page's first load was read before the rerun removed the login, and answers only after it.
+        const read = engine.client.wallet.get.bind(engine.client.wallet);
+        const stale = await read(AbortSignal.timeout(1000));
+        const remove = engine.client.wallet.delete.bind(engine.client.wallet);
+        let removed: () => void = () => undefined;
+        const removal = new Promise<void>((resolve) => {
+            removed = resolve;
+        });
+        vi.spyOn(engine.client.wallet, 'delete').mockImplementationOnce(async (id, signal) => {
+            const outcome = await remove(id, signal);
+            removed();
+            return outcome;
+        });
+        vi.spyOn(engine.client.wallet, 'get').mockImplementationOnce(async () => {
+            await removal;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            return stale;
+        });
         renderWithProviders({ path: '/wallet', engineApi: engine.client, storage });
         await waitFor(async () => {
-            const wallet = await engine.client.wallet.get(AbortSignal.timeout(1000));
+            const wallet = await read(AbortSignal.timeout(1000));
             expect(wallet.kind === 'ok' && wallet.data.records).toHaveLength(0);
         });
+        expect(await screen.findByText(/^github\.com · .* removed\.$/)).toBeDefined();
+        // The list is read again after the removal, so the stale first answer does not stay on screen.
+        expect(await screen.findByText('No saved logins yet', undefined, { timeout: 2000 })).toBeDefined();
         expect(screen.queryByRole('dialog', { name: /^Remove github\.com/ })).toBeNull();
     });
 

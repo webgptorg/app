@@ -4,6 +4,7 @@ import { expect, test, uniqueEmail } from '../../src/dashboard.ts';
 import { DASHBOARD_ORIGIN } from '../../src/stack.ts';
 import {
     ACKED_WITHIN_MS,
+    approvalAnswers,
     emailed,
     expectContinuedToEngine,
     expectSignedInToEngine,
@@ -113,18 +114,20 @@ test('a new colleague joins from the invite in one step and is let in from the a
 
     await test.step('the owner pastes the code, which approves after the passkey step-up', async () => {
         const dialog = approveDialog(owner, jana);
+        const approvals = approvalAnswers(owner);
         await engine.expireStepUp();
         const stepUp = await withStepUp(
             owner,
             async () => {
                 // The step-up runs in a popup; the dialog stays open and the same approval is sent again after it.
-                await expect(dialog).toBeVisible();
                 // As shown on the waiting page, with its space; the sixth digit approves.
                 await paste(owner, dialog.getByLabel('Code'), code);
             },
             () => expect(owner.getByText(APPROVED).first()).toBeVisible({ timeout: 15_000 }),
         );
         expect(stepUp).toBe('asked');
+        // Refused for step-up, then sent again with the code held in memory: pasted once, no second click.
+        expect(approvals).toEqual([401, 201]);
     });
 
     await test.step('her waiting page signs her in, and she sees the engine', async () => {
@@ -195,16 +198,15 @@ test('an existing account signs in and joins; a member cannot approve, and the f
             .filter({ hasText: petr })
             .getByRole('button', { name: 'Approve', exact: true })
             .click();
+        const approvals = approvalAnswers(owner);
         await engine.expireStepUp();
         const stepUp = await withStepUp(
             owner,
-            async () => {
-                await expect(dialog).toBeVisible();
-                await dialog.getByLabel('Code').pressSequentially(code.replace(' ', ''));
-            },
+            () => dialog.getByLabel('Code').pressSequentially(code.replace(' ', '')),
             () => expect(owner.getByText(APPROVED).first()).toBeVisible({ timeout: 15_000 }),
         );
         expect(stepUp).toBe('asked');
+        expect(approvals).toEqual([401, 201]);
         await expectSignedInToEngine(petrs.page, engine.origin);
     });
 

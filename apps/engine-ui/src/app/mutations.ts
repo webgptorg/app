@@ -115,8 +115,13 @@ export function useStepUpAwareMutation<Data, Variables = void, Snapshot = undefi
             if (message !== undefined) toast.show({ tone: 'success', title: message });
             options.onSuccess?.(data, variables);
         },
-        onSettled: () =>
-            Promise.all((options.invalidates ?? []).map((queryKey) => queryClient.invalidateQueries({ queryKey }))),
+        onSettled: async () => {
+            const keys = options.invalidates ?? [];
+            // A read still in flight may have started before the change, e.g. the page's first load next to a rerun
+            // after step-up; invalidating would only wait for its stale answer, so it is cancelled and read again.
+            await Promise.all(keys.map((queryKey) => queryClient.cancelQueries({ queryKey })));
+            await Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+        },
     });
     const { mutate: inner } = mutation;
     const run = useCallback(
