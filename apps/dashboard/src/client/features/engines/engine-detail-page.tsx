@@ -13,7 +13,7 @@ import {
 } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, SearchX, UserPlus } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import type { EngineView, HeartbeatView } from '../../../shared/api/routes';
@@ -24,7 +24,6 @@ import { ButtonLink, Link } from '../../core/link';
 import { AbuseContactLink } from '../abuse/abuse-contact';
 import { Crumb, Page } from '../shell/page';
 import { useSession } from '../session/use-session';
-import { InviteDialog } from '../teams/invite-dialog';
 import { OpenTeamButton } from '../teams/open-team-button';
 import { ENGINE_STATUS_COMMAND, TROUBLESHOOTING_ANCHOR } from './engine-guide';
 import { EngineMark } from './engine-identity';
@@ -36,6 +35,10 @@ import { EngineStatusPill } from './engine-status-pill';
 import { LastSeen, useNowFor } from './engine-values';
 import { EngineActionMenu } from './revoke-engine';
 import { useEngineTeam } from './use-engine-name';
+
+// Loaded on first use: the dialog's form would otherwise put the engine page over its bundle budget, for an action
+// only owners and admins take.
+const InviteDialog = lazy(async () => ({ default: (await import('../teams/invite-dialog')).InviteDialog }));
 
 const READ_PERMISSION = 'engine.read';
 const REVOKE_PERMISSION = 'engine.revoke';
@@ -163,6 +166,7 @@ function EngineDetail(props: {
     const { team, givenName } = useEngineTeam(engine.engineId, engine.hostname);
     const name = givenName ?? engineLabel(engine);
     const [inviting, setInviting] = useState(false);
+    const [invitedOnce, setInvitedOnce] = useState(false);
     // People join an engine through its team; a suspended or revoked engine has nobody left to approve them.
     const inviteTeam = props.canInvite && engine.status !== 'suspended' ? team : undefined;
     return (
@@ -186,6 +190,7 @@ function EngineDetail(props: {
                             size="md"
                             onClick={() => {
                                 setInviting(true);
+                                setInvitedOnce(true);
                             }}
                         >
                             <UserPlus aria-hidden className="size-4" />
@@ -276,15 +281,17 @@ function EngineDetail(props: {
                     </details>
                 )}
             </Section>
-            {inviteTeam === undefined ? null : (
-                <InviteDialog
-                    open={inviting}
-                    teamIds={[inviteTeam.teamId]}
-                    engineName={name}
-                    onClose={() => {
-                        setInviting(false);
-                    }}
-                />
+            {inviteTeam === undefined || !invitedOnce ? null : (
+                <Suspense fallback={null}>
+                    <InviteDialog
+                        open={inviting}
+                        teamIds={[inviteTeam.teamId]}
+                        engineName={name}
+                        onClose={() => {
+                            setInviting(false);
+                        }}
+                    />
+                </Suspense>
             )}
         </Page>
     );

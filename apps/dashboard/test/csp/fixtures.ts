@@ -53,6 +53,11 @@ export function expectNoBrowserErrors(report: BrowserReport): void {
 export interface Authenticators {
     add(): Promise<string>;
     remove(id: string): Promise<void>;
+    /**
+     * Whether the authenticator answers on its own. A signed-out `/continue` asks for passkey autofill at once, which an
+     * answering virtual authenticator completes without anyone choosing it; off, it waits as a person would.
+     */
+    answer(id: string, enabled: boolean): Promise<void>;
 }
 
 interface Fixtures {
@@ -64,6 +69,8 @@ interface Fixtures {
     authenticators: Authenticators;
 }
 
+let testsStarted = 0;
+
 export const test = base.extend<Fixtures>({
     // eslint-disable-next-line no-empty-pattern -- Playwright reads a fixture's dependencies from this pattern.
     cspViolations: async ({}, use) => {
@@ -71,6 +78,9 @@ export const test = base.extend<Fixtures>({
     },
 
     page: async ({ page, cspViolations }, use) => {
+        // Each test from its own client address: the suite's sign-ups and passkey autofill together pass the per-IP
+        // ceremony limits that one person never reaches.
+        await page.setExtraHTTPHeaders({ 'CF-Connecting-IP': `198.51.100.${String((testsStarted++ % 250) + 1)}` });
         await page.exposeFunction('__reportCspViolation', (violation: CspViolation) => {
             cspViolations.push(violation);
         });
@@ -149,6 +159,9 @@ export const test = base.extend<Fixtures>({
             },
             remove: async (authenticatorId) => {
                 await cdp.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId });
+            },
+            answer: async (authenticatorId, enabled) => {
+                await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled });
             },
         });
     },
