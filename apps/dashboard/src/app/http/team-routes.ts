@@ -8,7 +8,6 @@ import type { EngineCreationPolicy } from '../../domain/registration/engine-crea
 import {
     acceptInvite,
     createInvites,
-    previewInvite,
     resendInvite,
     revokeInvite,
     type InviteDeps,
@@ -29,7 +28,9 @@ import {
     renameTeam,
     type TeamActor,
 } from '../../domain/teams/teams';
+import { createInviteJoinFlow } from '../../domain/teams/join-invite';
 import { apiRoutes, type InviteView, type TeamView } from '../../shared/api/routes';
+import { clearInviteCookie, INVITE_COOKIE_TTL_MS, inviteCookie, inviteToken } from './cookies';
 import type { DashboardDeps } from '../deps';
 import { issuedLinkCodeView } from './link-code-view';
 import type { RequestContext, RouteBinder } from './bind-route';
@@ -39,9 +40,9 @@ const NO_CONTENT = { kind: 'ok', body: undefined, status: 204 } as const;
 const JOIN_PATH = '/auth/join';
 
 export function memberAccessDeps(
-    deps: Pick<DashboardDeps, 'teams' | 'engines' | 'memberKey' | 'clock' | 'random' | 'logger' | 'links'>,
+    deps: Pick<DashboardDeps, 'teams' | 'engines' | 'memberKey' | 'clock' | 'random' | 'logger'>,
 ): MemberAccessDeps {
-    return { ...deps, teamLink: (teamId) => deps.links.team(teamId) };
+    return deps;
 }
 const NOT_FOUND = { kind: 'problem', status: 404, code: 'not-found' } as const;
 const LAST_OWNER = { kind: 'problem', status: 409, code: 'last-owner' } as const;
@@ -347,33 +348,42 @@ export function bindTeamRoutes(
         return outcome === 'revoked' ? NO_CONTENT : NOT_FOUND;
     });
 
-    bind(router, mount, apiRoutes.previewInvite, async ({ input }) => {
-        const preview = await previewInvite(deps, input.body.token);
-        if (preview === null) {
-            return NOT_FOUND;
+    bind(router, mount, apiRoutes.previewInvite, async ({ input, request }) => {
+        const token = inviteToken(input.body.token, request);
+        const found = token === null ? null : await createInviteJoinFlow(deps).preview(token);
+        if (token === null || found === null) {
+            return { ...NOT_FOUND, setCookies: [clearInviteCookie()] };
         }
+        const { invite, orgName, teamNames } = found.preview;
+        const ttlMs = Math.min(INVITE_COOKIE_TTL_MS, invite.expiresAt - deps.clock.nowMs());
         return {
             kind: 'ok',
             body: {
-                orgName: preview.orgName,
-                teamNames: [...preview.teamNames],
-                email: preview.invite.email,
-                expiresAt: preview.invite.expiresAt,
+                orgName,
+                teamNames: [...teamNames],
+                email: invite.email,
+                expiresAt: invite.expiresAt,
+                hasAccount: found.hasAccount,
             },
+            setCookies: [inviteCookie(token, ttlMs)],
         };
     });
 
-    bind(router, mount, apiRoutes.acceptInvite, async ({ input, session }) => {
-        const outcome = await acceptInvite(
-            inviteDeps,
-            { userId: session.user.id, email: session.user.email },
-            input.body.token,
-        );
+    bind(router, mount, apiRoutes.acceptInvite, async ({ input, request, session }) => {
+        const token = inviteToken(input.body.token, request);
+        const outcome =
+            token === null
+                ? ({ kind: 'invalid' } as const)
+                : await acceptInvite(inviteDeps, { userId: session.user.id, email: session.user.email }, token);
         switch (outcome.kind) {
             case 'accepted':
-                return { kind: 'ok', body: { orgId: outcome.orgId } };
+                return {
+                    kind: 'ok',
+                    body: { orgId: outcome.orgId, teamIds: [...outcome.teamIds] },
+                    setCookies: [clearInviteCookie()],
+                };
             case 'invalid':
-                return { kind: 'problem', status: 404, code: 'invite-invalid' };
+                return { kind: 'problem', status: 404, code: 'invite-invalid', setCookies: [clearInviteCookie()] };
             case 'email-mismatch':
                 return { kind: 'problem', status: 403, code: 'email-mismatch' };
         }

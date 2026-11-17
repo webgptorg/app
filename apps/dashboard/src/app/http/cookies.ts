@@ -26,3 +26,26 @@ export function challengeCookie(challengeId: string, ttlMs: number): string {
 export function clearChallengeCookie(): string {
     return serialize(CHALLENGE_COOKIE, '', 0, 'Strict');
 }
+
+/**
+ * The invitation token, so the invitation page still has it after a reload or in another tab (D-31). Strict: only the
+ * page's own requests send it. An hour is plenty to finish joining; the emailed link sets it again.
+ */
+export const INVITE_COOKIE = '__Host-ptbk_invite';
+export const INVITE_COOKIE_TTL_MS = 60 * 60 * 1000;
+
+export function inviteCookie(token: string, ttlMs: number): string {
+    return serialize(INVITE_COOKIE, token, Math.max(0, Math.floor(ttlMs / 1000)), 'Strict');
+}
+
+export function clearInviteCookie(): string {
+    return serialize(INVITE_COOKIE, '', 0, 'Strict');
+}
+
+/** The token a request names, else the one the invitation page's cookie holds. */
+export function inviteToken(
+    fromBody: string | undefined,
+    request: { secretCookie(name: string): string | null },
+): string | null {
+    return fromBody ?? request.secretCookie(INVITE_COOKIE);
+}

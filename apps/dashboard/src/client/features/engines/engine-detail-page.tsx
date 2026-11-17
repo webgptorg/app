@@ -1,6 +1,7 @@
 import { deriveEngineFingerprint } from '@ptbk/protocol';
 import {
     Banner,
+    Button,
     CodeText,
     EmptyState,
     ErrorState,
@@ -11,8 +12,8 @@ import {
     useLocale,
 } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, SearchX } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { ChevronRight, SearchX, UserPlus } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import type { EngineView, HeartbeatView } from '../../../shared/api/routes';
@@ -23,6 +24,7 @@ import { ButtonLink, Link } from '../../core/link';
 import { AbuseContactLink } from '../abuse/abuse-contact';
 import { Crumb, Page } from '../shell/page';
 import { useSession } from '../session/use-session';
+import { InviteDialog } from '../teams/invite-dialog';
 import { OpenTeamButton } from '../teams/open-team-button';
 import { ENGINE_STATUS_COMMAND, TROUBLESHOOTING_ANCHOR } from './engine-guide';
 import { EngineMark } from './engine-identity';
@@ -37,6 +39,7 @@ import { useEngineTeam } from './use-engine-name';
 
 const READ_PERMISSION = 'engine.read';
 const REVOKE_PERMISSION = 'engine.revoke';
+const INVITE_PERMISSION = 'org.members.manage';
 
 /**
  * Read-only facts, a muted label before its value as in the peek cards; every value is plain text from our API. On a
@@ -153,11 +156,15 @@ function EngineDetail(props: {
     readonly engine: EngineView;
     readonly canRevoke: boolean;
     readonly canRename: boolean;
+    readonly canInvite: boolean;
 }) {
     const { engine } = props;
     const formatters = useLocale();
     const { team, givenName } = useEngineTeam(engine.engineId, engine.hostname);
     const name = givenName ?? engineLabel(engine);
+    const [inviting, setInviting] = useState(false);
+    // People join an engine through its team; a suspended or revoked engine has nobody left to approve them.
+    const inviteTeam = props.canInvite && engine.status !== 'suspended' ? team : undefined;
     return (
         <Page
             title={
@@ -173,6 +180,18 @@ function EngineDetail(props: {
             actions={
                 <>
                     {props.canRename && givenName === null ? <RenameEngineButton engine={engine} /> : null}
+                    {inviteTeam === undefined ? null : (
+                        <Button
+                            variant="secondary"
+                            size="md"
+                            onClick={() => {
+                                setInviting(true);
+                            }}
+                        >
+                            <UserPlus aria-hidden className="size-4" />
+                            {m.invite_to_engine()}
+                        </Button>
+                    )}
                     {engine.status === 'suspended' ? null : team?.isMember === true ? (
                         <OpenTeamButton team={team} variant="primary" size="md" />
                     ) : (
@@ -257,6 +276,16 @@ function EngineDetail(props: {
                     </details>
                 )}
             </Section>
+            {inviteTeam === undefined ? null : (
+                <InviteDialog
+                    open={inviting}
+                    teamIds={[inviteTeam.teamId]}
+                    engineName={name}
+                    onClose={() => {
+                        setInviting(false);
+                    }}
+                />
+            )}
         </Page>
     );
 }
@@ -301,6 +330,7 @@ export function EngineDetailPage(props: { readonly engineId: string | null }) {
                 engine={engine.data}
                 canRevoke={permissions.includes(REVOKE_PERMISSION)}
                 canRename={canRename(permissions)}
+                canInvite={permissions.includes(INVITE_PERMISSION)}
             />
         );
     } else if (engine.isError) {

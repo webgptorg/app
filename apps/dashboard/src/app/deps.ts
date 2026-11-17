@@ -82,6 +82,5 @@ export function authLinks(dashboardOrigin: string): AuthLinks {
         signIn: () => `${dashboardOrigin}/signin`,
         recover: () => `${dashboardOrigin}/recover`,
         invite: (token) => `${dashboardOrigin}/invites#${token}`,
-        team: (teamId) => `${dashboardOrigin}/teams/${teamId}`,
     };
 }

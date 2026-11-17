@@ -13,6 +13,7 @@ import { CHALLENGE_TTL_MS } from '../../domain/auth/timing';
 import { orgPermissions, RECOVERY_COOLDOWN_MS, STEP_UP_WINDOW_MS } from '../../domain/authz/authorizer';
 import { DASHBOARD_POLICY } from '../../domain/authz/policy';
 import { orgIdSchema } from '../../domain/ids';
+import { createInviteJoinFlow, type InviteJoinDeps, type InviteJoinOutcome } from '../../domain/teams/join-invite';
 import { apiRoutes, type SessionView } from '../../shared/api/routes';
 import { resolveRequestLocale } from '../i18n/resolve-request-locale';
 import type { RequestContext, RouteBinder } from './bind-route';
@@ -20,7 +21,9 @@ import {
     CHALLENGE_COOKIE,
     challengeCookie,
     clearChallengeCookie,
+    clearInviteCookie,
     clearSessionCookie,
+    inviteToken,
     SESSION_COOKIE,
     sessionCookie,
 } from './cookies';
@@ -38,6 +41,9 @@ const CEREMONY_FAILURES = {
     'token-invalid': 400,
     'webauthn-failed': 401,
     conflict: 409,
+    'invite-invalid': 404,
+    'account-exists': 409,
+    'email-mismatch': 403,
 } as const;
 
 function failure<K extends keyof typeof CEREMONY_FAILURES>(kind: K) {
@@ -74,12 +80,17 @@ function passkeyView(passkey: PasskeyRecord) {
 export function bindAuthRoutes(
     router: Hono,
     mount: string,
-    deps: AuthDeps & { readonly routes: RouteBinder; readonly billingEnabled: boolean },
+    deps: AuthDeps & {
+        readonly routes: RouteBinder;
+        readonly billingEnabled: boolean;
+        readonly teams: InviteJoinDeps['teams'];
+    },
 ): void {
     const signup = createSignupFlow(deps);
     const signIn = createSignInFlow(deps);
     const recovery = createRecoveryFlow(deps);
     const account = createAccountFlows(deps);
+    const inviteJoin = createInviteJoinFlow(deps);
     const bind = deps.routes.bind.bind(deps.routes);
 
     async function sessionView(active: ActiveSession): Promise<SessionView> {
@@ -166,6 +177,65 @@ export function bindAuthRoutes(
             previousSessionToken: request.secretCookie(SESSION_COOKIE),
         });
         return outcome.kind === 'ok' ? signedIn(outcome.session) : failure(outcome.kind);
+    });
+
+    // Invitations (D-31): join or sign in on the invitation page itself, and accept in the same request.
+
+    async function joined(outcome: Extract<InviteJoinOutcome, { kind: 'ok' }>) {
+        const active = await account.resolveSession(outcome.session.token);
+        if (active === null) {
+            throw new Error('a session created a moment ago does not resolve');
+        }
+        const body = {
+            session: await sessionView(active),
+            joined: { orgId: outcome.joined.orgId, teamIds: [...outcome.joined.teamIds] },
+        };
+        return {
+            kind: 'ok',
+            body,
+            setCookies: [
+                sessionCookie(outcome.session.token, outcome.session.record.expiresAt, deps.clock.nowMs()),
+                clearChallengeCookie(),
+                clearInviteCookie(),
+            ],
+        } as const;
+    }
+
+    bind(router, mount, apiRoutes.inviteJoinOptions, async ({ input, request }) => {
+        const token = inviteToken(input.body.token, request);
+        if (token === null) {
+            return failure('invite-invalid');
+        }
+        const outcome = await inviteJoin.joinOptions({ token });
+        return outcome.kind === 'ok' ? withChallenge(outcome.options, outcome.challengeId) : failure(outcome.kind);
+    });
+
+    bind(router, mount, apiRoutes.inviteJoinVerify, async ({ input, request }) => {
+        const token = inviteToken(input.body.token, request);
+        if (token === null) {
+            return failure('invite-invalid');
+        }
+        const outcome = await inviteJoin.joinVerify({
+            token,
+            challengeId: request.secretCookie(CHALLENGE_COOKIE),
+            response: input.body.response,
+            locale: requestLocale(request),
+        });
+        return outcome.kind === 'ok' ? joined(outcome) : failure(outcome.kind);
+    });
+
+    bind(router, mount, apiRoutes.inviteSigninVerify, async ({ input, request }) => {
+        const token = inviteToken(input.body.token, request);
+        if (token === null) {
+            return failure('invite-invalid');
+        }
+        const outcome = await inviteJoin.signInAndAccept({
+            token,
+            challengeId: request.secretCookie(CHALLENGE_COOKIE),
+            response: input.body.response,
+            previousSessionToken: request.secretCookie(SESSION_COOKIE),
+        });
+        return outcome.kind === 'ok' ? joined(outcome) : failure(outcome.kind);
     });
 
     // Recovery

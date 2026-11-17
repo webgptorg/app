@@ -47,9 +47,25 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
         backOnlineAt: RECOVERED_AT + (2 * 24 + 3) * 3600_000 + 59 * 60_000,
         link: 'https://app.ptbk.test/engines/abcdefghijklmnopqrstuvwxyz',
     },
+    {
+        template: 'access-waiting',
+        to: 'a@example.test',
+        requesterEmail: 'jana@example.test',
+        teamName: 'Kancelář Brno',
+        link: 'https://abcdefghijklmnopqrstuvwxyz.engines.ptbk.test/members',
+    },
+    {
+        template: 'access-granted',
+        to: 'jana@example.test',
+        teamName: 'Kancelář Brno',
+        hostname: 'abcdefghijklmnopqrstuvwxyz.engines.ptbk.test',
+        link: 'https://abcdefghijklmnopqrstuvwxyz.engines.ptbk.test/',
+    },
 ] as EmailMessage[];
 const ONLINE = MESSAGES[5] as Extract<EmailMessage, { template: 'engine-online' }>;
 const BACK_ONLINE = MESSAGES[6] as Extract<EmailMessage, { template: 'engine-back-online' }>;
+const WAITING = MESSAGES[7] as Extract<EmailMessage, { template: 'access-waiting' }>;
+const GRANTED = MESSAGES[8] as Extract<EmailMessage, { template: 'access-granted' }>;
 
 describe('renderEmail', () => {
     it.each(
@@ -189,6 +205,25 @@ describe('renderEmail', () => {
     ])('rounds an outage of %i ms down to "%s"', (offlineMs, duration) => {
         const { text } = renderEmail({ ...BACK_ONLINE, locale: 'en', backOnlineAt: RECOVERED_AT + offlineMs });
         expect(text.replace(/\s/g, ' ')).toContain(`offline for ${duration}.`);
+    });
+
+    it.each(['en', 'cs'] as const)(
+        'asks approvers in for the engine itself: who waits, where, and the code to ask for (%s)',
+        (locale) => {
+            const { subject, text } = renderEmail({ ...WAITING, locale });
+            expect(subject).toContain('jana@example.test');
+            expect(subject).toContain('Kancelář Brno');
+            expect(text).toContain('https://abcdefghijklmnopqrstuvwxyz.engines.ptbk.test/members');
+            expect(text).not.toContain('app.ptbk.test');
+        },
+    );
+
+    it('tells the person they are in, with the engine’s own address', () => {
+        expect(renderEmail({ ...GRANTED, locale: 'en' }).subject).toBe("You're in: open Kancelář Brno");
+        expect(renderEmail({ ...GRANTED, locale: 'cs' }).subject).toBe('Máte přístup: otevřete Kancelář Brno');
+        const { text } = renderEmail({ ...GRANTED, locale: 'en' });
+        expect(text).toContain('https://abcdefghijklmnopqrstuvwxyz.engines.ptbk.test/');
+        expect(text).toContain('abcdefghijklmnopqrstuvwxyz.engines.ptbk.test,');
     });
 
     it('renders an ops alert in English with its rule, subject, time and numbers only', () => {

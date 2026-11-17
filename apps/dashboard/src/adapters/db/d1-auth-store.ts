@@ -26,7 +26,7 @@ import {
 } from './schema';
 
 const transportsSchema = z.array(z.enum(['ble', 'cable', 'hybrid', 'internal', 'nfc', 'smart-card', 'usb']));
-const ceremonySchema = z.enum(['signup', 'signin', 'recovery', 'step-up', 'passkey-add']);
+const ceremonySchema = z.enum(['signup', 'signin', 'recovery', 'step-up', 'passkey-add', 'invite']);
 
 /**
  * Drizzle's `blob({ mode: 'buffer' })` reads a Node `Buffer` (nodejs_compat) and writes whatever it is given, which D1

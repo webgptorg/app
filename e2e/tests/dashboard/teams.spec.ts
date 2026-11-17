@@ -117,13 +117,12 @@ async function linkTeamEngine(
     return { container, origin: `https://${hostname}`, owner: ownerPage };
 }
 
-/** Invite, accept, open the team and wait with a code; the engine's owner approves with that code. */
+/** Invite, join in one step on to the engine, and wait with a code; the engine's owner approves with that code. */
 async function inviteAndApprove(
     browser: Browser,
     page: Page,
     engine: Engine,
     dashboard: DashboardSteps,
-    dashboardFor: (page: Page) => DashboardSteps,
 ): Promise<Joined> {
     const { owner } = engine;
     const email = uniqueEmail('teams-person');
@@ -131,8 +130,8 @@ async function inviteAndApprove(
         await page.goto(`${DASHBOARD_ORIGIN}/engines`);
         await page.getByRole('link', { name: TEAM, exact: true }).click();
         await expect(page.getByRole('heading', { name: TEAM, level: 1 })).toBeVisible();
-        await page.getByRole('button', { name: 'Invite people' }).click();
-        const dialog = page.getByRole('dialog', { name: 'Invite people' });
+        await page.getByRole('button', { name: 'Invite to this engine' }).click();
+        const dialog = page.getByRole('dialog', { name: `Invite people to ${TEAM}` });
         await dialog.getByLabel('Email addresses').fill(email);
         await expect(dialog.getByRole('checkbox', { name: TEAM })).toBeChecked();
         await dialog.getByRole('button', { name: 'Send invitations' }).click();
@@ -142,20 +141,20 @@ async function inviteAndApprove(
     const context = await browser.newContext({ ...devices['Desktop Chrome'] });
     const person = await context.newPage();
     await addPasskeyAuthenticator(person);
-    const steps = dashboardFor(person);
 
-    await test.step('they sign up and accept', async () => {
-        await steps.signUp(email);
+    await test.step('they join from the invitation in one step and go on to the engine', async () => {
         await person.goto(await dashboard.emailedLink(email, 'team-invite'));
-        await person.getByRole('button', { name: 'Accept invitation' }).click();
-        await expect(person).toHaveURL(/\/engines$/);
+        await expect(person.getByText(`Invitation for ${email}`, { exact: false })).toBeVisible();
+        await person.getByRole('button', { name: 'Join', exact: true }).click();
+        await expect(
+            person.getByText('Next, confirm a passkey for the engine itself: it has its own secure address.'),
+        ).toBeVisible();
+        await person.waitForURL((url) => url.origin === engine.origin && url.pathname === '/auth/join');
+        expect(new URL(person.url()).hash).toBe('');
     });
 
     let code = '';
-    await test.step('they open the team and wait with a code', async () => {
-        await person.getByRole('button', { name: new RegExp(`^Open ${TEAM}`) }).click();
-        await person.waitForURL((url) => url.origin === engine.origin && url.pathname === '/auth/join');
-        expect(new URL(person.url()).hash).toBe('');
+    await test.step('they wait on the engine with a code', async () => {
         await person.locator('section[data-state="valid"] button[data-action="create"]').click();
         await expect(person.getByRole('heading', { name: 'Waiting for approval' })).toBeVisible();
         code = (await person.locator('section[data-state="waiting"] [data-join-code]').first().textContent()) ?? '';
@@ -202,12 +201,11 @@ test('invite, approve, use the engine, and a dashboard removal ends the session 
     browser,
     page,
     dashboard,
-    dashboardFor,
     mockEngines,
 }) => {
     test.setTimeout(420_000);
     const engine = await linkTeamEngine(page, dashboard, () => mockEngines.startUnlinked());
-    const { person, email } = await inviteAndApprove(browser, page, engine, dashboard, dashboardFor);
+    const { person, email } = await inviteAndApprove(browser, page, engine, dashboard);
 
     await expect
         .poll(async () => (await reloadedRow(page, email)).getByText('Has access').count(), {
@@ -243,12 +241,11 @@ test('with dashboard removals switched off, the person stays and the team page s
     browser,
     page,
     dashboard,
-    dashboardFor,
     mockEngines,
 }) => {
     test.setTimeout(420_000);
     const engine = await linkTeamEngine(page, dashboard, () => mockEngines.startUnlinked());
-    const { person, email } = await inviteAndApprove(browser, page, engine, dashboard, dashboardFor);
+    const { person, email } = await inviteAndApprove(browser, page, engine, dashboard);
     const { owner } = engine;
 
     await test.step('the engine owner switches dashboard removals off', async () => {

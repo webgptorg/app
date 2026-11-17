@@ -64,7 +64,7 @@ export interface SessionRecord {
     readonly revokedAt: number | null;
 }
 
-export type CeremonyPurpose = 'signup' | 'signin' | 'recovery' | 'step-up' | 'passkey-add';
+export type CeremonyPurpose = 'signup' | 'signin' | 'recovery' | 'step-up' | 'passkey-add' | 'invite';
 
 export interface ChallengeRecord {
     readonly id: string;

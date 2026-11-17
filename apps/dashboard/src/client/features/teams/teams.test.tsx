@@ -4,9 +4,18 @@ import { describe, expect, it } from 'vitest';
 
 import { apiRoutes, type TeamView } from '../../../shared/api/routes';
 import { expectNoAxeViolations } from '../../testing/axe';
-import { ENGINE_ID, engineView, NOW, session } from '../../testing/fixtures';
+import {
+    AUTHENTICATION_OPTIONS,
+    AUTHENTICATION_RESPONSE,
+    ENGINE_ID,
+    engineView,
+    NOW,
+    REGISTRATION_OPTIONS,
+    session,
+} from '../../testing/fixtures';
 import { renderApp } from '../../testing/render-app';
 import { ok, problem, type ScriptedApi } from '../../testing/scripted-api';
+import { CONTINUE_DELAY_MS } from './invite-page';
 
 const TEAM_ID = 'tttttttttttttttttttttttttt';
 const OTHER_TEAM = 'uuuuuuuuuuuuuuuuuuuuuuuuuu';
@@ -242,8 +251,8 @@ describe('team page', () => {
         }
         await expectNoAxeViolations(app.container);
 
-        await app.user.click(within(people).getByRole('button', { name: 'Invite people' }));
-        const dialog = await screen.findByRole('dialog', { name: 'Invite people' });
+        await app.user.click(within(people).getByRole('button', { name: 'Invite to this engine' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Invite people to Northwind' });
         expect(within(dialog).getByRole('checkbox', { name: 'Northwind' })).toHaveProperty('checked', true);
         await app.user.click(within(dialog).getByRole('button', { name: 'Send invitations' }));
         expect(within(dialog).getByText('Enter one or more email addresses.')).toBeTruthy();
@@ -363,6 +372,9 @@ describe('team page', () => {
         expect(link.getAttribute('href')).toBe(`/engines/new?team=${TEAM_ID}`);
         expect(screen.queryByText(/what the engine has told the dashboard/)).toBeNull();
         expect(screen.queryByRole('button', { name: /^Open/ })).toBeNull();
+        // No engine to name yet: the invitation is to the team.
+        expect(screen.getByRole('button', { name: 'Invite people' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Invite to this engine' })).toBeNull();
         app.unmount();
 
         renderApp({
@@ -450,63 +462,184 @@ describe('people page', () => {
 
 describe('invitation page', () => {
     const TOKEN = 'T'.repeat(43);
-    const preview = (api: ScriptedApi) =>
+    const ORG_ID = 'cccccccccccccccccccccccccc';
+    const JOINER = session({ permissions: MEMBER.activeOrg.permissions });
+    const ENGINE_URL = 'https://northwind.engines.ptbk.test/auth/join#ticket';
+    const preview = (api: ScriptedApi, overrides: { readonly hasAccount?: boolean; readonly email?: string } = {}) =>
         api.on(
             apiRoutes.previewInvite,
             ok({
                 orgName: 'Acme',
                 teamNames: ['Northwind' as TeamView['name']],
-                email: 'eve@example.test',
+                email: overrides.email ?? 'ada@example.test',
                 expiresAt: NOW,
+                hasAccount: overrides.hasAccount ?? false,
             }),
         );
+    const joinedWith = (teams: readonly TeamView[]) => (api: ScriptedApi) => {
+        api.on(apiRoutes.listTeams, ok({ teams: [...teams] }));
+        api.on(apiRoutes.createAccessTicket, ok({ url: ENGINE_URL, expiresAt: NOW + 15 * 60_000 }));
+    };
 
-    it('shows what the invitation is for and asks a signed-out visitor to sign in, keeping the token out of the URL', async () => {
-        const app = renderApp({ path: `/invites#${TOKEN}`, script: preview });
-        expect(await screen.findByText("You're invited to Acme on Promptbook.")).toBeTruthy();
+    it('lets someone new join in one step, then explains the engine passkey and goes on to the engine', async () => {
+        const app = renderApp({
+            path: `/invites#${TOKEN}`,
+            script: (api) => {
+                preview(api);
+                api.on(apiRoutes.inviteJoinOptions, ok({ options: REGISTRATION_OPTIONS }));
+                api.on(
+                    apiRoutes.inviteJoinVerify,
+                    ok({ session: JOINER, joined: { orgId: ORG_ID, teamIds: [TEAM_ID] } }),
+                );
+                joinedWith([team()])(api);
+            },
+        });
+        expect(await screen.findByRole('heading', { name: 'Join Acme' })).toBeTruthy();
         expect(screen.getByText('Northwind')).toBeTruthy();
         expect(app.history.location.hash).toBe('');
-        expect(screen.getByRole('link', { name: 'Sign in' }).getAttribute('href')).toBe('/signin?returnTo=%2Finvites');
-        expect(app.api.callsTo(apiRoutes.previewInvite)).toEqual([{ body: { token: TOKEN } }]);
-    });
+        expect(screen.queryByRole('link', { name: 'Sign in' })).toBeNull();
+        await expectNoAxeViolations(app.container);
 
-    it('accepts for a signed-in person and moves them into the organization', async () => {
-        const app = renderApp({
-            path: `/invites#${TOKEN}`,
-            session: MEMBER,
-            script: (api) => {
-                preview(api);
-                api.on(apiRoutes.acceptInvite, ok({ orgId: 'cccccccccccccccccccccccccc' }));
-                api.on(apiRoutes.setActiveOrg, ok(MEMBER));
-            },
-        });
-        await app.user.click(await screen.findByRole('button', { name: 'Accept invitation' }));
-        await waitFor(() => {
-            expect(app.history.location.pathname).toBe('/engines');
-        });
-        expect(app.api.callsTo(apiRoutes.setActiveOrg)).toEqual([{ body: { orgId: 'cccccccccccccccccccccccccc' } }]);
-        // The token is spent: asking again would flash "no longer valid" on the way out.
-        expect(app.api.callsTo(apiRoutes.previewInvite)).toHaveLength(1);
-    });
-
-    it('explains an invitation for another address, and one that no longer works', async () => {
-        const app = renderApp({
-            path: `/invites#${TOKEN}`,
-            session: MEMBER,
-            script: (api) => {
-                preview(api);
-                api.once(apiRoutes.acceptInvite, problem(403, 'email-mismatch'), problem(404, 'invite-invalid'));
-            },
-        });
-        await app.user.click(await screen.findByRole('button', { name: 'Accept invitation' }));
+        await app.user.click(screen.getByRole('button', { name: 'Join Acme' }));
+        expect(await screen.findByRole('heading', { name: "You're in" })).toBeTruthy();
         expect(
-            await screen.findByText('This invitation is for eve@example.test. Sign in with that address to accept it.'),
+            screen.getByText('Next, confirm a passkey for the engine itself: it has its own secure address.'),
         ).toBeTruthy();
-        await app.user.click(screen.getByRole('button', { name: 'Accept invitation' }));
+        expect(app.api.callsTo(apiRoutes.inviteJoinOptions)).toEqual([{ body: { token: TOKEN } }]);
+        expect(app.passkeys.register).toHaveBeenCalledWith(REGISTRATION_OPTIONS);
+        await waitFor(
+            () => {
+                expect(app.navigations).toEqual([ENGINE_URL]);
+            },
+            { timeout: CONTINUE_DELAY_MS + 2000 },
+        );
+        expect(app.api.callsTo(apiRoutes.createAccessTicket)).toEqual([{ params: { teamId: TEAM_ID } }]);
+    });
+
+    it('signs an existing account in and joins, and lists several engines to open', async () => {
+        const second = team({ teamId: OTHER_TEAM, name: 'Contoso' as TeamView['name'] });
+        const app = renderApp({
+            path: `/invites#${TOKEN}`,
+            script: (api) => {
+                preview(api, { hasAccount: true });
+                api.on(apiRoutes.signinOptions, ok({ options: AUTHENTICATION_OPTIONS }));
+                api.on(
+                    apiRoutes.inviteSigninVerify,
+                    ok({ session: JOINER, joined: { orgId: ORG_ID, teamIds: [TEAM_ID, OTHER_TEAM] } }),
+                );
+                joinedWith([team(), second])(api);
+            },
+        });
+        expect(
+            await screen.findByText(
+                "You already have a Promptbook account for ada@example.test. Sign in with your passkey and you're in.",
+            ),
+        ).toBeTruthy();
+        expect(screen.getByRole('link', { name: 'Recover access' })).toBeTruthy();
+        await app.user.click(screen.getByRole('button', { name: 'Sign in and join' }));
+        expect(await screen.findByRole('button', { name: 'Open Contoso' })).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.inviteSigninVerify)).toEqual([
+            { body: { token: TOKEN, response: AUTHENTICATION_RESPONSE } },
+        ]);
+        await app.user.click(screen.getByRole('button', { name: 'Open Northwind' }));
+        await waitFor(() => {
+            expect(app.navigations).toEqual([ENGINE_URL]);
+        });
+    });
+
+    it('finds the invitation from its cookie after a reload, and switches to sign-in when the address has an account', async () => {
+        const app = renderApp({
+            path: '/invites',
+            script: (api) => {
+                api.once(
+                    apiRoutes.previewInvite,
+                    ok({ orgName: null, teamNames: [], email: 'ada@example.test', expiresAt: NOW, hasAccount: false }),
+                );
+                preview(api, { hasAccount: true });
+                api.on(apiRoutes.inviteJoinOptions, problem(409, 'account-exists'));
+            },
+        });
+        expect(await screen.findByRole('heading', { name: 'Join your colleagues on Promptbook' })).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.previewInvite)).toEqual([{ body: {} }]);
+        await app.user.click(screen.getByRole('button', { name: 'Join' }));
+        expect(await screen.findByRole('button', { name: 'Sign in and join' })).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.inviteJoinOptions)).toEqual([{ body: {} }]);
+    });
+
+    it('explains a passkey of another account and a cancelled prompt, with a retry', async () => {
+        const app = renderApp({
+            path: `/invites#${TOKEN}`,
+            script: (api) => {
+                preview(api, { hasAccount: true });
+                api.on(apiRoutes.signinOptions, ok({ options: AUTHENTICATION_OPTIONS }));
+                api.on(apiRoutes.inviteSigninVerify, problem(403, 'email-mismatch'));
+            },
+        });
+        app.passkeys.failNext('cancelled');
+        await app.user.click(await screen.findByRole('button', { name: 'Sign in and join' }));
+        expect(await screen.findByRole('button', { name: 'Try again' })).toBeTruthy();
+        await app.user.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(await screen.findByText(/That passkey belongs to a different account/)).toBeTruthy();
+    });
+
+    it('accepts for a signed-in person, and lands on the dashboard when no engine is set up yet', async () => {
+        const app = renderApp({
+            path: `/invites#${TOKEN}`,
+            session: MEMBER,
+            script: (api) => {
+                preview(api);
+                api.on(apiRoutes.acceptInvite, ok({ orgId: ORG_ID, teamIds: [TEAM_ID] }));
+                api.on(apiRoutes.setActiveOrg, ok(MEMBER));
+                joinedWith([team({ engineId: null })])(api);
+            },
+        });
+        await app.user.click(await screen.findByRole('button', { name: 'Join Acme' }));
+        expect(await screen.findByText(/No engine is set up for you yet/)).toBeTruthy();
+        expect(screen.getByRole('link', { name: 'Go to the dashboard' })).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.setActiveOrg)).toEqual([{ body: { orgId: ORG_ID } }]);
+        // The token is spent: asking again would flash "no longer valid".
+        expect(app.api.callsTo(apiRoutes.previewInvite)).toHaveLength(1);
+        expect(app.navigations).toEqual([]);
+    });
+
+    it('offers to sign out here when signed in as someone else, then joins as the invited address', async () => {
+        const app = renderApp({
+            path: `/invites#${TOKEN}`,
+            session: MEMBER,
+            script: (api) => {
+                preview(api, { email: 'eve@example.test' });
+                api.on(apiRoutes.signout, ok({}));
+            },
+        });
+        expect(
+            await screen.findByText(
+                "You're signed in as ada@example.test, but this invitation is for eve@example.test. Sign out here, then join as eve@example.test.",
+            ),
+        ).toBeTruthy();
+        await app.user.click(screen.getByRole('button', { name: 'Sign out and continue' }));
+        expect(await screen.findByRole('button', { name: 'Join Acme' })).toBeTruthy();
+        expect(app.history.location.pathname).toBe('/invites');
+    });
+
+    it('explains an invitation that no longer works', async () => {
+        const app = renderApp({
+            path: `/invites#${TOKEN}`,
+            session: MEMBER,
+            script: (api) => {
+                preview(api);
+                api.once(apiRoutes.acceptInvite, problem(404, 'invite-invalid'));
+            },
+        });
+        await app.user.click(await screen.findByRole('button', { name: 'Join Acme' }));
         expect(await screen.findAllByText(/no longer valid/)).toBeTruthy();
         app.unmount();
 
-        renderApp({ path: '/invites', session: MEMBER });
+        renderApp({
+            path: '/invites',
+            session: MEMBER,
+            script: (api) => api.on(apiRoutes.previewInvite, problem(404, 'not-found')),
+        });
         expect(await screen.findByText(/no longer valid/)).toBeTruthy();
+        expect(screen.getByRole('link', { name: 'Go to the dashboard' })).toBeTruthy();
     });
 });

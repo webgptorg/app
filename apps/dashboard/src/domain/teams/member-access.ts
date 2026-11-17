@@ -12,7 +12,7 @@ import {
 } from '@ptbk/protocol';
 
 import { newSecret } from '../auth/secrets';
-import type { TeamId } from '../ids';
+import type { OrgId, TeamId } from '../ids';
 import type { Clock } from '../ports/clock';
 import type { EmailMessage } from '../ports/email-sender';
 import type { Logger } from '../ports/logger';
@@ -29,8 +29,6 @@ export interface MemberAccessDeps {
     readonly clock: Clock;
     readonly random: Random;
     readonly logger: Logger;
-    /** The team's page in the dashboard, for the emails. */
-    readonly teamLink: (teamId: TeamId) => string;
 }
 
 export type TicketOutcomeView =
@@ -124,19 +122,23 @@ export async function handleHeartbeatV2(
 ): Promise<HeartbeatV2Result> {
     const now = deps.clock.nowMs();
     const emails: EmailMessage[] = [];
+    // Every effect and notice of this heartbeat is about this one engine; heartbeats come only from active ones.
+    const engineHostname = async (orgId: OrgId) => (await deps.engines.findInOrg(orgId, engineId))?.hostname ?? null;
     for (const ack of heartbeat.acks) {
         if (!isTicketAck(ack)) {
             await deps.teams.closeRevocation(engineId, ack.id, ack.outcome, now);
             continue;
         }
         const effect = await deps.teams.applyTicketAck(engineId, ack.id, ack.outcome, now);
-        if (effect !== null && ack.outcome === 'approved') {
+        const hostname = effect !== null && ack.outcome === 'approved' ? await engineHostname(effect.orgId) : null;
+        if (effect !== null && hostname !== null) {
             emails.push({
                 template: 'access-granted',
                 to: effect.email,
                 locale: effect.locale,
                 teamName: effect.teamName,
-                link: deps.teamLink(effect.teamId),
+                hostname,
+                link: `https://${hostname}/`,
             });
         }
     }
@@ -147,6 +149,10 @@ export async function handleHeartbeatV2(
             now,
         );
         for (const notice of notices) {
+            const hostname = await engineHostname(notice.orgId);
+            if (hostname === null) {
+                continue;
+            }
             for (const recipient of notice.recipients) {
                 emails.push({
                     template: 'access-waiting',
@@ -154,7 +160,9 @@ export async function handleHeartbeatV2(
                     locale: recipient.locale,
                     requesterEmail: notice.requesterEmail,
                     teamName: notice.teamName,
-                    link: deps.teamLink(notice.teamId),
+                    // The engine's Members page, not the request itself: the heartbeat carries only a count and the
+                    // engine makes up its request IDs, so the dashboard never knows which one this is.
+                    link: `https://${hostname}/members`,
                 });
             }
         }

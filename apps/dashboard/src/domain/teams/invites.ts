@@ -5,7 +5,7 @@ import { newInviteId, newOrgAuditEntryId, type InviteId, type OrgId, type TeamId
 import type { Locale } from '../locale';
 import type { EmailMessage, EmailSender } from '../ports/email-sender';
 import type { OrgRole } from '../roles';
-import type { InvitePreview, InviteRecord } from './team-store';
+import type { InviteRecord, TeamStore } from './team-store';
 import { teamAudit, type TeamActor, type TeamDeps } from './teams';
 
 /** How long an emailed invitation works (teams spec): long enough for a colleague on holiday, then it lapses. */
@@ -156,21 +156,15 @@ export function revokeInvite(deps: InviteDeps, actor: TeamActor, inviteId: Invit
     return deps.teams.revokeInvite(actor.orgId, inviteId, teamAudit(deps, actor));
 }
 
-export async function previewInvite(
-    deps: Pick<InviteDeps, 'teams' | 'clock'>,
-    token: string,
-): Promise<InvitePreview | null> {
-    return deps.teams.previewInvite(await sha256Hex(token), deps.clock.nowMs());
-}
-
 export type AcceptOutcome =
-    | { readonly kind: 'accepted'; readonly orgId: OrgId }
+    /** `teamIds`: the teams the invitation named, for the page that continues to their engines. */
+    | { readonly kind: 'accepted'; readonly orgId: OrgId; readonly teamIds: readonly TeamId[] }
     | { readonly kind: 'invalid' }
     /** The invitation was for another address: a forwarded link does not let someone else in. */
     | { readonly kind: 'email-mismatch' };
 
 export async function acceptInvite(
-    deps: Pick<InviteDeps, 'teams' | 'clock' | 'random'>,
+    deps: Pick<InviteDeps, 'clock' | 'random'> & { readonly teams: Pick<TeamStore, 'previewInvite' | 'acceptInvite'> },
     actor: { readonly userId: UserId; readonly email: string },
     token: string,
 ): Promise<AcceptOutcome> {
@@ -183,5 +177,9 @@ export async function acceptInvite(
     if (preview.invite.email !== actor.email.toLowerCase()) {
         return { kind: 'email-mismatch' };
     }
-    return deps.teams.acceptInvite(tokenHash, actor.userId, { id: newOrgAuditEntryId(deps.random), at: now });
+    const accepted = await deps.teams.acceptInvite(tokenHash, actor.userId, {
+        id: newOrgAuditEntryId(deps.random),
+        at: now,
+    });
+    return accepted.kind === 'accepted' ? { ...accepted, teamIds: preview.invite.teamIds } : accepted;
 }

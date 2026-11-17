@@ -418,11 +418,18 @@ const teamNameInput = {
     body: z.strictObject({ name: teamNameSchema }),
     maxBodyBytes: SMALL_BODY_BYTES,
 } as const;
+/**
+ * The invitation token from the link's fragment; without it, the server uses the `__Host-` cookie the preview set, so a
+ * reload or another tab still finds the invitation (D-31).
+ */
 const inviteTokenInput = {
     ...NO_INPUT,
-    body: z.strictObject({ token: emailTokenSchema }),
+    body: z.strictObject({ token: emailTokenSchema.optional() }),
     maxBodyBytes: SMALL_BODY_BYTES,
 } as const;
+/** Where an accepted invitation put the person: its organization and the teams whose engines they may open next. */
+const joinedInviteSchema = z.strictObject({ orgId: idSchema, teamIds: z.array(idSchema) });
+const inviteJoinedSchema = z.strictObject({ session: sessionViewSchema, joined: joinedInviteSchema });
 
 /** The SPA's own API. Every `/api` endpoint is declared here and nowhere else. */
 export const apiRoutes = {
@@ -1150,6 +1157,8 @@ export const apiRoutes = {
             teamNames: z.array(teamNameSchema),
             email: z.string(),
             expiresAt: timestampSchema,
+            /** Picks "Sign in and join" over "Join": only the link's holder learns it. */
+            hasAccount: z.boolean(),
         }),
         errorCodes: [],
     }),
@@ -1161,8 +1170,59 @@ export const apiRoutes = {
         permission: 'invite.accept',
         rateLimit: null,
         input: inviteTokenInput,
-        output: z.strictObject({ orgId: idSchema }),
+        output: joinedInviteSchema,
         errorCodes: ['invite-invalid', 'email-mismatch'],
+    }),
+    /**
+     * One-step join for an address without an account (D-31): registration options bound to the invitation.
+     * `account-exists` (409) sends the page to "Sign in and join" instead.
+     */
+    inviteJoinOptions: defineRoute({
+        method: 'POST',
+        path: '/api/invites/join/options',
+        auth: 'public',
+        permission: null,
+        rateLimit: 'options-ip',
+        input: inviteTokenInput,
+        output: registrationOptionsResponse,
+        errorCodes: ['invite-invalid', 'account-exists'],
+    }),
+    /**
+     * Creates the account with the invitation's address, its passkey and a session, and accepts the invitation, in one
+     * transaction. The invitation link proves the address (emailed there, single use, 7 days), so no confirmation
+     * email follows.
+     */
+    inviteJoinVerify: defineRoute({
+        method: 'POST',
+        path: '/api/invites/join/verify',
+        auth: 'public',
+        permission: null,
+        rateLimit: 'verify-ip',
+        input: {
+            ...NO_INPUT,
+            body: z.strictObject({ token: emailTokenSchema.optional(), response: registrationResponseSchema }),
+            maxBodyBytes: WEBAUTHN_BODY_BYTES,
+        },
+        output: inviteJoinedSchema,
+        errorCodes: [...ceremonyErrors, 'invite-invalid', 'account-exists'],
+    }),
+    /**
+     * "Sign in and join": verifies an assertion made with `signinOptions`, accepts the invitation for that account and
+     * signs in to the invitation's organization. `email-mismatch` (403) signs nobody in.
+     */
+    inviteSigninVerify: defineRoute({
+        method: 'POST',
+        path: '/api/invites/signin/verify',
+        auth: 'public',
+        permission: null,
+        rateLimit: 'verify-ip',
+        input: {
+            ...NO_INPUT,
+            body: z.strictObject({ token: emailTokenSchema.optional(), response: authenticationResponseSchema }),
+            maxBodyBytes: WEBAUTHN_BODY_BYTES,
+        },
+        output: inviteJoinedSchema,
+        errorCodes: [...ceremonyErrors, 'invite-invalid', 'email-mismatch'],
     }),
 
     /**
