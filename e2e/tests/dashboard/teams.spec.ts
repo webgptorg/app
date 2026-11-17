@@ -57,9 +57,11 @@ async function inviteAndApprove(
 
     await test.step('the engine owner approves with the code', async () => {
         await owner.goto(`${engine.origin}/members`);
+        await owner.getByRole('button', { name: 'Approve', exact: true }).click();
         const approve = async (): Promise<void> => {
             const dialog = owner.getByRole('dialog', { name: /^Approve / });
-            if (!(await dialog.isVisible())) await owner.getByRole('button', { name: 'Approve', exact: true }).click();
+            // Back from step-up, the page reopens the approval on its own, a moment after it loads.
+            await expect(dialog).toBeVisible();
             // Pasted as shown on the waiting page; the sixth digit approves.
             await dialog.getByLabel('Code').fill(code);
         };

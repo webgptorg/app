@@ -117,7 +117,8 @@ test('a new colleague joins from the invite in one step and is let in from the a
         const stepUp = await withStepUp(
             owner,
             async () => {
-                if (!(await dialog.isVisible())) await needsYouApprove(owner, jana).click();
+                // Back from step-up, the page reopens the approval on its own, a moment after it loads.
+                await expect(dialog).toBeVisible();
                 // As shown on the waiting page, with its space; the sixth digit approves.
                 await paste(owner, dialog.getByLabel('Code'), code);
             },
@@ -189,17 +190,16 @@ test('an existing account signs in and joins; a member cannot approve, and the f
         const code = await waitWithCode(petrs.page);
         await owner.goto(`${engine.origin}/members`);
         const dialog = approveDialog(owner, petr);
+        await owner
+            .getByRole('listitem')
+            .filter({ hasText: petr })
+            .getByRole('button', { name: 'Approve', exact: true })
+            .click();
         await engine.expireStepUp();
         const stepUp = await withStepUp(
             owner,
             async () => {
-                if (!(await dialog.isVisible())) {
-                    await owner
-                        .getByRole('listitem')
-                        .filter({ hasText: petr })
-                        .getByRole('button', { name: 'Approve', exact: true })
-                        .click();
-                }
+                await expect(dialog).toBeVisible();
                 await dialog.getByLabel('Code').pressSequentially(code.replace(' ', ''));
             },
             () => expect(owner.getByText(APPROVED).first()).toBeVisible({ timeout: 15_000 }),
@@ -258,7 +258,7 @@ test('an existing account signs in and joins; a member cannot approve, and the f
         await withStepUp(
             owner,
             async () => {
-                if (!(await dialog.isVisible())) await owner.goto(deepLink);
+                await expect(dialog).toBeVisible();
                 await code.pressSequentially(wrong);
             },
             () => expect(dialog.getByText(`Check it with ${vera}: 4 tries left`, { exact: false })).toBeVisible(),
