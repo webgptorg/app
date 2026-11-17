@@ -166,9 +166,11 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
             await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
         },
         async signIn(email) {
-            await page.getByLabel('Email').fill(email);
-            // The virtual authenticator may answer the field's passkey autofill on its own, the one-tap sign-in, and the
-            // page leaves before Continue can be clicked; Continue covers a browser where it does not.
+            // The virtual authenticator answers the field's passkey autofill on its own, the one-tap sign-in, and the
+            // page may leave before the field is filled or Continue clicked; Continue covers a browser where it does not.
+            const field = page.getByLabel('Email');
+            await expect(field.or(landing)).toBeVisible();
+            await field.fill(email, { timeout: 5_000 }).catch(() => undefined);
             await page
                 .getByRole('button', { name: 'Continue' })
                 .click({ timeout: 5_000 })

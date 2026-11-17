@@ -32,11 +32,14 @@ async function expireInvitation(compose: ComposeControl, email: string): Promise
         'execute',
         'DB',
         '--local',
+        '--json',
         '--command',
-        `UPDATE invites SET expires_at = 0 WHERE email = '${email}' AND accepted_at IS NULL`,
+        `UPDATE invites SET expires_at = 0 WHERE email = '${email}' AND accepted_at IS NULL; ` +
+            `SELECT count(*) AS expired FROM invites WHERE email = '${email}' AND expires_at = 0`,
     ]);
     expect(result.exitCode, result.stderr).toBe(0);
-    expect(result.stdout).toContain('"changes": 1');
+    const statements = JSON.parse(result.stdout) as { results: { expired?: number }[] }[];
+    expect(statements.at(-1)?.results[0]?.expired).toBe(1);
 }
 
 test('an expired invitation is refused', async ({ browser, page, dashboard, compose }) => {

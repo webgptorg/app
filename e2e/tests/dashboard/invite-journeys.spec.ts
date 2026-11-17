@@ -161,10 +161,11 @@ test('an existing account signs in and joins; a member cannot approve, and the f
     const petr = uniqueEmail('petr');
     const petrs = await newPerson(browser);
 
-    await test.step('Petr already has an account and is signed out', async () => {
-        const steps = dashboardFor(petrs.page);
-        await steps.signUp(petr);
-        await steps.signOut();
+    await test.step('Petr already has an account, and his session on this device has ended', async () => {
+        await dashboardFor(petrs.page).signUp(petr);
+        // Not "Sign out": it lands on Continue, whose passkey autofill the virtual authenticator answers by itself, so
+        // he would be signed in again at once. A person picks the passkey from the autofill first.
+        await petrs.page.context().clearCookies();
     });
 
     await test.step('the owner invites him to the engine', async () => {
