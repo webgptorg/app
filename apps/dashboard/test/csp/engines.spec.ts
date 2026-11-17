@@ -27,9 +27,11 @@ test('link an engine, see it online, open its page and revoke it, under the prod
 }) => {
     await authenticators.add();
     const email = uniqueEmail('engines');
-    await page.goto('/signup');
+    await page.goto('/continue');
     await page.getByLabel('Email').fill(email);
-    await page.getByRole('button', { name: 'Send the link' }).click();
+    // A new address has no passkey here, so Continue falls back to the emailed link.
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
     await page.goto(await outboxLink(page.request, email, 'signup-link'));
     await page.getByRole('button', { name: 'Create passkey' }).click();
     await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
