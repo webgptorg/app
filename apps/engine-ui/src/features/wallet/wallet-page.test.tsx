@@ -368,6 +368,9 @@ describe('Wallet', { timeout: TIMEOUT_MS }, () => {
         });
         expect(add.mock.calls[1]?.[0]).toMatchObject({ origin: 'https://linear.app', password: 'step-up-canary' });
         expect(await screen.findByText(/^Login for linear\.app saved/)).toBeDefined();
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: 'Add login' })).toBeNull();
+        });
         expect(storage.getItem(STEP_UP_INTENT_KEY)).toBeNull();
     });
 

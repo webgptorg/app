@@ -122,20 +122,31 @@ export function LoginDialog({ target, onClose, mutations }: LoginDialogProps) {
             const origin = toWalletOrigin(values.website);
             if (secrets === null || origin === null) return;
             const label = values.label === '' || values.label === record?.label ? undefined : values.label;
-            try {
-                await mutations.save.mutateAsync({
-                    ...(record === undefined ? {} : { recordId: record.id }),
-                    origin,
-                    username: values.username,
-                    ...secrets,
-                    ...(label === undefined ? {} : { label }),
-                    ...(request === undefined ? {} : { requestId: request.id }),
-                });
-                form.reset();
-                onClose();
-            } catch {
-                // The mutation reported it in a toast; the dialog stays open for another try with the password typed again.
-            }
+            // `mutate` with callbacks, not `mutateAsync`: after a step-up the same call runs again with these callbacks,
+            // so the dialog closes once the retry saves. A failure was reported in a toast, and the dialog stays open
+            // for another try with the password typed again.
+            await new Promise<void>((settle) => {
+                mutations.save.mutate(
+                    {
+                        ...(record === undefined ? {} : { recordId: record.id }),
+                        origin,
+                        username: values.username,
+                        ...secrets,
+                        ...(label === undefined ? {} : { label }),
+                        ...(request === undefined ? {} : { requestId: request.id }),
+                    },
+                    {
+                        onSuccess: () => {
+                            form.reset();
+                            onClose();
+                            settle();
+                        },
+                        onError: () => {
+                            settle();
+                        },
+                    },
+                );
+            });
         },
     });
 
