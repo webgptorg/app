@@ -31,8 +31,20 @@ interface Joined {
     readonly email: string;
 }
 
-function meStatus(page: Page): Promise<number> {
-    return page.evaluate(async () => (await fetch('/api/v1/me', { credentials: 'same-origin' })).status);
+/**
+ * `/api/v1/me` from the tab, or `null` while it cannot say: the tab is between pages (an ended session sends the engine
+ * UI to sign-in, which destroys the page mid-call) or, given `engineOrigin`, on another origin. A poll then asks again.
+ */
+async function meStatus(page: Page, engineOrigin?: string): Promise<number | null> {
+    try {
+        return await page.evaluate(async (expected) => {
+            if (expected !== undefined && location.origin !== expected) return null;
+            return (await fetch('/api/v1/me', { credentials: 'same-origin' })).status;
+        }, engineOrigin);
+    } catch (error) {
+        if (error instanceof Error && error.message.includes('Execution context was destroyed')) return null;
+        throw error;
+    }
 }
 
 /**
@@ -207,7 +219,9 @@ test('invite, approve, use the engine, and a dashboard removal ends the session 
     await test.step('the org admin removes them, and their session ends within one heartbeat', async () => {
         await removeFromTeam(page, email);
         const removedAt = Date.now();
-        await expect.poll(() => meStatus(person), { timeout: ONE_HEARTBEAT_MS, intervals: [500] }).toBe(401);
+        await expect
+            .poll(() => meStatus(person, engine.origin), { timeout: ONE_HEARTBEAT_MS, intervals: [500] })
+            .toBe(401);
         test.info().annotations.push({
             type: 'session ended after',
             description: `${String(Date.now() - removedAt)} ms`,
