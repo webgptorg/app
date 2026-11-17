@@ -118,10 +118,14 @@ rollout() { runner /scripts/rolling-deploy.sh "${digest[$1]}" "${RELAYS[@]/%/.$R
 point() {
     local relay=$1 image=$2
     runner skopeo copy --quiet --all --preserve-digests "docker://$image" "docker://$REPOSITORY:deploy-$relay.$RELAY_DOMAIN"
-    # A refused deploy exits 1, so back-to-back points hit systemd's start limit (5 in 10 s) and the next start
-    # would be dropped silently; resetting the counter keeps every point a real deploy attempt.
-    on "$relay" systemctl reset-failed ptbk-relay-deploy.service
-    on "$relay" systemctl start ptbk-relay-deploy.service 2>/dev/null || true
+    deploy_now "$relay" 2>/dev/null || true
+}
+# Runs a relay's deploy at once. A refused or failed deploy exits 1, so back-to-back runs hit systemd's start limit
+# (5 in 10 s) and the next start would be refused ("Start request repeated too quickly"); resetting the counter first
+# keeps every start a real deploy attempt.
+deploy_now() {
+    on "$1" systemctl reset-failed ptbk-relay-deploy.service
+    on "$1" systemctl start ptbk-relay-deploy.service
 }
 point_to() { point "$1" "$REPOSITORY@${digest[$2]}"; }
 journal_has() { on "$1" journalctl --no-pager -o cat -u ptbk-relay-deploy.service | grep -F -- "$2"; }
@@ -427,7 +431,7 @@ journal_has relay-a "refused: $REPOSITORY@${digest[old]} was built" || fail "the
 expect_current relay-a good-2
 on relay-a sh -c "echo ${digest[old]} >/etc/ptbk-relay/allow-downgrade"
 on relay-a /usr/local/sbin/ptbk-relay-deploy resume
-on relay-a systemctl start ptbk-relay-deploy.service
+deploy_now relay-a
 expect_current relay-a old
 point_to relay-a good-2
 expect_current relay-a good-2
@@ -435,10 +439,10 @@ expect_current relay-a good-2
 step "an admin's emergency rollback holds until resume"
 on relay-b /usr/local/sbin/ptbk-relay-deploy rollback
 expect_current relay-b good-1
-on relay-b systemctl start ptbk-relay-deploy.service
+deploy_now relay-b
 expect_current relay-b good-1
 on relay-b /usr/local/sbin/ptbk-relay-deploy resume
-on relay-b systemctl start ptbk-relay-deploy.service
+deploy_now relay-b
 expect_current relay-b good-2
 
 step "downgrade guard: a signed image without a build time is refused"
@@ -475,22 +479,22 @@ expect_current relay-b good-1
 step "an outage is not a refusal: the run fails, nothing is remembered, the next run deploys"
 on relay-a systemctl stop ptbk-relay-deploy.timer
 # Waits for a run the timer may have started; the tag still names what runs, so it does nothing.
-on relay-a systemctl start ptbk-relay-deploy.service
+deploy_now relay-a
 runner skopeo copy --quiet --all --preserve-digests "docker://$REPOSITORY@${digest[back-1]}" \
     "docker://$REPOSITORY:deploy-relay-a.$RELAY_DOMAIN"
 docker network disconnect "$run" "$run-registry"
-if on relay-a systemctl start ptbk-relay-deploy.service 2>/dev/null; then fail "the run passed without the registry"; fi
+if deploy_now relay-a 2>/dev/null; then fail "the run passed without the registry"; fi
 journal_has relay-a "cannot read $REPOSITORY:deploy-relay-a.$RELAY_DOMAIN, trying again next time" ||
     fail "the registry outage was not reported"
 docker network connect --alias "$REGISTRY" "$run" "$run-registry"
 on relay-a mv /etc/ptbk-relay/test-trusted-root.json /etc/ptbk-relay/test-trusted-root.json.away
-if on relay-a systemctl start ptbk-relay-deploy.service 2>/dev/null; then fail "the run passed without Sigstore"; fi
+if deploy_now relay-a 2>/dev/null; then fail "the run passed without Sigstore"; fi
 journal_has relay-a "could not verify $REPOSITORY@${digest[back-1]}, trying again next time" ||
     fail "the Sigstore outage was not reported"
 [[ -z $(status_of relay-a refused) ]] || fail "relay-a remembered an outage as a refusal"
 expect_current relay-a good-2
 on relay-a mv /etc/ptbk-relay/test-trusted-root.json.away /etc/ptbk-relay/test-trusted-root.json
-on relay-a systemctl start ptbk-relay-deploy.service
+deploy_now relay-a
 expect_current relay-a back-1
 on relay-a systemctl start ptbk-relay-deploy.timer
 
