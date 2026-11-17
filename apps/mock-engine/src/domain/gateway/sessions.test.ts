@@ -219,6 +219,17 @@ describe('gateway session store', () => {
         expect(store.confirmStepUp('session-unknown')).toBe(false);
     });
 
+    it('lets every assertion go stale on demand, until the next step-up', () => {
+        const { store } = setup();
+        const ada = store.signIn({ memberId: 'member-ada', permissions: null, client: CLIENT });
+        const again = store.signIn({ memberId: 'member-ada', permissions: null, client: CLIENT });
+        store.expireStepUps();
+        expect(signedIn(store.authenticate(ada.token, CLIENT)).stepUpFresh).toBe(false);
+        expect(signedIn(store.authenticate(again.token, CLIENT)).stepUpFresh).toBe(false);
+        expect(store.confirmStepUp(ada.sessionId)).toBe(true);
+        expect(signedIn(store.authenticate(ada.token, CLIENT)).stepUpFresh).toBe(true);
+    });
+
     it('signs in without a fresh assertion when told so', () => {
         const { store } = setup();
         const { token } = store.signIn({ memberId: 'member-ada', permissions: null, client: CLIENT, stepUp: 'none' });

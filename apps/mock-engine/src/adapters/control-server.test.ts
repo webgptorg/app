@@ -43,11 +43,12 @@ async function start(
     });
     const runtime = options.runtime?.(base) ?? base;
     const logger = createMemoryLogger();
+    const sessions = createSessionStore({ engine: () => base.controller(), clock, random: createCryptoRandom() });
     const server = await startControlServer({
         host: '127.0.0.1',
         port: 0,
         runtime,
-        sessions: createSessionStore({ engine: () => base.controller(), clock, random: createCryptoRandom() }),
+        sessions,
         faults: createFaultSettings(NO_FAULTS),
         rateLimiter: options.rateLimiter ?? ALLOW,
         ...(options.heartbeat === undefined ? {} : { heartbeat: options.heartbeat }),
@@ -63,7 +64,7 @@ async function start(
         });
         return { response, body: (await response.json()) as Record<string, unknown> };
     };
-    return { server, runtime: base, logger, post };
+    return { server, runtime: base, sessions, logger, post };
 }
 
 describe('fault settings', () => {
@@ -115,6 +116,23 @@ describe('control server', () => {
         expect(members.find(({ id }) => id === 'member-synthetic-0002')).toMatchObject({ role: 'member' });
         const owner = await post('/__mock/sessions', { subject: { kind: 'owner' } });
         expect(members.find(({ role }) => role === 'owner')?.id).toBe(owner.body['memberId']);
+    });
+
+    it("lets every session's passkey assertion go stale, so the next step-up route asks again", async () => {
+        const { server, sessions, post } = await start();
+        const owner = await post('/__mock/sessions', { subject: { kind: 'owner' } });
+        const token = (owner.body['cookie'] as { value: string }).value;
+        const client = { ip: '198.51.100.9', userAgent: 'test' };
+        const fresh = () => {
+            const outcome = sessions.authenticate(token, client);
+            return outcome.kind === 'signed-in' && outcome.actor.stepUpFresh;
+        };
+        expect(fresh()).toBe(true);
+        const response = await fetch(`http://127.0.0.1:${String(server.port)}/__mock/step-up/expire`, {
+            method: 'POST',
+        });
+        expect(response.status).toBe(204);
+        expect(fresh()).toBe(false);
     });
 
     it('raises one Wallet request per origin and account, moving it to a new step on another problem', async () => {
@@ -171,6 +189,7 @@ describe('control server', () => {
             'POST /__mock/sessions',
             'POST /__mock/simulation',
             'POST /__mock/simulation/advance',
+            'POST /__mock/step-up/expire',
             'POST /__mock/ui/check',
             'POST /__mock/wallet-requests',
             'PUT /__mock/faults',

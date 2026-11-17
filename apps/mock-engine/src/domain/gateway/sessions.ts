@@ -67,6 +67,8 @@ export interface SessionStore {
     authenticate(token: string, client: ClientInfo): Authentication;
     /** The dev step-up form: the session counts as freshly asserted for {@link STEP_UP_WINDOW_MS}. */
     confirmStepUp(sessionId: string): boolean;
+    /** Every session's assertion goes stale at once, as the window would; tests use it to reach step-up on demand. */
+    expireStepUps(): void;
     signOut(sessionId: string): void;
     /** Forgets every token, e.g. when the engine state is replaced. */
     clear(): void;
@@ -180,6 +182,9 @@ export function createSessionStore(deps: {
                 return true;
             }
             return false;
+        },
+        expireStepUps() {
+            for (const session of byToken.values()) session.stepUpMs = null;
         },
         signOut(sessionId) {
             for (const session of [...byToken.values()]) if (session.sessionId === sessionId) end(session);
