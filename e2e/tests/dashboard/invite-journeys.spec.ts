@@ -113,7 +113,8 @@ test('a new colleague joins from the invite in one step and is let in from the a
 
     await test.step('the owner pastes the code, which approves after the passkey step-up', async () => {
         const dialog = approveDialog(owner, jana);
-        await withStepUp(
+        await engine.expireStepUp();
+        const stepUp = await withStepUp(
             owner,
             async () => {
                 if (!(await dialog.isVisible())) await needsYouApprove(owner, jana).click();
@@ -122,6 +123,7 @@ test('a new colleague joins from the invite in one step and is let in from the a
             },
             () => expect(owner.getByText(APPROVED).first()).toBeVisible({ timeout: 15_000 }),
         );
+        expect(stepUp).toBe('asked');
     });
 
     await test.step('her waiting page signs her in, and she sees the engine', async () => {
@@ -155,7 +157,7 @@ test('an existing account signs in and joins; a member cannot approve, and the f
     dashboardFor,
     mockEngines,
 }) => {
-    test.setTimeout(480_000);
+    test.setTimeout(420_000);
     const engine = await linkTeamEngine(page, dashboard, () => mockEngines.startUnlinked(), TEAM);
     const { owner } = engine;
     const petr = uniqueEmail('petr');
@@ -187,7 +189,8 @@ test('an existing account signs in and joins; a member cannot approve, and the f
         const code = await waitWithCode(petrs.page);
         await owner.goto(`${engine.origin}/members`);
         const dialog = approveDialog(owner, petr);
-        await withStepUp(
+        await engine.expireStepUp();
+        const stepUp = await withStepUp(
             owner,
             async () => {
                 if (!(await dialog.isVisible())) {
@@ -201,6 +204,7 @@ test('an existing account signs in and joins; a member cannot approve, and the f
             },
             () => expect(owner.getByText(APPROVED).first()).toBeVisible({ timeout: 15_000 }),
         );
+        expect(stepUp).toBe('asked');
         await expectSignedInToEngine(petrs.page, engine.origin);
     });
 

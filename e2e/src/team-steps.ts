@@ -10,7 +10,7 @@ import type { DashboardSteps } from './dashboard.ts';
 import { ENGINE_CLI, addPasskeyAuthenticator, expect, uniqueEmail } from './dashboard.ts';
 import type { OutboxEmail } from './dashboard-outputs.ts';
 import { devInstallLinkCode, parseSetupLink, terminalIdentity } from './dashboard-outputs.ts';
-import { DASHBOARD_ORIGIN, DASHBOARD_TIMING } from './stack.ts';
+import { DASHBOARD_ORIGIN, DASHBOARD_TIMING, MOCK_ENGINE_CONTROL } from './stack.ts';
 
 export const HEARTBEAT_MS = DASHBOARD_TIMING.heartbeatIntervalS * 1000;
 // The engine picks a revocation up in the reply to its next heartbeat; a beat in flight may have missed it.
@@ -27,6 +27,11 @@ export interface TeamEngine {
     readonly ownerEmail: string;
     /** The admin's tab on the engine, signed in as its owner. */
     readonly owner: Page;
+    /**
+     * Makes every session's passkey assertion stale, so the next step-up route asks again. A sign-in counts as fresh for
+     * 5 minutes, which these flows never outlast; this is how they reach step-up, as an owner signed in yesterday would.
+     */
+    expireStepUp(): Promise<void>;
 }
 
 /**
@@ -47,9 +52,13 @@ export async function meStatus(page: Page, engineOrigin?: string): Promise<numbe
 
 /**
  * Runs `act`, then answers the engine's step-up if it asks: the passkey page, back to the app, and `act` again where
- * the app needs the input anew. Ends when `done` shows.
+ * the app needs the input anew. Ends when `done` shows, and says whether the engine asked.
  */
-export async function withStepUp(page: Page, act: () => Promise<void>, done: () => Promise<void>): Promise<void> {
+export async function withStepUp(
+    page: Page,
+    act: () => Promise<void>,
+    done: () => Promise<void>,
+): Promise<'asked' | 'not-asked'> {
     await act();
     const stepUp = page.getByRole('button', { name: 'Continue with passkey' });
     // The loser of the race fails later on its own timeout; only the winner counts.
@@ -57,12 +66,13 @@ export async function withStepUp(page: Page, act: () => Promise<void>, done: () 
     const asked = stepUp.waitFor().then(() => 'asked' as const);
     finished.catch(() => undefined);
     asked.catch(() => undefined);
-    if ((await Promise.race([finished, asked])) === 'done') return;
+    if ((await Promise.race([finished, asked])) === 'done') return 'not-asked';
     await stepUp.click();
     await page.locator('section[data-state="ready"] button[data-action="confirm"]').click();
     await page.waitForURL((url) => !url.pathname.startsWith('/auth/'));
     await act();
     await done();
+    return 'asked';
 }
 
 /**
@@ -147,7 +157,22 @@ export async function linkTeamEngine(
     await ownerPage.goto(parseSetupLink(setup).url);
     await ownerPage.locator('button[data-action="create"]').click();
     await expect(ownerPage.getByRole('heading', { name: 'You are the owner' })).toBeVisible();
-    return { container, origin: `https://${hostname}`, ownerEmail, owner: ownerPage };
+    return {
+        container,
+        origin: `https://${hostname}`,
+        ownerEmail,
+        owner: ownerPage,
+        async expireStepUp() {
+            // The control listener is the engine's own, on its loopback; nothing outside the container is involved.
+            const expire = await container.exec([
+                'node',
+                '-e',
+                `fetch('http://127.0.0.1:${String(MOCK_ENGINE_CONTROL.port)}/__mock/step-up/expire', { method: 'POST' })` +
+                    '.then((response) => process.exit(response.status === 204 ? 0 : 1))',
+            ]);
+            expect(expire.exitCode, expire.stderr).toBe(0);
+        },
+    };
 }
 
 /** The admin opens the team's page and invites `email` with "Invite to this engine", as an org member. */
