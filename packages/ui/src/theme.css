@@ -105,7 +105,8 @@
 
 /*
  * Self-hosted variable fonts (OFL, from @fontsource-variable, kept byte-identical by a test). Each family has a local
- * fallback face with matching metrics, so swapping the web font in does not shift the layout.
+ * fallback face with matching metrics, so swapping the web font in does not shift the layout. Exo 2 is `optional`: a
+ * heading font that arrives after first paint waits for the next page instead of reflowing the title under the reader.
  */
 @font-face {
     font-family: 'Inter Variable';
@@ -150,7 +151,7 @@
 @font-face {
     font-family: 'Exo 2 Variable';
     font-style: normal;
-    font-display: swap;
+    font-display: optional;
     font-weight: 100 900;
     src: url('./fonts/exo-2-latin-wght-normal.woff2') format('woff2-variations');
     unicode-range:
@@ -160,7 +161,7 @@
 @font-face {
     font-family: 'Exo 2 Variable';
     font-style: normal;
-    font-display: swap;
+    font-display: optional;
     font-weight: 100 900;
     src: url('./fonts/exo-2-latin-ext-wght-normal.woff2') format('woff2-variations');
     unicode-range:
