@@ -117,10 +117,9 @@
   "access_denied_title": "Bez přístupu",
   "access_denied_body": "K této stránce nemáte oprávnění. Pokud ji potřebujete, požádejte vlastníka nebo správce.",
   "step_up_title": "Potvrďte, že jste to Vy",
-  "step_up_body": "Tato akce je citlivá, proto engine znovu žádá o Váš přístupový klíč. Hned poté se vrátíte sem.",
+  "step_up_body": "Tato akce je citlivá, proto engine znovu žádá o Váš přístupový klíč. Otevře se pro to malé okno a akce pak pokračuje tady.",
   "step_up_continue": "Pokračovat s přístupovým klíčem",
   "step_up_cancel": "Zrušit",
-  "step_up_resumed": "Ověření proběhlo. Zkontrolujte změnu a uložte ji ještě jednou.",
   "nav_main": "Hlavní",
   "nav_drawer_title": "Nabídka",
   "nav_group_work": "Práce",
@@ -2085,7 +2084,7 @@
   ],
   "wallet_trust_summary": "Jak jsou hesla v bezpečí",
   "wallet_trust_body": "Váš engine drží peněženku šifrovanou na vlastním serveru. Hesla a další údaje jdou rovnou do něj a nikdy se nevrací: ani na tuhle stránku, ani do chatů agentů, ani do Promptbooku. Agenti použijí přihlášení jen na webu, ke kterému patří.",
-  "wallet_resumed": "Potvrdili jste, že jste to Vy. Zadejte heslo znovu a přihlášení uložte.",
+  "wallet_resumed": "Ověřeno. Zadejte heslo znovu a uložte.",
   "breadcrumbs": "Drobečková navigace",
   "entity_card_unavailable": "Podrobnosti teď nejsou k dispozici.",
   "entity_open_agent": "Otevřít agenta",
@@ -2190,5 +2189,9 @@
   ],
   "access_link_gone_title": "Tato žádost už nečeká",
   "access_link_gone_body": "Byla schválena, zamítnuta, nebo vypršela. Všichni, kdo ještě čekají, jsou na této stránce.",
-  "home_waiting_for_access": "{name} čeká na přístup"
+  "home_waiting_for_access": "{name} čeká na přístup",
+  "step_up_waiting": "Potvrďte to přístupovým klíčem v okně, které se otevřelo. Akce tady pokračuje, jakmile to uděláte.",
+  "step_up_not_confirmed": "Nepotvrdilo se to: okno se zavřelo nebo výzva k přístupovému klíči vypršela. Nic se nezměnilo.",
+  "step_up_try_again": "Zkusit znovu",
+  "access_step_up_resumed": "Ověřeno. Zadejte kód znovu a schvalte."
 }

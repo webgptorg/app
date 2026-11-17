@@ -5,6 +5,7 @@ import { applyTheme, readThemePreference } from '@ptbk/ui';
 
 import { bootstrap } from './app/bootstrap';
 import { safeLocalStorage } from './app/storage';
+import { createWindowStepUpPopups } from './features/step-up/step-up-popup';
 
 const storage = safeLocalStorage();
 const matchMedia = (query: string) => window.matchMedia(query);
@@ -28,4 +29,5 @@ void bootstrap(container, {
     storage,
     matchMedia,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    popups: createWindowStepUpPopups(window),
 });

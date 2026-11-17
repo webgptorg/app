@@ -6,8 +6,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderWithProviders } from '../../testing/render-with-providers';
+import { createFakePopups } from '../../testing/fake-popups';
+import { createMemoryStorage } from '../../testing/memory-storage';
 import { createSecurityEngine } from '../../testing/security-engine';
 import { problemResponse } from '../../testing/test-engine-api';
+import { STEP_UP_INTENT_KEY } from '../step-up/step-up-intent';
 
 const TIMEOUT_MS = 20_000;
 const CODE = '482913';
@@ -187,6 +190,46 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         await user.type(codeInput(dialog), CODE);
         expect(await screen.findByRole('dialog', { name: 'Confirm it is you' })).toBeDefined();
         expect(engine.controller.inspect().members.map(({ displayName }) => displayName)).not.toContain('Petr Svoboda');
+    });
+
+    it('approves once the passkey is confirmed in the popup, with the code typed before', async () => {
+        const engine = engineWithRequest();
+        const approve = vi
+            .spyOn(engine.client.members, 'approveAccessRequest')
+            .mockImplementationOnce(() => problemResponse('step-up-required'));
+        const popups = createFakePopups();
+        const { user } = renderWithProviders({ path: '/members', engineApi: engine.client, popups });
+        const dialog = await openApprove(user);
+        await user.type(codeInput(dialog), CODE);
+        const stepUp = await screen.findByRole('dialog', { name: 'Confirm it is you' });
+        await user.click(within(stepUp).getByRole('button', { name: 'Continue with passkey' }));
+        popups.confirm();
+        expect(await screen.findByText('Petr Svoboda can now use this engine')).toBeDefined();
+        expect(approve).toHaveBeenCalledTimes(2);
+        expect(approve.mock.calls[1]?.slice(0, 2)).toEqual(['access-petr', { code: CODE, role: 'member' }]);
+    });
+
+    it('asks for the code again after a full-page step-up, which never stores it', async () => {
+        const storage = createMemoryStorage();
+        const engine = engineWithRequest({ stepUp: 'required' });
+        const first = renderWithProviders({
+            path: '/members',
+            engineApi: engine.client,
+            storage,
+            popups: createFakePopups({ blocked: true }),
+        });
+        const dialog = await openApprove(first.user);
+        await first.user.type(codeInput(dialog), CODE);
+        const stepUp = await screen.findByRole('dialog', { name: 'Confirm it is you' });
+        await first.user.click(within(stepUp).getByRole('button', { name: 'Continue with passkey' }));
+        expect(first.location.assign).toHaveBeenCalledOnce();
+        expect(storage.getItem(STEP_UP_INTENT_KEY)).not.toContain(CODE);
+        first.unmount();
+
+        renderWithProviders({ path: '/members', engineApi: engine.client, storage });
+        const resumed = await screen.findByRole('dialog', { name: 'Approve Petr Svoboda' });
+        expect(within(resumed).getByText('Confirmed. Enter the code again to approve.')).toBeDefined();
+        expect(codeInput(resumed).value).toBe('');
     });
 
     it('declines a request from its menu', async () => {

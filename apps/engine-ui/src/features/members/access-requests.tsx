@@ -136,7 +136,7 @@ function ApproveDialog({ request, gone, initialRole, resumed, mutations, onClose
             }
         >
             <form id={formId} noValidate onSubmit={submit} className="flex flex-col gap-5">
-                {resumed ? <Banner tone="info">{m.step_up_resumed()}</Banner> : null}
+                {resumed ? <Banner tone="info">{m.access_step_up_resumed()}</Banner> : null}
                 {/* From the dashboard's ticket: untrusted text, rendered as text and labelled as a hint. */}
                 <p className="text-sm break-words text-text-muted">
                     {m.access_reported_by_organization({ email: request.email })}

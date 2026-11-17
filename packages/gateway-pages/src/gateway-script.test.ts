@@ -507,6 +507,112 @@ describe('step-up page', () => {
         expect(nextLinks()).toEqual(['/', '/']);
         expect(document.querySelector('a[data-sign-in-link]')?.getAttribute('href')).toBe('/auth/sign-in');
     });
+
+    describe('in a popup', () => {
+        const NONCE = 'n0nce-from-the-opener_1';
+        const popupUrl = (nonce = NONCE) => `/auth/step-up?mode=popup&nonce=${nonce}&returnTo=%2Fwallet`;
+
+        function listen() {
+            const heard: unknown[] = [];
+            const channel = new BroadcastChannel('ptbk-step-up');
+            channel.onmessage = (event: MessageEvent) => heard.push(event.data);
+            return {
+                heard,
+                close: () => {
+                    channel.close();
+                },
+            };
+        }
+
+        it('starts the prompt at once, answers the opener on the channel and closes, without navigating', async () => {
+            const requests = fakeEngine({
+                '/auth/step-up/options': ready,
+                '/auth/step-up/verify': { status: 200, body: { next: '/wallet' } },
+            });
+            const webauthn = fakeWebAuthn();
+            const close = vi.spyOn(window, 'close').mockImplementation(() => undefined);
+            const channel = listen();
+            await open('step-up.html', popupUrl(), { owner: 'set' });
+            await expectState('confirmed');
+            expect(webauthn.startAuthentication).toHaveBeenCalledOnce();
+            expect(requests[1]?.body).toEqual({ response: CREDENTIAL, next: '/wallet' });
+            expect(close).toHaveBeenCalledOnce();
+            expect(location.pathname).toBe('/auth/step-up');
+            await vi.waitFor(() => {
+                expect(channel.heard).toEqual([{ type: 'step-up-confirmed', nonce: NONCE }]);
+            });
+            channel.close();
+        });
+
+        it('offers the button when the browser refuses a prompt the page started itself', async () => {
+            fakeEngine({
+                '/auth/step-up/options': ready,
+                '/auth/step-up/verify': { status: 200, body: {} },
+            });
+            const webauthn = fakeWebAuthn();
+            webauthn.startAuthentication.mockImplementationOnce(() =>
+                Promise.reject(Object.assign(new Error('needs a gesture'), { name: 'NotAllowedError' })),
+            );
+            vi.spyOn(window, 'close').mockImplementation(() => undefined);
+            await open('step-up.html', popupUrl(), { owner: 'set' });
+            await expectState('ready');
+            expect(document.querySelector('section[data-state="ready"] [data-if-popup]')?.hasAttribute('hidden')).toBe(
+                false,
+            );
+            expect(
+                document.querySelector('section[data-state="ready"] [data-unless-popup]')?.hasAttribute('hidden'),
+            ).toBe(true);
+            click('confirm');
+            await expectState('confirmed');
+        });
+
+        it('closes on Cancel and tells the opener nothing', async () => {
+            fakeEngine({ '/auth/step-up/options': ready });
+            const webauthn = fakeWebAuthn({ authenticate: Object.assign(new Error('x'), { name: 'NotAllowedError' }) });
+            const close = vi.spyOn(window, 'close').mockImplementation(() => undefined);
+            const channel = listen();
+            await open('step-up.html', popupUrl(), { owner: 'set' });
+            await expectState('ready');
+            expect(webauthn.startAuthentication).toHaveBeenCalledOnce();
+            click('close');
+            await vi.waitFor(() => {
+                expect(close).toHaveBeenCalledOnce();
+            });
+            expect(channel.heard).toEqual([]);
+            channel.close();
+        });
+
+        it('answers the opener from a confirmation page a gateway rendered itself', async () => {
+            const close = vi.spyOn(window, 'close').mockImplementation(() => undefined);
+            const channel = listen();
+            const html = `<!doctype html><html lang="en"><body data-page="step-up-confirmed">
+                <section data-state="confirmed" hidden><h1 tabindex="-1">Confirmed</h1></section></body></html>`;
+            const parsed = new DOMParser().parseFromString(html, 'text/html');
+            document.replaceChild(document.importNode(parsed.documentElement, true), document.documentElement);
+            history.replaceState(null, '', popupUrl());
+            vi.resetModules();
+            await import(GATEWAY_SCRIPT);
+            await expectState('confirmed');
+            expect(close).toHaveBeenCalledOnce();
+            await vi.waitFor(() => {
+                expect(channel.heard).toEqual([{ type: 'step-up-confirmed', nonce: NONCE }]);
+            });
+            channel.close();
+        });
+
+        it('stays an ordinary step-up page without a well-formed nonce', async () => {
+            fakeEngine({
+                '/auth/step-up/options': ready,
+                '/auth/step-up/verify': { status: 200, body: { next: '/wallet' } },
+            });
+            const webauthn = fakeWebAuthn();
+            await open('step-up.html', popupUrl('short'), { owner: 'set' });
+            await expectState('ready');
+            expect(webauthn.startAuthentication).not.toHaveBeenCalled();
+            click('confirm');
+            await expectState('done');
+        });
+    });
 });
 
 describe('join page', () => {

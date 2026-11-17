@@ -41,7 +41,11 @@ export function AppProviders({ engineApi, queryClient, router, browser, engineEv
                         <EngineEventsProvider events={engineEvents ?? defaultEvents}>
                             <TickerProvider ticker={ticker ?? defaultTicker}>
                                 <QueryClientProvider client={queryClient}>
-                                    <StepUpProvider location={browser.location} storage={browser.storage}>
+                                    <StepUpProvider
+                                        location={browser.location}
+                                        storage={browser.storage}
+                                        popups={browser.popups}
+                                    >
                                         <RouterProvider router={router} />
                                     </StepUpProvider>
                                 </QueryClientProvider>

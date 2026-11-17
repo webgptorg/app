@@ -15,6 +15,14 @@ export class OneTimeValue {
         return value;
     }
 
+    /**
+     * Puts a taken value back after the engine asked for a fresh passkey instead of storing it, so the retry that
+     * follows the passkey check can hand it over. It stays in memory only and still serialises to nothing.
+     */
+    restore(value: string): void {
+        this.#value = value;
+    }
+
     toJSON(): Record<string, never> {
         return {};
     }

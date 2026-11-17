@@ -16,6 +16,10 @@ const STATUS_MIN_INTERVAL_MS = 3_000;
 /** A dropped connection or a busy engine is retried quietly; this many in a row show the problem instead. */
 const STATUS_TOLERATED_FAILURES = 3;
 const ME_PATH = '/api/v1/me';
+/** The engine UI listens here for the popup step-up's answer; same-origin by construction. */
+const STEP_UP_CHANNEL = 'ptbk-step-up';
+/** The opener's random token for one popup, echoed back so an old or foreign answer is ignored. */
+const POPUP_NONCE = /^[A-Za-z0-9_-]{16,64}$/;
 const CANCELLED = new Set(['NotAllowedError', 'AbortError']);
 const UNSUPPORTED = new Set(['NotSupportedError', 'SecurityError']);
 
@@ -270,7 +274,28 @@ function joinPage(webauthn) {
     return { create, retry: () => (waitingFor === null ? prepare() : wait()) };
 }
 
-function assertionPage(webauthn, { base, nextParameter, problem, resumeSession = false }) {
+/** `?mode=popup&nonce=…`: the engine UI opened this page in a small window and waits for its answer. */
+function popupNonce() {
+    const query = new URLSearchParams(location.search);
+    const nonce = query.get('nonce');
+    return query.get('mode') === 'popup' && nonce !== null && POPUP_NONCE.test(nonce) ? nonce : null;
+}
+
+/** Tells the opener the assertion verified, on the channel and to the opener itself, then closes the window. */
+function answerOpener(nonce) {
+    const message = { type: 'step-up-confirmed', nonce };
+    if (typeof BroadcastChannel === 'function') {
+        const channel = new BroadcastChannel(STEP_UP_CHANNEL);
+        channel.postMessage(message);
+        channel.close();
+    }
+    // Same origin only: the target origin keeps the message from any other page the opener may have become.
+    window.opener?.postMessage(message, location.origin);
+    show('confirmed');
+    window.close();
+}
+
+function assertionPage(webauthn, { base, nextParameter, problem, resumeSession = false, popup = null }) {
     const requested = new URLSearchParams(location.search).get(nextParameter);
     const next = requested !== null && isSafeNextPath(requested) ? requested : null;
     if (next !== null) {
@@ -278,6 +303,9 @@ function assertionPage(webauthn, { base, nextParameter, problem, resumeSession =
         pointLinksAt('[data-sign-in-link]', `/auth/sign-in?${new URLSearchParams({ next }).toString()}`);
     }
     let options = null;
+    // In a popup the member already chose to confirm, so the prompt starts at once; a browser that wants a click on
+    // this page first gets the ready state instead of an error.
+    let autoStart = popup !== null;
 
     async function prepare() {
         show('loading');
@@ -285,10 +313,14 @@ function assertionPage(webauthn, { base, nextParameter, problem, resumeSession =
         if (result.status === 200 && isObject(result.body?.options)) {
             options = result.body.options;
             show('ready');
+            if (autoStart) {
+                autoStart = false;
+                await confirm(true);
+            }
         } else show(problem(result, 'options'));
     }
 
-    async function confirm() {
+    async function confirm(automatic = false) {
         if (options === null) return;
         if (!supportsPasskeys(webauthn)) {
             show('unsupported');
@@ -301,12 +333,18 @@ function assertionPage(webauthn, { base, nextParameter, problem, resumeSession =
         try {
             response = await webauthn.startAuthentication({ optionsJSON });
         } catch (error) {
-            show(ceremonyState(error));
+            const state = ceremonyState(error);
+            if (automatic && state === 'cancelled') await prepare();
+            else show(state);
             return;
         }
         const result = await post(`${base}/verify`, next === null ? { response } : { response, next });
         if (result.status !== 200) {
             show(problem(result, 'verify'));
+            return;
+        }
+        if (popup !== null) {
+            answerOpener(popup);
             return;
         }
         const target = nextFrom(result.body);
@@ -333,7 +371,11 @@ function assertionPage(webauthn, { base, nextParameter, problem, resumeSession =
     }
 
     void (resumeSession ? resume() : prepare());
-    return { confirm, retry: prepare };
+    return {
+        confirm: () => confirm(),
+        retry: prepare,
+        ...(popup === null ? {} : { close: async () => window.close() }),
+    };
 }
 
 function signInProblem({ status }) {
@@ -367,9 +409,23 @@ function start() {
                 problem: signInProblem,
                 resumeSession: true,
             });
+    } else if (page === 'step-up-confirmed') {
+        // A gateway that confirmed the step-up some other way (the mock engine's dev login) answers the opener alike.
+        const popup = popupNonce();
+        if (popup !== null) answerOpener(popup);
     } else if (page === 'step-up') {
         // The engine UI sends members here with `returnTo` (STEP_UP_PATH), and to sign-in with `next`.
-        actions = assertionPage(webauthn, { base: '/auth/step-up', nextParameter: 'returnTo', problem: stepUpProblem });
+        const popup = popupNonce();
+        if (popup !== null) {
+            for (const element of document.querySelectorAll('[data-if-popup]')) element.hidden = false;
+            for (const element of document.querySelectorAll('[data-unless-popup]')) element.hidden = true;
+        }
+        actions = assertionPage(webauthn, {
+            base: '/auth/step-up',
+            nextParameter: 'returnTo',
+            problem: stepUpProblem,
+            popup,
+        });
     }
 
     let busy = false;

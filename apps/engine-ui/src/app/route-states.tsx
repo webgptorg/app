@@ -51,7 +51,12 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
                     <Button
                         variant="primary"
                         onClick={() => {
-                            stepUp.request();
+                            stepUp.request({
+                                retry: () => {
+                                    reset();
+                                    void router.invalidate();
+                                },
+                            });
                         }}
                     >
                         {m.step_up_continue()}

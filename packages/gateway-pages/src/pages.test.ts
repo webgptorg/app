@@ -15,7 +15,10 @@ const EXPECTED: Readonly<Record<GatewayPage, { readonly page: string; readonly s
         page: 'sign-in',
         states: [...COMMON_STATES, 'checking', 'ready', 'not-recognised', 'no-owner', 'done'],
     },
-    'step-up.html': { page: 'step-up', states: [...COMMON_STATES, 'ready', 'not-recognised', 'signed-out', 'done'] },
+    'step-up.html': {
+        page: 'step-up',
+        states: [...COMMON_STATES, 'ready', 'not-recognised', 'signed-out', 'done', 'confirmed'],
+    },
     'join.html': {
         page: 'join',
         states: [
@@ -34,7 +37,7 @@ const EXPECTED: Readonly<Record<GatewayPage, { readonly page: string; readonly s
         ],
     },
 };
-const ACTIONS = new Set(['create', 'confirm', 'retry']);
+const ACTIONS = new Set(['create', 'confirm', 'retry', 'close']);
 
 const parse = (page: GatewayPage) => new DOMParser().parseFromString(readPage(page), 'text/html');
 const assetName = (url: string | null) =>
