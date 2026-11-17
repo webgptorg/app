@@ -26,15 +26,23 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      # A night that skipped passed on the same commit as the one before it, so the latest finished run is the one to
-      # compare with; a cancelled one may not have run CI.
+      # The latest finished nightly whose jobs all started: a job GitHub refused to start (billing) leaves the commit
+      # unchecked. A night that skipped counts too, as it skipped only because its commit was checked before.
       - id: decide
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow nightly.yml --branch main --event schedule \
-            --status completed --limit 20 --json headSha,conclusion \
-            --jq 'map(select(.conclusion == "success" or .conclusion == "failure")) | .[0].headSha // ""')
+          last=''
+          while read -r id sha; do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs?filter=latest&per_page=100" \
+              --jq '.jobs | any(.name == "decide" and .conclusion == "success")
+                and all(.conclusion != "failure" or (.steps | length) > 0)' | grep -qx true; then
+              last=$sha
+              break
+            fi
+          done < <(gh run list --repo "$GITHUB_REPOSITORY" --workflow nightly.yml --branch main --event schedule \
+            --status completed --limit 30 --json databaseId,headSha,conclusion \
+            --jq '.[] | select(.conclusion == "success" or .conclusion == "failure") | "\(.databaseId) \(.headSha)"')
           node scripts/ci-scope.ts nightly --last "$last"
 
   ci:
