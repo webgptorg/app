@@ -2,7 +2,7 @@
 // their own browser context, authenticator and client address, as they would their own laptop.
 import { randomInt } from 'node:crypto';
 
-import type { Browser, Page } from '@playwright/test';
+import type { Browser, Frame, Page } from '@playwright/test';
 import { devices } from '@playwright/test';
 
 import type { OneOffContainer } from './compose.ts';
@@ -67,6 +67,12 @@ export async function withStepUp(
     finished.catch(() => undefined);
     asked.catch(() => undefined);
     if ((await Promise.race([finished, asked])) === 'done') return 'not-asked';
+    // In place: the page itself never goes to the step-up page, so nothing the member entered is lost.
+    const left: string[] = [];
+    const onNavigation = (frame: Frame) => {
+        if (frame === page.mainFrame() && new URL(frame.url()).pathname.startsWith('/auth/')) left.push(frame.url());
+    };
+    page.on('framenavigated', onNavigation);
     const opened = page.waitForEvent('popup');
     await stepUp.click();
     const popup = await opened;
@@ -79,6 +85,8 @@ export async function withStepUp(
     if ((await Promise.race([closed.then(() => 'closed' as const), ready])) === 'ready') await confirm.click();
     await closed;
     await done();
+    page.off('framenavigated', onNavigation);
+    expect(left).toEqual([]);
     return 'asked';
 }
 
@@ -211,6 +219,17 @@ export async function waitWithCode(person: Page): Promise<string> {
     const code = (await person.locator('section[data-state="waiting"] [data-join-code]').first().textContent()) ?? '';
     expect(code).toMatch(/^\d{3} \d{3}$/);
     return code;
+}
+
+/** The statuses the engine answered to approvals of access requests from this page, in order. */
+export function approvalAnswers(page: Page): number[] {
+    const statuses: number[] = [];
+    page.on('response', (response) => {
+        if (/\/api\/v1\/access-requests\/[^/]+\/approve$/.test(new URL(response.url()).pathname)) {
+            statuses.push(response.status());
+        }
+    });
+    return statuses;
 }
 
 /** The newest email of `template` to `to`, once the dev outbox holds one. */
