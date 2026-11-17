@@ -370,7 +370,7 @@
   "members_load_failed": "Členy se nepodařilo načíst.",
   "members_empty_title": "Zatím žádní členové",
   "members_empty_body": "Členové se zde objeví, jakmile se k tomuto enginu připojí.",
-  "members_intro": "Lidé se zvou z dashboardu vaší organizace a tady se přihlašují vlastním přístupovým klíčem. Co smějí dělat, určuje jejich role.",
+  "members_intro": "Lidé se zvou z dashboardu Vaší organizace a tady se přihlašují vlastním přístupovým klíčem. Co smějí dělat, určuje jejich role.",
   "members_intro_read_only": "Lidi zvou z dashboardu a mění jim role vlastníci a správci.",
   "members_intro_no_invites": "Tento engine zatím nepodporuje pozvánky ani změny rolí.",
   "members_change_role": "Změnit roli",
@@ -427,7 +427,7 @@
   "invites_revoked": "Pozvánka ({role}) zrušena",
   "invites_revoke_failed": "Pozvánku se nepodařilo zrušit.",
   "invites_empty_title": "Pozvěte svůj tým",
-  "invites_empty_body": "Pozvěte lidi z dashboardu vaší organizace. Tady požádají o přístup a vy je pustíte dál s kódem z jejich obrazovky.",
+  "invites_empty_body": "Pozvěte lidi z dashboardu Vaší organizace. Tady požádají o přístup a Vy je pustíte dál s kódem z jejich obrazovky.",
   "passkeys_title": "Přístupové klíče",
   "passkeys_intro": "Přístupovými klíči se přihlašujete k tomuto enginu. Přidáváte je při přihlášení na novém zařízení; zde je můžete zkontrolovat a odvolat.",
   "passkeys_mine": "Vaše přístupové klíče",
@@ -2175,7 +2175,7 @@
   "task_priority_short_text": "P{rank} · {text}",
   "task_subtasks_done": "Hotovo {completed} z {total} podúkolů",
   "members_invite_in_dashboard": "Pozvat v dashboardu",
-  "access_reported_by_organization": "{email}, jak uvádí vaše organizace",
+  "access_reported_by_organization": "{email}, jak uvádí Vaše organizace",
   "access_code_mismatch_left": [
     {
       "declarations": ["input name", "input count", "local countPlural = count: plural"],
