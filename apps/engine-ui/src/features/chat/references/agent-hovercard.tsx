@@ -3,9 +3,9 @@ import { Link } from '@tanstack/react-router';
 import { AtSign } from 'lucide-react';
 
 import { m } from '../../../paraglide/messages';
-import { AgentAvatar } from '../../agents/agent-avatar';
 import { formatClock, useElapsedMs } from './elapsed';
 import { TaskChip } from './task-chip';
+import { ReferenceAvatar } from './reference-avatar';
 import type { ReadChatTask, ReadChatWorking, ReferenceAgent, ThreadReferences } from './thread-references';
 
 type Step = ReadChatWorking['steps'][number];
@@ -78,13 +78,7 @@ export function AgentHovercard({
     return (
         <PeekCard
             kind={m.chat_ref_kind_agent()}
-            icon={
-                <AgentAvatar
-                    name={agent.name}
-                    profile={{ avatarUrl: agent.avatarUrl, color: agent.profileColor }}
-                    size="xs"
-                />
-            }
+            icon={<ReferenceAvatar agent={agent} size="xs" />}
             status={
                 activity === null
                     ? { tone: 'neutral', label: m.chat_ref_status_idle() }

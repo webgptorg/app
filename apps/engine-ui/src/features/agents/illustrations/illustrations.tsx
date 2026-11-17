@@ -288,6 +288,7 @@ export function AgentIllustration({ id, className }: { readonly id: Illustration
             viewBox="0 0 64 64"
             aria-hidden="true"
             focusable="false"
+            data-illustration={id}
             className={className === undefined ? 'agent-art' : `agent-art ${className}`}
         >
             {ART[id]}

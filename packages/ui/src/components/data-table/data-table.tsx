@@ -348,6 +348,7 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
     const canSelect = selection?.canSelect;
     const canExpand = expansion?.canExpand;
 
+    const grows = columns.some((column) => column.meta?.grow === true);
     const table = useTable<DataTableFeatures, TData>({
         features: dataTableFeatures,
         columns,
@@ -587,6 +588,8 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
                     <table
                         className={cx(
                             'w-full border-separate border-spacing-0 text-left text-sm text-(--data-table-text)',
+                            // The growing column takes the slack; the others keep their one line instead of wrapping.
+                            grows && '[&_td:not([data-grow]):not([colspan])]:whitespace-nowrap',
                             'motion-safe:transition-opacity motion-safe:duration-(--motion-state) motion-safe:ease-standard',
                             fetching && '[filter:var(--data-table-fetching-filter)]',
                         )}
@@ -720,6 +723,9 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
 /** Header cells: quiet small labels over one hairline; cells carry the borders, which stay put under a sticky header. */
 const HEADER_CELL = 'h-9 border-b border-(--data-table-divider) align-middle';
 const BODY_CELL = 'h-(--data-table-row-height) border-b border-(--data-table-divider) px-3 py-1.5 align-middle';
+// A cell at full width with no width of its own to defend: an automatic table gives it what is left, and its text
+// truncates instead of widening the table.
+const GROW_CELL = 'w-full max-w-0';
 
 type DataTableInstance<TData extends RowData> = ReturnType<typeof useTable<DataTableFeatures, TData>>;
 
@@ -793,6 +799,7 @@ function HeaderCell<TData extends RowData>({
         HEADER_CELL,
         'text-2xs font-medium whitespace-nowrap text-(--data-table-header-text)',
         numeric && 'text-end',
+        meta?.grow === true && GROW_CELL,
     );
     if (!sortable || !column.getCanSort()) {
         return (
@@ -969,7 +976,9 @@ function TableRow<TData extends RowData>({
                         className={cx(
                             BODY_CELL,
                             cell.column.columnDef.meta?.numeric === true && 'text-end tabular-nums',
+                            cell.column.columnDef.meta?.grow === true && GROW_CELL,
                         )}
+                        {...(cell.column.columnDef.meta?.grow === true ? { 'data-grow': '' } : {})}
                     >
                         <table.FlexRender cell={cell} />
                     </td>

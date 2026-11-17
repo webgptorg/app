@@ -10,3 +10,10 @@
 
 /* Tailwind only generates classes it sees; the design system's components live in the package. */
 @source '../../node_modules/@ptbk/ui/src';
+
+/* Page widths (`max-w-page`, `max-w-chat`): lists and tables use the screen up to `page`; a chat's column of text
+   stays at a readable `chat`. */
+@theme {
+    --container-page: 105rem;
+    --container-chat: 52rem;
+}

@@ -148,7 +148,15 @@ export function TriggerForm({ trigger, agentId, fromAgent = false }: TriggerForm
     const agentOptions: ComboboxOption[] = agentItems.map((agent) => ({
         value: agent.id,
         label: agent.name,
-        leading: <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />,
+        leading: (
+            <AgentAvatar
+                name={agent.name}
+                agentKey={agent.id}
+                profile={agent.profile}
+                origin={agent.origin}
+                size="2xs"
+            />
+        ),
     }));
     if (defaults.agentId !== '' && !agentItems.some((agent) => agent.id === defaults.agentId)) {
         agentOptions.unshift({ value: defaults.agentId, label: trigger?.agentName ?? defaults.agentId });

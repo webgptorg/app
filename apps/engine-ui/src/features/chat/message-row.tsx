@@ -4,14 +4,13 @@ import type { ReactNode, Ref } from 'react';
 
 import { cx } from '../../app/cx';
 import { m } from '../../paraglide/messages';
-import { AgentAvatar } from '../agents/agent-avatar';
 import { AgentCreator } from '../agents/agent-creator';
 import type { MessageState, MessageView, StepsView, ThreadView } from './message-views';
 import { MessageMarkdown } from './render/lazy-markdown';
 import { PlainText } from './render/plain-text';
 import { tintStyle } from './references/agent-color';
+import { ReferenceAvatar } from './references/reference-avatar';
 import { useReferenceAgent } from './references/thread-references';
-import type { ReferenceAgent } from './references/thread-references';
 import { RecheckCard, WaitingCard } from './reply-status-card';
 import { StepsCard } from './steps-card';
 import { TaskCard } from './task-card';
@@ -98,21 +97,6 @@ function Choices({
     );
 }
 
-/** The agent's picture when its profile has one, else its initial on a wash of its colour. */
-function TurnAvatar({ agent }: { readonly agent: ReferenceAgent }) {
-    if (agent.avatarUrl !== null) {
-        return <AgentAvatar name={agent.name} profile={{ avatarUrl: agent.avatarUrl, color: null }} size="xs" />;
-    }
-    return (
-        <span
-            aria-hidden="true"
-            className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklab,var(--tint)_16%,var(--color-raised))] font-display text-xs font-semibold text-tint"
-        >
-            {Array.from(agent.name.trim())[0]?.toLocaleUpperCase() ?? null}
-        </span>
-    );
-}
-
 /**
  * An agent's turn: its avatar, name in its colour and time on top, then its words or steps beside a thin rail in the
  * same colour. A row that continues the turn shows only the rail; screen readers still hear who speaks.
@@ -132,7 +116,7 @@ function AgentTurn({
     return (
         <div className="flex w-full min-w-0 flex-col items-start gap-1.5" style={tintStyle(agent.color)}>
             <header className={cx('flex items-center gap-2 text-sm font-medium', !showAuthor && 'sr-only')}>
-                <TurnAvatar agent={agent} />
+                <ReferenceAvatar agent={agent} size="xs" />
                 <span className="text-tint">{view.authorName}</span>
                 {at === null ? null : <TurnTime at={at} />}
             </header>

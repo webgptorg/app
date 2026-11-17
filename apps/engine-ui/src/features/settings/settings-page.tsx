@@ -28,7 +28,7 @@ export function SettingsPage() {
         throwOnError: isPageLevelFailure,
     });
     return (
-        <Page title={m.settings_title()}>
+        <Page title={m.settings_title()} width="reading">
             <Section title={m.settings_appearance()} description={m.settings_appearance_hint()} divided={false}>
                 <PropertyList>
                     <PropertyRow label={m.language_label()}>

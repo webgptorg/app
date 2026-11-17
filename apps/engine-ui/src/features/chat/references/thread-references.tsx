@@ -1,4 +1,4 @@
-import type { ReadAgent, ReadChat } from '@ptbk/engine-api';
+import type { AgentOrigin, ReadAgent, ReadChat } from '@ptbk/engine-api';
 import { createContext, use } from 'react';
 import type { ReactNode } from 'react';
 
@@ -20,6 +20,10 @@ export interface ReferenceAgent {
     /** `profile.description`, its one-line role; `null` until the project's agents have loaded. */
     readonly description: string | null;
     readonly profileColor: string | null;
+    /** The engine's illustration ID; with `origin`, what the avatar resolves its character from. */
+    readonly illustration: string | null;
+    /** `undefined` until the project's agents have loaded. */
+    readonly origin: AgentOrigin | undefined;
     /** It is a member of this thread, not only an agent of the project. */
     readonly member: boolean;
 }
@@ -65,6 +69,8 @@ export function useReferenceAgent(key: string, fallbackName: string): ReferenceA
             avatarUrl: null,
             description: null,
             profileColor: null,
+            illustration: null,
+            origin: undefined,
             member: false,
         }
     );
@@ -98,6 +104,8 @@ export function buildThreadReferences({
             avatarUrl: agent?.profile.avatarUrl ?? null,
             description: agent === undefined ? null : agent.profile.description.trim() || null,
             profileColor,
+            illustration: agent?.profile.illustration ?? null,
+            origin: agent?.origin,
             member,
         });
     };

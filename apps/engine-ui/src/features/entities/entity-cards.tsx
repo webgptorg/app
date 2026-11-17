@@ -9,7 +9,7 @@ import type { ReactNode } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
 import { m } from '../../paraglide/messages';
-import { AgentAvatar } from '../agents/agent-avatar';
+import { AgentAvatar, NO_AGENT_PROFILE } from '../agents/agent-avatar';
 import { stateLabel } from '../agents/agent-badges';
 import { AgentLiveState } from '../agents/agent-live-state';
 import { agentDetailQueryOptions } from '../agents/agents-queries';
@@ -100,11 +100,19 @@ function AgentStatusPill({ agentId }: { readonly agentId: AgentId }) {
 export function AgentCard({ agentId, name }: { readonly agentId: AgentId; readonly name: string }) {
     const query = useQuery(agentDetailQueryOptions(useEngineApi(), agentId));
     const agent = query.data;
-    const profile = agent?.profile ?? { avatarUrl: null, color: null };
+    const profile = agent?.profile ?? NO_AGENT_PROFILE;
     return (
         <PeekCard
             kind={m.entity_kind_agent()}
-            icon={<AgentAvatar name={agent?.name ?? name} agentKey={agentId} profile={profile} size="xs" />}
+            icon={
+                <AgentAvatar
+                    name={agent?.name ?? name}
+                    agentKey={agentId}
+                    profile={profile}
+                    origin={agent?.origin}
+                    size="xs"
+                />
+            }
             tint={agentColor(profile.color, agentId)}
             title={agent?.name ?? name}
             description={

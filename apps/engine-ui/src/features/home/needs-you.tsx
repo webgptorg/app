@@ -77,7 +77,15 @@ function QuestionItem({ chat }: { readonly chat: ReadChat }) {
     return (
         <NeedsYouItem
             tint={look.color}
-            leading={<AgentAvatar name={name} agentKey={question.author.key} profile={look.profile} size="xs" />}
+            leading={
+                <AgentAvatar
+                    name={name}
+                    agentKey={question.author.key}
+                    profile={look.profile}
+                    origin={look.origin}
+                    size="xs"
+                />
+            }
             title={
                 <>
                     <span>{m.home_asks_you({ name })}</span>

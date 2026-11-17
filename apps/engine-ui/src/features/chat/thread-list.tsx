@@ -100,7 +100,7 @@ function columns(): DataTableColumnDef<ReadChat>[] {
             header: m.chat_column_chat(),
             enableSorting: false,
             enableHiding: false,
-            meta: { priority: 0, icon: <MessageSquare className={ICON} /> },
+            meta: { priority: 0, grow: true, icon: <MessageSquare className={ICON} /> },
             cell: ({ row }) => <ChatTitle chat={row.original} />,
         }),
         column.display({
@@ -231,7 +231,15 @@ function ChatFilters({
         options: (agents.data?.items ?? []).map((agent) => ({
             value: agent.id,
             label: agent.name,
-            icon: <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />,
+            icon: (
+                <AgentAvatar
+                    name={agent.name}
+                    agentKey={agent.id}
+                    profile={agent.profile}
+                    origin={agent.origin}
+                    size="2xs"
+                />
+            ),
         })),
         value: readOneParam(search.agentId),
         onChange: (value) => {

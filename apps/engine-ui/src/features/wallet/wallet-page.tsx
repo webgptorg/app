@@ -174,7 +174,7 @@ function answerable(request: ReadWalletRequest): boolean {
 
 function RequestAvatar({ name }: { readonly name: string }) {
     const look = useAgentLookByName(name);
-    return <AgentAvatar name={name} agentKey={look.key} profile={look.profile} size="xs" />;
+    return <AgentAvatar name={name} agentKey={look.key} profile={look.profile} origin={look.origin} size="xs" />;
 }
 
 /**

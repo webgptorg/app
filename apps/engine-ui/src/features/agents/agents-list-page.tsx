@@ -130,9 +130,11 @@ function useAgentColumns(withVisibility: boolean): DataTableColumnDef<Agent>[] {
                 id: 'description',
                 header: m.agents_column_role(),
                 enableSorting: false,
-                meta: { icon: <Text className="size-3.5" />, priority: 5 },
+                meta: { icon: <Text className="size-3.5" />, priority: 5, grow: true },
                 cell: ({ getValue }) => (
-                    <span className="line-clamp-1 max-w-md break-words text-text-muted">{getValue<string>()}</span>
+                    <span title={getValue<string>()} className="line-clamp-1 break-words text-text-muted">
+                        {getValue<string>()}
+                    </span>
                 ),
             }),
             column.accessor('id', {

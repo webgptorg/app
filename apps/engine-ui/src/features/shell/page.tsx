@@ -30,6 +30,11 @@ export interface PageProps {
     readonly actions?: ReactNode | undefined;
     /** CSSOM style for the title's text, e.g. the `view-transition-name` a list row's title morphs into. */
     readonly titleStyle?: CSSProperties | undefined;
+    /**
+     * `wide` (the default) uses the screen, for lists, tables and detail pages; `reading` keeps a form or prose at a
+     * comfortable line length.
+     */
+    readonly width?: 'wide' | 'reading';
     readonly children: ReactNode;
 }
 
@@ -46,6 +51,7 @@ export function Page({
     documentTitle,
     actions,
     titleStyle,
+    width = 'wide',
     children,
 }: PageProps) {
     useDocumentTitle(...(documentTitle ?? [title]));
@@ -53,7 +59,7 @@ export function Page({
         <section
             aria-labelledby="page-title"
             aria-describedby={description === undefined ? undefined : 'page-description'}
-            className="flex flex-col gap-6"
+            className={cx('flex flex-col gap-6', width === 'reading' && 'max-w-3xl')}
         >
             <PageHeader
                 title={title}

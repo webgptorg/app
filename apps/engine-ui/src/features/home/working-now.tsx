@@ -58,7 +58,15 @@ function ChatWork({ chat, working }: { readonly chat: ReadChat; readonly working
     const latest = working.steps.at(-1);
     return (
         <WorkRow
-            leading={<AgentAvatar name={name} agentKey={working.author.key} profile={look.profile} size="xs" />}
+            leading={
+                <AgentAvatar
+                    name={name}
+                    agentKey={working.author.key}
+                    profile={look.profile}
+                    origin={look.origin}
+                    size="xs"
+                />
+            }
             title={
                 <>
                     <span className="font-medium">{m.home_working_in_chat({ name })}</span>

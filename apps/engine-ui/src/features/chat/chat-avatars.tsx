@@ -1,17 +1,9 @@
 import type { ReadChat } from '@ptbk/engine-api';
 import { MessageSquare } from 'lucide-react';
 
-import { AgentAvatar } from '../agents/agent-avatar';
-import { useAgentLook } from '../home/use-agent-look';
+import { LookedUpAgentAvatar } from '../agents/looked-up-agent-avatar';
 
 const AVATARS = 3;
-
-function MemberAvatar({ agentKey, name }: { readonly agentKey: string; readonly name: string }) {
-    const look = useAgentLook(agentKey);
-    return (
-        <AgentAvatar name={name} agentKey={agentKey} profile={look.profile} size="xs" className="ring-2 ring-surface" />
-    );
-}
 
 /** The thread's agents as overlapping avatars, first joined first; people are implied. */
 export function ChatAvatars({ chat }: { readonly chat: Pick<ReadChat, 'members'> }) {
@@ -26,7 +18,13 @@ export function ChatAvatars({ chat }: { readonly chat: Pick<ReadChat, 'members'>
     return (
         <span aria-hidden="true" className="flex w-10 shrink-0 -space-x-2">
             {agents.map((agent) => (
-                <MemberAvatar key={agent.key} agentKey={agent.key} name={agent.name} />
+                <LookedUpAgentAvatar
+                    key={agent.key}
+                    agentKey={agent.key}
+                    name={agent.name}
+                    size="xs"
+                    className="ring-2 ring-surface"
+                />
             ))}
         </span>
     );
