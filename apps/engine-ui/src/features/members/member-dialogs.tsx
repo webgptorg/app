@@ -1,6 +1,6 @@
 import { ROLES } from '@ptbk/engine-api';
 import type { Role } from '@ptbk/engine-api';
-import { Button, Combobox, CopyButton, Dialog, Field, Input } from '@ptbk/ui';
+import { Button, Combobox, Dialog, Field } from '@ptbk/ui';
 import { useId, useState } from 'react';
 import type { SyntheticEvent } from 'react';
 
@@ -66,123 +66,6 @@ export function ChangeRoleDialog({ member, mutations, onClose }: ChangeRoleDialo
         >
             <form id={formId} noValidate onSubmit={submit}>
                 <RoleField value={role} onChange={setRole} />
-            </form>
-        </Dialog>
-    );
-}
-
-const INVITE_DAYS = [1, 7, 30] as const;
-const DEFAULT_INVITE_DAYS = 7;
-
-function expiryLabel(days: number): string {
-    return m.invites_expiry_days({ count: days });
-}
-
-interface CreatedInvite {
-    readonly url: string;
-    readonly role: Role;
-    readonly days: number;
-}
-
-export interface InviteDialogProps {
-    readonly mutations: MemberMutations;
-    readonly onClose: () => void;
-}
-
-/**
- * Creates an invite link and shows it once. The link carries the invite secret: it lives only in this dialog's state,
- * as text, and is gone when the dialog closes.
- */
-export function InviteDialog({ mutations, onClose }: InviteDialogProps) {
-    const formId = useId();
-    const [role, setRole] = useState<Role>('member');
-    const [days, setDays] = useState<number>(DEFAULT_INVITE_DAYS);
-    const [created, setCreated] = useState<CreatedInvite | null>(null);
-
-    if (created !== null) {
-        return (
-            <Dialog
-                open
-                onClose={onClose}
-                title={m.invites_created_title()}
-                description={m.invites_created_body({
-                    role: roleLabel(created.role),
-                    expiry: expiryLabel(created.days),
-                })}
-                footer={
-                    <Button variant="primary" onClick={onClose}>
-                        {m.invites_done()}
-                    </Button>
-                }
-            >
-                <div className="flex items-end gap-2">
-                    <Field label={m.invites_link_label()} className="min-w-0 flex-1">
-                        {(control) => (
-                            <Input
-                                {...control}
-                                readOnly
-                                value={created.url}
-                                spellCheck={false}
-                                autoComplete="off"
-                                className="font-mono"
-                                onFocus={(event) => {
-                                    event.currentTarget.select();
-                                }}
-                            />
-                        )}
-                    </Field>
-                    <CopyButton value={created.url} label={m.invites_copy()} variant="secondary" size="md" />
-                </div>
-            </Dialog>
-        );
-    }
-
-    const submit = (event: SyntheticEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        mutations.invite.mutate({
-            role,
-            days,
-            reveal: (url) => {
-                setCreated({ url, role, days });
-            },
-        });
-    };
-    return (
-        <Dialog
-            open
-            onClose={onClose}
-            title={m.invites_title()}
-            description={m.invites_body()}
-            footer={
-                <>
-                    <Button variant="ghost" onClick={onClose}>
-                        {m.members_cancel()}
-                    </Button>
-                    <Button type="submit" form={formId} variant="primary" loading={mutations.invite.isPending}>
-                        {m.invites_create()}
-                    </Button>
-                </>
-            }
-        >
-            <form id={formId} noValidate onSubmit={submit} className="flex flex-col gap-4">
-                <RoleField value={role} onChange={setRole} />
-                <Field label={m.invites_expiry_label()}>
-                    {(control) => (
-                        <Combobox
-                            {...control}
-                            className="w-full"
-                            value={String(days)}
-                            options={INVITE_DAYS.map((option) => ({
-                                value: String(option),
-                                label: expiryLabel(option),
-                            }))}
-                            onChange={(picked) => {
-                                const next = INVITE_DAYS.find((option) => String(option) === picked);
-                                if (next !== undefined) setDays(next);
-                            }}
-                        />
-                    )}
-                </Field>
             </form>
         </Dialog>
     );

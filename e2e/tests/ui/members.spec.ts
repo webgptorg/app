@@ -1,34 +1,16 @@
-// The owner invites someone (the link is shown once and the invite is listed until revoked) and changes a member's
-// role, each confirmed by a toast that names what changed.
+// The owner is pointed to the dashboard to invite someone, and changes a member's role, confirmed by a toast that
+// names what changed.
 import { openRowMenu } from '../../src/ui-app.ts';
 import { expect, test } from '../../src/ui-fixtures.ts';
 
-test('the owner creates and revokes an invite and changes a role', async ({ page, signIn, appUrl, engine }) => {
+test('the owner invites from the dashboard and changes a role', async ({ page, signIn, appUrl }) => {
     test.setTimeout(60_000);
     await signIn();
     await page.goto(appUrl('/members'));
     await expect(page.getByRole('heading', { level: 1, name: 'Members' })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Invite member' }).click();
-    const form = page.getByRole('dialog', { name: 'Invite a member' });
-    await form.getByRole('combobox', { name: 'Role' }).click();
-    await page.getByRole('option', { name: /^Member/ }).click();
-    await form.getByRole('button', { name: 'Create invite link' }).click();
-    const created = page.getByRole('dialog', { name: 'Invite link created' });
-    await expect(created.getByRole('textbox', { name: 'Invite link' })).toHaveValue(
-        new RegExp(`^https://${engine.hostname.replaceAll('.', '\\.')}/`),
-    );
-    await created.getByRole('button', { name: 'Done' }).click();
-
-    const invites = page.getByRole('region', { name: 'Pending invites' });
-    await expect(invites.getByText('Invite as Member')).toBeVisible();
-    await (await openRowMenu(page, 'Invite as Member')).getByRole('menuitem', { name: 'Revoke invite' }).click();
-    await page
-        .getByRole('dialog', { name: 'Revoke the invite as Member?' })
-        .getByRole('button', { name: 'Revoke invite' })
-        .click();
-    await expect(page.getByText('Revoked the invite as Member')).toBeVisible();
-    await expect(invites).toHaveCount(0);
+    // People are invited in the dashboard: the engine UI never creates an engine invite link.
+    await expect(page.getByRole('button', { name: 'Invite member' })).toHaveCount(0);
 
     const viewer = page.getByRole('row').filter({ has: page.getByRole('cell', { name: 'Viewer', exact: true }) });
     const name = (await viewer.first().getByRole('cell').first().textContent())?.trim() ?? '';

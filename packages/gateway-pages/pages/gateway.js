@@ -11,11 +11,16 @@ const SETUP_SECRET = /^[A-Za-z0-9_-]{22}$/;
 const ACCESS_TICKET = /^[A-Za-z0-9_-]{1,1958}\.[A-Za-z0-9_-]{86}$/;
 const FINGERPRINT_CELLS = /^[01]{25}$/;
 const REQUEST_TIMEOUT_MS = 15_000;
+/** The waiting page asks at most this often, so an engine whose status answers at once is not polled in a tight loop. */
+const STATUS_MIN_INTERVAL_MS = 3_000;
+/** A dropped connection or a busy engine is retried quietly; this many in a row show the problem instead. */
+const STATUS_TOLERATED_FAILURES = 3;
 const ME_PATH = '/api/v1/me';
 const CANCELLED = new Set(['NotAllowedError', 'AbortError']);
 const UNSUPPORTED = new Set(['NotSupportedError', 'SecurityError']);
 
 const isObject = (value) => typeof value === 'object' && value !== null;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let currentSection = document.querySelector('section[data-state]:not([hidden])');
 
@@ -184,12 +189,16 @@ function joinPage(webauthn) {
     let waitingFor = null;
 
     /*
-     * The gateway holds each status request until something changes or a few seconds pass, so this loop needs no
-     * timer. A network failure stops it on the offline state, whose retry picks the waiting up again.
+     * A gateway may hold each status request until something changes; one that answers at once is still asked only
+     * every few seconds. Approval sets the session cookie on that answer, so the page goes straight into the engine.
+     * Passing failures are retried after a longer pause; a run of them stops on the problem, whose retry picks the
+     * waiting up again without a second passkey.
      */
     async function wait() {
         show('waiting');
+        let failures = 0;
         for (;;) {
+            const startedAt = Date.now();
             const result = await post('/auth/join/status', { request: waitingFor });
             if (result.status === 200 && result.body?.state === 'approved') {
                 const target = nextFrom(result.body);
@@ -202,10 +211,16 @@ function joinPage(webauthn) {
                 show('declined');
                 return;
             }
-            if (result.status !== 200) {
-                show(joinProblem(result));
-                return;
+            if (result.status === 200) failures = 0;
+            else {
+                const passing = result.status === 0 || result.status === 429 || result.status >= 500;
+                failures += 1;
+                if (!passing || failures >= STATUS_TOLERATED_FAILURES) {
+                    show(joinProblem(result));
+                    return;
+                }
             }
+            await sleep(startedAt + STATUS_MIN_INTERVAL_MS * (failures + 1) - Date.now());
         }
     }
 

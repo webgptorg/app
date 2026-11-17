@@ -171,7 +171,8 @@ export type Diagnostic = z.infer<typeof Diagnostic>;
 
 /**
  * RFC 9457 problem details. Extensions are declared like any other field, because the schema is strict:
- * `errors` with `validation-failed` and `invalid-schedule`, `requiredPermission` with `forbidden`, `diagnostics` with `invalid-book`.
+ * `errors` with `validation-failed` and `invalid-schedule`, `requiredPermission` with `forbidden`, `diagnostics` with `invalid-book`,
+ * `attemptsRemaining` with `access-code-mismatch`.
  */
 export const ProblemDetails = z.strictObject({
     type: z.string().min(1).max(2048),
@@ -183,6 +184,8 @@ export const ProblemDetails = z.strictObject({
     errors: z.array(z.strictObject({ path: z.string().max(1024), message: z.string().max(1024) })).optional(),
     requiredPermission: Permission.optional(),
     diagnostics: z.array(Diagnostic).optional(),
+    /** Wrong codes the access request still survives, 0 once this one deleted it. Older engines omit it. */
+    attemptsRemaining: z.int().min(0).max(1000).optional(),
 });
 export type ProblemDetails = z.infer<typeof ProblemDetails>;
 

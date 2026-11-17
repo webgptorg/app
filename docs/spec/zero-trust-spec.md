@@ -166,7 +166,7 @@ We never see the setup secret, so we cannot claim the owner seat. Only someone a
 - **Revoke:** remove a passkey in the engine UI or with the engine CLI. All of its sessions end.
 - **Lose every device:** run `engine owner --reset` on the server. It revokes all passkeys and prints a fresh setup link. Nothing is lost, because the data never left the engine.
 - **Engine key compromised:** engine keys cannot rotate in place, because the engine ID is the key's hash. The owner revokes the engine in the dashboard, which suspends it so relays cut its tunnels, then sets it up again with a new identity.
-- **Members:** the owner creates an invite link in the engine UI, or an organization invites people to a team and someone on the engine approves their access request ([teams](teams.md)). Either way the invitee registers their own passkey on the engine, and roles live on the engine.
+- **Members:** an organization invites people to a team and someone on the engine approves their access request ([teams](teams.md)); engines without a dashboard use the engine's own invite link (`POST /invites`), which the engine UI no longer creates. Either way the invitee registers their own passkey on the engine, and roles live on the engine.
 
 **Devices without a built-in passkey**
 

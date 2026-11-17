@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { createSecurityEngine } from '../../testing/security-engine';
+import { problemResponse } from '../../testing/test-engine-api';
 
 const TIMEOUT_MS = 20_000;
 const CODE = '482913';
@@ -36,6 +37,8 @@ async function pick(user: User, combobox: HTMLElement, option: string | RegExp) 
     await user.click(screen.getByRole('option', { name: option }));
 }
 
+const codeInput = (dialog: HTMLElement) => within(dialog).getByRole<HTMLInputElement>('textbox', { name: /Code/ });
+
 async function openApprove(user: User) {
     const section = await screen.findByRole('region', { name: 'Access requests' });
     await user.click(within(section).getByRole('button', { name: 'Approve' }));
@@ -54,10 +57,11 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
 
         const dialog = await openApprove(user);
         expect(dialog.textContent).toContain('6-digit code');
-        await user.type(within(dialog).getByRole('textbox', { name: /Code/ }), CODE);
+        expect(dialog.textContent).toContain('petr@example.com, as reported by your organization');
         await pick(user, within(dialog).getByRole('combobox', { name: 'Role' }), 'Viewer');
         await expectNoAxeViolations(container);
-        await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
+        // The sixth digit approves: no button to find after reading the code out.
+        await user.type(codeInput(dialog), CODE);
 
         expect(await screen.findByText('Petr Svoboda can now use this engine')).toBeDefined();
         expect(approve).toHaveBeenCalledExactlyOnceWith(
@@ -72,18 +76,52 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         expect(screen.queryByText('1 waiting')).toBeNull();
     });
 
-    it('keeps the dialog open on a wrong code and says to check it with the person', async () => {
+    it('keeps the dialog open on a wrong code, says how many tries remain, and clears the cells', async () => {
         const engine = engineWithRequest();
         const { user } = renderWithProviders({ path: '/members', engineApi: engine.client });
         const dialog = await openApprove(user);
-        await user.type(within(dialog).getByRole('textbox', { name: /Code/ }), '000000');
-        await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
+        await user.type(codeInput(dialog), '000000');
+        expect(
+            await within(dialog).findByText(
+                "That code doesn't match. Check it with Petr Svoboda: 4 tries left before the request is removed.",
+            ),
+        ).toBeDefined();
+        expect(codeInput(dialog).value).toBe('');
+        expect(document.activeElement).toBe(codeInput(dialog));
+        expect(engine.controller.inspect().members.map(({ displayName }) => displayName)).not.toContain('Petr Svoboda');
+    });
+
+    it('falls back to the general warning when the engine does not count the tries', async () => {
+        const engine = engineWithRequest();
+        vi.spyOn(engine.client.members, 'approveAccessRequest').mockImplementation(() =>
+            problemResponse('access-code-mismatch'),
+        );
+        const { user } = renderWithProviders({ path: '/members', engineApi: engine.client });
+        const dialog = await openApprove(user);
+        await user.type(codeInput(dialog), '000000');
         expect(
             await within(dialog).findByText(
                 /^That code doesn't match\. Check it with Petr Svoboda\. After 5 wrong codes/,
             ),
         ).toBeDefined();
-        expect(engine.controller.inspect().members.map(({ displayName }) => displayName)).not.toContain('Petr Svoboda');
+    });
+
+    it('takes a pasted code with its space, keeps digits only, and approves at once', async () => {
+        const engine = engineWithRequest();
+        const approve = vi.spyOn(engine.client.members, 'approveAccessRequest');
+        const { user } = renderWithProviders({ path: '/members', engineApi: engine.client });
+        const dialog = await openApprove(user);
+        expect(document.activeElement).toBe(codeInput(dialog));
+        await user.type(codeInput(dialog), 'a1b');
+        expect(codeInput(dialog).value).toBe('1');
+        await user.clear(codeInput(dialog));
+        await user.paste('482 913');
+        expect(await screen.findByText('Petr Svoboda can now use this engine')).toBeDefined();
+        expect(approve).toHaveBeenCalledExactlyOnceWith(
+            'access-petr',
+            { code: CODE, role: 'member' },
+            expect.any(AbortSignal),
+        );
     });
 
     it('says the request was removed after the last wrong code, and offers nothing more to approve', async () => {
@@ -91,15 +129,12 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         const approve = vi.spyOn(engine.client.members, 'approveAccessRequest');
         const { user } = renderWithProviders({ path: '/members', engineApi: engine.client });
         const dialog = await openApprove(user);
-        const input = within(dialog).getByRole('textbox', { name: /Code/ });
         for (let attempt = 1; attempt <= 5; attempt += 1) {
-            await user.clear(input);
-            await user.type(input, '000000');
-            await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
+            await user.type(codeInput(dialog), '000000');
             await waitFor(() => {
                 expect(approve).toHaveBeenCalledTimes(attempt);
             });
-            if (attempt < 5) await within(dialog).findByText(/^That code doesn't match/);
+            if (attempt < 5) await within(dialog).findByText(new RegExp(`: ${String(5 - attempt)} tr(y|ies) left`));
         }
         const removed = await screen.findByRole('dialog', { name: 'Approve Petr Svoboda' });
         expect(
@@ -127,10 +162,10 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
                 .map((button) => button.getAttribute('aria-label') ?? button.textContent),
         ).toEqual(['Approve', 'More actions for Petr Svoboda']);
         const dialog = await openApprove(user);
-        const code = within(dialog).getByRole('textbox', { name: /Code/ });
+        const code = codeInput(dialog);
         expect(code.getAttribute('inputmode')).toBe('numeric');
         expect(code.getAttribute('aria-describedby')).toContain(
-            within(dialog).getByText('The 6 digits they read out to you.').id,
+            within(dialog).getByText(/^The 6 digits they read out to you\./).id,
         );
     });
 
@@ -139,7 +174,7 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         const approve = vi.spyOn(engine.client.members, 'approveAccessRequest');
         const { user } = renderWithProviders({ path: '/members', engineApi: engine.client });
         const dialog = await openApprove(user);
-        await user.type(within(dialog).getByRole('textbox', { name: /Code/ }), '12a');
+        await user.type(codeInput(dialog), '12a');
         await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
         expect(within(dialog).getByText('Enter the 6 digits.')).toBeDefined();
         expect(approve).not.toHaveBeenCalled();
@@ -149,8 +184,7 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         const engine = engineWithRequest({ stepUp: 'required' });
         const { user } = renderWithProviders({ path: '/members', engineApi: engine.client });
         const dialog = await openApprove(user);
-        await user.type(within(dialog).getByRole('textbox', { name: /Code/ }), CODE);
-        await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
+        await user.type(codeInput(dialog), CODE);
         expect(await screen.findByRole('dialog', { name: 'Confirm it is you' })).toBeDefined();
         expect(engine.controller.inspect().members.map(({ displayName }) => displayName)).not.toContain('Petr Svoboda');
     });
@@ -164,6 +198,42 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(screen.queryByRole('region', { name: 'Access requests' })).toBeNull();
         });
+    });
+
+    it('opens the approval from a ?request= link, which still waits for the code', async () => {
+        const engine = engineWithRequest();
+        const approve = vi.spyOn(engine.client.members, 'approveAccessRequest');
+        const { user, router } = renderWithProviders({
+            path: '/members?request=access-petr',
+            engineApi: engine.client,
+        });
+        const dialog = await screen.findByRole('dialog', { name: 'Approve Petr Svoboda' });
+        await waitFor(() => {
+            expect(document.activeElement).toBe(codeInput(dialog));
+        });
+        expect(approve).not.toHaveBeenCalled();
+        await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog')).toBeNull();
+        });
+        expect(router.state.location.search).toEqual({});
+    });
+
+    it('says a linked request is no longer waiting', async () => {
+        const engine = engineWithRequest();
+        renderWithProviders({ path: '/members?request=access-gone', engineApi: engine.client });
+        const dialog = await screen.findByRole('dialog', { name: 'This request is no longer waiting' });
+        expect(within(dialog).queryByRole('textbox')).toBeNull();
+    });
+
+    it('ignores a ?request= link without members.manage', async () => {
+        const permissions = OWNER_PERMISSIONS.filter((permission) => permission !== 'members.manage');
+        renderWithProviders({
+            path: '/members?request=access-petr',
+            engineApi: engineWithRequest({ permissions }).client,
+        });
+        await screen.findByRole('region', { name: 'Access requests' });
+        expect(screen.queryByRole('dialog')).toBeNull();
     });
 
     it('lists requests without approving or declining them, and no badge, without members.manage', async () => {

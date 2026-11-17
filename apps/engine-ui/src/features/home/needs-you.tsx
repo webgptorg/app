@@ -1,7 +1,7 @@
-import type { ReadChat, ReadTask } from '@ptbk/engine-api';
+import type { AccessRequest, ReadChat, ReadTask } from '@ptbk/engine-api';
 import { EmptyState, Section, Skeleton, STATUS_TINT_CLASSES } from '@ptbk/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { CircleAlert, CircleCheck, MessageCircleQuestion } from 'lucide-react';
+import { CircleAlert, CircleCheck, MessageCircleQuestion, UserRoundPlus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -16,6 +16,7 @@ import { chatEntriesQueryOptions } from '../chat/chat-queries';
 import { tintStyle } from '../chat/references/agent-color';
 import { chatName } from '../chat/chat-name';
 import { EntityChip } from '../entities/entity-chip';
+import { useWaitingAccessRequests } from '../members/members-feature';
 import { questionQuote } from './question-text';
 import { useAgentLook } from './use-agent-look';
 import { useHomeTasks } from './use-home-tasks';
@@ -124,6 +125,25 @@ function TaskItem({ task }: { readonly task: ReadTask }) {
     );
 }
 
+/** Someone the organization invited; the link opens their approval, which still asks for the code they read out. */
+function AccessRequestItem({ request }: { readonly request: AccessRequest }) {
+    return (
+        <NeedsYouItem
+            tintClassName={STATUS_TINT_CLASSES.warning}
+            leading={<UserRoundPlus aria-hidden />}
+            title={m.home_waiting_for_access({ name: request.displayName })}
+            action={
+                <ButtonLink to="/members" search={{ request: request.id }} size="sm">
+                    {m.access_approve()}
+                </ButtonLink>
+            }
+        >
+            {/* The dashboard's hint, as text. */}
+            <span className="text-sm break-words text-text-muted">{request.email}</span>
+        </NeedsYouItem>
+    );
+}
+
 type AttentionEntry = NonNullable<FeatureDefinition['attention']>;
 
 /** Calls one provider's hook; one component per provider keeps the rules of hooks with any number of them. */
@@ -176,21 +196,21 @@ function useAttentionItems() {
 }
 
 /**
- * What waits on the member, loudest first: agents' questions, tasks waiting on them, then everything a feature
- * counts. Each item sits on a soft surface with one action. When nothing waits, the section is one quiet line.
+ * What waits on the member, loudest first: agents' questions, tasks waiting on them, people asking to join, then
+ * everything a feature counts. Each item sits on a soft surface with one action. When nothing waits, the section is one quiet line.
  */
 export function NeedsYou({ chats }: { readonly chats: readonly ReadChat[] | undefined }) {
     const { tasks } = useHomeTasks('awaiting-user');
     const waitingTasks = tasks ?? [];
     const asking = (chats ?? []).filter((chat) => chat.questions.length > 0);
+    const requests = useWaitingAccessRequests();
+    const waitingPeople = requests ?? [];
     const { probes, items, pending } = useAttentionItems();
-    const loading = chats === undefined || tasks === undefined || pending;
-    const empty = asking.length === 0 && waitingTasks.length === 0 && items.length === 0;
+    const loading = chats === undefined || tasks === undefined || requests === undefined || pending;
+    const count = asking.length + waitingTasks.length + waitingPeople.length + items.length;
+    const empty = count === 0;
     return (
-        <Section
-            title={m.home_needs_you()}
-            {...(empty ? {} : { count: asking.length + waitingTasks.length + items.length })}
-        >
+        <Section title={m.home_needs_you()} {...(empty ? {} : { count })}>
             {probes}
             {empty ? (
                 loading ? (
@@ -210,6 +230,9 @@ export function NeedsYou({ chats }: { readonly chats: readonly ReadChat[] | unde
                     ))}
                     {waitingTasks.map((task) => (
                         <TaskItem key={task.id} task={task} />
+                    ))}
+                    {waitingPeople.map((request) => (
+                        <AccessRequestItem key={request.id} request={request} />
                     ))}
                     {items.length === 0 ? null : (
                         <li>

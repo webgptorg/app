@@ -179,6 +179,29 @@ describe('setup.html', () => {
     });
 });
 
+describe('join.html', () => {
+    it('explains the second passkey and asks for the code to be read out', () => {
+        const text = parse('join.html').body.textContent.replace(/\s+/g, ' ');
+        for (const copy of [
+            'This engine has its own secure address, so your browser asks for one more passkey here.',
+            'Tell this code to the person approving you',
+            'Keep this page open; it signs you in as soon as you are approved.',
+            "You're in",
+            'Opening the engine…',
+        ]) {
+            expect(text).toContain(copy);
+        }
+    });
+
+    it('shows the code on its own, large, between the heading and the hint', () => {
+        const waiting = parse('join.html').querySelector('section[data-state="waiting"]');
+        const code = waiting?.querySelector('[data-join-code]');
+        expect(code?.className).toBe('join-code');
+        expect(code?.nextElementSibling?.className).toBe('join-code-hint');
+        expect(readPackageFile('gateway.css')).toMatch(/\.join-code \{[^}]*font-size: clamp\(/);
+    });
+});
+
 describe('gateway scripts', () => {
     const BANNED = [
         /innerHTML/,
@@ -187,7 +210,8 @@ describe('gateway scripts', () => {
         /document\.write/,
         /\beval\b/,
         /\bFunction\s*\(/,
-        /setTimeout|setInterval/,
+        // A timer with a string body is eval; the only timer allowed is the waiting page's pause, which resolves a promise.
+        /setTimeout(?!\(resolve, ms\))|setInterval/,
         /setAttribute/,
         /\.style\b/,
         /\bconsole\./,

@@ -168,8 +168,8 @@ async function inviteAndApprove(
         const approve = async (): Promise<void> => {
             const dialog = owner.getByRole('dialog', { name: /^Approve / });
             if (!(await dialog.isVisible())) await owner.getByRole('button', { name: 'Approve', exact: true }).click();
+            // Pasted as shown on the waiting page; the sixth digit approves.
             await dialog.getByLabel('Code').fill(code);
-            await dialog.getByRole('button', { name: 'Approve', exact: true }).click();
         };
         await withStepUp(owner, approve, () =>
             expect(owner.getByText(/can now use this engine$/).first()).toBeVisible({ timeout: 15_000 }),

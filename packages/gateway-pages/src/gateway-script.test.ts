@@ -92,6 +92,7 @@ function click(action: string) {
 const nextLinks = () => [...document.querySelectorAll('a[data-next-link]')].map((a) => a.getAttribute('href'));
 
 afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
 });
@@ -536,7 +537,11 @@ describe('join page', () => {
         },
     );
 
-    it('registers the passkey, shows the code, waits and goes on when approved', async () => {
+    const statusRequests = (requests: readonly Request[]) =>
+        requests.filter(({ path }) => path === '/auth/join/status').length;
+
+    it('registers the passkey, shows the code, asks every few seconds and goes on when approved', async () => {
+        vi.useFakeTimers();
         const requests = fakeEngine({
             '/auth/join/options': options,
             '/auth/join/verify': created,
@@ -546,6 +551,13 @@ describe('join page', () => {
         await openJoin();
         await expectState('valid');
         click('create');
+        await expectState('waiting');
+        expect(document.querySelector('[data-join-code]')?.textContent).toBe('123 456');
+        expect(statusRequests(requests)).toBe(1);
+        // An engine that answers at once is not asked again before the interval is over.
+        await vi.advanceTimersByTimeAsync(2_900);
+        expect(statusRequests(requests)).toBe(1);
+        await vi.advanceTimersByTimeAsync(100);
         await expectState('done');
         expect(webauthn.startRegistration).toHaveBeenCalledWith({ optionsJSON: OPTIONS });
         expect(requests.map(({ path, body }) => [path, body])).toEqual([
@@ -554,9 +566,69 @@ describe('join page', () => {
             ['/auth/join/status', { request: 'req_1' }],
             ['/auth/join/status', { request: 'req_1' }],
         ]);
-        expect(document.querySelector('[data-join-code]')?.textContent).toBe('123 456');
         expect(nextLinks()).toEqual(['/agents']);
         expect(document.documentElement.outerHTML).not.toContain(TICKET);
+    });
+
+    it('asks again at once when a held answer took the whole interval', async () => {
+        vi.useFakeTimers();
+        let held = true;
+        const requests: string[] = [];
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((path: string) => {
+                requests.push(path);
+                if (path === '/auth/join/options') return Promise.resolve(Response.json(options.body));
+                if (path === '/auth/join/verify') return Promise.resolve(Response.json(created.body, { status: 201 }));
+                if (held) {
+                    held = false;
+                    return new Promise((resolve) => {
+                        setTimeout(() => {
+                            resolve(Response.json(pending.body));
+                        }, 10_000);
+                    });
+                }
+                return Promise.resolve(Response.json({ state: 'declined' }));
+            }),
+        );
+        fakeWebAuthn();
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState('waiting');
+        await vi.advanceTimersByTimeAsync(10_000);
+        await expectState('declined');
+        expect(requests.filter((path) => path === '/auth/join/status')).toHaveLength(2);
+    });
+
+    it('keeps waiting through passing failures, pausing longer after each', async () => {
+        vi.useFakeTimers();
+        const requests = fakeEngine({
+            '/auth/join/options': options,
+            '/auth/join/verify': created,
+            '/auth/join/status': [
+                'network-error',
+                { status: 503, body: { code: 'unavailable' } },
+                { ...pending },
+                { status: 200, body: { state: 'approved' } },
+            ],
+        });
+        fakeWebAuthn();
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState('waiting');
+        await vi.advanceTimersByTimeAsync(5_900);
+        expect(statusRequests(requests)).toBe(1);
+        await vi.advanceTimersByTimeAsync(100);
+        expect(statusRequests(requests)).toBe(2);
+        expect(shownStates()).toEqual(['waiting']);
+        await vi.advanceTimersByTimeAsync(9_000);
+        expect(statusRequests(requests)).toBe(3);
+        expect(shownStates()).toEqual(['waiting']);
+        await vi.advanceTimersByTimeAsync(3_000);
+        await expectState('done');
+        expect(nextLinks()).toEqual(['/']);
     });
 
     it('shows the declined state when the owner declines', async () => {
@@ -585,17 +657,26 @@ describe('join page', () => {
         await expectState('declined');
     });
 
-    it('picks the waiting up again after a network failure, without a second passkey', async () => {
+    it('says it is offline after failures in a row, and picks the waiting up again without a second passkey', async () => {
+        vi.useFakeTimers();
         const requests = fakeEngine({
             '/auth/join/options': options,
             '/auth/join/verify': created,
-            '/auth/join/status': ['network-error', { status: 200, body: { state: 'declined' } }],
+            '/auth/join/status': [
+                'network-error',
+                'network-error',
+                'network-error',
+                { status: 200, body: { state: 'declined' } },
+            ],
         });
         const webauthn = fakeWebAuthn();
         await openJoin();
         await expectState('valid');
         click('create');
+        await expectState('waiting');
+        await vi.advanceTimersByTimeAsync(15_000);
         await expectState('offline');
+        expect(statusRequests(requests)).toBe(3);
         click('retry');
         await expectState('declined');
         expect(webauthn.startRegistration).toHaveBeenCalledTimes(1);
@@ -642,7 +723,22 @@ describe('join page', () => {
         await expectState(state);
     });
 
-    it('stops on a status request the engine refuses', async () => {
+    it('stops at once on a status request the engine refuses', async () => {
+        const requests = fakeEngine({
+            '/auth/join/options': options,
+            '/auth/join/verify': created,
+            '/auth/join/status': { status: 400, body: { code: 'validation-failed' } },
+        });
+        fakeWebAuthn();
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState('error');
+        expect(statusRequests(requests)).toBe(1);
+    });
+
+    it('says there were too many attempts when the engine keeps rate-limiting the status', async () => {
+        vi.useFakeTimers();
         fakeEngine({
             '/auth/join/options': options,
             '/auth/join/verify': created,
@@ -652,6 +748,8 @@ describe('join page', () => {
         await openJoin();
         await expectState('valid');
         click('create');
+        await expectState('waiting');
+        await vi.advanceTimersByTimeAsync(15_000);
         await expectState('rate-limited');
     });
 

@@ -24,6 +24,20 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-16: Smoother join: waiting page signs in, tries left, UI invites in the dashboard
+
+- **Changed:**
+  - [`join.html`, `gateway.js` and `gateway.css`](../../packages/gateway-pages/pages/) in `@ptbk/gateway-pages`. The join page explains the second passkey in one line. The waiting page shows the code large ("482 913") with "Tell this code to the person approving you". It asks `JOIN_STATUS_PATH` at most every 3 s, retries a network failure, 429 or 5xx quietly (the third in a row shows the error) and, on `approved`, shows "You're in" and goes to `next` ([gateway.md, Access requests](gateway.md#access-requests)).
+  - `ProblemDetails.attemptsRemaining` in [`common.ts`](../../packages/engine-api/src/common.ts): optional, on 422 `access-code-mismatch` from `POST /access-requests/{id}/approve`, the wrong codes the request still survives (`0` when this one deleted it) ([engine-api.md, Access requests](engine-api.md#access-requests)). The UI says "N tries left" with it and a general warning without it. `ENGINE_API_VERSION` stays 1.15.0.
+  - The engine UI opens `/members?request=<accessRequestId>` on that request's approval dialog; the dashboard's approver email links there. Home lists each waiting person with the same link.
+  - The engine UI no longer creates invite links: "Invite in the dashboard" replaces "Invite member". `POST /invites`, `GET /invites` and `DELETE /invites/{id}` stay in the contract; the UI still lists and revokes existing links.
+- **Redo:**
+  1. Copy `join.html`, `gateway.js` and `gateway.css` from `packages/gateway-pages/pages/` again.
+  2. Check that the status answer reporting `approved` sets the session cookie and returns a safe `next`, so the waiting page signs in by itself, and that an unknown or deleted request answers 404 (the page shows it as declined). Holding the status answer is now optional; if you hold it, stay under the page's 15 s timeout.
+  3. Re-vendor the contract and add `attemptsRemaining` to the `access-code-mismatch` problem.
+  4. `/members?request=<id>` is a UI route: nothing to do unless your gateway intercepts `/members`. An anonymous request for it must still redirect to sign-in with the path and query in `next`.
+  5. Keep serving invite creation (`POST /invites`): the UI no longer offers it, but engines without a dashboard and existing links rely on it. Nothing to change.
+
 ### 2026-11-16: Gateway pages carry the Promptbook brand kit
 
 - **Changed:** [`gateway.css`](../../packages/gateway-pages/pages/gateway.css) takes the brand kit's ink blue for links and focus, Exo 2 for headings (system fallback, no font file), and the pages' masthead shows the official lockup as inline SVG. Endpoints, script and CSP are unchanged.

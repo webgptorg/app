@@ -41,5 +41,5 @@ The zero-trust promise is that our platform cannot add users or passkeys to an e
   - the join gateway page and access-request routes;
   - heartbeat v2 and the heartbeat reply;
   - the pinned member key.
-- Engines without it keep invite links only.
+- Engines without it keep invite links only. The engine UI no longer creates them (D-31), since everyone has a dashboard account; the API keeps them.
 - The dashboard's view of who is on an engine can lag, or miss members added by invite link. The engine stays the authority.

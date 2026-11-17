@@ -3,7 +3,7 @@ import type { Member } from '@ptbk/engine-api';
 import {
     Avatar,
     Badge,
-    Button,
+    buttonClassName,
     ConfirmDialog,
     createDataTableColumnHelper,
     DataTable,
@@ -13,11 +13,12 @@ import {
     useLocale,
 } from '@ptbk/ui';
 import type { DataTableColumnDef, MenuEntry } from '@ptbk/ui';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
 import {
     CalendarClock,
     Clock,
+    ExternalLink,
     KeyRound,
     Shield,
     UserMinus,
@@ -35,13 +36,15 @@ import { useEngineApi } from '../../app/engine-api-context';
 import { isInvalidCursor, isPageLevelFailure } from '../../app/list-errors';
 import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
+import { engineInfoQueryOptions } from '../engine/engine-queries';
 import { useCurrentMember } from '../session/use-current-member';
 import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
+import { dashboardLinks } from '../shell/dashboard-links';
 import { roleLabel } from '../shell/role-label';
 import { AccessRequests } from './access-requests';
 import { memberListParams } from './member-list-search';
-import { ChangeRoleDialog, InviteDialog } from './member-dialogs';
+import { ChangeRoleDialog } from './member-dialogs';
 import { accessRequestListQueryOptions, inviteListQueryOptions, memberListQueryOptions } from './members-queries';
 import { PendingInvites } from './pending-invites';
 import { useMemberMutations } from './use-member-mutations';
@@ -128,9 +131,22 @@ function useMemberColumns(myId: string): DataTableColumnDef<Member>[] {
 }
 
 type Pending =
-    | { readonly kind: 'invite' }
-    | { readonly kind: 'role'; readonly member: Member }
-    | { readonly kind: 'remove'; readonly member: Member };
+    { readonly kind: 'role'; readonly member: Member } | { readonly kind: 'remove'; readonly member: Member };
+
+/**
+ * Everyone has a dashboard account, so people are invited there: the dashboard's ticket brings them back as an access
+ * request. The engine's own invite links (`POST /invites`) stay in the API for engines without a dashboard.
+ */
+function InviteInDashboard({ href }: { readonly href: string }) {
+    return (
+        <a href={href} target="_blank" rel="noopener noreferrer" className={buttonClassName('primary', 'md')}>
+            <UserPlus aria-hidden className="size-4" />
+            {m.members_invite_in_dashboard()}
+            <ExternalLink aria-hidden className="size-3.5" />
+            <span className="sr-only">{` ${m.ui_opens_in_new_tab()}`}</span>
+        </a>
+    );
+}
 
 /** Invites are a draft route: an engine that has not built them answers 404 `not-found`. */
 function isUnsupported(error: unknown): boolean {
@@ -143,6 +159,9 @@ export function MembersPage() {
     const navigate = route.useNavigate();
     const { storage } = useBrowser();
     const engineApi = useEngineApi();
+    const { data: engine } = useSuspenseQuery(engineInfoQueryOptions(engineApi));
+    // The bundle names no outside origin, so the link appears once the engine reports the dashboard it is linked to.
+    const inviteUrl = dashboardLinks(engine.dashboardUrl).allEngines;
     const me = useCurrentMember();
     const { can } = usePermissions();
     const canManage = can('members.manage');
@@ -167,7 +186,7 @@ export function MembersPage() {
     });
     const invalidCursor = list.isError && isInvalidCursor(list.error);
     useEffect(() => {
-        if (invalidCursor) void navigate({ search: {}, replace: true });
+        if (invalidCursor) void navigate({ search: ({ request }) => ({ request }), replace: true });
     }, [invalidCursor, navigate]);
 
     // Nobody changes or removes themselves here; everything else is the engine's policy to allow or refuse.
@@ -197,23 +216,12 @@ export function MembersPage() {
         ];
     };
 
-    const inviteButton = managing ? (
-        <Button
-            variant="primary"
-            onClick={() => {
-                setPending({ kind: 'invite' });
-            }}
-        >
-            <UserPlus aria-hidden className="size-4" />
-            {m.invites_new()}
-        </Button>
-    ) : null;
+    const inviteButton = canManage && inviteUrl !== null ? <InviteInDashboard href={inviteUrl} /> : null;
     const alone =
         list.data !== undefined &&
         list.data.nextCursor === null &&
         search.cursor === undefined &&
         list.data.items.every((member) => member.id === me.memberId);
-    const noInvites = invites.data !== undefined && invites.data.items.length === 0;
 
     let intro: string;
     if (!canManage) intro = m.members_intro_read_only();
@@ -225,7 +233,15 @@ export function MembersPage() {
     return (
         <Page title={m.members_title()} description={intro} actions={inviteButton}>
             {requestsSupported ? (
-                <AccessRequests query={accessRequests} canManage={canManage} mutations={mutations} />
+                <AccessRequests
+                    query={accessRequests}
+                    canManage={canManage}
+                    mutations={mutations}
+                    linkedRequestId={search.request}
+                    onLinkClosed={() => {
+                        void navigate({ search: ({ cursor }) => ({ cursor }), replace: true });
+                    }}
+                />
             ) : null}
             <Section {...(requestsWaiting ? { title: m.members_people() } : {})} divided={requestsWaiting}>
                 <DataTable
@@ -255,24 +271,15 @@ export function MembersPage() {
                 />
             </Section>
             {invitesUnsupported ? null : <PendingInvites query={invites} canManage={canManage} mutations={mutations} />}
-            {managing && alone && noInvites ? (
+            {canManage && alone ? (
                 <EmptyState
                     headingLevel={2}
                     icon={<UserPlus />}
                     title={m.invites_empty_title()}
                     description={m.invites_empty_body()}
-                    action={
-                        <Button
-                            onClick={() => {
-                                setPending({ kind: 'invite' });
-                            }}
-                        >
-                            {m.invites_new()}
-                        </Button>
-                    }
+                    {...(inviteUrl === null ? {} : { action: <InviteInDashboard href={inviteUrl} /> })}
                 />
             ) : null}
-            {pending?.kind === 'invite' ? <InviteDialog mutations={mutations} onClose={close} /> : null}
             {pending?.kind === 'role' ? (
                 <ChangeRoleDialog member={pending.member} mutations={mutations} onClose={close} />
             ) : null}

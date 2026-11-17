@@ -1,4 +1,3 @@
-import { Timestamp } from '@ptbk/engine-api';
 import type { AccessRequest, Invite, MemberId, Role } from '@ptbk/engine-api';
 
 import { classifyApiError, unwrap } from '../../app/api-errors';
@@ -9,21 +8,10 @@ import { roleLabel } from '../shell/role-label';
 import { memberKeys } from './members-keys';
 
 const MUTATION_TIMEOUT_MS = 30_000;
-const DAY_MS = 24 * 60 * 60_000;
 
 export interface MemberTarget {
     readonly id: MemberId;
     readonly displayName: string;
-}
-
-export interface InviteRequest {
-    readonly role: Role;
-    readonly days: number;
-    /**
-     * Receives the invite URL. It carries the invite secret, so it goes straight to the dialog that shows it once and
-     * never into the mutation's result, which TanStack Query keeps in its cache.
-     */
-    readonly reveal: (inviteUrl: string) => void;
 }
 
 export const APPROVE_ACCESS_ACTION = 'members.approve-access';
@@ -34,9 +22,14 @@ export interface AccessApproval {
     readonly role: Role;
 }
 
-export type ApprovalOutcome = 'approved' | 'code-mismatch';
+/** `attemptsRemaining` comes from the engine; engines built before it was added leave it out. */
+export type ApprovalOutcome =
+    { readonly kind: 'approved' } | { readonly kind: 'code-mismatch'; readonly attemptsRemaining: number | undefined };
 
-/** Role changes, removals and invites: none optimistic, each waits for the engine and may need step-up. */
+/**
+ * Role changes, removals, revoking the engine's own invites and access requests: none optimistic, each waits for the
+ * engine and may need step-up. New people are invited from the dashboard, so the UI no longer creates engine invites.
+ */
 export function useMemberMutations() {
     const engineApi = useEngineApi();
     const signal = () => AbortSignal.timeout(MUTATION_TIMEOUT_MS);
@@ -57,17 +50,6 @@ export function useMemberMutations() {
         errorMessage: (_, member) => m.members_remove_failed({ name: member.displayName }),
     });
 
-    const invite = useStepUpAwareMutation({
-        mutationFn: async ({ role, days, reveal }: InviteRequest): Promise<Invite> => {
-            const expiresAt = Timestamp.parse(new Date(Date.now() + days * DAY_MS).toISOString());
-            const created = unwrap(await engineApi.members.createInvite({ role, expiresAt }, signal()));
-            reveal(created.inviteUrl);
-            return created.invite;
-        },
-        invalidates: [memberKeys.invites()],
-        errorMessage: () => m.invites_create_failed(),
-    });
-
     const revokeInvite = useStepUpAwareMutation({
         mutationFn: async (invite: Invite) => unwrap(await engineApi.members.revokeInvite(invite.id, signal())),
         invalidates: [memberKeys.invites()],
@@ -79,18 +61,18 @@ export function useMemberMutations() {
         mutationFn: async ({ request, code, role }: AccessApproval): Promise<ApprovalOutcome> => {
             try {
                 unwrap(await engineApi.members.approveAccessRequest(request.id, { code, role }, signal()));
-                return 'approved';
+                return { kind: 'approved' };
             } catch (error) {
                 // A wrong code is the member's typo, answered in the dialog, not a failure toast.
                 const failure = classifyApiError(error);
                 if (failure.kind === 'problem' && failure.problem.code === 'access-code-mismatch')
-                    return 'code-mismatch';
+                    return { kind: 'code-mismatch', attemptsRemaining: failure.problem.attemptsRemaining };
                 throw error;
             }
         },
         invalidates: [memberKeys.all],
         successMessage: (outcome, { request }) =>
-            outcome === 'approved' ? m.access_approved({ name: request.displayName }) : undefined,
+            outcome.kind === 'approved' ? m.access_approved({ name: request.displayName }) : undefined,
         errorMessage: (_, { request }) => m.access_approve_failed({ name: request.displayName }),
         // The code is not kept: the member asks for it again after confirming it was them.
         resumeAs: {
@@ -107,7 +89,7 @@ export function useMemberMutations() {
         errorMessage: () => m.access_decline_failed(),
     });
 
-    return { changeRole, remove, invite, revokeInvite, approveAccess, declineAccess };
+    return { changeRole, remove, revokeInvite, approveAccess, declineAccess };
 }
 
 export type MemberMutations = ReturnType<typeof useMemberMutations>;

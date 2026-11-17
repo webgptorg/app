@@ -360,8 +360,8 @@
   "members_load_failed": "The members could not be loaded.",
   "members_empty_title": "No members yet",
   "members_empty_body": "Members appear here once they join this engine.",
-  "members_intro": "People join with an invite link and sign in with a passkey of their own. Their role decides what they may do.",
-  "members_intro_read_only": "Owners and admins invite people and change their roles.",
+  "members_intro": "People are invited from your organization's dashboard and sign in here with a passkey of their own. Their role decides what they may do.",
+  "members_intro_read_only": "Owners and admins invite people from the dashboard and change their roles.",
   "members_intro_no_invites": "This engine does not support invites and role changes yet.",
   "members_change_role": "Change role",
   "members_change_role_title": "Change {name}'s role",
@@ -388,7 +388,7 @@
   "access_approve_title": "Approve {name}",
   "access_approve_body": "Ask {name} for the 6-digit code on their screen. It shows the request is really theirs.",
   "access_code_label": "Code",
-  "access_code_hint": "The 6 digits they read out to you.",
+  "access_code_hint": "The 6 digits they read out to you. The last digit approves with the role above.",
   "access_code_invalid": "Enter the 6 digits.",
   "access_code_mismatch": "That code doesn't match. Check it with {name}. After 5 wrong codes the request is removed and they need to open the engine from the dashboard again.",
   "access_removed_after_codes": "Too many wrong codes, so {name}'s request was removed. Ask them to open the engine from the dashboard again.",
@@ -405,27 +405,6 @@
   "removals_on": "The organization can now remove members",
   "removals_off": "Only this engine can remove members now",
   "removals_failed": "The setting could not be changed.",
-  "invites_new": "Invite member",
-  "invites_title": "Invite a member",
-  "invites_body": "You get a link to send them. Whoever opens it adds a passkey and joins with the role you pick. The engine asks for your passkey to confirm.",
-  "invites_expiry_label": "Link works for",
-  "invites_expiry_days": [
-    {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "{count} day",
-        "countPlural=other": "{count} days"
-      }
-    }
-  ],
-  "invites_create": "Create invite link",
-  "invites_create_failed": "The invite link could not be created.",
-  "invites_created_title": "Invite link created",
-  "invites_created_body": "Copy it now: it is not shown again. Anyone with the link can join as {role}; it works for {expiry}.",
-  "invites_link_label": "Invite link",
-  "invites_copy": "Copy link",
-  "invites_done": "Done",
   "invites_pending": "Pending invites",
   "invites_row_title": "Invite as {role}",
   "invites_actions_for": "Actions for {invite}",
@@ -438,7 +417,7 @@
   "invites_revoked": "Revoked the invite as {role}",
   "invites_revoke_failed": "The invite could not be revoked.",
   "invites_empty_title": "Invite your team",
-  "invites_empty_body": "Create an invite link for a role. Whoever opens it adds their own passkey and joins this engine.",
+  "invites_empty_body": "Invite people from your organization's dashboard. They ask for access here, and you let them in with the code on their screen.",
   "passkeys_title": "Passkeys",
   "passkeys_intro": "Passkeys sign you in to this engine. You add them when you sign in on a new device; here you can review and revoke them.",
   "passkeys_mine": "Your passkeys",
@@ -2058,16 +2037,6 @@
   "task_history_column_when": "When",
   "task_history_column_summary": "Summary",
   "task_history_column_runs": "Runs",
-  "members_attention_access": [
-    {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
-      "match": {
-        "countPlural=one": "{count} person asks to join",
-        "countPlural=other": "{count} people ask to join"
-      }
-    }
-  ],
   "home_ask_label": "Ask Chatter",
   "home_ask_placeholder": "Ask Chatter anything…",
   "home_guide_create_agent": "Start with one agent: tell it what to take care of, and it gets on with it.",
@@ -2141,5 +2110,20 @@
   "entity_fact_joined": "Joined",
   "task_priority_short": "P{rank}",
   "task_priority_short_text": "P{rank} · {text}",
-  "task_subtasks_done": "{completed} of {total} subtasks done"
+  "task_subtasks_done": "{completed} of {total} subtasks done",
+  "members_invite_in_dashboard": "Invite in the dashboard",
+  "access_reported_by_organization": "{email}, as reported by your organization",
+  "access_code_mismatch_left": [
+    {
+      "declarations": ["input name", "input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "That code doesn't match. Check it with {name}: 1 try left before the request is removed.",
+        "countPlural=other": "That code doesn't match. Check it with {name}: {count} tries left before the request is removed."
+      }
+    }
+  ],
+  "access_link_gone_title": "This request is no longer waiting",
+  "access_link_gone_body": "It was approved, declined or it expired. Anyone still waiting is listed on this page.",
+  "home_waiting_for_access": "{name} is waiting for access"
 }
