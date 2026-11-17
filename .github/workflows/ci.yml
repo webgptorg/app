@@ -1,11 +1,13 @@
 name: CI
 
+# Pull requests run only the cheap jobs (`changes`, `workflows`) unless they carry the `run-ci` label; with it, the jobs
+# their changes reach. Main has no run per push: the nightly (nightly.yml) runs everything once main moved, and a
+# manual run does too. Local `bun run check` is the gate before merging.
 on:
-  push:
-    branches: [main]
-  # ready_for_review: a draft runs nothing (see `changes`), so marking it ready must start its run.
+  # ready_for_review: a draft runs nothing (see `changes`), so marking it ready must start its run. labeled: adding
+  # `run-ci` starts the full run.
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   # The nightly full run on main (nightly.yml), and a full run by hand.
   workflow_call: {}
   workflow_dispatch: {}
@@ -13,15 +15,14 @@ on:
 permissions:
   contents: read
 
-# A pull request cancels its superseded run. On main every commit has its own group per event, so no run is cancelled
-# or replaced while pending: each push is scoped against the commit before it, so every push needs its own run.
+# A pull request cancels its superseded run; the nightly and a manual run each have their own group.
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.event_name, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Actions are pinned to full commit SHAs and nothing is cached between runs (spec, Security hardening item 10).
-# Pull requests and pushes to main run only the jobs their changes reach (scripts/ci-scope.ts); the nightly, a manual
-# run and a push that cannot be scoped run every job. Each job's `if` reads only the `changes` job list.
+# A pull request with `run-ci` runs only the jobs its changes reach (scripts/ci-scope.ts); the nightly and a manual run
+# run every job. Each job's `if` reads only the `changes` outputs.
 jobs:
   # Skipped for a draft, and with it every job below; `ci-passed` then fails, so a draft never looks green.
   changes:
@@ -29,26 +30,26 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
+      full: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci') }}
       check: ${{ steps.scope.outputs.check }}
       workspaces: ${{ steps.scope.outputs.workspaces }}
       jobs: ${{ steps.scope.outputs.jobs }}
     steps:
-      # A pull request needs depth 2: its merge commit and both parents, so HEAD^1 is the base it merges into. A push
-      # needs the history back to `before`, which a force-push may not even contain.
+      # A pull request needs depth 2: its merge commit and both parents, so HEAD^1 is the base it merges into.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: ${{ github.event_name == 'push' && '0' || '2' }}
+          fetch-depth: 2
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      # Reads the event from GITHUB_EVENT_NAME and GITHUB_EVENT_PATH: a push without `before` or a force-push runs
-      # everything, as do the nightly and a manual run.
+      # Reads the event from GITHUB_EVENT_NAME: the nightly and a manual run run everything.
       - id: scope
         run: node scripts/ci-scope.ts changes
 
   check:
     needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -85,7 +86,7 @@ jobs:
   # a browser; nothing is cached, not even the Bun binary.
   engine-ui-csp:
     needs: changes
-    if: contains(fromJSON(needs.changes.outputs.jobs), 'engine-ui-csp')
+    if: needs.changes.outputs.full == 'true' && contains(fromJSON(needs.changes.outputs.jobs), 'engine-ui-csp')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -103,7 +104,7 @@ jobs:
       - name: Install Chromium
         working-directory: apps/engine-ui
         run: bunx --no-install playwright install --with-deps chromium
-      # A failing PR is already blocked; stop at the first browser failure. Main and nightly keep every diagnostic.
+      # A failing PR is already blocked; stop at the first browser failure. The nightly keeps every diagnostic.
       - run: |
           args=()
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--max-failures=1); fi
@@ -113,7 +114,7 @@ jobs:
   # authenticator for the sign-up, sign-in and recovery flows (D-09).
   dashboard-csp:
     needs: changes
-    if: contains(fromJSON(needs.changes.outputs.jobs), 'dashboard-csp')
+    if: needs.changes.outputs.full == 'true' && contains(fromJSON(needs.changes.outputs.jobs), 'dashboard-csp')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -132,7 +133,7 @@ jobs:
       - name: Install Chromium
         working-directory: apps/dashboard
         run: bunx --no-install playwright install --with-deps chromium
-      # A failing PR is already blocked; stop at the first browser failure. Main and nightly keep every diagnostic.
+      # A failing PR is already blocked; stop at the first browser failure. The nightly keeps every diagnostic.
       - run: |
           args=()
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--max-failures=1); fi
@@ -142,7 +143,7 @@ jobs:
   # authenticator, through an in-process relay under the engine's CSP (M-08).
   mock-engine-browser:
     needs: changes
-    if: contains(fromJSON(needs.changes.outputs.jobs), 'mock-engine-browser')
+    if: needs.changes.outputs.full == 'true' && contains(fromJSON(needs.changes.outputs.jobs), 'mock-engine-browser')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -160,7 +161,7 @@ jobs:
       - name: Install Chromium
         working-directory: apps/mock-engine
         run: bunx --no-install playwright install --with-deps chromium
-      # A failing PR is already blocked; stop at the first browser failure. Main and nightly keep every diagnostic.
+      # A failing PR is already blocked; stop at the first browser failure. The nightly keeps every diagnostic.
       - run: |
           args=()
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--max-failures=1); fi
@@ -170,7 +171,7 @@ jobs:
   # Docker. Every image is built from scratch on each run: no actions/cache, no Buildx cache.
   e2e:
     needs: changes
-    if: contains(fromJSON(needs.changes.outputs.jobs), 'e2e')
+    if: needs.changes.outputs.full == 'true' && contains(fromJSON(needs.changes.outputs.jobs), 'e2e')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -185,7 +186,11 @@ jobs:
         with:
           node-version-file: .nvmrc
       # Needs no install on the runner: the driver uses only node: modules, and the images install inside Docker.
-      - run: bun run --filter @ptbk/e2e e2e
+      # Firefox runs in the nightly and manual runs only.
+      - run: |
+          args=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--project=chromium); fi
+          bun run --filter @ptbk/e2e e2e "${args[@]}"
       - name: Upload e2e results
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -200,7 +205,7 @@ jobs:
   # names resolve to loopback (systemd-resolved), so no DNS or hosts file is touched.
   conformance:
     needs: changes
-    if: contains(fromJSON(needs.changes.outputs.jobs), 'conformance')
+    if: needs.changes.outputs.full == 'true' && contains(fromJSON(needs.changes.outputs.jobs), 'conformance')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -255,7 +260,7 @@ jobs:
   # script runs everything in pinned containers, so it runs the same way on a laptop with Docker.
   infra:
     needs: changes
-    if: contains(fromJSON(needs.changes.outputs.jobs), 'infra')
+    if: needs.changes.outputs.full == 'true' && contains(fromJSON(needs.changes.outputs.jobs), 'infra')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -267,7 +272,7 @@ jobs:
   # `promtool check metrics` over what the relay's GET /metrics answers after routing a connection (I-04).
   relay-metrics:
     needs: changes
-    if: contains(fromJSON(needs.changes.outputs.jobs), 'relay-metrics')
+    if: needs.changes.outputs.full == 'true' && contains(fromJSON(needs.changes.outputs.jobs), 'relay-metrics')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -290,7 +295,7 @@ jobs:
   # allowlist (no deploy user or key: relays pull their deploys), and verify.sh failing on password SSH (I-01).
   relay-host-vm:
     needs: changes
-    if: contains(fromJSON(needs.changes.outputs.jobs), 'relay-host-vm')
+    if: needs.changes.outputs.full == 'true' && contains(fromJSON(needs.changes.outputs.jobs), 'relay-host-vm')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -327,7 +332,7 @@ jobs:
   # tag and the rollback of a broken image (I-03).
   relay-deploy:
     needs: changes
-    if: contains(fromJSON(needs.changes.outputs.jobs), 'relay-deploy')
+    if: needs.changes.outputs.full == 'true' && contains(fromJSON(needs.changes.outputs.jobs), 'relay-deploy')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -356,9 +361,9 @@ jobs:
       - name: Audit workflows with zizmor
         run: pipx run zizmor==1.30.1 --min-severity medium .github/workflows
 
-  # The one status to require for main: a job skipped because the change does not reach it counts as passed, a failed
-  # or cancelled one fails this, and so does a skipped `changes` (a draft), because GitHub reports a skipped job as
-  # passed.
+  # The one status to require for main: a job skipped because the change does not reach it, or because the pull
+  # request has no `run-ci`, counts as passed; a failed or cancelled one fails this, and so does a skipped `changes`
+  # (a draft), because GitHub reports a skipped job as passed.
   ci-passed:
     if: always()
     needs:
@@ -380,6 +385,7 @@ jobs:
       - env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
           CHANGES: ${{ needs.changes.result }}
+          FULL: ${{ needs.changes.outputs.full }}
         run: |
           echo "$RESULTS"
           if [ "$CHANGES" != success ]; then
@@ -387,3 +393,6 @@ jobs:
             exit 1
           fi
           case " $RESULTS " in *" failure "* | *" cancelled "*) exit 1 ;; esac
+          if [ "$FULL" != true ]; then
+            echo "::notice::Full CI not requested: only the cheap jobs ran. Add the run-ci label to run it."
+          fi

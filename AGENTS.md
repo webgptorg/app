@@ -94,12 +94,12 @@ Several agents work in parallel, and `main` has no branch protection yet: **you 
 9. **Finish.** Set the brief's **Status** line to `done (#<PR>)`, push, then:
    ```sh
    gh pr ready <PR>
-   gh pr checks <PR> --watch --fail-fast   # must end green; if not, fix and repeat
+   gh pr checks <PR> --watch --fail-fast   # with `run-ci` only; must end green, if not, fix and repeat
    gh pr merge <PR> --squash --subject "<PR title> (#<PR>)" --body "Refs: <task-id>"
    git push origin --delete <branch>
    ```
-   Pass `--subject` and `--body` explicitly: the repo's default would use a commit subject and list every commit. Never merge with red or pending checks, never force-push `main`, never bypass hooks (`--no-verify`).
-10. **Verify `main`.** `gh run list --branch main --limit 1` must turn green. If your merge broke it, fix it right away or revert your PR.
+   Without the `run-ci` label a PR runs only commitlint and the workflow audit, so the local checks are the gate; add `run-ci` (`gh pr edit <PR> --add-label run-ci`) when a change needs CI's browsers, Docker or VM. Pass `--subject` and `--body` explicitly: the repo's default would use a commit subject and list every commit. Never merge with red or pending checks, never force-push `main`, never bypass hooks (`--no-verify`).
+10. **Verify `main`.** Pushes to main run no CI; the next nightly (`gh run list --workflow nightly.yml --limit 1`) must be green. If your merge broke it, fix it right away or revert your PR.
 11. **Clean up** from the primary checkout: `git worktree remove ../app-<task-id>` and `git branch -D <branch>`.
 
 **When to stop and ask a human instead:** the brief is ambiguous in a way that changes behaviour; a rule above would bend; a dependency needs install scripts beyond the approved list or adds a runtime service; the task needs a decision listed under "Still needed" in the plan.
