@@ -333,6 +333,15 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
         }),
         control({
             method: 'POST',
+            path: '/__mock/step-up/expire',
+            body: null,
+            handle: () => {
+                sessions.expireStepUps();
+                return new Response(null, { status: 204 });
+            },
+        }),
+        control({
+            method: 'POST',
             path: '/__mock/sessions',
             body: { kind: 'json', schema: z.strictObject({ subject: SessionSubject }), maxBytes: BODY_MAX_BYTES },
             handle: ({ body, clientIp }) => {
