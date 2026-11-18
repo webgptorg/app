@@ -2,7 +2,7 @@
 
 - **Lane:** Dashboard · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-33
-- **Status:** in progress (fix/d-35-invite-add-passkey-copy)
+- **Status:** done (#321)
 - **Spec:** [Teams](../../spec/teams.md) "Adding a person"; [D-33](D-33-invite-no-dead-ends.md) decision 3
 
 ## Goal
@@ -20,8 +20,8 @@ Copy in English and Czech (formal "Vy").
 
 ## Acceptance criteria
 
-- [ ] Server tests: the invite email, the plain recovery email, an invite context for an address with no pending invitation falls back to plain recovery, strict rejection of unknown context fields.
-- [ ] Component tests for `/recover` in both modes.
-- [ ] The e2e "existing account on a new device" journey follows the new copy and landing.
-- [ ] The dashboard's typecheck, lint, tests and `test:csp` pass; the e2e `dashboard` scenario passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Server tests: the invite email, the plain recovery email, an invite context for an address with no pending invitation falls back to plain recovery, strict rejection of unknown context fields.
+- [x] Component tests for `/recover` in both modes.
+- [x] The e2e "existing account on a new device" journey follows the new copy and landing.
+- [x] The dashboard's typecheck, lint, tests and `test:csp` pass; the e2e `dashboard` scenario passes.
+- [x] **Status** line above set to `done (#<PR>)`.
