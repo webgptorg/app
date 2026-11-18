@@ -122,6 +122,20 @@ describe.each(GATEWAY_PAGES)('%s', (page) => {
         expect(document.querySelectorAll('[data-lang]:not([data-lang="en"]):not([data-lang="cs"])')).toHaveLength(0);
     });
 
+    it('keeps shared copy hidden at first, for states the page has, in English and Czech', () => {
+        for (const shared of document.querySelectorAll('[data-shown-in]')) {
+            expect(shared.hasAttribute('hidden')).toBe(true);
+            expect(shared.closest('section')).toBeNull();
+            for (const state of (shared.getAttribute('data-shown-in') ?? '').split(' ')) {
+                expect(EXPECTED[page].states).toContain(state);
+            }
+            const english = shared.querySelectorAll('[data-lang="en"]');
+            expect(english.length).toBeGreaterThan(0);
+            expect(shared.querySelectorAll('[data-lang="cs"]').length).toBe(english.length);
+            expect(shared.querySelectorAll('button, h1')).toHaveLength(0);
+        }
+    });
+
     it('wires only known actions and has a live region', () => {
         for (const button of document.querySelectorAll('button')) {
             expect(button.getAttribute('type')).toBe('button');
@@ -179,6 +193,27 @@ describe('setup.html', () => {
         ]) {
             expect(text).toContain(copy);
         }
+    });
+});
+
+describe('sign-in.html', () => {
+    it('offers ways forward without a passkey here, never a second prompt', () => {
+        const document = parse('sign-in.html');
+        const ways = document.querySelector('.ways[data-shown-in]');
+        expect(ways?.getAttribute('data-shown-in')?.split(' ').sort()).toEqual(
+            ['cancelled', 'failed', 'not-recognised', 'ready'].sort(),
+        );
+        const text = ways?.textContent.replace(/\s+/g, ' ') ?? '';
+        for (const copy of [
+            'No passkey for this engine on this device?',
+            "Choose the phone option in the browser's prompt, then confirm on your phone.",
+            'Otherwise, sign in on the device where you created it.',
+            'Open the engine from your Promptbook dashboard: choose Open next to it.',
+            'Nemáte na tomto zařízení klíč k tomuto enginu?',
+        ]) {
+            expect(text).toContain(copy);
+        }
+        expect(ways?.querySelectorAll('a, button')).toHaveLength(0);
     });
 });
 

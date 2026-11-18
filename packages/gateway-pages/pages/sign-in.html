@@ -207,12 +207,10 @@
                     <span data-lang="en">You are not signed in</span><span data-lang="cs">Nejste přihlášeni</span>
                 </h1>
                 <p data-lang="en">
-                    The passkey prompt was closed, timed out, or found no passkey for this engine on this device. Try
-                    again, or use a passkey on your phone or a security key.
+                    The passkey prompt was closed, timed out, or found no passkey for this engine on this device.
                 </p>
                 <p data-lang="cs">
-                    Výzva byla zavřena, vypršela, nebo na tomto zařízení nenašla žádný klíč pro tento engine. Zkuste to
-                    znovu, nebo použijte klíč v telefonu či bezpečnostní klíč.
+                    Výzva byla zavřena, vypršela, nebo na tomto zařízení nenašla žádný klíč pro tento engine.
                 </p>
                 <div class="actions">
                     <button type="button" class="button" data-action="retry">
@@ -259,12 +257,12 @@
                     ><span data-lang="cs">Tento přístupový klíč tu není zaregistrovaný</span>
                 </h1>
                 <p data-lang="en">
-                    Members get a passkey for this engine through an invite from its owner. If you are the owner and
-                    lost every passkey, run <code>{{command}} owner --reset</code> on the server.
+                    This engine does not know the passkey you chose. If you are the owner and lost every passkey, run
+                    <code>{{command}} owner --reset</code> on the server.
                 </p>
                 <p data-lang="cs">
-                    Členové dostanou přístupový klíč k tomuto enginu přes pozvánku od majitele. Pokud engine patří Vám a
-                    přišli jste o všechny klíče, spusťte na serveru <code>{{command}} owner --reset</code>.
+                    Tento engine zvolený klíč nezná. Pokud engine patří Vám a přišli jste o všechny klíče, spusťte na
+                    serveru <code>{{command}} owner --reset</code>.
                 </p>
                 <div class="actions">
                     <button type="button" class="button" data-action="retry">
@@ -306,13 +304,8 @@
                     <span data-lang="en">The passkey did not work</span
                     ><span data-lang="cs">Přístupový klíč nefungoval</span>
                 </h1>
-                <p data-lang="en">
-                    Your device could not finish the passkey step. Try again, or use another device or a security key.
-                </p>
-                <p data-lang="cs">
-                    Zařízení krok s přístupovým klíčem nedokončilo. Zkuste to znovu, nebo použijte jiné zařízení či
-                    bezpečnostní klíč.
-                </p>
+                <p data-lang="en">Your device could not finish the passkey step.</p>
+                <p data-lang="cs">Zařízení krok s přístupovým klíčem nedokončilo.</p>
                 <div class="actions">
                     <button type="button" class="button" data-action="retry">
                         <span data-lang="en">Try again</span><span data-lang="cs">Zkusit znovu</span>
@@ -368,6 +361,42 @@
                     >
                 </div>
             </section>
+
+            <div class="ways" data-shown-in="ready cancelled failed not-recognised" hidden>
+                <h2>
+                    <span data-lang="en">No passkey for this engine on this device?</span
+                    ><span data-lang="cs">Nemáte na tomto zařízení klíč k tomuto enginu?</span>
+                </h2>
+                <ul data-lang="en">
+                    <li>
+                        <strong>Passkey on your phone?</strong> Choose the phone option in the browser's prompt, then
+                        confirm on your phone.
+                    </li>
+                    <li>
+                        <strong>New device?</strong> A passkey saved in iCloud Keychain, Google Password Manager or
+                        1Password works here once this device uses the same account. Otherwise, sign in on the device
+                        where you created it.
+                    </li>
+                    <li>
+                        <strong>New here, or never finished setting up?</strong> Open the engine from your Promptbook
+                        dashboard: choose Open next to it. The dashboard takes you through creating one.
+                    </li>
+                </ul>
+                <ul data-lang="cs">
+                    <li>
+                        <strong>Máte klíč v telefonu?</strong> Ve výzvě prohlížeče zvolte telefon a potvrďte to na něm.
+                    </li>
+                    <li>
+                        <strong>Nové zařízení?</strong> Klíč uložený v Klíčence na iCloudu, Správci hesel Google nebo
+                        1Password tu bude fungovat, jakmile toto zařízení používá stejný účet. Jinak se přihlaste na
+                        zařízení, kde jste klíč vytvořili.
+                    </li>
+                    <li>
+                        <strong>Jste tu noví, nebo jste nastavení nedokončili?</strong> Otevřete engine ze svého
+                        dashboardu Promptbook tlačítkem Otevřít u něj. Dashboard Vás provede vytvořením klíče.
+                    </li>
+                </ul>
+            </div>
         </main>
         <p class="visually-hidden" role="status" aria-live="polite" data-announcer></p>
     </body>
