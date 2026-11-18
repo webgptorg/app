@@ -2,7 +2,7 @@
 
 - **Lane:** Dashboard · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-31, D-32
-- **Status:** in progress (feat/d-33-invite-no-dead-ends)
+- **Status:** done (#319)
 - **Spec:** [Teams](../../spec/teams.md) "Adding a person"; [ADR 0018](../../adr/0018-teams-and-member-access.md)
 
 ## Goal
@@ -40,7 +40,7 @@ Copy in English and Czech (formal "Vy").
 
 ## Acceptance criteria
 
-- [ ] Server flow tests on memory and D1 for listing and accepting by ID: another address, expired, revoked, already used, another organization's invitation, an unverified address, rate limits.
-- [ ] Component tests for the new invite page states and the pending-invitation offer.
-- [ ] `bun run check` passes for the dashboard; `test:csp` and the e2e `dashboard` scenario pass.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Server flow tests on memory and D1 for listing and accepting by ID: another address, expired, revoked, already used, another organization's invitation, an unverified address, rate limits.
+- [x] Component tests for the new invite page states and the pending-invitation offer.
+- [x] `bun run check` passes for the dashboard; `test:csp` and the e2e `dashboard` scenario pass.
+- [x] **Status** line above set to `done (#<PR>)`.
