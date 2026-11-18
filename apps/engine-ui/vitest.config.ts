@@ -34,6 +34,9 @@ export default defineConfig({
                 test: {
                     name: 'dom',
                     environment: 'jsdom',
+                    // Above the setup file's 5 s wait budget, so a wait that misses reports Testing Library's DOM dump
+                    // instead of a bare test timeout.
+                    testTimeout: 10_000,
                     include: ['src/**/*.test.{ts,tsx}'],
                     setupFiles: ['./src/testing/setup.ts'],
                 },
