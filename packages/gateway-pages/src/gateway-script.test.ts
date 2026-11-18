@@ -446,6 +446,50 @@ describe('sign-in page', () => {
         await expectState('ready');
     });
 
+    it('shows the ways forward under the button and after a failed prompt, never while it is open', async () => {
+        fakeEngine({ '/api/v1/me': signedOut, '/auth/sign-in/options': ready });
+        const webauthn = fakeWebAuthn({ authenticate: new DOMException('closed', 'NotAllowedError') });
+        const waysShown = () => document.querySelector<HTMLElement>('.ways')?.hidden === false;
+        await open('sign-in.html', '/auth/sign-in', { owner: 'set' });
+        await expectState('ready');
+        expect(waysShown()).toBe(true);
+        expect(webauthn.startAuthentication).not.toHaveBeenCalled();
+        click('confirm');
+        expect(shownStates()).toEqual(['prompt']);
+        expect(waysShown()).toBe(false);
+        await expectState('cancelled');
+        expect(waysShown()).toBe(true);
+        expect(document.activeElement).toBe(document.querySelector('section[data-state="cancelled"] h1'));
+
+        webauthn.startAuthentication.mockRejectedValueOnce(new Error('broken authenticator'));
+        click('retry');
+        await expectState('ready');
+        click('confirm');
+        await expectState('failed');
+        expect(waysShown()).toBe(true);
+    });
+
+    it.each([
+        [{ status: 401, body: { code: 'passkey-not-recognised' } }, 'not-recognised', true],
+        [{ status: 429 }, 'rate-limited', false],
+    ] as const)('after a verify answer %j shows %s with the ways forward: %s', async (reply, state, shown) => {
+        fakeEngine({ '/api/v1/me': signedOut, '/auth/sign-in/options': ready, '/auth/sign-in/verify': reply });
+        fakeWebAuthn();
+        await open('sign-in.html', '/auth/sign-in', { owner: 'set' });
+        await expectState('ready');
+        click('confirm');
+        await expectState(state);
+        expect(document.querySelector<HTMLElement>('.ways')?.hidden).toBe(!shown);
+    });
+
+    it('keeps the ways forward hidden for an engine without an owner', async () => {
+        fakeEngine({});
+        fakeWebAuthn();
+        await open('sign-in.html', '/auth/sign-in', { owner: 'none' });
+        await expectState('no-owner');
+        expect(document.querySelector<HTMLElement>('.ways')?.hidden).toBe(true);
+    });
+
     it('says when the browser cannot use passkeys', async () => {
         fakeEngine({ '/api/v1/me': signedOut, '/auth/sign-in/options': ready });
         fakeWebAuthn({ supported: false });

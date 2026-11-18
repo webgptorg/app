@@ -316,6 +316,23 @@ test('the owner sets up a passkey through /setup#<secret>, then signs in with it
     await page.waitForURL(`${origin}${DEEP_LINK}`);
     expect(await meStatus(page)).toBe(200);
 
+    // Another device, whose authenticator holds no passkey for this engine: the page names the ways forward.
+    const otherDevice = await browser.newContext({ locale: 'en-GB' });
+    const stranger = await otherDevice.newPage();
+    const strangerViolations = watchPolicy(stranger);
+    await addVirtualAuthenticator(otherDevice, stranger);
+    await stranger.goto(`${origin}/auth/sign-in`);
+    const ways = stranger.getByRole('heading', { name: 'No passkey for this engine on this device?' });
+    await expect(ways).toBeVisible();
+    await screenshot(stranger, 'sign-in-ready');
+    await stranger.locator('button[data-action="confirm"]').click();
+    await expect(stranger.getByRole('heading', { name: 'You are not signed in' })).toBeVisible();
+    await expect(ways).toBeVisible();
+    await screenshot(stranger, 'sign-in-cancelled');
+    expect(await meStatus(stranger)).toBe(401);
+    expect(strangerViolations).toEqual([]);
+    await otherDevice.close();
+
     expect(violations).toEqual([]);
     // A full onboarding run: registration, tunnel, setup link, passkey, sign-in. Nothing secret reached the log.
     const logs = stack.logger.text();

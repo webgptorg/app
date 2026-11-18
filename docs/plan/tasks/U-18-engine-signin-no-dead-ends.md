@@ -2,7 +2,7 @@
 
 - **Lane:** Engine UI · **Module:** `packages/gateway-pages` · **Milestone:** M3
 - **Depends on:** M-08
-- **Status:** in progress (fix/gateway-signin-no-dead-ends)
+- **Status:** done (#323)
 - **Spec:** [Teams](../../spec/teams.md), [zero-trust spec](../../spec/zero-trust-spec.md) "More devices"
 
 ## Goal
@@ -19,8 +19,8 @@ People who reach the engine's sign-in page without a passkey for it on this devi
 
 ## Acceptance criteria
 
-- [ ] Page and script tests cover the section in the ready, cancelled and failed states.
-- [ ] Asset integrity tests still pass; CSP is unchanged.
-- [ ] Copy in English and Czech.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Page and script tests cover the section in the ready, cancelled and failed states.
+- [x] Asset integrity tests still pass; CSP is unchanged.
+- [x] Copy in English and Czech.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.

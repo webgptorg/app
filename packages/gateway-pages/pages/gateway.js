@@ -37,10 +37,18 @@ function show(state) {
     const next = document.querySelector(`section[data-state="${state}"]`);
     if (next === null || next === currentSection) return;
     const active = document.activeElement;
-    const focusWasHere = active === null || active === document.body || currentSection?.contains(active) === true;
+    const focusWasHere =
+        active === null ||
+        active === document.body ||
+        currentSection?.contains(active) === true ||
+        active.closest('[data-shown-in]') !== null;
     if (currentSection !== null) currentSection.hidden = true;
     next.hidden = false;
     currentSection = next;
+    // Copy that several states share, such as sign-in's ways forward, sits once after the sections and names them.
+    for (const element of document.querySelectorAll('[data-shown-in]')) {
+        element.hidden = !(element.dataset.shownIn ?? '').split(' ').includes(state);
+    }
     const heading = next.querySelector('h1');
     if (heading === null) return;
     // Focus left with the hidden section; move it to the new heading so screen readers read it. Otherwise announce.

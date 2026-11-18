@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-18: Sign-in shows ways forward without a passkey
+
+- **Changed:** [`sign-in.html`, `gateway.js` and `gateway.css`](../../packages/gateway-pages/pages/) in `@ptbk/gateway-pages`. Under the sign-in button, and after a cancelled, failed or unrecognised passkey, the page says what to do without a passkey for this engine on this device: use the phone option in the browser's prompt, use a synced passkey or the device that has it, or open the engine from the Promptbook dashboard to join. The copy sits once after the sections in an element with `data-shown-in="<states>"`, which `gateway.js` shows only in those states. The button still opens the prompt only on a click. Endpoints, placeholders and CSP are unchanged ([gateway.md, Sessions](gateway.md#sessions)).
+- **Redo:** copy `sign-in.html`, `gateway.js` and `gateway.css` from `packages/gateway-pages/pages/` again. Nothing changes on the server.
+
 ### 2026-11-17: Step-up confirmed in a popup, then the action goes on
 
 - **Changed:** [`step-up.html` and `gateway.js`](../../packages/gateway-pages/pages/) in `@ptbk/gateway-pages` support `mode=popup`. The engine UI opens `STEP_UP_PATH?mode=popup&nonce=<16–64 base64url characters>&returnTo=…` in a small window. The page starts the passkey prompt at once and, after verify succeeds, posts `{ type: 'step-up-confirmed', nonce }` on `BroadcastChannel('ptbk-step-up')` and to `window.opener` (same origin), then closes itself. The UI sends the original request again with the input still in memory (a Wallet password included). If the popup is blocked, the UI falls back to the full-page redirect as before ([gateway.md, Step-up](gateway.md#step-up)).
