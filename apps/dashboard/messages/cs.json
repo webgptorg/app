@@ -580,8 +580,6 @@
   "sign_out": "Odhlásit se",
   "sign_out_failed": "Odhlášení se nepodařilo. Zkuste to znovu.",
   "signed_out": "Odhlásili jste se.",
-  "signin_lost_passkey": "Ztratili jste přístupový klíč?",
-  "signin_recover": "Obnovte přístup",
   "signup_passkey_action": "Vytvořit přístupový klíč",
   "signup_passkey_body": "Přístupovým klíčem se budete přihlašovat do dashboardu Promptbook. Zařízení Vás požádá o potvrzení otiskem prstu, obličejem, PINem nebo bezpečnostním klíčem.",
   "signup_passkey_title": "Vytvořte si přístupový klíč",
