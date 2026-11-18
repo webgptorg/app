@@ -67,6 +67,18 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
                 subject: m.email_recovery_link_subject({}, options),
                 text: m.email_recovery_link_body({ link: message.link }, options),
             };
+        case 'invite-passkey-link': {
+            const org = message.orgName;
+            return org === null
+                ? {
+                      subject: m.email_invite_passkey_subject_unnamed({}, options),
+                      text: m.email_invite_passkey_body_unnamed({ link: message.link }, options),
+                  }
+                : {
+                      subject: m.email_invite_passkey_subject({ org }, options),
+                      text: m.email_invite_passkey_body({ org, link: message.link }, options),
+                  };
+        }
         case 'recovery-notice':
             return {
                 subject: m.email_recovery_notice_subject({}, options),

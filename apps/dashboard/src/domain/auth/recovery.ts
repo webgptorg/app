@@ -13,12 +13,24 @@ export type RecoveryOutcome =
     | { readonly kind: 'ok'; readonly session: IssuedSession; readonly deliver: () => Promise<void> }
     | Exclude<RegistrationOutcome, { readonly kind: 'ok' }>;
 
+/** Where a recovery request came from; `invite` is the invitation page's "Email me a link" (D-35). */
+export interface RecoveryContext {
+    readonly kind: 'invite';
+}
+
+export interface RecoveryDeps extends AuthDeps {
+    /** Pending invitations to an address, newest first; only these may name an organization in the email. */
+    readonly teams: {
+        listInvitesForEmail(email: string, now: number): Promise<readonly { readonly orgName: string | null }[]>;
+    };
+}
+
 /**
  * Account recovery: an emailed link that only lets the person register a new passkey. Every other session ends, the
  * account enters the 72-hour cooldown for sensitive actions, and a notice goes to the same address.
  */
-export function createRecoveryFlow(deps: AuthDeps) {
-    async function deliver(email: EmailAddress, signal: AbortSignal): Promise<void> {
+export function createRecoveryFlow(deps: RecoveryDeps) {
+    async function deliver(email: EmailAddress, context: RecoveryContext | null, signal: AbortSignal): Promise<void> {
         if (!(await withinLimit(deps, 'recovery-request-email', email, signal))) {
             return;
         }
@@ -37,8 +49,18 @@ export function createRecoveryFlow(deps: AuthDeps) {
             expiresAt: now + EMAIL_TOKEN_TTL_MS,
             usedAt: null,
         });
+        // Without a real pending invitation the context is ignored: the client never names the organization.
+        const [invite] = context === null ? [] : await deps.teams.listInvitesForEmail(email, now);
         await deps.email.send(
-            { template: 'recovery-link', to: email, locale: user.locale, link: deps.links.recovery(token) },
+            invite === undefined
+                ? { template: 'recovery-link', to: email, locale: user.locale, link: deps.links.recovery(token) }
+                : {
+                      template: 'invite-passkey-link',
+                      to: email,
+                      locale: user.locale,
+                      orgName: invite.orgName,
+                      link: deps.links.recovery(token, 'invite'),
+                  },
             signal,
         );
     }
@@ -53,8 +75,8 @@ export function createRecoveryFlow(deps: AuthDeps) {
     }
 
     return {
-        request(input: { readonly email: EmailAddress }): DeferredDelivery {
-            return () => runInBackground(deps, 'recovery', (signal) => deliver(input.email, signal));
+        request(input: { readonly email: EmailAddress; readonly context: RecoveryContext | null }): DeferredDelivery {
+            return () => runInBackground(deps, 'recovery', (signal) => deliver(input.email, input.context, signal));
         },
 
         async options(input: { readonly token: string }): Promise<TokenOptionsOutcome> {

@@ -168,7 +168,11 @@ function JoinCeremony(props: {
     const { onStale } = props;
     const emailLink = useAppMutation({
         mutationFn: async () => {
-            dataOrThrow(await api.call(apiRoutes.recoveryRequest, { body: { email: props.preview.email } }));
+            dataOrThrow(
+                await api.call(apiRoutes.recoveryRequest, {
+                    body: { email: props.preview.email, context: { kind: 'invite' } },
+                }),
+            );
         },
     });
     useEffect(() => {

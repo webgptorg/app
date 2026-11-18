@@ -604,7 +604,9 @@ describe('invitation page', () => {
             screen.getByText('Open the link on this device and add a passkey here. Your invitation will be waiting.'),
         ).toBeTruthy();
         expect(screen.queryByRole('button', { name: 'Sign in and join' })).toBeNull();
-        expect(app.api.callsTo(apiRoutes.recoveryRequest)).toEqual([{ body: { email: 'ada@example.test' } }]);
+        expect(app.api.callsTo(apiRoutes.recoveryRequest)).toEqual([
+            { body: { email: 'ada@example.test', context: { kind: 'invite' } } },
+        ]);
         expect(app.passkeys.authenticate).not.toHaveBeenCalled();
         await expectNoAxeViolations(app.container);
     });

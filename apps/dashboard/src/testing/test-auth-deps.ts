@@ -76,7 +76,7 @@ export function createTestAuthDeps(
         rateLimiter: overrides.rateLimiter ?? createMemoryRateLimiter(clock),
         links: {
             signup: (token) => `https://app.ptbk.test/signup#${token}`,
-            recovery: (token) => `https://app.ptbk.test/recover#${token}`,
+            recovery: (token, via) => `https://app.ptbk.test/recover${via === undefined ? '' : `?via=${via}`}#${token}`,
             signIn: () => 'https://app.ptbk.test/continue',
             recover: () => 'https://app.ptbk.test/recover',
             invite: (token) => `https://app.ptbk.test/invites#${token}`,

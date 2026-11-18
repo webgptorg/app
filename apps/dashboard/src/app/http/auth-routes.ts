@@ -6,7 +6,7 @@ import type { IssuedSession } from '../../domain/auth/ceremony';
 import { emailAddressSchema } from '../../domain/auth/email-address';
 import { passkeyProviderName } from '../../domain/auth/passkey-providers';
 import type { PasskeyRecord } from '../../domain/auth/records';
-import { createRecoveryFlow } from '../../domain/auth/recovery';
+import { createRecoveryFlow, type RecoveryDeps } from '../../domain/auth/recovery';
 import { createSignInFlow } from '../../domain/auth/signin';
 import { createSignupFlow, type DeferredDelivery } from '../../domain/auth/signup';
 import { CHALLENGE_TTL_MS } from '../../domain/auth/timing';
@@ -83,7 +83,7 @@ export function bindAuthRoutes(
     deps: AuthDeps & {
         readonly routes: RouteBinder;
         readonly billingEnabled: boolean;
-        readonly teams: InviteJoinDeps['teams'];
+        readonly teams: InviteJoinDeps['teams'] & RecoveryDeps['teams'];
     },
 ): void {
     const signup = createSignupFlow(deps);
@@ -245,7 +245,9 @@ export function bindAuthRoutes(
         if (!email.success) {
             return Promise.resolve(invalidEmail());
         }
-        return Promise.resolve(accepted(recovery.request({ email: email.data }), request));
+        return Promise.resolve(
+            accepted(recovery.request({ email: email.data, context: input.body.context ?? null }), request),
+        );
     });
 
     bind(router, mount, apiRoutes.recoveryOptions, async ({ input }) => {

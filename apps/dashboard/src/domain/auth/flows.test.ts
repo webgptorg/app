@@ -4,7 +4,7 @@ import type { AuthenticationResponse, RegistrationResponse } from '../../shared/
 import { createAcceptingRelyingParty, createTestAuthDeps, type TestAuthDeps } from '../../testing/test-auth-deps';
 import { createAccountFlows } from './account';
 import { emailAddressSchema } from './email-address';
-import { createRecoveryFlow } from './recovery';
+import { createRecoveryFlow as createFlow } from './recovery';
 import { sha256Hex } from './secrets';
 import { createSignInFlow } from './signin';
 import { createSignupFlow } from './signup';
@@ -34,6 +34,9 @@ async function signedUp(deps: TestAuthDeps) {
     }
     return { session: outcome.session, user };
 }
+
+const createRecoveryFlow = (deps: TestAuthDeps) =>
+    createFlow({ ...deps, teams: { listInvitesForEmail: () => Promise.resolve([]) } });
 
 describe('signup/start behind the Continue screen', () => {
     // The response goes out before any lookup or send, so its timing cannot tell an existing address from a new one.
@@ -125,7 +128,7 @@ describe('auth flows when state changes underneath', () => {
 
     describe('recovery', () => {
         async function recoveryToken(deps: TestAuthDeps) {
-            await createRecoveryFlow(deps).request({ email })();
+            await createRecoveryFlow(deps).request({ email, context: null })();
             const message = deps.email.sentTo(email).at(-1);
             return message?.template === 'recovery-link' ? new URL(message.link).hash.slice(1) : '';
         }
@@ -136,6 +139,31 @@ describe('auth flows when state changes underneath', () => {
             const challengeId = options.kind === 'ok' ? options.challengeId : null;
             return recovery.verify({ token, challengeId, response: registration });
         }
+
+        it('names the newest pending invitation’s organization, never one from the request (D-35)', async () => {
+            const deps = createTestAuthDeps();
+            await signedUp(deps);
+            const asked: string[] = [];
+            const flow = createFlow({
+                ...deps,
+                teams: {
+                    listInvitesForEmail: (address) => {
+                        asked.push(address);
+                        return Promise.resolve([{ orgName: 'Acme' }, { orgName: 'Older' }]);
+                    },
+                },
+            });
+            await flow.request({ email, context: null })();
+            expect(asked).toEqual([]);
+            expect(deps.email.sentTo(email).at(-1)?.template).toBe('recovery-link');
+            await flow.request({ email, context: { kind: 'invite' } })();
+            expect(asked).toEqual([email]);
+            expect(deps.email.sentTo(email).at(-1)).toMatchObject({
+                template: 'invite-passkey-link',
+                orgName: 'Acme',
+                link: expect.stringMatching(/^https:\/\/app\.ptbk\.test\/recover\?via=invite#/) as string,
+            });
+        });
 
         it('refuses a missing challenge', async () => {
             const deps = createTestAuthDeps();

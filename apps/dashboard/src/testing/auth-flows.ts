@@ -29,7 +29,11 @@ export function lastEmail(harness: AuthHarness, to: string): EmailMessage {
 /** The token from the newest signup or recovery link to `to`, read from the fragment as the SPA does. */
 export function linkToken(harness: AuthHarness, to: string): string {
     const message = lastEmail(harness, to);
-    if (message.template !== 'signup-link' && message.template !== 'recovery-link') {
+    if (
+        message.template !== 'signup-link' &&
+        message.template !== 'recovery-link' &&
+        message.template !== 'invite-passkey-link'
+    ) {
         throw new Error(`expected a link email, got ${message.template}`);
     }
     const token = new URL(message.link).hash.slice(1);

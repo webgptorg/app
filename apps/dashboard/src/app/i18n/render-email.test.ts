@@ -61,6 +61,12 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
         hostname: 'abcdefghijklmnopqrstuvwxyz.engines.ptbk.test',
         link: 'https://abcdefghijklmnopqrstuvwxyz.engines.ptbk.test/',
     },
+    {
+        template: 'invite-passkey-link',
+        to: 'a@example.test',
+        orgName: null,
+        link: 'https://app.ptbk.test/recover?via=invite#tok',
+    },
 ] as EmailMessage[];
 const ONLINE = MESSAGES[5] as Extract<EmailMessage, { template: 'engine-online' }>;
 const BACK_ONLINE = MESSAGES[6] as Extract<EmailMessage, { template: 'engine-back-online' }>;
@@ -110,6 +116,27 @@ describe('renderEmail', () => {
         expect(subject).toBe("You're invited to Acme on Promptbook");
         expect(text).toContain('ada@example.test invited you to Acme on Promptbook.');
     });
+
+    it.each([
+        ['en', 'Add a passkey to join Acme', 'and you can join Acme.'],
+        ['cs', 'Přidejte si přístupový klíč a připojte se k Acme', 'můžete připojit k Acme.'],
+    ] as const)(
+        'words the invitee’s recovery link for joining and still names both effects in %s',
+        (locale, subject, joins) => {
+            const { subject: rendered, text } = renderEmail({
+                template: 'invite-passkey-link',
+                to: 'a@example.test',
+                locale,
+                orgName: 'Acme',
+                link: 'https://app.ptbk.test/recover?via=invite#tok',
+            });
+            expect(rendered).toBe(subject);
+            expect(text).toContain(joins);
+            expect(text).toContain('72');
+            expect(text).toMatch(locale === 'en' ? /signs out your other devices/ : /odhlásí Vaše ostatní zařízení/);
+            expect(text.replace('https://app.ptbk.test/recover', '')).not.toMatch(/recover|obnov/i);
+        },
+    );
 
     it('differs between English and Czech', () => {
         const en = renderEmail({ ...MESSAGES[0], locale: 'en' } as EmailMessage);
