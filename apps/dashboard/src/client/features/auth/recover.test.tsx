@@ -82,6 +82,67 @@ describe('recovery', () => {
         expect(within(offers).getByRole('button', { name: 'Join' })).toBeTruthy();
     });
 
+    describe('from an invitation (D-35)', () => {
+        const OFFER = {
+            inviteId: 'iiiiiiiiiiiiiiiiiiiiiiiiii',
+            orgName: 'Acme',
+            inviterEmail: 'boss@example.test',
+            teamNames: [],
+            expiresAt: NOW + 86_400_000,
+        };
+
+        it('speaks of adding a passkey, still names both effects, and puts the invitation first', async () => {
+            const app = renderApp({
+                path: `/recover?via=invite#${TOKEN}`,
+                script: (api) => {
+                    recoveryScript(api);
+                    api.on(apiRoutes.listInviteOffers, ok({ offers: [OFFER] }));
+                },
+            });
+            expect(await screen.findByRole('heading', { name: 'Add a passkey on this device' })).toBeTruthy();
+            expect(app.history.location.hash).toBe('');
+            expect(app.history.location.search).toBe('?via=invite');
+            expect(screen.getByText(/signs out your other devices, and for 72 hours/)).toBeTruthy();
+            expect(screen.queryByText(/recover/i)).toBeNull();
+            await expectNoAxeViolations(app.container);
+
+            app.api.on(apiRoutes.getSession, ok(recovered));
+            await app.user.click(screen.getByRole('button', { name: 'Add a passkey on this device' }));
+            expect(await screen.findByRole('heading', { name: 'Your passkey is ready' })).toBeTruthy();
+            const offers = await screen.findByRole('list', { name: 'Invitations' });
+            expect(within(offers).getByText("You're invited to Acme by boss@example.test")).toBeTruthy();
+            expect(screen.getByText(/Your other devices were signed out/)).toBeTruthy();
+            expect(screen.queryByText(/recover/i)).toBeNull();
+            // Never accepted on its own: joining waits for the click.
+            expect(app.api.callsTo(apiRoutes.acceptInviteOffer)).toEqual([]);
+            await expectNoAxeViolations(app.container);
+
+            app.api.on(apiRoutes.acceptInviteOffer, ok({ orgId: recovered.activeOrg.id, teamIds: [] }));
+            app.api.on(apiRoutes.setActiveOrg, ok(recovered));
+            await app.user.click(within(offers).getByRole('button', { name: 'Join' }));
+            expect(await screen.findByRole('heading', { name: "You're in" })).toBeTruthy();
+        });
+
+        it('leads to the dashboard when the invitation is gone by then', async () => {
+            const app = renderApp({
+                path: `/recover?via=invite#${TOKEN}`,
+                script: (api) => {
+                    recoveryScript(api);
+                    api.on(apiRoutes.listInviteOffers, ok({ offers: [] }));
+                },
+            });
+            await app.user.click(await screen.findByRole('button', { name: 'Add a passkey on this device' }));
+            expect(await screen.findByRole('heading', { name: 'Your passkey is ready' })).toBeTruthy();
+            expect(screen.getByRole('link', { name: 'Go to the dashboard' })).toBeTruthy();
+            expect(screen.queryByRole('list', { name: 'Invitations' })).toBeNull();
+        });
+
+        it('ignores any other hint', async () => {
+            renderApp({ path: `/recover?via=elsewhere#${TOKEN}`, script: recoveryScript });
+            expect(await screen.findByRole('heading', { name: 'Register a new passkey' })).toBeTruthy();
+        });
+    });
+
     it('stays reachable while signed in', async () => {
         renderApp({ path: '/recover', session: session(), script: recoveryScript });
         expect(await screen.findByRole('heading', { name: 'Recover access' })).toBeTruthy();

@@ -48,8 +48,10 @@ test('an existing account on a device without its passkey adds one by email and 
     await phone.page.getByRole('button', { name: 'Email me a link' }).click();
     await expect(phone.page.getByText(`Check your inbox at ${colleague}`)).toBeVisible();
 
-    await phone.page.goto(await dashboard.emailedLink(colleague, 'recovery-link'));
-    await phone.page.getByRole('button', { name: 'Register new passkey' }).click();
+    // D-35: the same recovery underneath, worded for joining, and the invitation first once the passkey is added.
+    await phone.page.goto(await dashboard.emailedLink(colleague, 'invite-passkey-link'));
+    await phone.page.getByRole('button', { name: 'Add a passkey on this device' }).click();
+    await expect(phone.page.getByRole('heading', { name: 'Your passkey is ready' })).toBeVisible();
     const offers = phone.page.getByRole('list', { name: 'Invitations' });
     await expect(offers.getByText(`${admin} invited you to join them on Promptbook`)).toBeVisible();
     await offers.getByRole('button', { name: 'Join' }).click();

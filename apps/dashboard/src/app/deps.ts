@@ -78,7 +78,7 @@ export interface DashboardDeps {
 export function authLinks(dashboardOrigin: string): AuthLinks {
     return {
         signup: (token) => `${dashboardOrigin}/signup#${token}`,
-        recovery: (token) => `${dashboardOrigin}/recover#${token}`,
+        recovery: (token, via) => `${dashboardOrigin}/recover${via === undefined ? '' : `?via=${via}`}#${token}`,
         signIn: () => `${dashboardOrigin}/continue`,
         recover: () => `${dashboardOrigin}/recover`,
         invite: (token) => `${dashboardOrigin}/invites#${token}`,

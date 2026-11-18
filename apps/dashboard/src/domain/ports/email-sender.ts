@@ -11,6 +11,13 @@ export type EmailMessage =
     | (Envelope & { readonly template: 'account-exists'; readonly signInLink: string; readonly recoveryLink: string })
     | (Envelope & { readonly template: 'recovery-link'; readonly link: string })
     | (Envelope & {
+          /** The recovery link, worded for an invitee adding a passkey (D-35); same token, same effects. */
+          readonly template: 'invite-passkey-link';
+          /** From a pending invitation to the recipient, never from the request; null for an unnamed organization. */
+          readonly orgName: string | null;
+          readonly link: string;
+      })
+    | (Envelope & {
           readonly template: 'recovery-notice';
           /** Milliseconds since the Unix epoch. */
           readonly recoveredAt: number;

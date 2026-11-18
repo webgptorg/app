@@ -337,6 +337,18 @@ const emailInput = {
     body: z.strictObject({ email: emailSchema }),
     maxBodyBytes: SMALL_BODY_BYTES,
 } as const;
+/**
+ * `context` says the request comes from an invitation (D-35): the email then speaks of joining, naming an organization
+ * only from a pending invitation the server finds for that address.
+ */
+const recoveryRequestInput = {
+    ...NO_INPUT,
+    body: z.strictObject({
+        email: emailSchema,
+        context: z.strictObject({ kind: z.literal('invite') }).optional(),
+    }),
+    maxBodyBytes: SMALL_BODY_BYTES,
+} as const;
 const tokenInput = {
     ...NO_INPUT,
     body: z.strictObject({ token: emailTokenSchema }),
@@ -524,7 +536,7 @@ export const apiRoutes = {
         auth: 'public',
         permission: null,
         rateLimit: 'recovery-request-ip',
-        input: emailInput,
+        input: recoveryRequestInput,
         output: acceptedSchema,
         errorCodes: [],
     }),

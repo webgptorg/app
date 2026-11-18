@@ -25,6 +25,7 @@ import type { AuthHarness, TestBrowser, TestResponse } from './auth-harness';
 import {
     creationOptions,
     lastEmail,
+    linkToken,
     problemCode,
     registerWith,
     requestOptions,
@@ -609,6 +610,91 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
                 const latecomer = await person(late);
                 expect(await offers(latecomer.browser)).toEqual([]);
                 expectProblem(await latecomer.browser.request('POST', accept(lapsed)), 404, 'invite-invalid');
+            });
+
+            describe('adding a passkey from the invitation page (D-35)', () => {
+                const RECOVERY = '/api/auth/recovery/request';
+                const fromInvite = { kind: 'invite' };
+
+                it('words the recovery email for joining, then offers the invitation once the passkey is added', async () => {
+                    const boss = await owner();
+                    const email = uniqueEmail('offered');
+                    const laptop = await person(email);
+                    const inviteId = await invitedTo(boss, email);
+                    const phone = harness.browser({ ip: '203.0.113.230' });
+
+                    expect((await phone.request('POST', RECOVERY, { email, context: fromInvite })).status).toBe(202);
+                    const sent = lastEmail(harness, email);
+                    expect(sent).toMatchObject({ template: 'invite-passkey-link', orgName: null });
+                    expect(sent.template === 'invite-passkey-link' ? sent.link : '').toMatch(
+                        /^https:\/\/app\.ptbk\.test\/recover\?via=invite#[\w-]{43}$/,
+                    );
+
+                    const token = linkToken(harness, email);
+                    const { verify } = await registerWith(
+                        phone,
+                        '/api/auth/recovery/options',
+                        '/api/auth/recovery/verify',
+                        { token },
+                    );
+                    expect(verify.status).toBe(200);
+                    expect((await offers(phone)).map((offer) => offer.inviteId)).toEqual([inviteId]);
+                    // The same recovery underneath: the other device is signed out and the notice goes out.
+                    expectProblem(await laptop.browser.request('GET', '/api/session'), 401, 'unauthorized');
+                    expect(lastEmail(harness, email)).toMatchObject({ template: 'recovery-notice' });
+                });
+
+                it('sends the plain recovery email without a pending invitation or without the context', async () => {
+                    const boss = await owner();
+                    const loner = await person(uniqueEmail('loner'));
+                    const invited = await person(uniqueEmail('offered'));
+                    await invitedTo(boss, invited.email);
+                    const device = harness.browser({ ip: '203.0.113.231' });
+
+                    expect(
+                        (await device.request('POST', RECOVERY, { email: loner.email, context: fromInvite })).status,
+                    ).toBe(202);
+                    expect((await device.request('POST', RECOVERY, { email: invited.email })).status).toBe(202);
+                    for (const { email } of [loner, invited]) {
+                        expect(lastEmail(harness, email)).toEqual(
+                            expect.objectContaining({
+                                template: 'recovery-link',
+                                link: expect.stringMatching(/^https:\/\/app\.ptbk\.test\/recover#/) as string,
+                            }),
+                        );
+                    }
+                });
+
+                it('answers the same for any address and rejects any other context', async () => {
+                    const boss = await owner();
+                    const email = uniqueEmail('offered');
+                    await person(email);
+                    await invitedTo(boss, email);
+                    const device = harness.browser({ ip: '203.0.113.232' });
+                    const known = await device.request('POST', RECOVERY, { email, context: fromInvite });
+                    const unknown = await device.request('POST', RECOVERY, {
+                        email: uniqueEmail(),
+                        context: fromInvite,
+                    });
+                    expect([known.status, JSON.stringify(known.body)]).toEqual([
+                        unknown.status,
+                        JSON.stringify(unknown.body),
+                    ]);
+                    expect([...known.headers]).toEqual([...unknown.headers]);
+
+                    for (const context of [
+                        { kind: 'invite', orgName: 'Not from the server' },
+                        { kind: 'recovery' },
+                        'invite',
+                        null,
+                    ]) {
+                        expectProblem(
+                            await device.request('POST', RECOVERY, { email, context }),
+                            400,
+                            'invalid-request',
+                        );
+                    }
+                });
             });
 
             it('needs a session and limits both routes per IP', async () => {
