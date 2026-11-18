@@ -12,7 +12,7 @@ People who reach the engine's sign-in page without a passkey for it on this devi
 ## Scope
 
 - Keep the explicit sign-in button; never open the passkey prompt on its own.
-- Under it, a short "No passkey for this engine on this device?" section: a passkey on a phone, adding this device from one already signed in, and opening the engine from the Promptbook dashboard to join.
+- Under it, a short "No passkey for this engine on this device?" section: a passkey on a phone, a synced passkey or the device that has it (adding a device from a signed-in one does not exist yet), and opening the engine from the Promptbook dashboard to join.
 - The cancelled and failed states show the same ways forward prominently.
 - English and Czech (formal), calm and short.
 - No contract change; no outside origin the CSP or the rules forbid.

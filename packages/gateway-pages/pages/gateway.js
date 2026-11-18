@@ -37,11 +37,7 @@ function show(state) {
     const next = document.querySelector(`section[data-state="${state}"]`);
     if (next === null || next === currentSection) return;
     const active = document.activeElement;
-    const focusWasHere =
-        active === null ||
-        active === document.body ||
-        currentSection?.contains(active) === true ||
-        active.closest('[data-shown-in]') !== null;
+    const focusWasHere = active === null || active === document.body || currentSection?.contains(active) === true;
     if (currentSection !== null) currentSection.hidden = true;
     next.hidden = false;
     currentSection = next;
