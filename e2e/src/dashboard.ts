@@ -149,7 +149,7 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
                     },
                 }),
             );
-            // The virtual authenticator holds no passkey for a new address, so Continue falls back to the email.
+            // Continue always sends the email (D-34).
             await page.getByRole('button', { name: 'Continue' }).click();
             await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
             await page.goto(await outboxLink(email, 'signup-link'));
@@ -186,12 +186,13 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
         },
         async signIn(email) {
             // The virtual authenticator answers the field's passkey autofill on its own, the one-tap sign-in, and the
-            // page may leave before the field is filled or Continue clicked; Continue covers a browser where it does not.
+            // page may leave before the field is filled; "Use a passkey" covers a browser where it does not. Continue
+            // would only send an email (D-34).
             const field = page.getByLabel('Email');
             await expect(field.or(landing)).toBeVisible();
             await field.fill(email, { timeout: 5_000 }).catch(() => undefined);
             await page
-                .getByRole('button', { name: 'Continue' })
+                .getByRole('button', { name: 'Use a passkey' })
                 .click({ timeout: 5_000 })
                 .catch(() => undefined);
             await expect(landing).toBeVisible();

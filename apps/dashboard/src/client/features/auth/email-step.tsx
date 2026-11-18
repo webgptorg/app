@@ -117,9 +117,7 @@ function SentState(props: {
     readonly state: Extract<Sent, { readonly kind: 'sent' }>;
     readonly onResend: () => Promise<void>;
     readonly onUseAnother: () => void;
-    readonly retry: { readonly label: string; readonly onRetry: () => Promise<void> } | undefined;
 }) {
-    const [retrying, setRetrying] = useState(false);
     const headingRef = useRef<HTMLHeadingElement>(null);
     // The form that had focus is gone; the new heading takes it, so keyboard and screen reader users land on the news.
     useEffect(() => {
@@ -138,20 +136,6 @@ function SentState(props: {
             {props.state.failure === null ? null : <Banner tone="danger">{props.state.failure}</Banner>}
             <p className="text-sm text-text-muted">{m.email_sent_hint()}</p>
             <div className="flex flex-wrap gap-3">
-                {props.retry === undefined ? null : (
-                    <Button
-                        variant="secondary"
-                        loading={retrying}
-                        onClick={() => {
-                            setRetrying(true);
-                            void props.retry?.onRetry().finally(() => {
-                                setRetrying(false);
-                            });
-                        }}
-                    >
-                        {props.retry.label}
-                    </Button>
-                )}
                 <ResendButton key={props.state.sentAt} sentAt={props.state.sentAt} onResend={props.onResend} />
                 <Button variant="ghost" onClick={props.onUseAnother}>
                     {m.email_use_another()}
@@ -174,15 +158,10 @@ export function EmailStep(props: {
     readonly footer: ReactNode;
     /** Under the email field, e.g. what a passkey is. */
     readonly hint?: ReactNode;
-    /**
-     * Runs before any email is sent, with the address typed; `signed-in` ends the step there. Continue tries a passkey
-     * first, so someone who has one gets no email.
-     */
-    readonly beforeSend?: () => Promise<'signed-in' | 'send'>;
     /** Rendered with the form only, so whatever it starts (the passkey autofill) lives exactly as long as the field. */
     readonly formAddon?: ReactNode;
-    /** A second way out of the sent state, next to resending (Continue: try a passkey again); resolves to a failure. */
-    readonly retry?: { readonly label: string; readonly onRetry: () => Promise<string | null> };
+    /** Under the submit button, with the form only (Continue: "Use a passkey"). */
+    readonly secondaryAction?: ReactNode;
     readonly autoComplete?: string;
     /** A calm picture above the title, as on the other auth screens. Decorative. */
     readonly illustration?: ReactNode;
@@ -206,9 +185,6 @@ export function EmailStep(props: {
         schema,
         defaultValues: { email: '' },
         onSubmit: async ({ email }) => {
-            if ((await props.beforeSend?.()) === 'signed-in') {
-                return;
-            }
             const outcome = await sendLink(email);
             setState(
                 outcome.kind === 'sent'
@@ -235,19 +211,6 @@ export function EmailStep(props: {
                     form.reset();
                     setState({ kind: 'form', failure: null });
                 }}
-                retry={
-                    props.retry === undefined
-                        ? undefined
-                        : {
-                              label: props.retry.label,
-                              onRetry: async () => {
-                                  const failure = await props.retry?.onRetry();
-                                  if (failure !== null && failure !== undefined) {
-                                      setState({ ...state, resent: false, failure });
-                                  }
-                              },
-                          }
-                }
             />
         );
     }
@@ -275,6 +238,7 @@ export function EmailStep(props: {
                 <FormSubmit form={form} size="lg">
                     {props.submitLabel}
                 </FormSubmit>
+                {props.secondaryAction}
             </Form>
             {props.footer}
         </div>

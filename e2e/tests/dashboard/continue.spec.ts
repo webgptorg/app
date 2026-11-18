@@ -4,9 +4,9 @@ import { expect, test, uniqueEmail } from '../../src/dashboard.ts';
 import { DASHBOARD_ORIGIN } from '../../src/stack.ts';
 import { emailed, newPerson } from '../../src/team-steps.ts';
 
-// D-32: one Continue screen signs in and signs up. A passkey on this device signs in without mail; otherwise the
-// server answers every address alike and the email says what comes next, so the screen never tells whether an
-// address has an account.
+// D-32: one Continue screen signs in and signs up. A passkey on this device signs in from the email field's autofill
+// or "Use a passkey", without mail. Continue always sends the email (D-34): the server answers every address alike and
+// the email says what comes next, so the screen never tells whether an address has an account.
 
 const SIGNUP_START = `${DASHBOARD_ORIGIN}/api/auth/signup/start`;
 // Per response, not per address or account: these may differ between two identical answers.
@@ -36,7 +36,7 @@ async function continueWithoutPasskey(page: Page, email: string): Promise<Answer
     return { status: response.status(), body: await response.text(), headers, screen };
 }
 
-test('an existing account with a passkey on this device signs in from Continue, and no email goes out', async ({
+test('an existing account with a passkey on this device signs in from the Continue screen, and no email goes out', async ({
     page,
     dashboard,
 }) => {

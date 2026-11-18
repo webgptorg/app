@@ -72,7 +72,7 @@ sequenceDiagram
 
 ### Step 1. Sign up (dashboard, built in D-09)
 
-- `/continue` (D-32; `/signin` and `/signup` redirect here): "Sign in or create an account" → email → Continue tries a passkey this device has; without one, "Check your email" → link (15 min, single use) → "Create your passkey". Lands on `/engines`.
+- `/continue` (D-32, D-34; `/signin` and `/signup` redirect here): "Sign in or create an account" → email → Continue → "Check your email" → link (15 min, single use) → "Create your passkey". Lands on `/engines`. A passkey this browser has signs in from the email field's autofill instead, and "Use a passkey" opens the picker on purpose; Continue itself never opens one.
 - Target: under 2 minutes. The email round trip dominates.
 - The empty state already says: "No engines yet" / "Link an engine to this organization to see it here with its status, fingerprint and address. Linking ties it to the organization for routing and billing only; it grants nothing inside the engine." Action: "Link an engine".
 
