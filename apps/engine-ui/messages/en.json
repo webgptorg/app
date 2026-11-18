@@ -217,7 +217,6 @@
   "agent_state_stopped": "Stopped",
   "agent_state_error": "Error",
   "agent_state_failed": "Failed",
-  "agent_state_unknown": "Unknown",
   "agent_state_unknown_value": "Unknown ({value})",
   "agent_visibility_public": "Public",
   "agent_visibility_unlisted": "Unlisted",

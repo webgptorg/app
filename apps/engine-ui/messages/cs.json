@@ -227,7 +227,6 @@
   "agent_state_stopped": "Zastavený",
   "agent_state_error": "Chyba",
   "agent_state_failed": "Selhal",
-  "agent_state_unknown": "Neznámý",
   "agent_state_unknown_value": "Neznámý ({value})",
   "agent_visibility_public": "Veřejný",
   "agent_visibility_unlisted": "Neuvedený",

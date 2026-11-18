@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { ENGINE_API_PREFIX } from '@ptbk/engine-api';
+import { createProblem, ENGINE_API_PREFIX, KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 
 import {
     FAKE_AGENT_ID,
@@ -101,6 +101,47 @@ test.describe('the built bundle under the engine CSP', () => {
         await expect(page.getByRole('link', { name: 'Ada' })).toBeVisible();
         await expect(page.getByRole('row').filter({ hasText: 'Grace' }).getByText('Jana Nováková')).toBeVisible();
         expectCleanPage(table);
+    });
+
+    test('/agents says Idle, never Unknown, when the engine serves no status route, and asks once per agent', async ({
+        page,
+        visit,
+    }) => {
+        // Like the Reborn engine: no runs@1 and 404 for the draft GET /agents/{id}/status; without tasks@1 too, so
+        // Grace has no work in view and only the missing status could make her anything but Idle.
+        await routeFakeEngineApi(page, {
+            capabilities: [KNOWN_CAPABILITIES.members, KNOWN_CAPABILITIES.accessRequests],
+        });
+        const notFound = {
+            status: 404,
+            contentType: 'application/problem+json',
+            body: JSON.stringify(createProblem('not-found')),
+        };
+        // No event stream either, so no reconnect refetches the agents and every request below is a card's or panel's.
+        await page.route(`**${ENGINE_API_PREFIX}/events`, (route) => route.fulfill(notFound));
+        const statusRequests: string[] = [];
+        await page.route(`**${ENGINE_API_PREFIX}/agents/*/status`, async (route) => {
+            statusRequests.push(new URL(route.request().url()).pathname);
+            await route.fulfill(notFound);
+        });
+        const report = await visit('/agents');
+
+        const grace = page
+            .getByRole('listitem')
+            .filter({ has: page.getByRole('button', { name: 'Grace', exact: true }) });
+        await expect(grace.getByText('Idle')).toBeVisible();
+        const ada = page.getByRole('listitem').filter({ has: page.getByRole('button', { name: 'Ada', exact: true }) });
+        await expect(ada.getByText('Needs you')).toBeVisible();
+        await expect(page.getByText(/Unknown/)).toHaveCount(0);
+        // A 404 is kept as "no status", so a card or panel that mounts later does not ask again.
+        await page.getByRole('button', { name: 'Grace', exact: true }).click();
+        await expect(page.getByRole('dialog', { name: 'Grace' }).getByText('Idle').first()).toBeVisible();
+        expect(statusRequests.toSorted()).toEqual([
+            `${ENGINE_API_PREFIX}/agents/${FAKE_AGENT_ID}/status`,
+            `${ENGINE_API_PREFIX}/agents/grace/status`,
+        ]);
+        expect(report.cspViolations).toEqual([]);
+        expect(report.pageErrors).toEqual([]);
     });
 
     test(`/agents/${FAKE_AGENT_ID} and its Settings tab meet the UX checks`, async ({ page, visit }) => {

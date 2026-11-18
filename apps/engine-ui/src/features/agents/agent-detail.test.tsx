@@ -317,12 +317,13 @@ describe('agent live state', { timeout: TIMEOUT_MS }, () => {
         expect(within(agentHeader()).getByText('Unknown (sleeping)')).toBeDefined();
     });
 
-    it('shows the state as unknown when the engine cannot report it', async () => {
+    it('shows Idle when the engine cannot report the state', async () => {
         const engine = createAgentsEngine({ agentCount: 2, capabilities: [] });
         engine.spies.getStatus.mockImplementation(() => problemResponse('validation-failed'));
         renderWithProviders({ path: '/agents/agent-001', engineApi: engine.client });
         const header = (await screen.findByRole('tablist'), agentHeader());
-        expect(await within(header).findByText('Unknown')).toBeDefined();
+        expect(await within(header).findByText('Idle')).toBeDefined();
+        expect(within(header).queryByText(/Unknown/)).toBeNull();
     });
 
     it('stops a running agent from the header through the draft endpoint, and offers no Start after', async () => {

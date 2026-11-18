@@ -27,9 +27,10 @@ export interface AgentStatus {
  * 2. **Stopped** or **Failed / Error** as the run state reports them;
  * 3. **Needs you** while it waits for the User to answer one of its questions;
  * 4. **Waiting** when the run state has only queued work;
- * 5. **Idle** otherwise. A state from a newer engine shows as unknown with its raw value.
+ * 5. **Idle** otherwise, also when the engine reports no run state at all: the page's lists then decide alone.
  *
- * `null` while the run state is still loading and the lists show no work, so a view waits instead of flashing Idle.
+ * Unknown only for a run state this UI does not know (a newer engine), with its raw value. `null` while the run state
+ * is still loading and the lists show no work, so a view waits instead of flashing Idle.
  */
 export function agentStatus(live: AgentLiveStatus, activity: AgentActivity): AgentStatus | null {
     const state = live.kind === 'state' ? live.state : null;
@@ -41,12 +42,11 @@ export function agentStatus(live: AgentLiveStatus, activity: AgentActivity): Age
     if (state === 'failed' || state === 'error') return { kind: 'failed', tone: 'danger', label: stateLabel(state) };
     if (activity.questions > 0) return { kind: 'needs-you', tone: 'warning', label: m.chat_needs_you() };
     switch (state) {
-        case 'waiting':
-            return { kind: 'waiting', tone: 'waiting', label: stateLabel('waiting') };
+        case null:
         case 'idle':
             return { kind: 'idle', tone: 'neutral', label: stateLabel('idle') };
-        case null:
-            return { kind: 'unknown', tone: 'neutral', label: m.agent_state_unknown() };
+        case 'waiting':
+            return { kind: 'waiting', tone: 'waiting', label: stateLabel('waiting') };
         default:
             return { kind: 'unknown', tone: 'neutral', label: m.agent_state_unknown_value({ value: state }) };
     }

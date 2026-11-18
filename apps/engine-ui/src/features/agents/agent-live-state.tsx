@@ -14,7 +14,10 @@ import { usePermissions } from '../session/use-permissions';
 import { agentStatusQueryOptions } from './agents-queries';
 import { useAgentMutations } from './use-agent-mutations';
 
-/** What the UI knows about an agent's state right now; `state` may be a value this UI does not know yet. */
+/**
+ * What the UI knows about an agent's state right now; `state` may be a value this UI does not know yet. `unavailable`:
+ * the engine does not report one (no such route) or could not just now.
+ */
 export type AgentLiveStatus =
     | { readonly kind: 'pending' }
     | { readonly kind: 'state'; readonly state: string }
@@ -68,8 +71,8 @@ function ProvidedLiveState({
 
 function FallbackState({ agentId, children }: AgentLiveStateProps) {
     const status = useQuery(agentStatusQueryOptions(useEngineApi(), agentId));
-    if (status.data !== undefined) return children({ kind: 'state', state: status.data.state });
-    return children(status.isError ? { kind: 'unavailable' } : { kind: 'pending' });
+    if (status.data !== undefined && status.data !== null) return children({ kind: 'state', state: status.data.state });
+    return children(status.data === null || status.isError ? { kind: 'unavailable' } : { kind: 'pending' });
 }
 
 export interface AgentStopProps {
