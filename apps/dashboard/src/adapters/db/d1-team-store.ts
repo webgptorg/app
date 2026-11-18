@@ -14,6 +14,7 @@ import {
 } from '../../domain/ids';
 import { orgRoleSchema } from '../../domain/roles';
 import type {
+    InvitePreview,
     InviteRecord,
     OrgMemberRecord,
     PersonRecord,
@@ -190,6 +191,19 @@ export function createD1TeamStore(db: Database): TeamStore {
             .where(and(eq(teams.id, teamId), live(orgId)))
             .get();
         return row === undefined ? null : toTeam(row);
+    }
+
+    async function withTeamNames(invite: InviteRecord, orgName: string | null): Promise<InvitePreview> {
+        const names =
+            invite.teamIds.length === 0
+                ? []
+                : await db
+                      .select({ name: teams.name })
+                      .from(teams)
+                      .where(and(inArray(teams.id, [...invite.teamIds]), live(invite.orgId)))
+                      .orderBy(asc(teams.createdAt), asc(teams.id))
+                      .all();
+        return { invite, orgName, teamNames: names.map((team) => teamNameSchema.parse(team.name)) };
     }
 
     async function isOrgMember(orgId: OrgId, userId: UserId) {
@@ -771,6 +785,23 @@ export function createD1TeamStore(db: Database): TeamStore {
             return rows.map(toInvite);
         },
 
+        async listInvitesForEmail(email, now) {
+            const rows = await db
+                .select({ invite: invites, orgName: organizations.name, inviterEmail: users.email })
+                .from(invites)
+                .innerJoin(organizations, eq(organizations.id, invites.orgId))
+                .leftJoin(users, eq(users.id, invites.invitedByUserId))
+                .where(and(eq(invites.email, email), pending(now)))
+                .orderBy(desc(invites.createdAt), asc(invites.id))
+                .all();
+            return Promise.all(
+                rows.map(async (row) => ({
+                    ...(await withTeamNames(toInvite(row.invite), row.orgName)),
+                    inviterEmail: row.inviterEmail,
+                })),
+            );
+        },
+
         async previewInvite(tokenHash, now) {
             const row = await db
                 .select({ invite: invites, orgName: organizations.name })
@@ -778,20 +809,7 @@ export function createD1TeamStore(db: Database): TeamStore {
                 .innerJoin(organizations, eq(organizations.id, invites.orgId))
                 .where(and(eq(invites.tokenHash, tokenHash), pending(now)))
                 .get();
-            if (row === undefined) {
-                return null;
-            }
-            const invite = toInvite(row.invite);
-            const names =
-                invite.teamIds.length === 0
-                    ? []
-                    : await db
-                          .select({ name: teams.name })
-                          .from(teams)
-                          .where(and(inArray(teams.id, [...invite.teamIds]), live(invite.orgId)))
-                          .orderBy(asc(teams.createdAt), asc(teams.id))
-                          .all();
-            return { invite, orgName: row.orgName, teamNames: names.map((team) => teamNameSchema.parse(team.name)) };
+            return row === undefined ? null : withTeamNames(toInvite(row.invite), row.orgName);
         },
 
         async renewInvite(orgId, inviteId, renewal, entry) {

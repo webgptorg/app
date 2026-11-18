@@ -329,6 +329,27 @@ export function describeTeamStoreContract(suite: string, makeFixture: () => Team
             });
         });
 
+        it('lists the pending invitations to one address across organizations, newest first, with who sent them', async () => {
+            const a = await team();
+            const email = `invited-${crypto.randomUUID()}@example.test`;
+            const older = invite({ email, teamIds: [a] });
+            const newer = invite({ email, orgId: other.orgId, invitedByUserId: other.userId, createdAt: NOW + 1 });
+            const revoked = invite({ email });
+            const used = invite({ email });
+            for (const record of [older, newer, revoked, used, invite({ email, expiresAt: NOW }), invite()]) {
+                await fixture.teams.insertInvite(record, entry(record.invitedByUserId));
+            }
+            await fixture.teams.revokeInvite(owner.orgId, revoked.id, entry(owner.userId));
+            await fixture.teams.acceptInvite(used.tokenHash, member.id, { id: entry(member.id).id, at: NOW });
+
+            expect(await fixture.teams.listInvitesForEmail(email, NOW)).toEqual([
+                { invite: newer, orgName: null, teamNames: [], inviterEmail: other.user.email },
+                { invite: older, orgName: null, teamNames: ['Client A'], inviterEmail: owner.user.email },
+            ]);
+            expect(await fixture.teams.listInvitesForEmail(email, NOW + 7 * DAY)).toEqual([]);
+            expect(await fixture.teams.listInvitesForEmail('nobody@example.test', NOW)).toEqual([]);
+        });
+
         it('accepts an invitation once: membership with its role, the teams that still exist, no second use', async () => {
             const a = await team();
             const gone = await team('Gone');

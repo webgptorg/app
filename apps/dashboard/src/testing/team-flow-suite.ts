@@ -516,6 +516,115 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
             });
         });
 
+        describe('offering pending invitations after sign-in (D-33)', () => {
+            const OFFERS = '/api/invites/offers';
+            const accept = (inviteId: string) => `/api/invites/offers/${inviteId}/accept`;
+
+            interface Offer {
+                readonly inviteId: string;
+                readonly orgName: string | null;
+                readonly inviterEmail: string | null;
+                readonly teamNames: readonly string[];
+                readonly expiresAt: number;
+            }
+
+            async function offers(browser: TestBrowser): Promise<readonly Offer[]> {
+                const response = await browser.request('GET', OFFERS);
+                expect(response.status).toBe(200);
+                return (response.body as { offers: Offer[] }).offers;
+            }
+
+            async function invitedTo(by: Person, email: string, teamIds: readonly string[] = []): Promise<string> {
+                harness.clock.advance(1);
+                expect((await invite(by.browser, { emails: [email], role: 'member', teamIds })).status).toBe(200);
+                const listed = (await by.browser.request('GET', '/api/org/members')).body as {
+                    invites: { inviteId: string; email: string }[];
+                };
+                return listed.invites.find((pending) => pending.email === email.toLowerCase())?.inviteId ?? '';
+            }
+
+            it('offers the invitations to the account’s address, from any organization, and accepts one by ID', async () => {
+                const boss = await owner();
+                const team = await createTeam(boss.browser);
+                const email = uniqueEmail('offered');
+                const first = await invitedTo(boss, email.toUpperCase(), [team.teamId]);
+                const elsewhere = await owner();
+                const second = await invitedTo(elsewhere, email);
+                // Signed up from scratch, not from the link: the invitation waits for them all the same.
+                const joiner = await person(email);
+
+                expect(await offers(joiner.browser)).toEqual([
+                    {
+                        inviteId: second,
+                        orgName: null,
+                        inviterEmail: elsewhere.email,
+                        teamNames: [],
+                        expiresAt: expect.any(Number) as number,
+                    },
+                    {
+                        inviteId: first,
+                        orgName: null,
+                        inviterEmail: boss.email,
+                        teamNames: ['Client A'],
+                        expiresAt: expect.any(Number) as number,
+                    },
+                ]);
+                const accepted = await joiner.browser.request('POST', accept(first));
+                expect(accepted.body).toEqual({ orgId: boss.orgId, teamIds: [team.teamId] });
+                expect((await offers(joiner.browser)).map((offer) => offer.inviteId)).toEqual([second]);
+                expectProblem(await joiner.browser.request('POST', accept(first)), 404, 'invite-invalid');
+
+                const session = (await joiner.browser.request('GET', '/api/session')).body as SessionView;
+                expect(session.activeOrg.id).toBe(joiner.orgId);
+                expect(session.memberships.map((membership) => membership.orgId)).toContain(boss.orgId);
+                expect((await joiner.browser.request('POST', accept(second))).status).toBe(200);
+                expect(await offers(joiner.browser)).toEqual([]);
+            });
+
+            it('never offers or accepts another address’s, a lapsed, a revoked or a used invitation', async () => {
+                const boss = await owner();
+                const email = uniqueEmail('offered');
+                const forSomeoneElse = await invitedTo(boss, uniqueEmail('someone-else'));
+                const revoked = await invitedTo(boss, email);
+                const used = await invitedTo(boss, email);
+                const usedToken = inviteToken(email);
+                const joiner = await person(email);
+                const stranger = await person();
+
+                expect(await offers(stranger.browser)).toEqual([]);
+                expectProblem(await stranger.browser.request('POST', accept(revoked)), 404, 'invite-invalid');
+                expectProblem(await joiner.browser.request('POST', accept(forSomeoneElse)), 404, 'invite-invalid');
+
+                expect((await boss.browser.request('POST', `/api/invites/${revoked}/revoke`)).status).toBe(204);
+                expect((await joiner.browser.request('POST', '/api/invites/accept', { token: usedToken })).status).toBe(
+                    200,
+                );
+                expect(await offers(joiner.browser)).toEqual([]);
+                expectProblem(await joiner.browser.request('POST', accept(revoked)), 404, 'invite-invalid');
+                expectProblem(await joiner.browser.request('POST', accept(used)), 404, 'invite-invalid');
+
+                const late = uniqueEmail('late');
+                const lapsed = await invitedTo(boss, late);
+                harness.clock.advance(7 * 24 * 60 * 60 * 1000);
+                const latecomer = await person(late);
+                expect(await offers(latecomer.browser)).toEqual([]);
+                expectProblem(await latecomer.browser.request('POST', accept(lapsed)), 404, 'invite-invalid');
+            });
+
+            it('needs a session and limits both routes per IP', async () => {
+                const browser = harness.browser({ ip: '203.0.113.220' });
+                const inviteId = 'a'.repeat(26);
+                for (let attempt = 0; attempt < 30; attempt++) {
+                    expectProblem(await browser.request('POST', accept(inviteId)), 401, 'unauthorized');
+                }
+                expectProblem(await browser.request('POST', accept(inviteId)), 429, 'rate-limited');
+                for (let attempt = 0; attempt < 120; attempt++) {
+                    expectProblem(await browser.request('GET', OFFERS), 401, 'unauthorized');
+                }
+                expectProblem(await browser.request('GET', OFFERS), 429, 'rate-limited');
+            });
+        });
+
         it('resends and revokes pending invitations, and lists them with the organization’s people', async () => {
             const boss = await owner();
             const team = await createTeam(boss.browser);

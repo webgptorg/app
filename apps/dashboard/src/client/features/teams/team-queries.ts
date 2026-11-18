@@ -8,6 +8,7 @@ export const teamKeys = {
     all: ['teams'] as const,
     team: (teamId: string) => ['teams', teamId] as const,
     people: ['org', 'people'] as const,
+    offers: ['invite-offers'] as const,
 };
 
 export function teamsQuery(client: ApiClient) {
@@ -30,5 +31,13 @@ export function peopleQuery(client: ApiClient) {
     return queryOptions({
         queryKey: teamKeys.people,
         queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.listOrgMembers, {}, signal)),
+    });
+}
+
+/** Pending invitations to the signed-in address, from any organization (D-33). */
+export function inviteOffersQuery(client: ApiClient) {
+    return queryOptions({
+        queryKey: teamKeys.offers,
+        queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.listInviteOffers, {}, signal)).offers,
     });
 }

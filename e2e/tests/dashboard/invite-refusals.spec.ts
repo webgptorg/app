@@ -1,23 +1,10 @@
-import type { Page } from '@playwright/test';
-
 import type { ComposeControl } from '../../src/compose.ts';
 import { expect, test, uniqueEmail } from '../../src/dashboard.ts';
-import { DASHBOARD_ORIGIN } from '../../src/stack.ts';
-import { newPerson } from '../../src/team-steps.ts';
+import { inviteToOrganization, newPerson } from '../../src/team-steps.ts';
 
 // D-31: an invitation link works once, for its own address, for 7 days. What a person sees when it does not.
 
 const NO_LONGER_VALID = 'This invitation link is no longer valid. Ask the person who invited you to send a new one.';
-
-/** "Invite people" on the People page, to the organization alone. */
-async function inviteToOrganization(page: Page, email: string): Promise<void> {
-    await page.goto(`${DASHBOARD_ORIGIN}/people`);
-    await page.getByRole('button', { name: 'Invite people' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Invite people' });
-    await dialog.getByLabel('Email addresses').fill(email);
-    await dialog.getByRole('button', { name: 'Send invitations' }).click();
-    await expect(page.getByText('Invitations sent: 1')).toBeVisible();
-}
 
 /**
  * Moves the invitation's expiry into the past in the dashboard's local D1. The lifetime is 7 days and the dashboard has
@@ -59,7 +46,7 @@ test('an expired invitation is refused', async ({ browser, page, dashboard, comp
     await person.page.context().close();
 });
 
-test('an invitation opened while signed in as another address offers to sign out and join as the invited one', async ({
+test('an invitation opened while signed in as another address offers to continue as the invited one', async ({
     page,
     dashboard,
 }) => {
@@ -69,14 +56,11 @@ test('an invitation opened while signed in as another address offers to sign out
     await inviteToOrganization(page, colleague);
 
     await page.goto(await dashboard.emailedLink(colleague, 'team-invite'));
-    await expect(
-        page.getByText(
-            `You're signed in as ${admin}, but this invitation is for ${colleague}. Sign out here, then join as ${colleague}.`,
-        ),
-    ).toBeVisible();
+    await expect(page.getByText(`This invitation is for ${colleague}. You're signed in as ${admin}.`)).toBeVisible();
+    await expect(page.getByRole('link', { name: `Stay signed in as ${admin}` })).toBeVisible();
     await expect(page.getByRole('button', { name: /^Join/ })).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Sign out and continue' }).click();
+    await page.getByRole('button', { name: `Continue as ${colleague}` }).click();
     await expect(page.getByText(`We'll create your Promptbook account for ${colleague}.`)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Join', exact: true })).toBeVisible();
     await expect(page.getByText(`Invitation for ${colleague}`, { exact: false })).toBeVisible();

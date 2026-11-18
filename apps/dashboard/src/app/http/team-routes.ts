@@ -7,7 +7,9 @@ import { issueLinkCode } from '../../domain/registration/issue-link-code';
 import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
 import {
     acceptInvite,
+    acceptOfferedInvite,
     createInvites,
+    listInviteOffers,
     resendInvite,
     revokeInvite,
     type InviteDeps,
@@ -387,6 +389,29 @@ export function bindTeamRoutes(
             case 'email-mismatch':
                 return { kind: 'problem', status: 403, code: 'email-mismatch' };
         }
+    });
+
+    bind(router, mount, apiRoutes.listInviteOffers, async ({ session }) => {
+        const offers = await listInviteOffers(deps, session.user);
+        return {
+            kind: 'ok',
+            body: {
+                offers: offers.map(({ invite, orgName, teamNames, inviterEmail }) => ({
+                    inviteId: invite.id,
+                    orgName,
+                    inviterEmail,
+                    teamNames: [...teamNames],
+                    expiresAt: invite.expiresAt,
+                })),
+            },
+        };
+    });
+
+    bind(router, mount, apiRoutes.acceptInviteOffer, async ({ input, session }) => {
+        const outcome = await acceptOfferedInvite(deps, session.user, inviteIdSchema.parse(input.params.inviteId));
+        return outcome.kind === 'accepted'
+            ? { kind: 'ok', body: { orgId: outcome.orgId, teamIds: [...outcome.teamIds] } }
+            : { kind: 'problem', status: 404, code: 'invite-invalid' };
     });
 }
 

@@ -2,6 +2,7 @@ import type { EngineId } from '@ptbk/protocol';
 
 import type { InviteId, LinkCodeId, OrgId, TeamId, UserId } from '../domain/ids';
 import type {
+    InvitePreview,
     InviteRecord,
     MemberAccess,
     RefusedRemovalRecord,
@@ -139,6 +140,13 @@ export function createMemoryTeamStore(deps: {
         invitedByUserId: invite.invitedByUserId,
         createdAt: invite.createdAt,
         expiresAt: invite.expiresAt,
+    });
+    const preview = (invite: StoredInvite): InvitePreview => ({
+        invite: strip(invite),
+        orgName: deps.auth.orgs.get(invite.orgId)?.name ?? null,
+        teamNames: liveTeams(invite.orgId)
+            .filter((team) => invite.teamIds.includes(team.id))
+            .map((team) => team.name),
     });
 
     const accept = (
@@ -568,19 +576,20 @@ export function createMemoryTeamStore(deps: {
                     .map(strip),
             );
         },
+        listInvitesForEmail(email, now) {
+            return Promise.resolve(
+                state.invites
+                    .filter((invite) => invite.email === email && isPending(invite, now))
+                    .sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? -1 : 1))
+                    .map((invite) => ({
+                        ...preview(invite),
+                        inviterEmail: deps.auth.users.get(invite.invitedByUserId)?.email ?? null,
+                    })),
+            );
+        },
         previewInvite(tokenHash, now) {
             const invite = state.invites.find((candidate) => candidate.tokenHash === tokenHash);
-            if (invite === undefined || !isPending(invite, now)) {
-                return Promise.resolve(null);
-            }
-            const teamNames = liveTeams(invite.orgId)
-                .filter((team) => invite.teamIds.includes(team.id))
-                .map((team) => team.name);
-            return Promise.resolve({
-                invite: strip(invite),
-                orgName: deps.auth.orgs.get(invite.orgId)?.name ?? null,
-                teamNames,
-            });
+            return Promise.resolve(invite === undefined || !isPending(invite, now) ? null : preview(invite));
         },
         renewInvite(orgId, inviteId, renewal, entry) {
             const index = state.invites.findIndex(

@@ -405,6 +405,16 @@ export const inviteViewSchema = z.strictObject({
 });
 export type InviteView = z.infer<typeof inviteViewSchema>;
 
+/** An invitation to the signed-in person's own address: the names the inviter chose, never its token. */
+export const inviteOfferViewSchema = z.strictObject({
+    inviteId: idSchema,
+    orgName: z.string().nullable(),
+    inviterEmail: z.string().nullable(),
+    teamNames: z.array(teamNameSchema),
+    expiresAt: timestampSchema,
+});
+export type InviteOfferView = z.infer<typeof inviteOfferViewSchema>;
+
 /** At most this many teams per invitation, and addresses per request. */
 export const MAX_INVITE_TEAMS = 50;
 export const MAX_INVITE_EMAILS = 20;
@@ -1172,6 +1182,34 @@ export const apiRoutes = {
         input: inviteTokenInput,
         output: joinedInviteSchema,
         errorCodes: ['invite-invalid', 'email-mismatch'],
+    }),
+    /**
+     * Pending invitations to the session's verified address, offered after any sign-in or sign-up (D-33). Limited per
+     * IP like the other invitation reads, though a session can only ever see its own.
+     */
+    listInviteOffers: defineRoute({
+        method: 'GET',
+        path: '/api/invites/offers',
+        auth: 'session',
+        permission: 'invite.accept',
+        rateLimit: 'public-read-ip',
+        input: NO_INPUT,
+        output: z.strictObject({ offers: z.array(inviteOfferViewSchema) }),
+        errorCodes: [],
+    }),
+    /**
+     * Accepts one of `listInviteOffers` without its token. Another address's invitation, or one no longer pending, is
+     * `invite-invalid` (404) alike, so IDs cannot be probed.
+     */
+    acceptInviteOffer: defineRoute({
+        method: 'POST',
+        path: '/api/invites/offers/:inviteId/accept',
+        auth: 'session',
+        permission: 'invite.accept',
+        rateLimit: 'verify-ip',
+        input: { ...NO_INPUT, params: inviteParams },
+        output: joinedInviteSchema,
+        errorCodes: ['invite-invalid'],
     }),
     /**
      * One-step join for an address without an account (D-31): registration options bound to the invitation.

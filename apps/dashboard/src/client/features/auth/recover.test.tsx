@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { apiRoutes } from '../../../shared/api/routes';
@@ -52,6 +52,34 @@ describe('recovery', () => {
         expect(await screen.findByRole('heading', { name: 'Account', level: 1 })).toBeTruthy();
         expect(screen.getByText('Your account was recently recovered')).toBeTruthy();
         expect(await screen.findByText('By recovery')).toBeTruthy();
+    });
+
+    it('offers an invitation waiting for the address once a passkey is added', async () => {
+        const app = renderApp({
+            path: `/recover#${TOKEN}`,
+            script: (api) => {
+                recoveryScript(api);
+                api.on(
+                    apiRoutes.listInviteOffers,
+                    ok({
+                        offers: [
+                            {
+                                inviteId: 'iiiiiiiiiiiiiiiiiiiiiiiiii',
+                                orgName: 'Acme',
+                                inviterEmail: 'boss@example.test',
+                                teamNames: [],
+                                expiresAt: NOW + 86_400_000,
+                            },
+                        ],
+                    }),
+                );
+            },
+        });
+        expect(app.api.callsTo(apiRoutes.listInviteOffers)).toEqual([]);
+        await app.user.click(await screen.findByRole('button', { name: 'Register new passkey' }));
+        const offers = await screen.findByRole('list', { name: 'Invitations' });
+        expect(within(offers).getByText("You're invited to Acme by boss@example.test")).toBeTruthy();
+        expect(within(offers).getByRole('button', { name: 'Join' })).toBeTruthy();
     });
 
     it('stays reachable while signed in', async () => {
