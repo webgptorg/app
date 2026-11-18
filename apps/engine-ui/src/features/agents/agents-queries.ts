@@ -1,5 +1,5 @@
 import { MAX_PAGE_LIMIT } from '@ptbk/engine-api';
-import type { AgentId, EngineApiClient, MemberId } from '@ptbk/engine-api';
+import type { AgentId, EngineApiClient, MemberId, ProblemDetails } from '@ptbk/engine-api';
 import { queryOptions } from '@tanstack/react-query';
 
 import { unwrap } from '../../app/api-errors';
@@ -26,15 +26,27 @@ export function agentDetailQueryOptions(engineApi: EngineApiClient, agentId: Age
 }
 
 /**
- * The draft run state (C-04). `agent.status` events write into this entry and a reconnect of the stream invalidates
- * it, so it never goes stale on a timer.
+ * The draft run state (C-04), or `null` when the engine does not offer it. `agent.status` events write into this entry
+ * and a reconnect of the stream invalidates it, so it never goes stale on a timer.
+ *
+ * An engine may serve no draft route (the Reborn engine answers 404 for every agent), so a 404 or
+ * `capability-not-supported` is cached as `null` rather than thrown: an error with no data would be refetched by every
+ * card that mounts and on every window focus, one request per agent each time.
  */
 export function agentStatusQueryOptions(engineApi: EngineApiClient, agentId: AgentId) {
     return queryOptions({
         queryKey: agentKeys.status(agentId),
-        queryFn: async ({ signal }) => unwrap(await engineApi.agents.getStatus(agentId, signal)),
+        queryFn: async ({ signal }) => {
+            const response = await engineApi.agents.getStatus(agentId, signal);
+            if (response.kind === 'problem' && isUnsupported(response.problem)) return null;
+            return unwrap(response);
+        },
         staleTime: Number.POSITIVE_INFINITY,
     });
+}
+
+function isUnsupported(problem: ProblemDetails): boolean {
+    return problem.status === 404 || problem.code === 'capability-not-supported';
 }
 
 /** When the newest activity the member may see for this agent happened, or `null`. */

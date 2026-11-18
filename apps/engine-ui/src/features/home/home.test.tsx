@@ -15,6 +15,7 @@ import { HOSTILE } from '../../testing/runs-engine';
 import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
 
 const TIMEOUT_MS = 20_000;
+const HOME_CHUNK_MS = 10_000;
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 const allBut = (...missing: readonly Permission[]) => PERMISSIONS.filter((permission) => !missing.includes(permission));
 const Icon = () => null;
@@ -74,8 +75,9 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
         const { container } = renderWithProviders({ path: '/', engineApi: engine.client });
 
         expect(await screen.findByRole('heading', { level: 1, name: /, Owner$/ })).toBeDefined();
-        // Home's content arrives as a chunk of its own, alongside the data.
-        expect(await screen.findByRole('textbox', { name: 'Ask Chatter' })).toBeDefined();
+        // Home's content arrives as a chunk of its own, alongside the data. The first test in the file pays for
+        // transforming that chunk: well under findBy's 1 s locally, over it on a 2-core CI runner.
+        expect(await screen.findByRole('textbox', { name: 'Ask Chatter' }, { timeout: HOME_CHUNK_MS })).toBeDefined();
         expect(screen.getByRole('link', { name: 'New agent' }).getAttribute('href')).toBe('/agents/new');
         expect(await within(await feed()).findAllByRole('listitem')).not.toHaveLength(0);
         expect(await screen.findByRole('region', { name: 'Recent chats' })).toBeDefined();

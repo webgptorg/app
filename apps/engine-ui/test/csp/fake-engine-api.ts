@@ -18,6 +18,7 @@ import {
 } from '@ptbk/engine-api';
 import type {
     ActivityItem,
+    CapabilityRef,
     EngineApiClient,
     EngineApiResponse,
     EngineApiStreamItem,
@@ -920,15 +921,20 @@ async function serveTestChat(
 /**
  * Answers the engine API from the in-memory client until the mock engine (M-04) and the loader (M-05) serve the
  * bundle for real (X-04). Same origin as the bundle, so `connect-src 'self'` still applies. `member` signs in as
- * someone other than the owner; routed again on the same page, the newer routing wins.
+ * someone other than the owner, `capabilities` replaces what the engine advertises; routed again on the same page, the
+ * newer routing wins.
  */
 export async function routeFakeEngineApi(
     page: Page,
-    options: { readonly member?: InMemoryMember; readonly onboarding?: 'pending' } = {},
+    options: {
+        readonly member?: InMemoryMember;
+        readonly onboarding?: 'pending';
+        readonly capabilities?: readonly CapabilityRef[];
+    } = {},
 ): Promise<void> {
     const engineApi = createInMemoryEngineApiClient({
         // File scanning is optional (#189); these checks cover its badges and the blocked download.
-        capabilities: [...DEFAULT_CAPABILITIES, KNOWN_CAPABILITIES.fileScanning],
+        capabilities: options.capabilities ?? [...DEFAULT_CAPABILITIES, KNOWN_CAPABILITIES.fileScanning],
         ...(options.member === undefined ? {} : { member: options.member }),
         seed: {
             activity: [...FAKE_ACTIVITY],

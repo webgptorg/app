@@ -8,7 +8,9 @@ import { agentKeys } from './agents-keys';
  * in either order, and the older must not win.
  */
 export function writeAgentStatus(queryClient: QueryClient, agentId: AgentId, status: AgentRunStatus): void {
-    queryClient.setQueryData<AgentRunStatus>(agentKeys.status(agentId), (cached) =>
-        cached !== undefined && Date.parse(cached.since) > Date.parse(status.since) ? cached : status,
+    queryClient.setQueryData<AgentRunStatus | null>(agentKeys.status(agentId), (cached) =>
+        cached !== undefined && cached !== null && Date.parse(cached.since) > Date.parse(status.since)
+            ? cached
+            : status,
     );
 }
