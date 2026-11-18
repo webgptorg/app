@@ -120,7 +120,15 @@ function AgentTurn({
                 <span className="text-tint">{view.authorName}</span>
                 {at === null ? null : <TurnTime at={at} />}
             </header>
-            <div className="ms-3 flex w-[calc(100%-0.75rem)] min-w-0 flex-col gap-1.5 border-s-2 border-[color-mix(in_oklab,var(--tint)_40%,transparent)] ps-[1.125rem]">
+            <div
+                data-turn-rail=""
+                className={cx(
+                    'ms-3 flex w-[calc(100%-0.75rem)] min-w-0 flex-col gap-1.5 border-s-2 border-[color-mix(in_oklab,var(--tint)_40%,transparent)] ps-[1.125rem]',
+                    // A row continuing the turn reaches its rail up over the row's top padding (`pt-1.5`), so the
+                    // turn's separately rendered rows draw one unbroken line from the header down.
+                    !showAuthor && '-mt-1.5 pt-1.5',
+                )}
+            >
                 {children}
             </div>
         </div>

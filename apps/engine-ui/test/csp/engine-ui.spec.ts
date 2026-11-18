@@ -227,6 +227,19 @@ test.describe('the built bundle under the engine CSP', () => {
             const author = history.locator('header').filter({ hasText: 'Ada' }).last();
             await expect(author.locator('svg[data-illustration="analyst"]')).toBeVisible();
             await expect(author.locator('[data-initial]')).toHaveCount(0);
+            // A turn's steps, reply and follow-up are separate rows, yet their rails meet as one line.
+            const rails = history.locator('[data-turn-rail]');
+            const boxes = await Promise.all(
+                ['Worked', 'Revenue grew', 'Costs held flat.'].map((text) =>
+                    rails.filter({ hasText: text }).last().boundingBox(),
+                ),
+            );
+            for (const [above, below] of [
+                [boxes[0], boxes[1]],
+                [boxes[1], boxes[2]],
+            ]) {
+                expect(below?.y).toBeCloseTo((above?.y ?? 0) + (above?.height ?? 0), 0);
+            }
             expectCleanPage(report);
         });
     }
