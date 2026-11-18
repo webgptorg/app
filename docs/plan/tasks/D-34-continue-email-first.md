@@ -2,7 +2,7 @@
 
 - **Lane:** Dashboard · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-32
-- **Status:** in progress (fix/d-34-continue-email-first)
+- **Status:** done (#318)
 - **Spec:** [D-32](D-32-continue-screen.md); design: [onboarding.md](../../design/onboarding.md)
 
 ## Goal
