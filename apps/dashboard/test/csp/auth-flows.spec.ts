@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 
 import { expect, expectNoBrowserErrors, outboxLink, test, uniqueEmail, type Authenticators } from './fixtures.ts';
 
-/** For a new address, `/continue` finds no passkey on this device and falls back to the emailed link. */
+/** `/continue` always sends the email (D-34); `/recover` sends its link. */
 async function requestLink(page: Page, path: '/continue' | '/recover', email: string, action: string): Promise<void> {
     await page.goto(path);
     await page.getByLabel('Email').fill(email);
@@ -43,14 +43,14 @@ async function signOut(page: Page, authenticators: Authenticators, id: string): 
 }
 
 /**
- * Continue with the address whose passkey the authenticator holds. Once it answers again it may complete the field's
- * pending passkey autofill on its own, before Continue is clicked; Continue covers the case where it does not.
+ * Signs in with the passkey the authenticator holds. Once it answers again it may complete the field's pending passkey
+ * autofill on its own; "Use a passkey" covers the case where it does not. Continue would only send an email.
  */
 async function signIn(page: Page, authenticators: Authenticators, id: string, email: string): Promise<void> {
     await authenticators.answer(id, true);
     await page.getByLabel('Email').fill(email);
     await page
-        .getByRole('button', { name: 'Continue' })
+        .getByRole('button', { name: 'Use a passkey' })
         .click({ timeout: 5_000 })
         .catch(() => undefined);
 }
@@ -193,14 +193,13 @@ test('keyboard only: sign up, sign out and sign in', async ({ page, authenticato
     await page.keyboard.press('Enter');
     await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
 
-    // Once it answers again, the authenticator may complete the field's passkey autofill first; otherwise the typed
-    // address and Enter continue.
+    // Once it answers again, the authenticator may complete the field's passkey autofill first; otherwise "Use a
+    // passkey" opens the picker.
     await authenticators.answer(id, true);
     const engines = page.getByRole('heading', { name: 'Engines', level: 1 });
     await engines.waitFor({ timeout: 5_000 }).catch(() => undefined);
     if (!(await engines.isVisible())) {
-        await tabTo(page, focused(page, 'textbox', 'Email'));
-        await page.keyboard.type(email);
+        await tabTo(page, focused(page, 'button', 'Use a passkey'));
         await page.keyboard.press('Enter');
     }
     await expect(engines).toBeVisible();

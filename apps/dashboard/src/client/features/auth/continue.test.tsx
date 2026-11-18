@@ -29,6 +29,10 @@ async function continueWith(app: RenderedApp, email = 'ada@example.test'): Promi
     await app.user.click(screen.getByRole('button', { name: 'Continue' }));
 }
 
+async function openPasskeyPicker(app: RenderedApp): Promise<void> {
+    await app.user.click(await screen.findByRole('button', { name: 'Use a passkey' }));
+}
+
 describe('Continue', () => {
     it.each(['/continue', '/signin', '/signup', '/engines'])(
         'takes the 401 from GET /api/session on %s as signed out, logging nothing',
@@ -50,63 +54,30 @@ describe('Continue', () => {
         },
     );
 
-    it('asks for the email once, explains passkeys, and offers the field to the passkey autofill', async () => {
+    it('asks for the email once, says the browser offers a passkey it has, and offers the field to the autofill', async () => {
         const app = renderApp({ path: '/continue', script: continueScript });
         expect(await screen.findByRole('heading', { name: 'Sign in or create an account', level: 1 })).toBeTruthy();
-        expect(screen.getByText('We use your fingerprint, face or device PIN instead of a password.')).toBeTruthy();
+        expect(
+            screen.getByText('Already have a passkey on this device? Your browser offers it in the email field.'),
+        ).toBeTruthy();
         expect(screen.getByRole('textbox', { name: /Email/ }).getAttribute('autocomplete')).toBe('username webauthn');
         expect(screen.getAllByRole('button').filter((button) => button.textContent === 'Continue')).toHaveLength(1);
+        expect(screen.getByRole('button', { name: 'Use a passkey' })).toBeTruthy();
         await expectNoAxeViolations(app.container);
     });
 
-    it('signs in with a passkey this device has, sending no email', async () => {
+    it('sends the email on Continue without opening a passkey picker, in the same words for any address', async () => {
         const app = renderApp({ path: '/continue', script: continueScript });
-        app.api.on(apiRoutes.getSession, ok(session()));
-        await continueWith(app);
-        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
-        expect(app.passkeys.authenticate).toHaveBeenCalledWith(AUTHENTICATION_OPTIONS);
-        expect(app.api.callsTo(apiRoutes.signinVerify)).toEqual([{ body: { response: AUTHENTICATION_RESPONSE } }]);
-        expect(app.api.callsTo(apiRoutes.signupStart)).toEqual([]);
-    });
-
-    it.each([
-        ['no passkey on this device', 'cancelled'],
-        ['no WebAuthn at all', 'unsupported'],
-    ] as const)('falls back to email with %s, in the same words for any address', async (_label, reason) => {
-        const app = renderApp({ path: '/continue', script: continueScript });
-        app.passkeys.failNext(reason);
         await continueWith(app, '  ada@example.test ');
         expect(await screen.findByRole('heading', { name: 'Check your email', level: 1 })).toBe(document.activeElement);
         expect(screen.getByRole('status').textContent).toBe(
             'We sent an email to ada@example.test. Open it on this device and follow its link: it helps you sign in, or finishes creating your account.',
         );
         expect(app.api.callsTo(apiRoutes.signupStart)).toEqual([{ body: { email: 'ada@example.test' } }]);
+        expect(app.passkeys.authenticate).not.toHaveBeenCalled();
+        expect(app.api.callsTo(apiRoutes.signinOptions)).toEqual([]);
+        expect(screen.queryByRole('button', { name: /passkey/ })).toBeNull();
         await expectNoAxeViolations(app.container);
-    });
-
-    it('falls back to email when the server does not know the passkey', async () => {
-        const app = renderApp({
-            path: '/continue',
-            script: (api) => {
-                continueScript(api);
-                api.once(apiRoutes.signinVerify, problem(401, 'webauthn-failed'));
-            },
-        });
-        await continueWith(app);
-        expect(await screen.findByRole('heading', { name: 'Check your email' })).toBeTruthy();
-        expect(app.api.callsTo(apiRoutes.signupStart)).toHaveLength(1);
-    });
-
-    it('tries a passkey again from the sent screen, and says why when it still fails', async () => {
-        const app = renderApp({ path: '/continue', script: continueScript });
-        app.passkeys.failNext('cancelled', 'cancelled');
-        await continueWith(app);
-        await app.user.click(await screen.findByRole('button', { name: 'Try a passkey again' }));
-        expect(await screen.findByText(/found no Promptbook passkey on this device/)).toBeTruthy();
-        app.api.on(apiRoutes.getSession, ok(session()));
-        await app.user.click(screen.getByRole('button', { name: 'Try a passkey again' }));
-        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
-        expect(app.api.callsTo(apiRoutes.signupStart)).toHaveLength(1);
     });
 
     it('refuses an empty or malformed address before trying anything', async () => {
@@ -131,7 +102,6 @@ describe('Continue', () => {
                 api.on(apiRoutes.signupStart, outcome);
             },
         });
-        app.passkeys.failNext('cancelled');
         await continueWith(app);
         expect(await screen.findByText(message)).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
@@ -139,7 +109,6 @@ describe('Continue', () => {
 
     it('can start over with another address', async () => {
         const app = renderApp({ path: '/continue', script: continueScript });
-        app.passkeys.failNext('cancelled');
         await continueWith(app);
         await app.user.click(await screen.findByRole('button', { name: 'Use a different email' }));
         expect(screen.getByRole<HTMLInputElement>('textbox', { name: /Email/ }).value).toBe('');
@@ -151,6 +120,67 @@ describe('Continue', () => {
         expect(await screen.findByRole('heading', { name: 'Recover access' })).toBeTruthy();
         await app.user.click(screen.getByRole('link', { name: 'Sign in' }));
         expect(await screen.findByRole('heading', { name: 'Sign in or create an account' })).toBeTruthy();
+    });
+});
+
+describe('Continue, "Use a passkey"', () => {
+    it('opens the picker on purpose and signs in, sending no email', async () => {
+        const app = renderApp({ path: '/continue', script: continueScript });
+        app.api.on(apiRoutes.getSession, ok(session()));
+        await openPasskeyPicker(app);
+        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
+        expect(app.passkeys.authenticate).toHaveBeenCalledWith(AUTHENTICATION_OPTIONS);
+        expect(app.api.callsTo(apiRoutes.signinVerify)).toEqual([{ body: { response: AUTHENTICATION_RESPONSE } }]);
+        expect(app.api.callsTo(apiRoutes.signupStart)).toEqual([]);
+    });
+
+    it('says why when the picker is closed or finds nothing, keeps the email path, and re-arms the autofill', async () => {
+        const app = renderApp({
+            path: '/continue',
+            script: continueScript,
+            passkeys: (passkeys) => {
+                passkeys.supportsAutofill.mockResolvedValue(true);
+            },
+        });
+        await waitFor(() => {
+            expect(app.passkeys.autofill).toHaveBeenCalledTimes(1);
+        });
+        app.passkeys.failNext('cancelled');
+        await openPasskeyPicker(app);
+        expect(await screen.findByText(/found no Promptbook passkey on this device/)).toBeTruthy();
+        await waitFor(() => {
+            expect(app.passkeys.autofill).toHaveBeenCalledTimes(2);
+        });
+        await continueWith(app);
+        expect(await screen.findByRole('heading', { name: 'Check your email' })).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.signupStart)).toEqual([{ body: { email: 'ada@example.test' } }]);
+    });
+
+    it('drops the failure once the email is sent, so another address starts clean', async () => {
+        const app = renderApp({ path: '/continue', script: continueScript });
+        app.passkeys.failNext('cancelled');
+        await openPasskeyPicker(app);
+        expect(await screen.findByText(/found no Promptbook passkey on this device/)).toBeTruthy();
+        await continueWith(app);
+        await app.user.click(await screen.findByRole('button', { name: 'Use a different email' }));
+        expect(await screen.findByRole('textbox', { name: /Email/ })).toBeTruthy();
+        expect(screen.queryByText(/found no Promptbook passkey on this device/)).toBeNull();
+    });
+
+    it('explains a passkey the server refused, and lets the person try again', async () => {
+        const app = renderApp({
+            path: '/continue',
+            script: (api) => {
+                continueScript(api);
+                api.once(apiRoutes.signinVerify, problem(401, 'webauthn-failed'));
+            },
+        });
+        await openPasskeyPicker(app);
+        expect(await screen.findByText(/not registered with Promptbook/)).toBeTruthy();
+        app.api.on(apiRoutes.getSession, ok(session()));
+        await openPasskeyPicker(app);
+        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.signupStart)).toEqual([]);
     });
 });
 
@@ -170,7 +200,7 @@ describe('Continue, passkey autofill', () => {
         expect(app.passkeys.authenticate).not.toHaveBeenCalled();
     });
 
-    it('stays quiet when Continue aborts it, and re-arms after an expired challenge', async () => {
+    it('stays quiet when aborted, and re-arms after an expired challenge', async () => {
         const app = renderApp({
             path: '/continue',
             script: (api) => {
@@ -225,7 +255,7 @@ describe('Continue, returning afterwards', () => {
         expect(app.history.location.pathname).toBe('/continue');
         expect(app.history.location.search).toBe('?returnTo=%2Faccount');
         app.api.on(apiRoutes.getSession, ok(session()));
-        await continueWith(app);
+        await openPasskeyPicker(app);
         expect(await screen.findByRole('heading', { name: 'Account', level: 1 })).toBeTruthy();
         expect(app.history.location.pathname).toBe('/account');
     });
@@ -249,7 +279,7 @@ describe('Continue, returning afterwards', () => {
         'ignores an unsafe returnTo (%s) and goes home',
         async (returnTo) => {
             const app = renderApp({ path: `/continue?returnTo=${returnTo}`, script: continueScript });
-            await continueWith(app);
+            await openPasskeyPicker(app);
             expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
             expect(app.history.location.pathname).toBe('/engines');
         },
@@ -288,7 +318,6 @@ describe('Continue, sending the email again', () => {
     it('offers the same address again only after a minute, then waits another minute', async () => {
         const fakeTimers = useFakeClock();
         const app = renderApp({ path: '/continue', script: continueScript, fakeTimers });
-        app.passkeys.failNext('cancelled');
         await continueWith(app);
         await screen.findByRole('heading', { name: 'Check your email' });
         expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Send it again in 60 s' }).disabled).toBe(true);
@@ -302,7 +331,6 @@ describe('Continue, sending the email again', () => {
     it('says when the resend was refused and stays on the sent screen', async () => {
         const fakeTimers = useFakeClock();
         const app = renderApp({ path: '/continue', script: continueScript, fakeTimers });
-        app.passkeys.failNext('cancelled');
         await continueWith(app);
         await screen.findByRole('heading', { name: 'Check your email' });
         app.api.on(apiRoutes.signupStart, problem(429, 'rate-limited'));

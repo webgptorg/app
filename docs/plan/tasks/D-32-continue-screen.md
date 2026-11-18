@@ -12,7 +12,7 @@ Non-technical people should not have to know whether they have an account. One s
 ## Decisions
 
 - **The screen.** One email field with `autocomplete="username webauthn"`, so a browser that has a passkey for the dashboard offers it in the field's autofill and one tap signs in. One "Continue" button. The copy explains passkeys once: "We use your fingerprint, face or device PIN instead of a password."
-- **Continue, without enumeration.**
+- **Continue, without enumeration.** Step 1 was replaced by [D-34](D-34-continue-email-first.md): Continue sends the email straight away.
   1. The client runs a passkey prompt with discoverable credentials (empty `allowCredentials`). If it succeeds, the person is in and gets no email.
   2. Otherwise it calls `signup/start`, which answers 202 with the same body for every address and sends one email after the response: a sign-in and recovery note to an existing account, a link that finishes creating the account to a new address.
   3. Rate limits stay per IP (`signup-start-ip`) and per address (`signup-start-email`).
