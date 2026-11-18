@@ -156,6 +156,17 @@ describe('Continue, "Use a passkey"', () => {
         expect(app.api.callsTo(apiRoutes.signupStart)).toEqual([{ body: { email: 'ada@example.test' } }]);
     });
 
+    it('drops the failure once the email is sent, so another address starts clean', async () => {
+        const app = renderApp({ path: '/continue', script: continueScript });
+        app.passkeys.failNext('cancelled');
+        await openPasskeyPicker(app);
+        expect(await screen.findByText(/found no Promptbook passkey on this device/)).toBeTruthy();
+        await continueWith(app);
+        await app.user.click(await screen.findByRole('button', { name: 'Use a different email' }));
+        expect(await screen.findByRole('textbox', { name: /Email/ })).toBeTruthy();
+        expect(screen.queryByText(/found no Promptbook passkey on this device/)).toBeNull();
+    });
+
     it('explains a passkey the server refused, and lets the person try again', async () => {
         const app = renderApp({
             path: '/continue',

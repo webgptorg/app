@@ -162,6 +162,8 @@ export function EmailStep(props: {
     readonly formAddon?: ReactNode;
     /** Under the submit button, with the form only (Continue: "Use a passkey"). */
     readonly secondaryAction?: ReactNode;
+    /** Once the email went out, so a page can drop what no longer applies (Continue: a failed passkey). */
+    readonly onSent?: () => void;
     readonly autoComplete?: string;
     /** A calm picture above the title, as on the other auth screens. Decorative. */
     readonly illustration?: ReactNode;
@@ -186,6 +188,9 @@ export function EmailStep(props: {
         defaultValues: { email: '' },
         onSubmit: async ({ email }) => {
             const outcome = await sendLink(email);
+            if (outcome.kind === 'sent') {
+                props.onSent?.();
+            }
             setState(
                 outcome.kind === 'sent'
                     ? { kind: 'sent', email, sentAt: now(), resent: false, failure: null }

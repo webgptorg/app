@@ -58,6 +58,9 @@ export function ContinuePage(props: { readonly returnTo: string | undefined }) {
             hint={<p className="text-sm text-text-muted">{m.continue_passkey_hint()}</p>}
             autoComplete="username webauthn"
             submitLabel={m.continue_action()}
+            onSent={() => {
+                setFailure(null);
+            }}
             formAddon={
                 <>
                     {failure === null ? null : (
