@@ -427,7 +427,7 @@
   "invites_empty_title": "Pozvěte svůj tým",
   "invites_empty_body": "Pozvěte lidi z dashboardu Vaší organizace. Tady požádají o přístup a Vy je pustíte dál s kódem z jejich obrazovky.",
   "passkeys_title": "Přístupové klíče",
-  "passkeys_intro": "Přístupovými klíči se přihlašujete k tomuto enginu. Přidáváte je při přihlášení na novém zařízení; zde je můžete zkontrolovat a odvolat.",
+  "passkeys_intro": "Přístupovými klíči se přihlašujete k tomuto enginu. Klíč uložený v Klíčence na iCloudu, Správci hesel Google nebo 1Passwordu funguje i na vašich dalších zařízeních a na jakémkoli jiném zařízení se můžete přihlásit telefonem. Zde je můžete zkontrolovat a odvolat.",
   "passkeys_mine": "Vaše přístupové klíče",
   "passkeys_everyone": "Přístupové klíče ostatních členů",
   "passkeys_empty": "Žádné přístupové klíče",

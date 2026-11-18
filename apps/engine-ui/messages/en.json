@@ -417,7 +417,7 @@
   "invites_empty_title": "Invite your team",
   "invites_empty_body": "Invite people from your organization's dashboard. They ask for access here, and you let them in with the code on their screen.",
   "passkeys_title": "Passkeys",
-  "passkeys_intro": "Passkeys sign you in to this engine. You add them when you sign in on a new device; here you can review and revoke them.",
+  "passkeys_intro": "Passkeys sign you in to this engine. One saved in iCloud Keychain, Google Password Manager or 1Password works on your other devices too, and on any other device you can sign in with your phone. Here you can review and revoke them.",
   "passkeys_mine": "Your passkeys",
   "passkeys_everyone": "Other members' passkeys",
   "passkeys_empty": "No passkeys",
