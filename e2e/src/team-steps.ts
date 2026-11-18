@@ -190,6 +190,15 @@ export async function linkTeamEngine(
     };
 }
 
+/** "Invite people" on the People page, to the organization alone. */
+export async function inviteToOrganization(page: Page, email: string): Promise<void> {
+    await page.goto(`${DASHBOARD_ORIGIN}/people`);
+    await page.getByRole('button', { name: 'Invite people' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Invite people' });
+    await dialog.getByLabel('Email addresses').fill(email);
+    await dialog.getByRole('button', { name: 'Send invitations' }).click();
+    await expect(page.getByText('Invitations sent: 1')).toBeVisible();
+}
 /** The admin opens the team's page and invites `email` with "Invite to this engine", as an org member. */
 export async function inviteToEngine(page: Page, team: string, email: string): Promise<void> {
     await page.goto(`${DASHBOARD_ORIGIN}/engines`);

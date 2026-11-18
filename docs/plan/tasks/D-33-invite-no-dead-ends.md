@@ -22,7 +22,7 @@ Whoever opens an invitation gets in, whatever state their browser is in: signed 
    - It sits at the top of home (the team list, where sign-in and sign-up land) while it is pending, and on the recovery end screen.
    - Accepting needs no token: the account's email is verified and equals the invitation's (case-insensitive, the same normalisation as the token path). Anything else, and an expired, revoked or used invitation, answers `invite-invalid` (404), so invitation IDs can't be probed.
    - Accepting reuses the token path's accept transaction, then continues into the engine like D-31's "You're in".
-   - Routes: `GET /api/invites/mine` and `POST /api/invites/:inviteId/accept`, session auth, `invite.accept`, IP rate limits, strict input.
+   - Routes: `GET /api/invites/offers` and `POST /api/invites/offers/:inviteId/accept`, session auth, `invite.accept`, IP rate limits, strict input.
 2. **Another account signed in.** The invitation is for one person.
    - "This invitation is for {invited}. You're signed in as {current}."
    - Primary: "Continue as {invited}" signs out here, stays on the page, and shows the next step (create the account, or sign in).

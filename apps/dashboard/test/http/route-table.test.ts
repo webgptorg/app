@@ -58,6 +58,17 @@ const ANONYMOUS_LIMITS = {
     'PUT /internal/v1/relays/presence': ['presence-relay', null],
 };
 
+/**
+ * Session routes that are also limited per IP: the WebAuthn verifications, and the invitations offered to the signed-in
+ * address (D-33), which accept without a token.
+ */
+const SESSION_LIMITS = {
+    'GET /api/invites/offers': 'public-read-ip',
+    'POST /api/auth/step-up/verify': 'verify-ip',
+    'POST /api/invites/offers/:inviteId/accept': 'verify-ip',
+    'POST /api/passkeys/verify': 'verify-ip',
+};
+
 describe('route table', () => {
     // The dev configuration mounts the most routes (it adds the dev outbox).
     const harness = createAuthHarness({ store: createMemoryAuthStore() });
@@ -127,6 +138,15 @@ describe('route table', () => {
                 .map((route) => [`${route.method} ${route.path}`, [route.rateLimit, route.engineRateLimit ?? null]]),
         );
         expect(limits).toEqual(ANONYMOUS_LIMITS);
+    });
+
+    it('limits exactly the reviewed session routes per IP', () => {
+        const limits = Object.fromEntries(
+            harness.routes
+                .filter((route) => route.auth === 'session' && route.rateLimit !== null)
+                .map((route) => [`${route.method} ${route.path}`, route.rateLimit]),
+        );
+        expect(limits).toEqual(SESSION_LIMITS);
     });
 
     it('allows exactly the allowlisted public routes', () => {

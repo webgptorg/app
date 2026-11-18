@@ -1,7 +1,7 @@
 import { Banner, Button, Card, Skeleton, useLocale } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
-import { ArrowRight, ArrowUpRight, CircleCheck, KeyRound } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, CircleCheck, KeyRound, Mail } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
@@ -166,11 +166,28 @@ function JoinCeremony(props: {
     const { state, start } = useCeremony(ceremony, props.onJoined);
     const code = state.kind === 'failed' && state.failure.kind === 'api' ? state.failure.code : null;
     const { onStale } = props;
+    const emailLink = useAppMutation({
+        mutationFn: async () => {
+            dataOrThrow(await api.call(apiRoutes.recoveryRequest, { body: { email: props.preview.email } }));
+        },
+    });
     useEffect(() => {
         if (code === 'account-exists' || code === 'invite-invalid') {
             onStale();
         }
     }, [code, onStale]);
+    const failed = state.kind === 'failed' && code !== 'account-exists';
+    if (emailLink.isSuccess) {
+        return <EmailLinkSent email={props.preview.email} />;
+    }
+    const fallback = (
+        <EmailLinkFallback
+            pending={emailLink.isPending}
+            onSend={() => {
+                emailLink.mutate();
+            }}
+        />
+    );
     return (
         <div className="flex flex-col gap-5">
             <p>
@@ -178,8 +195,12 @@ function JoinCeremony(props: {
                     ? m.invite_join_new_body({ email: props.preview.email })
                     : m.invite_join_existing_body({ email: props.preview.email })}
             </p>
-            {state.kind === 'failed' && code !== 'account-exists' ? (
-                <Banner tone="danger" title={m.passkey_error_title()}>
+            {failed ? (
+                <Banner
+                    tone="danger"
+                    title={m.passkey_error_title()}
+                    {...(mode === 'sign-in' ? { action: fallback } : {})}
+                >
                     {code === 'email-mismatch'
                         ? m.invite_join_mismatch({ email: props.preview.email })
                         : ceremonyFailureMessage(state.failure, mode === 'new-account' ? 'register' : 'authenticate')}
@@ -193,15 +214,39 @@ function JoinCeremony(props: {
                       ? joinLabel(props.preview)
                       : m.invite_join_sign_in()}
             </Button>
-            <p className="text-sm text-text-muted">
-                {mode === 'new-account' ? (
-                    m.invite_join_passkey_hint()
-                ) : (
-                    <>
-                        {m.signin_lost_passkey()} <Link to="/recover">{m.signin_recover()}</Link>
-                    </>
-                )}
+            {mode === 'new-account' ? (
+                <p className="text-sm text-text-muted">{m.invite_join_passkey_hint()}</p>
+            ) : failed ? null : (
+                fallback
+            )}
+        </div>
+    );
+}
+
+/**
+ * For an account whose passkey is on another device: the recovery email, which adds a passkey here and signs in, and
+ * the invitation is offered after that (D-33). The invitation token itself never adds a passkey to an existing
+ * account: whoever holds a forwarded link would take the account over.
+ */
+function EmailLinkFallback(props: { readonly pending: boolean; readonly onSend: () => void }) {
+    return (
+        <p className="flex flex-wrap items-center gap-x-1 text-sm text-text-muted">
+            {m.invite_join_no_passkey()}
+            <Button variant="ghost" size="sm" className="-mx-2" loading={props.pending} onClick={props.onSend}>
+                {m.invite_join_email_link()}
+            </Button>
+        </p>
+    );
+}
+
+function EmailLinkSent(props: { readonly email: string }) {
+    return (
+        <div className="flex flex-col gap-2" role="status">
+            <p className="flex items-center gap-2 font-medium">
+                <Mail aria-hidden className="size-4 shrink-0 text-text-muted" />
+                {m.invite_join_link_sent_title({ email: props.email })}
             </p>
+            <p className="text-sm text-text-muted">{m.invite_join_link_sent_body()}</p>
         </div>
     );
 }
@@ -242,14 +287,17 @@ function AcceptAsSignedIn(props: {
         },
         onSuccess: () => {
             queryClient.setQueryData(queryKeys.session, null);
+            // The other account's data must not outlive its session on this page.
+            queryClient.removeQueries({
+                predicate: (query) => ![queryKeys.session[0], 'invite-preview'].includes(String(query.queryKey[0])),
+            });
         },
     });
     if (props.session.user.email.toLowerCase() !== props.preview.email) {
+        const current = props.session.user.email;
         return (
-            <div className="flex flex-col gap-4">
-                <Banner tone="warning">
-                    {m.invite_join_other_account({ current: props.session.user.email, email: props.preview.email })}
-                </Banner>
+            <div className="flex flex-col gap-5">
+                <p>{m.invite_other_account_body({ email: props.preview.email, current })}</p>
                 <Button
                     variant="primary"
                     size="lg"
@@ -258,8 +306,11 @@ function AcceptAsSignedIn(props: {
                         signOut.mutate();
                     }}
                 >
-                    {m.invite_join_sign_out()}
+                    {m.invite_other_account_continue({ email: props.preview.email })}
                 </Button>
+                <Link to="/" className="self-center text-sm">
+                    {m.invite_other_account_stay({ current })}
+                </Link>
             </div>
         );
     }
@@ -281,7 +332,7 @@ function AcceptAsSignedIn(props: {
 }
 
 /** After joining: straight on to the one engine, a list of several, or the dashboard when there is none yet. */
-function Joined(props: { readonly teamIds: readonly string[] }) {
+export function Joined(props: { readonly teamIds: readonly string[] }) {
     const api = useApiClient();
     const teams = useQuery(teamsQuery(api));
     if (teams.isPending) {

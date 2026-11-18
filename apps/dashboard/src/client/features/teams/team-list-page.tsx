@@ -16,6 +16,7 @@ import { EngineStatusPill } from '../engines/engine-status-pill';
 import { PendingLinkCodes } from '../engines/pending-link-codes';
 import { Page } from '../shell/page';
 import { useSession } from '../session/use-session';
+import { InviteOffers } from './invite-offers';
 import { OpenTeamButton } from './open-team-button';
 import { TeamNameDialog } from './team-name-dialog';
 import { teamKeys, teamsQuery } from './team-queries';
@@ -150,6 +151,7 @@ export function TeamListPage() {
             title={m.teams_title()}
             {...(canManage && (teams.data?.length ?? 0) > 0 ? { actions: <NewTeamButton primary /> } : {})}
         >
+            <InviteOffers />
             {content()}
             {canLink ? <PendingLinkCodes /> : null}
         </Page>

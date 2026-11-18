@@ -8,6 +8,7 @@ import { useBrowser } from '../../core/browser';
 import { Link } from '../../core/link';
 import { CooldownBanner } from '../account/cooldown-banner';
 import { registerWithEmailToken } from '../passkeys/ceremonies';
+import { InviteOffers } from '../teams/invite-offers';
 import { useCeremony } from '../passkeys/use-ceremony';
 import { useCompleteSignIn } from '../session/end-session';
 import { CeremonyPanel } from './ceremony-panel';
@@ -101,6 +102,7 @@ function Recovered(props: { readonly session: SessionView }) {
             <h1 className="text-2xl font-semibold tracking-display">{m.recovered_title()}</h1>
             <Banner tone="success">{m.recovered_body()}</Banner>
             <CooldownBanner endsAt={props.session.user.recoveryCooldownEndsAt} now={now()} />
+            <InviteOffers />
             <p>{m.recovered_next()}</p>
             <Link to="/account" variant="standalone" className="font-medium">
                 {m.recovered_review_passkeys()}
