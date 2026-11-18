@@ -15,9 +15,9 @@ import { EmailStep } from './email-step';
 /**
  * `/continue`: one screen to sign in or create an account. Continue always sends the email, which the server answers
  * the same for every address: a sign-in and recovery note to an existing account, a link to finish creating one to a
- * new address. A passkey this browser has signs in from the email field's autofill without any mail. Continue never
- * opens a passkey picker first: for someone new it only offers passkeys they don't have and phones they don't need
- * (Seb, 2026-11-18). "Use a passkey" opens the picker on purpose, for one on a phone or in a password manager.
+ * new address. A passkey this browser has signs in from the email field's autofill without any mail. Continue opens no
+ * passkey picker: for someone new it would only offer a phone they don't need (Seb, 2026-11-18). "Use a passkey" opens
+ * it on purpose, for a passkey on a phone or in a password manager.
  */
 export function ContinuePage(props: { readonly returnTo: string | undefined }) {
     const api = useApiClient();
