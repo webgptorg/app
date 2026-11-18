@@ -1096,11 +1096,17 @@ function longThread() {
         return [
             userSays(`Point ${String(turn + 1)}: what changed since last quarter?`, at(0)),
             {
+                type: 'progress' as const,
+                author: ADA,
+                steps: [{ kind: 'tool' as const, tool: 'Read', text: 'reports/quarterly.md' }],
+            },
+            {
                 type: 'message' as const,
                 author: ADA,
                 content: 'Revenue grew in every region.\n\n'.repeat(3),
                 at: at(1),
             },
+            { type: 'message' as const, author: ADA, content: 'Costs held flat.', at: at(1) },
             { type: 'message' as const, author: GRACE, content: '@Ada The numbers check out.', at: at(2) },
         ];
     }).flat();
