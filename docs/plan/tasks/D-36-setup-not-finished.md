@@ -27,5 +27,5 @@ The engine keeps the setup draft itself; the dashboard learns only the heartbeat
 
 - [x] A heartbeat with and without `setup` is accepted; the stored state follows it.
 - [x] UI tests show "Setup not finished" and "Continue setup" for `pending`, and today's view for `done` or absent.
-- [ ] `bun run check` passes.
+- [x] `bun run check` passes.
 - [x] **Status** line above set to `done (#<PR>)`.
