@@ -86,6 +86,22 @@ describe('an engine that is only being set up', { timeout: TIMEOUT_MS }, () => {
         });
     });
 
+    it('is how the reference engine presents an engine paired before it has a project', async () => {
+        const engine = createInMemoryEngine({
+            clock: { now: () => TEST_NOW },
+            seed: {
+                engine: { name: 'New engine', hostname: 'engine.localhost', dashboardUrl: null, mode: 'local' },
+                onboarding: 'no-project',
+            },
+            capabilities: [KNOWN_CAPABILITIES.files, KNOWN_CAPABILITIES.onboarding],
+        });
+        const { router } = renderWithProviders({ engineApi: engine.client });
+        expect(await screen.findByText(/Your answers are saved/)).toBeDefined();
+        expect(router.state.location.pathname).toBe('/onboarding');
+        expect(screen.queryByRole('navigation')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull();
+    });
+
     it('keeps the whole app around a setup the owner may skip', async () => {
         renderWithProviders({ path: '/onboarding', engineApi: pairedEngine({ ...PENDING, canDefer: true }) });
         expect(await screen.findByRole('button', { name: 'Skip for now' })).toBeDefined();
