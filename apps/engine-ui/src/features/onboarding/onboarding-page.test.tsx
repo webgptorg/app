@@ -65,8 +65,8 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         await user.type(screen.getByRole('textbox', { name: 'Code from Claude Code' }), 'a1B2c3D4e5');
         await user.click(continueButton());
 
-        // The engine checks the tool, then creates the project; the page polls while it works.
-        expect(await screen.findByText('The engine is setting things up…')).toBeDefined();
+        // The engine checks the tool, then creates the project; the page polls and lists its work meanwhile.
+        expect(await screen.findByText('Check Claude Code')).toBeDefined();
         engine.advance(CHECK_MS);
         expect(
             await screen.findByRole('heading', { level: 1, name: 'Project name' }, { timeout: 5_000 }),
@@ -76,8 +76,9 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         await user.click(continueButton());
         expect(await screen.findByRole('heading', { level: 1, name: 'Create and start' })).toBeDefined();
         expect(screen.getByText('Step 6 of 6')).toBeDefined();
+        expect(screen.getAllByRole('term').map((term) => term.textContent)).toContain('Folder');
         await user.click(screen.getByRole('button', { name: 'Create and start' }));
-        expect(await screen.findByText('The engine is setting things up…')).toBeDefined();
+        expect(await screen.findByText(/^Create /)).toBeDefined();
         engine.advance(CREATE_MS);
         expect(
             await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' }, { timeout: 5_000 }),
@@ -92,7 +93,7 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         const { user } = renderWithProviders({ path: '/onboarding', engineApi: engine.client });
         await user.click(await screen.findByRole('button', { name: 'Continue' }));
         await user.click(await screen.findByRole('button', { name: 'Continue' }));
-        expect(await screen.findByText('The engine is setting things up…')).toBeDefined();
+        expect(await screen.findByText('Install OpenAI Codex')).toBeDefined();
         engine.advance(INSTALL_MS);
         expect(
             await screen.findByRole('heading', { level: 1, name: 'Sign in to OpenAI Codex' }, { timeout: 5_000 }),

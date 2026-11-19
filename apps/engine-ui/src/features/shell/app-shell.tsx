@@ -1,10 +1,12 @@
-import { BrandLockup, BrandMark, Drawer, IconButton, SkipLink } from '@ptbk/ui';
+import { BrandLockup, BrandMark, Button, Drawer, IconButton, SkipLink, useToast } from '@ptbk/ui';
 import { Outlet, useMatches } from '@tanstack/react-router';
-import { Menu as MenuIcon, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LogOut, Menu as MenuIcon, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useState } from 'react';
 
+import { useBrowser } from '../../app/browser-context';
 import { cx } from '../../app/cx';
 import { m } from '../../paraglide/messages';
+import { useSetupOnly } from '../onboarding/setup-only';
 import { FeatureEventSync } from './feature-event-sync';
 import { ShellEngineSwitcher } from './shell-engine-switcher';
 import { ShellLanguageSwitch } from './shell-language-switch';
@@ -15,6 +17,7 @@ import type { SidebarState } from './sidebar-preference';
 import { SidebarNav } from './sidebar-nav';
 import { NARROW_QUERY, useMediaQuery } from './use-media-query';
 import { CommandPaletteHost, PaletteButton, useCommandPalette } from './palette/palette-launcher';
+import { signOut } from './sign-out';
 import { UserMenu } from './user-menu';
 
 const MAIN_ID = 'main-content';
@@ -22,9 +25,59 @@ const MAIN_ID = 'main-content';
 /**
  * The authenticated frame around every route: the sidebar (the Promptbook lockup, the engine switcher with the trust
  * mark, the language switch, navigation from the feature registry, live indicator, user menu), which collapses to icons
- * on wide screens and becomes a drawer below 768 px.
+ * on wide screens and becomes a drawer below 768 px. An engine that is only being set up gets the setup frame instead.
  */
 export function AppShell() {
+    return useSetupOnly() ? <SetupShell /> : <FullShell />;
+}
+
+/**
+ * The frame while setup is all the engine has: who it is and how to leave, but no navigation, palette or live
+ * updates, since every other page would be empty until the engine has a project.
+ */
+function SetupShell() {
+    const browser = useBrowser();
+    const toast = useToast();
+    return (
+        <div className="flex min-h-dvh flex-col">
+            <SkipLink targetId={MAIN_ID} />
+            <header className="flex h-14 items-center gap-3 border-b border-divider bg-surface px-4 md:px-8">
+                <BrandLockup className="hidden sm:flex" />
+                <BrandMark className="sm:hidden" />
+                <div className="min-w-0 sm:w-60">
+                    <ShellEngineSwitcher compact={false} />
+                </div>
+                <div className="ms-auto flex items-center gap-1">
+                    <ShellLanguageSwitch />
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => {
+                            void signOut(browser).then((signedOut) => {
+                                if (!signedOut) toast.show({ tone: 'danger', title: m.sign_out_failed() });
+                            });
+                        }}
+                    >
+                        <LogOut aria-hidden className="size-4" />
+                        {m.sign_out()}
+                    </Button>
+                </div>
+            </header>
+            <main
+                id={MAIN_ID}
+                tabIndex={-1}
+                className="min-w-0 flex-1 px-4 pt-3 pb-10 outline-none md:px-8 md:pt-4 md:pb-12"
+            >
+                <div className="mx-auto w-full max-w-page">
+                    <Outlet />
+                </div>
+            </main>
+        </div>
+    );
+}
+
+function FullShell() {
     const narrow = useMediaQuery(NARROW_QUERY);
     const palette = useCommandPalette();
     const sidebar = useSidebarState();
