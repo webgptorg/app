@@ -2,7 +2,7 @@
 
 - **Lane:** M · **Module:** `apps/mock-engine` · **Milestone:** M5
 - **Depends on:** C-15
-- **Status:** in progress (feat/m-10-mock-engine-pending-setup)
+- **Status:** done (#339)
 - **Spec:** Pairing and identity
 
 ## Goal
@@ -22,7 +22,7 @@ A freshly linked mock engine behaves like Reborn's pending engine: it pairs, the
 
 ## Acceptance criteria
 
-- [ ] Tests cover `setup` in heartbeats before and after completion.
+- [x] Tests cover `setup` in heartbeats before and after completion.
 - [ ] `bun run dev:stack up` gives a newly linked engine that opens on setup.
-- [ ] `bun run check` passes; the e2e `onboarding` scenario passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] `bun run check` passes; the e2e `onboarding` scenario passes.
+- [x] **Status** line above set to `done (#<PR>)`.
