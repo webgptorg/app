@@ -61,11 +61,11 @@ Decisions (Seb, 2026-11-19):
 
 ## Acceptance criteria
 
-- [ ] The reference engine walks the whole flow above in a test, including back, a refused secret (whose value appears nowhere in the state), a failed and a passing harness in `activity`, and both alternatives.
-- [ ] `OnboardingStateReader` reads an unknown kind as `unsupported` and still rejects a known kind with a bad field.
-- [ ] Conformance checks above pass against the in-memory engine and fail against a fake that breaks each rule.
-- [ ] `engine-api` and `protocol` coverage thresholds hold; `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] The reference engine walks the whole flow above in a test, including back, a refused secret (whose value appears nowhere in the state), a failed and a passing harness in `activity`, and both alternatives.
+- [x] `OnboardingStateReader` reads an unknown kind as `unsupported` and still rejects a known kind with a bad field.
+- [x] Conformance checks above pass against the in-memory engine and fail against a fake that breaks each rule.
+- [x] `engine-api` and `protocol` coverage thresholds hold; `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
