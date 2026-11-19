@@ -35,6 +35,7 @@ async function setup(overrides: Partial<HeartbeatFacts> = {}) {
         system: { diskPct: 44, ramPct: 46, cpuLoad: 'medium' },
         counts: { agents: 8, members: 5 },
         update: 'none',
+        setup: null,
         ...overrides,
     };
     const signed = await buildSignedHeartbeat(facts, { clock, signer: signerOf(identity) });
@@ -147,6 +148,14 @@ describe('buildSignedHeartbeat', () => {
     it('throws on input outside the schema instead of sending it', async () => {
         await expect(setup({ engineId: 'not-an-engine-id' as EngineId })).rejects.toThrow();
         await expect(setup({ system: { diskPct: 101, ramPct: 0, cpuLoad: 'low' } })).rejects.toThrow(RangeError);
+    });
+
+    it('says whether setup is finished only when the engine has a browser setup', async () => {
+        const parsed = async (setupState: HeartbeatFacts['setup']) =>
+            Heartbeat.parse(JSON.parse((await setup({ setup: setupState })).signed.body));
+        expect(await parsed(null)).not.toHaveProperty('setup');
+        expect((await parsed('pending')).setup).toBe('pending');
+        expect((await parsed('done')).setup).toBe('done');
     });
 
     it('a re-serialised body no longer verifies', async () => {

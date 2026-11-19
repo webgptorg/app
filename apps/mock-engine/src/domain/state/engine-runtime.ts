@@ -1,6 +1,12 @@
 import type { CapabilityRef, SecurityOverview, UiUpdateCheck } from '@ptbk/engine-api';
 import { createInMemoryEngineCore } from '@ptbk/engine-api/in-memory';
-import type { InMemoryEngineController, InMemoryEngineCore, ReplyScript, Sleep } from '@ptbk/engine-api/in-memory';
+import type {
+    InMemoryEngineController,
+    InMemoryEngineCore,
+    OnboardingSeed,
+    ReplyScript,
+    Sleep,
+} from '@ptbk/engine-api/in-memory';
 
 import { decideOwnership } from '../authorization/policy';
 import { generateReply } from '../chat/reply-generator';
@@ -65,8 +71,12 @@ export interface EngineRuntimeOptions {
      * as on a fresh engine whose owner has yet to open the setup link. Members and data stay either way.
      */
     readonly passkeys?: 'seeded' | 'none';
-    /** `MOCK_ONBOARDING`: overrides the scenario's onboarding state (`empty` is `pending`, the others `completed`). */
-    readonly onboarding?: 'pending' | 'completed';
+    /**
+     * `MOCK_ONBOARDING`: overrides the onboarding state. Without it an engine whose owner is not seeded is paired before
+     * setup (`no-project`), as a newly linked Reborn engine is; with the owner seeded `empty` is `pending` and the other
+     * scenarios `completed`.
+     */
+    readonly onboarding?: OnboardingSeed;
 }
 
 export interface ResetInput {
@@ -173,7 +183,8 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
             hostname: identity.hostname,
         });
         const withOwner = options.passkeys === 'none' ? { ...seeded, passkeys: [], sessions: [] } : seeded;
-        const seed = options.onboarding === undefined ? withOwner : { ...withOwner, onboarding: options.onboarding };
+        const onboarding = options.onboarding ?? (options.passkeys === 'none' ? 'no-project' : undefined);
+        const seed = onboarding === undefined ? withOwner : { ...withOwner, onboarding };
         const replyScript: ReplyScript = ({ agent, content, chatId, messageIndex }) => ({
             chunks: generateReply({
                 seed: seedValue,

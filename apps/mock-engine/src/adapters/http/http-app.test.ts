@@ -297,6 +297,8 @@ describe('control listener route table', () => {
                 'http POST /__mock/step-up/expire',
                 'http POST /__mock/runs',
                 'http POST /__mock/inbound-email',
+                'http POST /__mock/onboarding/harness-check',
+                'http POST /__mock/onboarding/harness-login',
                 'http PUT /__mock/faults',
             ].sort(),
         );
