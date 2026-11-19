@@ -32,6 +32,14 @@ export const UpdateState = z.enum(['none', 'available', 'pending', 'installing']
 export type UpdateState = z.infer<typeof UpdateState>;
 
 /**
+ * Whether the engine's own setup (`onboarding@1`) is finished: `pending` from pairing until the owner completes it in
+ * the browser, however long they leave it. Absent from engines without browser setup, which the dashboard reads as
+ * set up.
+ */
+export const SetupState = z.enum(['pending', 'done']);
+export type SetupState = z.infer<typeof SetupState>;
+
+/**
  * The public promise of what the dashboard learns about an engine: numbers and closed enums only, no names or free
  * text. `seq` only has to increase strictly; engines send `max(lastSeq + 1, Date.now())` so one that loses its state
  * but keeps its key is not locked out.
@@ -48,6 +56,7 @@ const heartbeatShape = {
     update: UpdateState,
     agents: Count,
     members: Count,
+    setup: SetupState.optional(),
 };
 
 export const Heartbeat = z.strictObject({ v: z.literal(1), ...heartbeatShape });
@@ -156,6 +165,7 @@ function heartbeatFields(input: HeartbeatInput) {
         update: input.update,
         agents: input.agents,
         members: input.members,
+        ...(input.setup === undefined ? {} : { setup: input.setup }),
     };
 }
 

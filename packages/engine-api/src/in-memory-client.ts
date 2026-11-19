@@ -12,6 +12,7 @@ import { FileMetadata, FileVersion } from './capabilities/files';
 import type { FileScanStatus } from './capabilities/files';
 import { Integration } from './capabilities/integrations';
 import type { IntegrationStatus } from './capabilities/integrations';
+import type { OnboardingState } from './capabilities/onboarding';
 import { RunDetail } from './capabilities/runs';
 import { Task, TaskLink, TaskOccurrence } from './capabilities/tasks';
 import type { Run, RunStatus } from './capabilities/runs';
@@ -43,8 +44,8 @@ import { EngineEvent } from './events';
 import { Folder } from './folders';
 import { hashAuditEntry } from './in-memory/audit-chain';
 import { requestAccess, revokeDashboardMember } from './in-memory/access-requests';
-import { createOnboardingRecord, settleHarnessLogin } from './in-memory/onboarding';
-import type { HarnessLoginOutcome } from './in-memory/onboarding';
+import { createOnboardingRecord, failHarnessCheck, onboardingState, settleHarnessLogin } from './in-memory/onboarding';
+import type { HarnessLoginOutcome, OnboardingHarness, OnboardingSeed } from './in-memory/onboarding';
 import type { DashboardRevocationOutcome, NewAccessRequest } from './in-memory/access-requests';
 import { checkBook } from './in-memory/book';
 import { HANDLERS } from './in-memory/handlers';
@@ -229,8 +230,11 @@ export interface InMemorySeed {
     readonly invites?: readonly Unbranded<z.input<typeof Invite>>[];
     /** Pending requests with the code each person was shown; ignored without `access-requests@1`. */
     readonly accessRequests?: readonly InMemorySeedAccessRequest[];
-    /** `onboarding@1`: whether setup still waits for the owner (`pending`) or is done (`completed`, the default). */
-    readonly onboarding?: 'pending' | 'completed';
+    /**
+     * `onboarding@1`: whether setup still waits for the owner (`pending`), waits on an engine paired before it has a
+     * project and cannot be skipped (`no-project`), or is done (`completed`, the default).
+     */
+    readonly onboarding?: OnboardingSeed;
     readonly folders?: readonly Unbranded<z.input<typeof Folder>>[];
     readonly agents?: readonly InMemorySeedAgent[];
     /** Replayed after the agents, so joins carry their names. */
@@ -515,6 +519,10 @@ export interface InMemoryEngineController {
     requestAccess(request: NewAccessRequest): AccessRequest;
     /** `onboarding@1`: the provider answered the running harness sign-in; throws when none runs. */
     settleHarnessLogin(outcome: HarnessLoginOutcome, diagnostic?: string): void;
+    /** `onboarding@1`: the harness's check fails with `reason` whenever it runs during setup. */
+    failHarnessCheck(harness: OnboardingHarness, reason: string): void;
+    /** `onboarding@1`: the setup as the engine itself sees it at its current time, e.g. for the heartbeat's `setup`. */
+    onboarding(): OnboardingState;
     /** Agent work needs a login it does not have; asking again for the same origin and account counts on one request. */
     requestWalletLogin(request: Unbranded<NewWalletRequest>): WalletRequest;
     /** E.g. the operator set the Wallet up or it locked on this host. */
@@ -885,6 +893,10 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         settleHarnessLogin: (outcome, diagnostic) => {
             settleHarnessLogin(system, outcome, diagnostic);
         },
+        failHarnessCheck: (harness, reason) => {
+            failHarnessCheck(system, harness, reason);
+        },
+        onboarding: () => onboardingState(system),
         requestWalletLogin: (request) => requestWalletLogin(system, request as NewWalletRequest),
         setWalletState: (walletState, lockedRecords = 0) => {
             state.wallet.state = walletState;

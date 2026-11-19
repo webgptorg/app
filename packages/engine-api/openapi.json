@@ -13917,6 +13917,10 @@
                     "deferred": {
                       "type": "boolean"
                     },
+                    "canDefer": {
+                      "default": true,
+                      "type": "boolean"
+                    },
                     "progress": {
                       "anyOf": [
                         {
@@ -13940,6 +13944,42 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "activity": {
+                      "default": [],
+                      "maxItems": 16,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                          },
+                          "label": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["running", "done", "failed", "skipped"]
+                          },
+                          "detail": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 2048
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["id", "label", "status", "detail"],
+                        "additionalProperties": false
+                      }
                     },
                     "prompt": {
                       "anyOf": [
@@ -13987,6 +14027,72 @@
                                 "canGoBack": {
                                   "type": "boolean"
                                 },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
+                                },
                                 "kind": {
                                   "type": "string",
                                   "const": "text"
@@ -14023,6 +14129,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "multiline",
                                 "required",
@@ -14073,6 +14181,72 @@
                                 },
                                 "canGoBack": {
                                   "type": "boolean"
+                                },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
                                 },
                                 "kind": {
                                   "type": "string",
@@ -14132,6 +14306,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "multiple",
                                 "choices",
@@ -14181,6 +14357,72 @@
                                 "canGoBack": {
                                   "type": "boolean"
                                 },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
+                                },
                                 "kind": {
                                   "type": "string",
                                   "const": "confirm"
@@ -14203,6 +14445,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "confirmLabel",
                                 "declineLabel"
@@ -14251,6 +14495,72 @@
                                 "canGoBack": {
                                   "type": "boolean"
                                 },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
+                                },
                                 "kind": {
                                   "type": "string",
                                   "const": "upload"
@@ -14271,6 +14581,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "required",
                                 "maxFiles"
@@ -14318,6 +14630,229 @@
                                 },
                                 "canGoBack": {
                                   "type": "boolean"
+                                },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "kind": {
+                                  "type": "string",
+                                  "const": "secret"
+                                },
+                                "label": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
+                                },
+                                "placeholder": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 256
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "helpUrl": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 2048,
+                                      "format": "uri"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "title",
+                                "question",
+                                "hint",
+                                "error",
+                                "canGoBack",
+                                "details",
+                                "alternatives",
+                                "kind",
+                                "label",
+                                "placeholder",
+                                "helpUrl"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                },
+                                "title": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
+                                },
+                                "question": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 2048
+                                },
+                                "hint": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 2048
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "error": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 2048
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "canGoBack": {
+                                  "type": "boolean"
+                                },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
                                 },
                                 "kind": {
                                   "type": "string",
@@ -14390,6 +14925,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "harness",
                                 "method",
@@ -14409,7 +14946,7 @@
                       ]
                     }
                   },
-                  "required": ["status", "deferred", "progress", "prompt"],
+                  "required": ["status", "deferred", "canDefer", "progress", "activity", "prompt"],
                   "additionalProperties": false
                 }
               }
@@ -14488,7 +15025,7 @@
       "post": {
         "operationId": "answerOnboarding",
         "summary": "Answer the current prompt, or go back one; the engine decides what comes next",
-        "description": "A `promptId` that is not the current prompt is 409 `onboarding-prompt-stale` and changes nothing. An answer of another kind than the prompt is 400 `validation-failed`. A returned login code is never logged or audited.",
+        "description": "A `promptId` that is not the current prompt is 409 `onboarding-prompt-stale` and changes nothing. An answer of another kind than the prompt, or an `alternativeId` the prompt does not offer without `href`, is 400 `validation-failed`. A returned login code or a secret is never logged or audited.",
         "tags": ["onboarding"],
         "x-required-permission": "settings.manage",
         "x-capability": {
@@ -14594,6 +15131,22 @@
                             "properties": {
                               "kind": {
                                 "type": "string",
+                                "const": "secret"
+                              },
+                              "value": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 4096
+                              }
+                            },
+                            "required": ["kind", "value"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
                                 "const": "harness-login"
                               },
                               "returnCode": {
@@ -14632,6 +15185,25 @@
                     },
                     "required": ["promptId", "action"],
                     "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "promptId": {
+                        "type": "string",
+                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                      },
+                      "action": {
+                        "type": "string",
+                        "const": "alternative"
+                      },
+                      "alternativeId": {
+                        "type": "string",
+                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                      }
+                    },
+                    "required": ["promptId", "action", "alternativeId"],
+                    "additionalProperties": false
                   }
                 ]
               }
@@ -14651,6 +15223,10 @@
                       "enum": ["pending", "working", "completed"]
                     },
                     "deferred": {
+                      "type": "boolean"
+                    },
+                    "canDefer": {
+                      "default": true,
                       "type": "boolean"
                     },
                     "progress": {
@@ -14676,6 +15252,42 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "activity": {
+                      "default": [],
+                      "maxItems": 16,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                          },
+                          "label": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["running", "done", "failed", "skipped"]
+                          },
+                          "detail": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 2048
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["id", "label", "status", "detail"],
+                        "additionalProperties": false
+                      }
                     },
                     "prompt": {
                       "anyOf": [
@@ -14723,6 +15335,72 @@
                                 "canGoBack": {
                                   "type": "boolean"
                                 },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
+                                },
                                 "kind": {
                                   "type": "string",
                                   "const": "text"
@@ -14759,6 +15437,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "multiline",
                                 "required",
@@ -14809,6 +15489,72 @@
                                 },
                                 "canGoBack": {
                                   "type": "boolean"
+                                },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
                                 },
                                 "kind": {
                                   "type": "string",
@@ -14868,6 +15614,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "multiple",
                                 "choices",
@@ -14917,6 +15665,72 @@
                                 "canGoBack": {
                                   "type": "boolean"
                                 },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
+                                },
                                 "kind": {
                                   "type": "string",
                                   "const": "confirm"
@@ -14939,6 +15753,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "confirmLabel",
                                 "declineLabel"
@@ -14987,6 +15803,72 @@
                                 "canGoBack": {
                                   "type": "boolean"
                                 },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
+                                },
                                 "kind": {
                                   "type": "string",
                                   "const": "upload"
@@ -15007,6 +15889,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "required",
                                 "maxFiles"
@@ -15054,6 +15938,229 @@
                                 },
                                 "canGoBack": {
                                   "type": "boolean"
+                                },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "kind": {
+                                  "type": "string",
+                                  "const": "secret"
+                                },
+                                "label": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
+                                },
+                                "placeholder": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 256
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "helpUrl": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 2048,
+                                      "format": "uri"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "title",
+                                "question",
+                                "hint",
+                                "error",
+                                "canGoBack",
+                                "details",
+                                "alternatives",
+                                "kind",
+                                "label",
+                                "placeholder",
+                                "helpUrl"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                },
+                                "title": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
+                                },
+                                "question": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 2048
+                                },
+                                "hint": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 2048
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "error": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 2048
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "canGoBack": {
+                                  "type": "boolean"
+                                },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
                                 },
                                 "kind": {
                                   "type": "string",
@@ -15126,6 +16233,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "harness",
                                 "method",
@@ -15145,7 +16254,7 @@
                       ]
                     }
                   },
-                  "required": ["status", "deferred", "progress", "prompt"],
+                  "required": ["status", "deferred", "canDefer", "progress", "activity", "prompt"],
                   "additionalProperties": false
                 }
               }
@@ -15246,7 +16355,7 @@
       "post": {
         "operationId": "deferOnboarding",
         "summary": "\"Skip for now\": keep the setup pending, and let the engine set itself up through its built-in agents",
-        "description": "Idempotent. Onboarding stays reachable; answering a prompt later continues where it stopped.",
+        "description": "Idempotent. Onboarding stays reachable; answering a prompt later continues where it stopped. 409 `onboarding-not-deferrable` while `canDefer` is false.",
         "tags": ["onboarding"],
         "x-required-permission": "settings.manage",
         "x-capability": {
@@ -15267,6 +16376,10 @@
                       "enum": ["pending", "working", "completed"]
                     },
                     "deferred": {
+                      "type": "boolean"
+                    },
+                    "canDefer": {
+                      "default": true,
                       "type": "boolean"
                     },
                     "progress": {
@@ -15292,6 +16405,42 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "activity": {
+                      "default": [],
+                      "maxItems": 16,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                          },
+                          "label": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 256
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["running", "done", "failed", "skipped"]
+                          },
+                          "detail": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 2048
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["id", "label", "status", "detail"],
+                        "additionalProperties": false
+                      }
                     },
                     "prompt": {
                       "anyOf": [
@@ -15339,6 +16488,72 @@
                                 "canGoBack": {
                                   "type": "boolean"
                                 },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
+                                },
                                 "kind": {
                                   "type": "string",
                                   "const": "text"
@@ -15375,6 +16590,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "multiline",
                                 "required",
@@ -15425,6 +16642,72 @@
                                 },
                                 "canGoBack": {
                                   "type": "boolean"
+                                },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
                                 },
                                 "kind": {
                                   "type": "string",
@@ -15484,6 +16767,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "multiple",
                                 "choices",
@@ -15533,6 +16818,72 @@
                                 "canGoBack": {
                                   "type": "boolean"
                                 },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
+                                },
                                 "kind": {
                                   "type": "string",
                                   "const": "confirm"
@@ -15555,6 +16906,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "confirmLabel",
                                 "declineLabel"
@@ -15603,6 +16956,72 @@
                                 "canGoBack": {
                                   "type": "boolean"
                                 },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
+                                },
                                 "kind": {
                                   "type": "string",
                                   "const": "upload"
@@ -15623,6 +17042,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "required",
                                 "maxFiles"
@@ -15670,6 +17091,229 @@
                                 },
                                 "canGoBack": {
                                   "type": "boolean"
+                                },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "kind": {
+                                  "type": "string",
+                                  "const": "secret"
+                                },
+                                "label": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
+                                },
+                                "placeholder": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 256
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "helpUrl": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 2048,
+                                      "format": "uri"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "title",
+                                "question",
+                                "hint",
+                                "error",
+                                "canGoBack",
+                                "details",
+                                "alternatives",
+                                "kind",
+                                "label",
+                                "placeholder",
+                                "helpUrl"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                },
+                                "title": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
+                                },
+                                "question": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 2048
+                                },
+                                "hint": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 2048
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "error": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 2048
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "canGoBack": {
+                                  "type": "boolean"
+                                },
+                                "details": {
+                                  "default": [],
+                                  "maxItems": 16,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 2048
+                                      }
+                                    },
+                                    "required": ["label", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "alternatives": {
+                                  "default": [],
+                                  "maxItems": 4,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
+                                      },
+                                      "label": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 256
+                                      },
+                                      "description": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 2048
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      },
+                                      "href": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "maxLength": 512,
+                                            "pattern": "^\\/(?![/\\\\])[^\\s\\\\]*$"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": ["id", "label", "description", "href"],
+                                    "additionalProperties": false
+                                  }
                                 },
                                 "kind": {
                                   "type": "string",
@@ -15742,6 +17386,8 @@
                                 "hint",
                                 "error",
                                 "canGoBack",
+                                "details",
+                                "alternatives",
                                 "kind",
                                 "harness",
                                 "method",
@@ -15761,7 +17407,7 @@
                       ]
                     }
                   },
-                  "required": ["status", "deferred", "progress", "prompt"],
+                  "required": ["status", "deferred", "canDefer", "progress", "activity", "prompt"],
                   "additionalProperties": false
                 }
               }
@@ -15792,6 +17438,17 @@
           "404": {
             "description": "Problem: `capability-not-supported`.",
             "x-problem-codes": ["capability-not-supported"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `onboarding-not-deferrable`.",
+            "x-problem-codes": ["onboarding-not-deferrable"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -20623,6 +22280,7 @@
               "trigger-ended",
               "file-infected",
               "onboarding-prompt-stale",
+              "onboarding-not-deferrable",
               "payload-too-large",
               "unsupported-media-type",
               "invalid-book",

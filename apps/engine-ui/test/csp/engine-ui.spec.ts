@@ -52,7 +52,10 @@ test.describe('the built bundle under the engine CSP', () => {
         await page.getByRole('textbox', { name: 'What are you working on?' }).fill('<img src=x onerror=alert(1)>');
         await page.getByRole('button', { name: 'Continue' }).click();
         await page.getByRole('button', { name: 'Continue' }).click();
-        await expect(page.getByRole('heading', { level: 1, name: 'Sign in to OpenAI Codex' })).toBeVisible();
+        // The fake engine installs Codex for 2 s of real time first, and the page polls every 2 s while it works.
+        await expect(page.getByRole('heading', { level: 1, name: 'Sign in to OpenAI Codex' })).toBeVisible({
+            timeout: 10_000,
+        });
         await expect(page.getByText('K7QF-3MRP')).toBeVisible();
         expectCleanPage(report);
     });

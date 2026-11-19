@@ -230,16 +230,18 @@ describe('capability routes', () => {
         expect(ENGINE_API_ROUTES.checkIntegration.permission).toBe('integrations.manage');
     });
 
-    it('takes a credential only in Wallet writes and returns none anywhere but the new API token', () => {
+    it('takes a credential only in Wallet writes and a secret setup answer, and returns none but the new API token', () => {
         const walletWrites: readonly RouteDefinition[] = [
             ENGINE_API_ROUTES.addWalletRecord,
             ENGINE_API_ROUTES.updateWalletRecord,
         ];
+        const takesCredential: readonly RouteDefinition[] = [...walletWrites, ENGINE_API_ROUTES.answerOnboarding];
         for (const route of capabilityRoutes.filter((candidate) => candidate.id !== 'createApiToken')) {
             expect(credentialKeys(route), route.id).toEqual([]);
-            if (!walletWrites.includes(route)) expect(requestCredentialKeys(route), route.id).toEqual([]);
+            if (!takesCredential.includes(route)) expect(requestCredentialKeys(route), route.id).toEqual([]);
         }
         for (const route of walletWrites) expect(requestCredentialKeys(route).sort()).toEqual(['password', 'value']);
+        expect(requestCredentialKeys(ENGINE_API_ROUTES.answerOnboarding)).toEqual(['value']);
     });
 
     it('lists chats across agents with chats.read and filters activity per item', () => {

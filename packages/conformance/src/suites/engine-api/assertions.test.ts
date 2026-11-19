@@ -75,6 +75,15 @@ function chain(...tampers: Tamper[]): Tamper {
     };
 }
 
+const RUNNING = { id: 'install-codex', label: 'Install OpenAI Codex', status: 'running', detail: null };
+const API_KEY_ALTERNATIVE = { id: 'api-key', label: 'Use an API key instead', description: null, href: null };
+const TERMINAL_ALTERNATIVE = {
+    id: 'terminal',
+    label: 'Sign in in a terminal instead',
+    description: null,
+    href: '/_ptbk/harness-terminal',
+};
+
 function problem(code: string, status: number, extra: Record<string, unknown> = {}): Response {
     return new Response(JSON.stringify({ type: 'https://ptbk.io/problems/x', title: 'X', status, code, ...extra }), {
         status,
@@ -871,6 +880,117 @@ const FAILS: readonly Case[] = [
                     initial: ['claude-code'],
                 },
             })),
+        },
+    ],
+    [
+        'an activity listed twice',
+        'engine-api.onboarding.state',
+        { tamper: editJson(on('GET', /^\/onboarding$/), (state) => ({ ...state, activity: [RUNNING, RUNNING] })) },
+    ],
+    [
+        'a failed activity that does not say why',
+        'engine-api.onboarding.state',
+        {
+            tamper: editJson(on('GET', /^\/onboarding$/), (state) => ({
+                ...state,
+                activity: [{ ...RUNNING, status: 'failed' }],
+            })),
+        },
+    ],
+    [
+        'an activity still running after setup completed',
+        'engine-api.onboarding.state',
+        {
+            tamper: editJson(on('GET', /^\/onboarding$/), (state) => ({
+                ...state,
+                status: 'completed',
+                canDefer: true,
+                progress: null,
+                prompt: null,
+                activity: [RUNNING],
+            })),
+        },
+    ],
+    [
+        'a review that shows the same detail twice',
+        'engine-api.onboarding.state',
+        {
+            tamper: editJson(on('GET', /^\/onboarding$/), (state) => ({
+                ...state,
+                prompt: {
+                    ...state.prompt,
+                    details: [
+                        { label: 'Folder', text: 'bakery' },
+                        { label: 'Folder', text: 'books' },
+                    ],
+                },
+            })),
+        },
+    ],
+    [
+        'a prompt that offers the same alternative twice',
+        'engine-api.onboarding.state',
+        {
+            tamper: editJson(on('GET', /^\/onboarding$/), (state) => ({
+                ...state,
+                prompt: { ...state.prompt, alternatives: [API_KEY_ALTERNATIVE, API_KEY_ALTERNATIVE] },
+            })),
+        },
+    ],
+    [
+        'a setup deferred although it cannot be',
+        'engine-api.onboarding.state',
+        { tamper: editJson(on('GET', /^\/onboarding$/), (state) => ({ ...state, deferred: true })) },
+    ],
+    [
+        'a completed setup that still has no project',
+        'engine-api.onboarding.state',
+        {
+            tamper: editJson(on('GET', /^\/onboarding$/), (state) => ({
+                ...state,
+                status: 'completed',
+                progress: null,
+                prompt: null,
+            })),
+        },
+    ],
+    [
+        '"Skip for now" accepted on an engine without a project',
+        'engine-api.onboarding.state',
+        {
+            tamper: replace(on('POST', /^\/onboarding\/defer$/), () =>
+                Response.json({ status: 'working', deferred: true, canDefer: false, progress: null, prompt: null }),
+            ),
+        },
+    ],
+    [
+        'an alternative the prompt does not offer, taken',
+        'engine-api.onboarding.refusals',
+        {
+            tamper: async (request, response) => {
+                if (!on('POST', /^\/onboarding\/answer$/)(request)) return response;
+                const body = (await request.json()) as { action: string };
+                return body.action === 'alternative' ? new Response(null, { status: 204 }) : response;
+            },
+        },
+    ],
+    [
+        'a sign-in terminal link sent as an answer, taken',
+        'engine-api.onboarding.refusals',
+        {
+            tamper: chain(
+                editJson(on('GET', /^\/onboarding$/), (state) => ({
+                    ...state,
+                    prompt: { ...state.prompt, alternatives: [TERMINAL_ALTERNATIVE] },
+                })),
+                async (request, response) => {
+                    if (!on('POST', /^\/onboarding\/answer$/)(request)) return response;
+                    const body = (await request.json()) as { alternativeId?: string };
+                    return body.alternativeId === TERMINAL_ALTERNATIVE.id
+                        ? new Response(null, { status: 204 })
+                        : response;
+                },
+            ),
         },
     ],
     [

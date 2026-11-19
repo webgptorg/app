@@ -1,5 +1,5 @@
 import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
-import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
+import { CHECK_MS, CREATE_MS, INSTALL_MS, createInMemoryEngine } from '@ptbk/engine-api/in-memory';
 import type { InMemoryEngineApiOptions } from '@ptbk/engine-api/in-memory';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
@@ -11,8 +11,9 @@ import { TEST_NOW } from '../../testing/test-engine-api';
 const TIMEOUT_MS = 20_000;
 
 function pendingEngine(options: InMemoryEngineApiOptions = {}) {
-    return createInMemoryEngine({
-        clock: { now: () => TEST_NOW },
+    let now = TEST_NOW.getTime();
+    const engine = createInMemoryEngine({
+        clock: { now: () => new Date(now) },
         seed: {
             engine: { name: 'Test engine', hostname: 'engine.localhost', dashboardUrl: null, mode: 'local' },
             onboarding: 'pending',
@@ -21,6 +22,10 @@ function pendingEngine(options: InMemoryEngineApiOptions = {}) {
         capabilities: [KNOWN_CAPABILITIES.files, KNOWN_CAPABILITIES.onboarding],
         ...options,
     });
+    const advance = (ms: number) => {
+        now += ms;
+    };
+    return { ...engine, advance };
 }
 
 const continueButton = () => screen.getByRole('button', { name: 'Continue' });
@@ -35,16 +40,17 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
             expect(router.state.location.pathname).toBe('/onboarding');
         });
         expect(await screen.findByRole('heading', { level: 1, name: 'Your project' })).toBeDefined();
-        expect(screen.getByText('Step 1 of 4')).toBeDefined();
+        expect(screen.getByText('Step 1 of 6')).toBeDefined();
         expect(screen.getByText(/Tell me a little about your project/)).toBeDefined();
         expect(robotPose()).toBe('thinking');
         await expectNoAxeViolations(container);
 
         await user.type(screen.getByRole('textbox', { name: 'What are you working on?' }), 'Books for my bakery');
         await user.click(continueButton());
-        expect(await screen.findByRole('heading', { level: 1, name: 'AI tool' })).toBeDefined();
-        expect(screen.getByRole<HTMLInputElement>('radio', { name: /OpenAI Codex/ }).checked).toBe(true);
-        await user.click(screen.getByRole('radio', { name: /Claude Code/ }));
+        expect(await screen.findByRole('heading', { level: 1, name: 'AI tools' })).toBeDefined();
+        expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /OpenAI Codex/ }).checked).toBe(true);
+        await user.click(screen.getByRole('checkbox', { name: /OpenAI Codex/ }));
+        await user.click(screen.getByRole('checkbox', { name: /Claude Code/ }));
         await user.click(continueButton());
 
         expect(await screen.findByRole('heading', { level: 1, name: 'Sign in to Claude Code' })).toBeDefined();
@@ -59,11 +65,23 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         await user.type(screen.getByRole('textbox', { name: 'Code from Claude Code' }), 'a1B2c3D4e5');
         await user.click(continueButton());
 
-        expect(await screen.findByRole('heading', { level: 1, name: 'Files' })).toBeDefined();
-        expect(screen.getByText('Step 4 of 4')).toBeDefined();
-        expect(robotPose()).toBe('assembling');
+        // The engine checks the tool, then creates the project; the page polls while it works.
+        expect(await screen.findByText('The engine is setting things up…')).toBeDefined();
+        engine.advance(CHECK_MS);
+        expect(
+            await screen.findByRole('heading', { level: 1, name: 'Project name' }, { timeout: 5_000 }),
+        ).toBeDefined();
         await user.click(continueButton());
-        expect(await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Project folder' })).toBeDefined();
+        await user.click(continueButton());
+        expect(await screen.findByRole('heading', { level: 1, name: 'Create and start' })).toBeDefined();
+        expect(screen.getByText('Step 6 of 6')).toBeDefined();
+        await user.click(screen.getByRole('button', { name: 'Create and start' }));
+        expect(await screen.findByText('The engine is setting things up…')).toBeDefined();
+        engine.advance(CREATE_MS);
+        expect(
+            await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' }, { timeout: 5_000 }),
+        ).toBeDefined();
         expect(screen.getByText('Done. Your agents can get to work.')).toBeDefined();
         expect(robotPose()).toBe('finished');
         expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull();
@@ -74,7 +92,11 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         const { user } = renderWithProviders({ path: '/onboarding', engineApi: engine.client });
         await user.click(await screen.findByRole('button', { name: 'Continue' }));
         await user.click(await screen.findByRole('button', { name: 'Continue' }));
-        expect(await screen.findByRole('heading', { level: 1, name: 'Sign in to OpenAI Codex' })).toBeDefined();
+        expect(await screen.findByText('The engine is setting things up…')).toBeDefined();
+        engine.advance(INSTALL_MS);
+        expect(
+            await screen.findByRole('heading', { level: 1, name: 'Sign in to OpenAI Codex' }, { timeout: 5_000 }),
+        ).toBeDefined();
         expect(screen.getByText('K7QF-3MRP')).toBeDefined();
         expect(screen.getByText('Waiting for you to finish signing in…')).toBeDefined();
 

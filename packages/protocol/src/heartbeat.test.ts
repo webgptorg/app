@@ -429,6 +429,29 @@ describe('heartbeat v2 (ADR 0018)', () => {
         expect(() => buildHeartbeatV2({ ...inputFor(identity.engineId), accessRequests: 0, acks: named })).toThrow();
     });
 
+    it('carries the setup state in v1 and v2 only when the engine reports one, and refuses an unknown one', async () => {
+        const identity = await freshIdentity();
+        const parsed = (body: Bytes) => JSON.parse(new TextDecoder().decode(body)) as Record<string, unknown>;
+        expect(parsed(buildHeartbeat(inputFor(identity.engineId)))).not.toHaveProperty('setup');
+        for (const setup of ['pending', 'done'] as const) {
+            const v1 = buildHeartbeat(inputFor(identity.engineId, { setup }));
+            const v2 = buildHeartbeatV2({ ...inputFor(identity.engineId, { setup }), accessRequests: 0, acks: [] });
+            for (const rawBody of [v1, v2]) {
+                const verdict = await verifyHeartbeat({
+                    rawBody,
+                    signatureHeader: await signHeartbeat(identity.signer, rawBody),
+                    engineId: identity.engineId,
+                    publicKey: identity.publicKey,
+                    lastSeq: null,
+                    now: Timestamp.parse(TS),
+                });
+                expect(verdict.kind === 'accepted' && verdict.heartbeat.setup).toBe(setup);
+            }
+        }
+        const unknown = { ...parsed(buildHeartbeat(inputFor(identity.engineId))), setup: 'half-done' };
+        expect(Heartbeat.safeParse(unknown).success).toBe(false);
+    });
+
     it('never sends a v2 field in a v1 body', async () => {
         const identity = await freshIdentity();
         const v1 = JSON.parse(new TextDecoder().decode(buildHeartbeat(inputFor(identity.engineId)))) as object;

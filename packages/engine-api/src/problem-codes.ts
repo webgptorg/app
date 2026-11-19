@@ -37,6 +37,8 @@ export const PROBLEM_STATUS = {
     'file-infected': 409,
     /** The answer is to an onboarding prompt the engine has moved past; read the state again. */
     'onboarding-prompt-stale': 409,
+    /** "Skip for now" while the engine has no project yet (`canDefer` false); answers stay saved. */
+    'onboarding-not-deferrable': 409,
     'payload-too-large': 413,
     'unsupported-media-type': 415,
     'invalid-book': 422,

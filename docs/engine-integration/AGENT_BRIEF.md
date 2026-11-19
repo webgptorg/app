@@ -24,6 +24,17 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-19: Setup in the browser after pairing: new input kinds
+
+- **Changed:** `onboarding@1` gains what the App flow needs so the owner never goes back to the terminal after pairing ([engine-api.md, Onboarding](engine-api.md#onboarding), [onboarding.ts](../../packages/engine-api/src/capabilities/onboarding.ts)). The prompt kinds are now a fixed vocabulary the UI ships first; you compose and reorder steps from them freely. New: a `secret` prompt kind and answer (API keys; never presented back, logged or kept in the draft); `details` and `alternatives` on every prompt, with `{ action: alternative, alternativeId }` (an alternative with `href` is a same-origin link the UI opens, not an answer); `activity` on the state (each install or check `running`, `done`, `failed` with its reason, or `skipped`); `canDefer` with problem `onboarding-not-deferrable`. The heartbeat gains optional `setup: pending | done` ([heartbeat.md](heartbeat.md)). The platform's signed UI renders setup on a pending engine; it reads unknown prompt kinds as unsupported and points at `ptbk onboarding`.
+- **Redo:**
+  - Serve the approved signed UI while initialization is pending, with the passkey gateway in front as for any engine; keep the built-in onboarding page only for when no approved bundle is available. A pending engine advertises `onboarding@1` and `files@1` and may leave out every other capability.
+  - Send `canDefer: false` until the project exists, and `setup: pending` in every heartbeat from pairing until setup completes.
+  - Move the API-key path into the contract. On the sign-in step, offer "Use an API key instead" as an alternative without `href`, then present a `secret` prompt (`helpUrl` = the provider's key page). Verify the key with a real call and refuse it with `error` on the same kind of prompt. Drop the `api-key` action from `/_ptbk/harness-terminal`.
+  - Keep the native terminal as a fallback: an alternative with `href: "/_ptbk/harness-terminal"`, next to a `confirm` "Check sign-in". Prefer `return-code` for Claude Code (paste the code back) and `device-code` for Codex and Copilot, so the terminal is the exception.
+  - Report the harness installs and real checks as `activity` while `working`, and keep failed additional harnesses in it on the next prompt. Put the final summary (project, folder, harnesses) in the review prompt's `details`.
+  - Fill the new fields with defaults where there is nothing to say: `details: []`, `alternatives: []`, `activity: []`, `canDefer: true`. Re-run the onboarding conformance checks.
+
 ### 2026-11-18: Sign-in shows ways forward without a passkey
 
 - **Changed:** [`sign-in.html`, `gateway.js` and `gateway.css`](../../packages/gateway-pages/pages/) in `@ptbk/gateway-pages`. Under the sign-in button, and after a cancelled, failed or unrecognised passkey, the page says what to do without a passkey for this engine on this device: use the phone option in the browser's prompt, use a synced passkey or the device that has it, or open the engine from the Promptbook dashboard to join. The copy sits once after the sections in an element with `data-shown-in="<states>"`, which `gateway.js` shows only in those states. The button still opens the prompt only on a click. Endpoints, placeholders and CSP are unchanged ([gateway.md, Sessions](gateway.md#sessions)).

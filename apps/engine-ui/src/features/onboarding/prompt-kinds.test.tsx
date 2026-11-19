@@ -10,13 +10,20 @@ import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
 
 const TIMEOUT_MS = 20_000;
 
-const base = { title: 'Setup', hint: null, error: null, canGoBack: false };
+const base = { title: 'Setup', hint: null, error: null, canGoBack: false, details: [], alternatives: [] };
 
 function pending(prompt: OnboardingPrompt): OnboardingState {
-    return { status: 'pending', deferred: false, progress: { step: 1, of: 2 }, prompt };
+    return { status: 'pending', deferred: false, canDefer: true, progress: { step: 1, of: 2 }, activity: [], prompt };
 }
 
-const DONE: OnboardingState = { status: 'completed', deferred: false, progress: null, prompt: null };
+const DONE: OnboardingState = {
+    status: 'completed',
+    deferred: false,
+    canDefer: true,
+    progress: null,
+    activity: [],
+    prompt: null,
+};
 
 /** The in-memory engine for everything else, with an onboarding that serves `states` in turn and records answers. */
 function scripted(
@@ -210,7 +217,9 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('shows the engine at work while it has no prompt', async () => {
-        const { client } = scripted([{ status: 'working', deferred: false, progress: null, prompt: null }]);
+        const { client } = scripted([
+            { status: 'working', deferred: false, canDefer: true, progress: null, activity: [], prompt: null },
+        ]);
         renderWithProviders({ path: '/onboarding', engineApi: client });
         expect(await screen.findByText('The engine is setting things up…')).toBeDefined();
     });

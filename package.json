@@ -1,131 +1,131 @@
 {
-    "name": "promptbook-platform",
-    "private": true,
-    "license": "Apache-2.0",
-    "type": "module",
-    "packageManager": "bun@1.4.3",
-    "engines": {
-        "node": ">=24"
-    },
-    "workspaces": {
-        "packages": [
-            "apps/*",
-            "packages/*",
-            "e2e"
-        ],
-        "catalog": {
-            "@axe-core/playwright": "4.14.0",
-            "@inlang/paraglide-js": "2.29.2",
-            "@inlang/plugin-message-format": "4.5.5",
-            "@noble/curves": "2.4.0",
-            "@noble/hashes": "2.4.0",
-            "@peculiar/asn1-schema": "2.11.1",
-            "@peculiar/asn1-x509": "2.11.1",
-            "@peculiar/x509": "2.2.0",
-            "@playwright/test": "1.64.0",
-            "@sigstore/bundle": "5.0.0",
-            "@sigstore/protobuf-specs": "0.5.2",
-            "@sigstore/verify": "4.1.2",
-            "@simplewebauthn/browser": "14.0.0",
-            "@simplewebauthn/server": "14.0.3",
-            "@tailwindcss/vite": "4.3.3",
-            "@tanstack/react-form": "1.33.5",
-            "@tanstack/react-query": "5.104.5",
-            "@tanstack/react-router": "1.170.42",
-            "@tanstack/react-table": "9.3.1",
-            "@tanstack/react-virtual": "3.14.17",
-            "@tanstack/router-cli": "1.167.46",
-            "@tanstack/router-plugin": "1.168.43",
-            "@testing-library/dom": "10.4.2",
-            "@testing-library/react": "16.3.3",
-            "@testing-library/user-event": "14.6.8",
-            "@types/react": "19.3.0",
-            "@types/react-dom": "19.3.0",
-            "@types/ws": "8.18.2",
-            "@vitejs/plugin-react": "6.1.2",
-            "axe-core": "4.13.0",
-            "eslint": "10.13.0",
-            "fast-check": "4.10.2",
-            "hono": "4.13.14",
-            "jsdom": "30.1.3",
-            "lucide-react": "1.56.0",
-            "react": "19.3.0",
-            "react-dom": "19.3.0",
-            "sigstore": "5.0.0",
-            "stripe": "22.6.2",
-            "tailwindcss": "4.3.3",
-            "tsdown": "0.23.1",
-            "tsx": "4.23.15",
-            "vite": "8.3.5",
-            "ws": "8.22.0",
-            "zod": "4.6.7"
-        }
-    },
-    "overrides": {
-        "@peculiar/asn1-schema": "catalog:",
-        "@peculiar/asn1-x509": "catalog:"
-    },
-    "scripts": {
-        "lint": "NODE_OPTIONS=--max-old-space-size=6144 eslint .",
-        "format": "prettier --write .",
-        "format:check": "prettier --check .",
-        "typecheck": "bun run --filter '*' typecheck",
-        "test": "bun run --filter '*' --sequential test && bun run test:scripts",
-        "test:scripts": "vitest run --dir scripts",
-        "check": "bun run generate && bun run lint && bun run format:check && bun run typecheck && bun run test && bun run plan --check && bun run engine-guide",
-        "prepare": "husky",
-        "plan": "node scripts/plan.ts",
-        "engine-guide": "node scripts/check-engine-guide.ts",
-        "generate": "bun run --filter '*' --if-present generate",
-        "dev:stack": "node e2e/src/cli.ts dev",
-        "dev:link": "node e2e/src/cli.ts link",
-        "dev:trust": "node e2e/src/cli.ts trust",
-        "dev:untrust": "node e2e/src/cli.ts untrust"
-    },
-    "lint-staged": {
-        "*.{ts,tsx,js,mjs}": [
-            "eslint --fix",
-            "prettier --write"
-        ],
-        "*.{json,md,yml,yaml}": "prettier --write"
-    },
-    "trustedDependencies": [
-        "esbuild",
-        "sharp",
-        "workerd"
+  "name": "promptbook-platform",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "packageManager": "bun@1.4.3",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*",
+      "e2e"
     ],
-    "devDependencies": {
-        "@commitlint/cli": "21.2.4",
-        "@commitlint/config-conventional": "21.2.4",
-        "@commitlint/types": "21.2.3",
-        "@eslint/js": "10.0.1",
-        "@types/node": "24.19.2",
-        "@vitest/coverage-v8": "4.1.12",
-        "eslint": "catalog:",
-        "eslint-config-prettier": "10.1.8",
-        "eslint-plugin-jsx-a11y": "6.10.2",
-        "eslint-plugin-react-hooks": "7.1.1",
-        "globals": "17.13.0",
-        "husky": "9.1.7",
-        "lint-staged": "17.6.0",
-        "prettier": "3.9.10",
-        "typescript": "6.0.3",
-        "typescript-eslint": "8.72.0",
-        "vitest": "4.1.12"
-    },
-    "funding": [
-        {
-            "type": "individual",
-            "url": "https://buymeacoffee.com/hejny"
-        },
-        {
-            "type": "github",
-            "url": "https://github.com/webgptorg/app/blob/main/README.md#%EF%B8%8F-contributing"
-        }
-    ],
-    "description": "",
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/webgptorg/app.git"
+    "catalog": {
+      "@axe-core/playwright": "4.14.0",
+      "@inlang/paraglide-js": "2.29.2",
+      "@inlang/plugin-message-format": "4.5.5",
+      "@noble/curves": "2.4.0",
+      "@noble/hashes": "2.4.0",
+      "@peculiar/asn1-schema": "2.11.1",
+      "@peculiar/asn1-x509": "2.11.1",
+      "@peculiar/x509": "2.2.0",
+      "@playwright/test": "1.64.0",
+      "@sigstore/bundle": "5.0.0",
+      "@sigstore/protobuf-specs": "0.5.2",
+      "@sigstore/verify": "4.1.2",
+      "@simplewebauthn/browser": "14.0.0",
+      "@simplewebauthn/server": "14.0.3",
+      "@tailwindcss/vite": "4.3.3",
+      "@tanstack/react-form": "1.33.5",
+      "@tanstack/react-query": "5.104.5",
+      "@tanstack/react-router": "1.170.42",
+      "@tanstack/react-table": "9.3.1",
+      "@tanstack/react-virtual": "3.14.17",
+      "@tanstack/router-cli": "1.167.46",
+      "@tanstack/router-plugin": "1.168.43",
+      "@testing-library/dom": "10.4.2",
+      "@testing-library/react": "16.3.3",
+      "@testing-library/user-event": "14.6.8",
+      "@types/react": "19.3.0",
+      "@types/react-dom": "19.3.0",
+      "@types/ws": "8.18.2",
+      "@vitejs/plugin-react": "6.1.2",
+      "axe-core": "4.13.0",
+      "eslint": "10.13.0",
+      "fast-check": "4.10.2",
+      "hono": "4.13.14",
+      "jsdom": "30.1.3",
+      "lucide-react": "1.56.0",
+      "react": "19.3.0",
+      "react-dom": "19.3.0",
+      "sigstore": "5.0.0",
+      "stripe": "22.6.2",
+      "tailwindcss": "4.3.3",
+      "tsdown": "0.23.1",
+      "tsx": "4.23.15",
+      "vite": "8.3.5",
+      "ws": "8.22.0",
+      "zod": "4.6.7"
     }
+  },
+  "overrides": {
+    "@peculiar/asn1-schema": "catalog:",
+    "@peculiar/asn1-x509": "catalog:"
+  },
+  "scripts": {
+    "lint": "NODE_OPTIONS=--max-old-space-size=6144 eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun run --filter '*' --sequential test && bun run test:scripts",
+    "test:scripts": "vitest run --dir scripts",
+    "check": "bun run generate && bun run lint && bun run format:check && bun run typecheck && bun run test && bun run plan --check && bun run engine-guide",
+    "prepare": "husky",
+    "plan": "node scripts/plan.ts",
+    "engine-guide": "node scripts/check-engine-guide.ts",
+    "generate": "bun run --filter '*' --if-present generate",
+    "dev:stack": "node e2e/src/cli.ts dev",
+    "dev:link": "node e2e/src/cli.ts link",
+    "dev:trust": "node e2e/src/cli.ts trust",
+    "dev:untrust": "node e2e/src/cli.ts untrust"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": "prettier --write"
+  },
+  "trustedDependencies": [
+    "esbuild",
+    "sharp",
+    "workerd"
+  ],
+  "devDependencies": {
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
+    "@commitlint/types": "21.2.3",
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "@vitest/coverage-v8": "4.1.12",
+    "eslint": "catalog:",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-jsx-a11y": "6.10.2",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
+    "husky": "9.1.7",
+    "lint-staged": "17.6.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vitest": "4.1.12"
+  },
+  "funding": [
+    {
+      "type": "individual",
+      "url": "https://buymeacoffee.com/hejny"
+    },
+    {
+      "type": "github",
+      "url": "https://github.com/webgptorg/app/blob/main/README.md#%EF%B8%8F-contributing"
+    }
+  ],
+  "description": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webgptorg/app.git"
+  }
 }
