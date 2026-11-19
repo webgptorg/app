@@ -2,6 +2,12 @@
 
 This change completes the Dashboard presentation around the existing Reborn onboarding. Engine identity, draft persistence, `onboarding@1`, `files@1`, native harness authentication, owner passkeys and project handoff already existed. They have not been replaced. Website-owned licensing remains a separate integration.
 
+## Follow-up from the installation-page screenshot
+
+The [18 November meeting context](https://pavolhejny.cz/dalsi-kroky-k-verzi-0-promptbooku-xi121J0i) and the old `mkdir` / `init` / `connect` block shown on 19 November refer to the same flow. This follow-up extends PR #334 instead of creating a competing implementation. It adds OS-specific terminal instructions, whole-block paste guidance and a plain-language explanation of connection before project setup, first access, automatic progress and saved setup in both locales. Reborn already owns the combined command. [Its CLI continuation](https://github.com/webgptorg/promptbook/commit/5c17a9102623ccab47519085b1bf29b1995dbb35) now points to browser setup and keeps the terminal wizard as an alternative.
+
+The follow-up's Dashboard build, TypeScript, changed-file ESLint/Prettier, bundle budgets, migration validation, plan and engine-guide checks pass. Its fresh unit/client run passes 155 files / 1,584 tests with six PowerShell checks initially skipped; a separate 20/20 copied-command run with portable PowerShell includes those six checks. Coverage remains 98.22% lines / 95.87% branches, including the unchanged domain/config thresholds. The focused CS/EN rendering and copy tests pass. Reborn TypeScript/build and 27 portable onboarding, pairing and owner-access tests pass; the four daemon scenarios are blocked by `listen EPERM` for local Unix sockets. The full root `bun run check` and the repeat Worker/D1 suite were attempted but killed with exit 137; whole-repo formatting also flags the unchanged root `package.json`. No rule or threshold was weakened, and these incomplete repeat checks do not replace the earlier evidence below. Full real-machine and native-platform acceptance remains outstanding.
+
 ## Reviewed installation release
 
 The selected and minimum admitted installation metadata version is **0.119.0-117**. It includes the Codex/Claude fixes from 115. The checkout's newer 118 has not been selected or published by this work.

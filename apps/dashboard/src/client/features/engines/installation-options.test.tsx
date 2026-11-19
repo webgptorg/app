@@ -34,10 +34,15 @@ describe('structured installation choices', () => {
                 .map((tab) => tab.textContent),
         ).toEqual(['New project', 'Install with AI', 'Windows EXE']);
         expect(screen.getByRole('tab', { name: 'New project' }).getAttribute('aria-selected')).toBe('true');
+        expect(screen.getByText(/On macOS, open Terminal/)).toBeTruthy();
+        expect(screen.getByText(/Paste the entire copied block/)).toBeTruthy();
+        expect(screen.getByText(/The engine connects to this app first/)).toBeTruthy();
         const writeText = vi.fn().mockResolvedValue(undefined);
         Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
         try {
             await app.user.click(screen.getByRole('tab', { name: 'Windows PowerShell' }));
+            expect(screen.getByText(/Open PowerShell from the Windows Start menu/)).toBeTruthy();
+            expect(screen.queryByText(/On macOS, open Terminal/)).toBeNull();
             await app.user.click(
                 within(screen.getByRole('tabpanel', { name: 'Windows PowerShell' })).getByRole('button', {
                     name: 'Copy command',
@@ -46,6 +51,9 @@ describe('structured installation choices', () => {
             expect(writeText).toHaveBeenLastCalledWith(
                 options.find((option) => option.kind === 'command')?.commands.powershell,
             );
+            await app.user.click(screen.getByRole('tab', { name: 'Ubuntu VPS' }));
+            expect(screen.getByText(/Connect over SSH to the server/)).toBeTruthy();
+            expect(screen.queryByText(/Open PowerShell from the Windows Start menu/)).toBeNull();
             await app.user.click(screen.getByRole('tab', { name: 'Install with AI' }));
             await app.user.click(await screen.findByRole('tab', { name: 'Existing VPS over SSH' }));
             await app.user.click(

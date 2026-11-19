@@ -38,7 +38,7 @@ it('copies the Czech paired AI prompt and keeps a clear engine-origin continuati
             }),
         );
         expect(writeText).toHaveBeenLastCalledWith(options.find((option) => option.kind === 'ai')?.prompts.cs.local);
-        expect(screen.getByText(/Dále otevřete owner setup link/)).toBeTruthy();
+        expect(screen.getByText(/Nejdřív se engine připojí k této aplikaci/)).toBeTruthy();
         expect(document.body.textContent).not.toMatch(/engines_new_/);
     } finally {
         Reflect.deleteProperty(navigator, 'clipboard');
