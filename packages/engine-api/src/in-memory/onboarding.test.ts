@@ -186,7 +186,9 @@ describe('onboarding@1 in the reference engine', () => {
         expect(creating.activity).toEqual([
             { id: 'create-project', label: 'Create Bakery books', status: 'running', detail: null },
         ]);
+        expect(controller.onboarding()).toMatchObject({ status: 'working', canDefer: false });
         advance(CREATE_MS);
+        expect(controller.onboarding()).toMatchObject({ status: 'completed', canDefer: true });
         expect(await state(client)).toEqual({
             status: 'completed',
             deferred: false,
