@@ -227,10 +227,11 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     await expect(row('owner')).toHaveAttribute('data-step-state', 'done');
     expect(distinctInOrder(linkStates)).toEqual(['waiting', 'linked', 'owner-pending', 'ready']);
 
-    await test.step('"Open engine" opens the engine on its setup, signed in, with no passkey prompt', async () => {
+    await test.step('"Continue setup" opens the engine on its setup, signed in, with no passkey prompt', async () => {
         const ready = page.locator('[data-link-ready]');
         await expect(ready.getByRole('link', { name: 'Back to engines' })).toBeVisible();
-        const open = ready.getByRole('link', { name: /^Open engine/ });
+        // The engine reports its setup unfinished, so the ready panel continues it rather than opening the engine (D-36).
+        const open = ready.getByRole('link', { name: /^Continue setup on engine/ });
         await expect(open).toHaveAttribute('href', `https://${identity.hostname}/`);
         const [appPage] = await Promise.all([context.waitForEvent('page'), open.click()]);
         await appPage.waitForLoadState('load');
