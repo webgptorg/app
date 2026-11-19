@@ -1,3 +1,6 @@
+import { ClientInfo, MemberId, OWNER_PERMISSIONS, SessionId, createEngineApiClient } from '@ptbk/engine-api';
+import type { EngineApiClient, OnboardingAnswer } from '@ptbk/engine-api';
+import { CHECK_MS } from '@ptbk/engine-api/in-memory';
 import { Timestamp, createCryptoRandom } from '@ptbk/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -65,6 +68,34 @@ async function start(
         return { response, body: (await response.json()) as Record<string, unknown> };
     };
     return { server, runtime: base, sessions, logger, post };
+}
+
+function ownerClient(runtime: EngineRuntime): EngineApiClient {
+    const owner = runtime
+        .controller()
+        .inspect()
+        .members.find(({ role }) => role === 'owner');
+    if (owner === undefined) throw new Error('no owner');
+    return createEngineApiClient(
+        runtime.core().transport({
+            memberId: MemberId.parse(owner.id),
+            sessionId: SessionId.parse('session-test'),
+            client: ClientInfo.parse({ ip: '127.0.0.1', userAgent: 'control test' }),
+            permissions: new Set(OWNER_PERMISSIONS),
+            stepUpFresh: true,
+        }),
+    );
+}
+
+async function answerSetup(client: EngineApiClient, answer: OnboardingAnswer): Promise<void> {
+    const signal = AbortSignal.timeout(5_000);
+    const state = await client.onboarding.get(signal);
+    if (state.kind !== 'ok' || state.data.prompt === null) throw new Error('no setup prompt');
+    const answered = await client.onboarding.answer(
+        { promptId: state.data.prompt.id, action: 'answer', answer },
+        signal,
+    );
+    if (answered.kind !== 'ok') throw new Error(answered.problem.code);
 }
 
 describe('fault settings', () => {
@@ -146,6 +177,42 @@ describe('control server', () => {
         expect(refused.response.status).toBe(400);
     });
 
+    it('settles the running harness sign-in and fails a harness check, as the provider would', async () => {
+        const { post, runtime } = await start();
+        const client = ownerClient(runtime);
+        const nothingRunning = await post('/__mock/onboarding/harness-login', { outcome: 'denied' });
+        expect(nothingRunning.response.status).toBe(400);
+        const unknownTool = await post('/__mock/onboarding/harness-check', { harness: 'cursor', reason: 'x' });
+        expect(unknownTool.response.status).toBe(400);
+        const failing = await post('/__mock/onboarding/harness-check', {
+            harness: 'claude',
+            reason: 'This account has no Claude Code access.',
+        });
+        expect(failing.response.status).toBe(200);
+
+        await answerSetup(client, { kind: 'text', text: 'Books', fileIds: [] });
+        await answerSetup(client, { kind: 'choice', choiceIds: ['claude'] });
+        const denied = await post('/__mock/onboarding/harness-login', { outcome: 'denied', diagnostic: 'Not here.' });
+        expect(denied.body['prompt']).toMatchObject({
+            kind: 'harness-login',
+            status: 'denied',
+            diagnostic: 'Not here.',
+        });
+        await answerSetup(client, { kind: 'harness-login', returnCode: null });
+        const settled = await post('/__mock/onboarding/harness-login', { outcome: 'succeeded' });
+        expect(settled.body).toMatchObject({ status: 'working', prompt: null });
+
+        runtime.clock.advance(CHECK_MS);
+        expect(runtime.controller().onboarding()).toMatchObject({
+            status: 'pending',
+            prompt: { kind: 'choice' },
+            activity: [
+                { id: 'install-claude', status: 'skipped' },
+                { id: 'check-claude', status: 'failed', detail: 'This account has no Claude Code access.' },
+            ],
+        });
+    });
+
     it('answers 429 with Retry-After when the rate limit refuses', async () => {
         const { server } = await start({
             rateLimiter: { consume: () => ({ kind: 'limited', retryAfterMs: 1500 }) },
@@ -184,6 +251,8 @@ describe('control server', () => {
             'GET /__mock/state',
             'GET /__mock/ui',
             'POST /__mock/inbound-email',
+            'POST /__mock/onboarding/harness-check',
+            'POST /__mock/onboarding/harness-login',
             'POST /__mock/reset',
             'POST /__mock/runs',
             'POST /__mock/sessions',

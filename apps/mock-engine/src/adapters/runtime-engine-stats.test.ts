@@ -1,12 +1,15 @@
+import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
+import type { CapabilityRef } from '@ptbk/engine-api';
 import { describe, expect, it } from 'vitest';
 
 import { createTestRuntime } from '../testing/test-runtime';
 import { createFakeClock } from '../testing/fake-clock';
 import { createRuntimeEngineStats } from './runtime-engine-stats';
 
-async function runtime(passkeys: 'seeded' | 'none' = 'seeded') {
+async function runtime(passkeys: 'seeded' | 'none' = 'seeded', capabilities?: readonly CapabilityRef[]) {
     return await createTestRuntime({
         passkeys,
+        ...(capabilities === undefined ? {} : { capabilities }),
         seed: 42,
         scenario: 'small-team',
         epoch: new Date('2026-10-01T00:00:00Z'),
@@ -78,6 +81,13 @@ describe('createRuntimeEngineStats', () => {
         const stats = createRuntimeEngineStats(engine);
         await engine.reset({ seed: 1, scenario: 'empty' });
         expect(stats.counts()).toEqual({ agents: 7, members: 1 });
+    });
+
+    it('reports setup pending on an engine paired before setup, done on a set-up one, and nothing without onboarding@1', async () => {
+        // Without MOCK_ONBOARDING, an engine that waits for its owner is paired before its setup.
+        expect(createRuntimeEngineStats(await runtime('none')).setup()).toBe('pending');
+        expect(createRuntimeEngineStats(await runtime('seeded')).setup()).toBe('done');
+        expect(createRuntimeEngineStats(await runtime('seeded', [KNOWN_CAPABILITIES.files])).setup()).toBeNull();
     });
 
     it('reports no update until the UI loader reports one', async () => {

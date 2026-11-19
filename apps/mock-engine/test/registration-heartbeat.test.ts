@@ -1,6 +1,8 @@
 import type { LinkCode } from '@ptbk/protocol';
 import { EngineVersion, Heartbeat, Hostname, RelayId, heartbeatPath } from '@ptbk/protocol';
-import { ENGINE_API_ROUTES, MemberId, OWNER_PERMISSIONS, SessionId } from '@ptbk/engine-api';
+import { ENGINE_API_ROUTES, MemberId, OWNER_PERMISSIONS, OnboardingState, SessionId } from '@ptbk/engine-api';
+import type { OnboardingAnswer } from '@ptbk/engine-api';
+import { CHECK_MS, CREATE_MS } from '@ptbk/engine-api/in-memory';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createFetchDashboardApi } from '../src/adapters/fetch-dashboard-api';
@@ -11,6 +13,7 @@ import type { MockEngineConfig } from '../src/app/config';
 import { RegistrationFailedError } from '../src/app/establish-registration';
 import type { DashboardDeps, MockEngine } from '../src/app/start-mock-engine';
 import { startMockEngine } from '../src/app/start-mock-engine';
+import { SETUP_CHECK_MS } from '../src/domain/heartbeat/heartbeat-loop';
 import { registerEngine } from '../src/domain/registration/register';
 import { oneTimeSecret } from '../src/domain/secret';
 import type { IdentityStore } from '../src/domain/identity/engine-identity';
@@ -150,21 +153,37 @@ async function beats(w: World, count: number): Promise<void> {
     await flush(3);
 }
 
-async function read(engine: MockEngine, id: 'getSecurityOverview' | 'getEngine') {
+function asOwner(engine: MockEngine) {
     const owner = engine.runtime
         .controller()
         .inspect()
         .members.find(({ role }) => role === 'owner');
     if (owner === undefined) throw new Error('no owner');
-    const result = await engine.runtime.core().transport({
+    return engine.runtime.core().transport({
         memberId: MemberId.parse(owner.id),
         sessionId: SessionId.parse('session-test'),
         client: { ip: '127.0.0.1', userAgent: 'test' },
         permissions: new Set(OWNER_PERMISSIONS),
         stepUpFresh: true,
-    })(ENGINE_API_ROUTES[id], {}, AbortSignal.timeout(5_000));
+    });
+}
+
+async function read(engine: MockEngine, id: 'getSecurityOverview' | 'getEngine') {
+    const result = await asOwner(engine)(ENGINE_API_ROUTES[id], {}, AbortSignal.timeout(5_000));
     if (result.kind !== 'ok') throw new Error(result.problem.code);
     return result.data as never;
+}
+
+/** Answers the current setup prompt as the owner would in the browser. */
+async function answerSetup(engine: MockEngine, answer: OnboardingAnswer): Promise<void> {
+    const signal = AbortSignal.timeout(5_000);
+    const current = await asOwner(engine)(ENGINE_API_ROUTES.getOnboarding, {}, signal);
+    if (current.kind !== 'ok') throw new Error(current.problem.code);
+    const promptId = OnboardingState.parse(current.data).prompt?.id;
+    if (promptId === undefined) throw new Error('no setup prompt');
+    const body = { promptId, action: 'answer', answer };
+    const answered = await asOwner(engine)(ENGINE_API_ROUTES.answerOnboarding, { body }, signal);
+    if (answered.kind !== 'ok') throw new Error(answered.problem.code);
 }
 
 const decoder = new TextDecoder();
@@ -281,6 +300,36 @@ describe('registration and heartbeat at startup', () => {
         expect(engine.operator.status().ownerSetUp).toBe(false);
         expect(engine.runtime.controller().inspect().counts.agents).toBeGreaterThan(0);
         expect(w.logger.entries.map(({ event }) => event)).toContain('owner.reset');
+    });
+
+    it('reports setup pending in every beat until the owner finishes it, then beats with done at once', async () => {
+        const w = world();
+        const { engine } = await start(w, { ...linked(w.dashboard.issueLinkCode('org-a')), onboarding: 'no-project' });
+        await beats(w, 1);
+        const setupOf = (index: number) =>
+            Heartbeat.parse(JSON.parse(decoder.decode(w.dashboard.heartbeats[index]?.rawBody))).setup;
+        expect(setupOf(0)).toBe('pending');
+        w.clock.advance(60_000);
+        await beats(w, 2);
+        expect(setupOf(1)).toBe('pending');
+
+        await answerSetup(engine, { kind: 'text', text: 'Books for my bakery', fileIds: [] });
+        await answerSetup(engine, { kind: 'choice', choiceIds: ['claude'] });
+        await answerSetup(engine, { kind: 'harness-login', returnCode: 'a1B2c3D4e5' });
+        engine.runtime.clock.advance(CHECK_MS);
+        await answerSetup(engine, { kind: 'text', text: 'Bakery', fileIds: [] });
+        await answerSetup(engine, { kind: 'text', text: 'bakery', fileIds: [] });
+        await answerSetup(engine, { kind: 'confirm', confirmed: true });
+        engine.runtime.clock.advance(CREATE_MS);
+        expect(engine.runtime.controller().onboarding().status).toBe('completed');
+
+        // Well before the next interval: the loop notices the finished setup by itself.
+        w.clock.advance(SETUP_CHECK_MS);
+        await beats(w, 3);
+        expect(setupOf(2)).toBe('done');
+        w.clock.advance(SETUP_CHECK_MS * 5);
+        await flush(3);
+        expect(w.dashboard.heartbeats).toHaveLength(3);
     });
 
     it('sends the first beat after one interval when no relay takes the tunnel', async () => {

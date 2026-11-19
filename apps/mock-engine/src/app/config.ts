@@ -7,6 +7,7 @@ import {
     TUNNEL_PATH,
     parseLinkArgument,
 } from '@ptbk/protocol';
+import type { OnboardingSeed } from '@ptbk/engine-api/in-memory';
 import { z } from 'zod';
 
 import packageJson from '../../package.json';
@@ -79,8 +80,12 @@ export interface MockEngineConfig {
      * (the owner is set up).
      */
     readonly passkeys: 'seeded' | 'none';
-    /** `MOCK_ONBOARDING`: `pending` or `completed`; without it `empty` is pending and the other scenarios completed. */
-    readonly onboarding: 'pending' | 'completed' | null;
+    /**
+     * `MOCK_ONBOARDING`: `no-project` (paired before setup, which cannot be skipped), `pending` (setup waits, the
+     * project exists) or `completed`. Without it an engine that waits for its owner (`MOCK_PASSKEYS=none`) is
+     * `no-project`; with the owner seeded, `empty` is `pending` and the other scenarios `completed`.
+     */
+    readonly onboarding: OnboardingSeed | null;
     /** `MOCK_CONTROL=enabled` with `MOCK_CONTROL_HOST` and `MOCK_CONTROL_PORT`; refused with `NODE_ENV=production`. */
     readonly control: { readonly host: string; readonly port: number } | null;
     /** `PTBK_DASHBOARD_URL` and what goes with it; null runs the M1 dev mode on `PTBK_RELAYS`, without heartbeats. */
@@ -447,7 +452,10 @@ const envSchema = z.strictObject({
     ).default(1),
     MOCK_DEV_LOGIN: toggle.default('disabled'),
     MOCK_PASSKEYS: value(z.enum(['seeded', 'none']), 'must be seeded or none').default('none'),
-    MOCK_ONBOARDING: value(z.enum(['pending', 'completed']), 'must be pending or completed').optional(),
+    MOCK_ONBOARDING: value(
+        z.enum(['no-project', 'pending', 'completed']),
+        'must be no-project, pending or completed',
+    ).optional(),
     MOCK_CONTROL: toggle.default('disabled'),
     MOCK_CONTROL_HOST: value(
         z.union([z.ipv4(), z.ipv6(), HostnameSchema]),

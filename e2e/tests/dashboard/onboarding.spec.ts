@@ -177,7 +177,8 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     await expect(row('linked')).toHaveAttribute('data-step-state', 'current');
 
     const pastedAt = Date.now();
-    const engine = await mockEngines.startUnlinked();
+    // Paired before setup, as a Reborn engine installed from the dashboard is: setup finishes in the browser.
+    const engine = await mockEngines.startUnlinked({ setup: 'pending' });
     await waitUntilRunning(engine);
     expect(await ownerSetUp(engine)).toBe(false);
     const connect = await engine.exec([...ENGINE_CLI, 'connect', '--link', linkUrl]);
@@ -226,7 +227,7 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     await expect(row('owner')).toHaveAttribute('data-step-state', 'done');
     expect(distinctInOrder(linkStates)).toEqual(['waiting', 'linked', 'owner-pending', 'ready']);
 
-    await test.step('"Open engine" opens the engine at its hostname, signed in, with no passkey prompt', async () => {
+    await test.step('"Open engine" opens the engine on its setup, signed in, with no passkey prompt', async () => {
         const ready = page.locator('[data-link-ready]');
         await expect(ready.getByRole('link', { name: 'Back to engines' })).toBeVisible();
         const open = ready.getByRole('link', { name: /^Open engine/ });
@@ -234,9 +235,10 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         const [appPage] = await Promise.all([context.waitForEvent('page'), open.click()]);
         await appPage.waitForLoadState('load');
         expect(new URL(appPage.url()).hostname).toBe(identity.hostname);
-        // The cross-site link leaves the SameSite=Strict cookie behind; the sign-in page finds the session itself.
-        await expect(appPage).toHaveURL(`https://${identity.hostname}/`);
-        await expect(appPage.getByRole('heading', { level: 1 })).toBeVisible();
+        // The cross-site link leaves the SameSite=Strict cookie behind; the sign-in page finds the session itself. The
+        // engine has no project yet, so the UI goes on to its setup.
+        await expect(appPage).toHaveURL(`https://${identity.hostname}/onboarding`);
+        await expect(appPage.getByRole('heading', { level: 1, name: 'Your project' })).toBeVisible();
         expect(await meStatus(appPage)).toBe(200);
         await appPage.close();
     });

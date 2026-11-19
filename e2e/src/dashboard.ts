@@ -39,9 +39,10 @@ export interface MockEngines {
     register(linkCode: string): Promise<RegisterReport>;
     /**
      * A fresh engine as an operator first starts it: a new key, no link code and no owner (M-08's first start), so it
-     * waits in local mode until `connect --link` runs inside it.
+     * waits in local mode until `connect --link` runs inside it. Its setup is done unless `setup: 'pending'` asks for
+     * an engine paired before setup, which opens on setup after the owner's passkey (M-10).
      */
-    startUnlinked(): Promise<OneOffContainer>;
+    startUnlinked(options?: { readonly setup?: 'pending' | 'done' }): Promise<OneOffContainer>;
 }
 
 export interface LinkCodeView {
@@ -263,9 +264,13 @@ export const test = base.extend<DashboardFixtures>({
                 await container.wait();
                 return parseRegisterReport(await container.logs('stdout'));
             },
-            async startUnlinked() {
+            async startUnlinked(options = {}) {
                 const container = await compose.run(ENGINE_SERVICE, {
-                    env: { PTBK_DATA_DIR: FRESH_DATA_DIR, MOCK_PASSKEYS: 'none' },
+                    env: {
+                        PTBK_DATA_DIR: FRESH_DATA_DIR,
+                        MOCK_PASSKEYS: 'none',
+                        MOCK_ONBOARDING: options.setup === 'pending' ? 'no-project' : 'completed',
+                    },
                 });
                 containers.push(container);
                 return container;

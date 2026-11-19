@@ -57,6 +57,17 @@ const WalletLoginRequest = z.strictObject({
     problem: z.enum(WALLET_REQUEST_PROBLEMS).default('missing'),
 });
 
+/** What the provider answers a running harness sign-in with, as the core's `settleHarnessLogin` takes it. */
+const HarnessLoginOutcome = z.strictObject({
+    outcome: z.enum(['succeeded', 'failed', 'expired', 'denied']),
+    diagnostic: z.string().min(1).max(2048).optional(),
+});
+
+const FailingHarnessCheck = z.strictObject({
+    harness: z.enum(['codex', 'claude']),
+    reason: z.string().min(1).max(2048),
+});
+
 function invalidBody(path: string, message: string): Response {
     return problemResponse({ code: 'validation-failed', extras: { errors: [{ path, message }] } });
 }
@@ -258,6 +269,28 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
                     case 'fired':
                         return Response.json({ fire: outcome.fire }, { status: 201 });
                 }
+            },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/onboarding/harness-login',
+            body: { kind: 'json', schema: HarnessLoginOutcome, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) => {
+                const controller = runtime.controller();
+                const login = controller.onboarding().prompt;
+                if (login?.kind !== 'harness-login') return invalidBody('body', 'No harness sign-in is running.');
+                controller.settleHarnessLogin(body.outcome, body.diagnostic);
+                return Response.json(controller.onboarding());
+            },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/onboarding/harness-check',
+            body: { kind: 'json', schema: FailingHarnessCheck, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) => {
+                const controller = runtime.controller();
+                controller.failHarnessCheck(body.harness, body.reason);
+                return Response.json(controller.onboarding());
             },
         }),
         control({

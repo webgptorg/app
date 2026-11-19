@@ -594,6 +594,13 @@ describe('parseIdentityConfig', () => {
             expect(parseMockEngineConfig({ ...BASE, MOCK_PASSKEYS: 'seeded' }).passkeys).toBe('seeded');
         });
 
+        it('leaves the setup state to the engine unless MOCK_ONBOARDING picks one (M-10)', () => {
+            expect(parseMockEngineConfig(BASE).onboarding).toBeNull();
+            for (const onboarding of ['no-project', 'pending', 'completed'] as const) {
+                expect(parseMockEngineConfig({ ...BASE, MOCK_ONBOARDING: onboarding }).onboarding).toBe(onboarding);
+            }
+        });
+
         it('reads the capabilities and the simulation settings (M-07)', () => {
             expect(parseMockEngineConfig(BASE)).toMatchObject({
                 capabilities: ['tasks', 'files', 'onboarding', 'wallet'],
