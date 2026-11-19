@@ -266,7 +266,8 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     });
 
     const engineRow = async () => (await dashboard.reloadEngineRows()).filter({ hasText: identity.hostname });
-    await expect((await engineRow()).getByText('Online', { exact: true })).toBeVisible();
+    // Online with an owner, but its setup is not finished yet (D-36).
+    await expect((await engineRow()).getByText('Setup not finished', { exact: true })).toBeVisible();
 
     let resetLink: SetupLink | undefined;
     await test.step('owner --reset: the dashboard shows "Owner not set up" again', async () => {
