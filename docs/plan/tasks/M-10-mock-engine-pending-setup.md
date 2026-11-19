@@ -2,7 +2,7 @@
 
 - **Lane:** M · **Module:** `apps/mock-engine` · **Milestone:** M5
 - **Depends on:** C-15
-- **Status:** todo
+- **Status:** in progress (feat/m-10-mock-engine-pending-setup)
 - **Spec:** Pairing and identity
 
 ## Goal
