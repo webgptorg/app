@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M5
 - **Depends on:** C-15
-- **Status:** in progress (feat/u-20-setup-in-the-browser)
+- **Status:** done (#337)
 - **Spec:** Security hardening; ADRs: [0015](../../adr/0015-ui-architecture-and-design-system.md), [0016](../../adr/0016-engine-capabilities.md)
 - **Design:** [ui.md](../../design/ui.md), [onboarding.md](../../design/onboarding.md)
 
@@ -36,8 +36,8 @@ The UI already renders `text`, `choice`, `confirm`, `upload` and `harness-login`
 
 ## Acceptance criteria
 
-- [ ] Tests show each kind and field rendering and answering, including a refused secret and both alternative types.
-- [ ] Tests show the secret value is absent from the query cache and the DOM after submit.
-- [ ] Screenshots of each new state (en) are in the PR.
-- [ ] `bun run check` and `test:csp` pass.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Tests show each kind and field rendering and answering, including a refused secret and both alternative types.
+- [x] Tests show the secret value is absent from the query cache and the DOM after submit.
+- [x] Screenshots of each new state (en) are in the PR.
+- [x] `bun run check` and `test:csp` pass.
+- [x] **Status** line above set to `done (#<PR>)`.
