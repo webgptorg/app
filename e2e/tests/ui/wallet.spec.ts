@@ -7,6 +7,79 @@ import { expectCanariesAbsent, newCanary } from '../../src/canary.ts';
 import { addWalletLogin } from '../../src/ui-app.ts';
 import { expect, need, test } from '../../src/ui-fixtures.ts';
 
+test('a Bitwarden export imports only selected new logins without exposing any exported secret', async ({
+    page,
+    context,
+    signIn,
+    appUrl,
+    responses,
+    guard,
+}) => {
+    const sent: Request[] = [];
+    context.on('request', (request) => {
+        if (request.method() !== 'GET') sent.push(request);
+    });
+    const suffix = crypto.randomUUID().slice(0, 8);
+    const existingSite = `existing-${suffix}.example`;
+    const selectedSite = `imported-${suffix}.example`;
+    const canaries = [newCanary(), newCanary(), newCanary(), newCanary(), newCanary()];
+    const [original, replacement, selected, unselected, note] = canaries;
+    if (
+        original === undefined ||
+        replacement === undefined ||
+        selected === undefined ||
+        unselected === undefined ||
+        note === undefined
+    ) {
+        throw new Error('Missing test canary');
+    }
+    await signIn();
+    await page.goto(appUrl('/wallet'));
+    await addWalletLogin(page, existingSite, 'ada@example.com', original);
+    await page.getByRole('button', { name: 'Import logins' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Import logins' });
+    const item = (name: string, uri: string, password: string) => ({
+        type: 1,
+        name,
+        login: { username: 'ada@example.com', password, uris: [{ uri }] },
+    });
+    await dialog.getByLabel('Export file').setInputFiles({
+        name: 'test-bitwarden-export.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(
+            JSON.stringify({
+                encrypted: false,
+                items: [
+                    item('Existing', `https://${existingSite}/login`, replacement),
+                    item('Selected', `https://${selectedSite}/login`, selected),
+                    item('Unselected', `https://unselected-${suffix}.example`, unselected),
+                    { type: 2, name: 'A note', notes: note },
+                ],
+            }),
+        ),
+    });
+    await expect(dialog.getByRole('checkbox', { name: 'Existing · ada@example.com' })).not.toBeChecked();
+    await dialog.getByRole('checkbox', { name: 'Unselected · ada@example.com' }).uncheck();
+    await dialog.getByRole('button', { name: 'Import selected (1)' }).click();
+    await expect(dialog.getByText('Import finished.')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Close', exact: true }).last().click();
+    await expect(
+        page.getByRole('region', { name: 'Saved logins' }).getByText('Selected', { exact: true }),
+    ).toBeVisible();
+    for (const canary of [original, selected]) {
+        expect(sent.filter((request) => request.postData()?.includes(canary) === true)).toHaveLength(1);
+    }
+    for (const canary of [replacement, unselected, note]) {
+        expect(sent.some((request) => request.postData()?.includes(canary) === true)).toBe(false);
+    }
+    await expectCanariesAbsent(canaries, {
+        page,
+        responses,
+        consoleMessages: guard.consoleMessages,
+        seenInResponses: 'Selected',
+    });
+});
+
 test('a login is added, updated and removed without its password ever coming back', async ({
     page,
     context,
