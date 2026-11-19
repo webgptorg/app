@@ -1,4 +1,8 @@
-import type { OnboardingAnswer, OnboardingPrompt, OnboardingState } from '@ptbk/engine-api';
+import type {
+    OnboardingAnswer,
+    ReadOnboardingPrompt as OnboardingPrompt,
+    ReadOnboardingState as OnboardingState,
+} from '@ptbk/engine-api';
 import { Banner, BrandRobot, Button, ErrorState, RobotGuide, Skeleton, Spinner } from '@ptbk/ui';
 import type { RobotPose } from '@ptbk/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -126,6 +130,8 @@ function guideFor(prompt: OnboardingPrompt | null): { readonly pose: RobotPose; 
             return { pose: 'assembling', line: m.onboarding_guide_upload() };
         case 'harness-login':
             return { pose: 'working', line: m.onboarding_guide_login() };
+        case 'secret':
+        case 'unsupported':
         default:
             return { pose: 'working', line: m.onboarding_guide_other() };
     }

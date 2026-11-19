@@ -45,6 +45,8 @@ export type {
     Sleep,
 } from './in-memory/kit';
 export type { StepInput } from './in-memory/turns';
+export type { HarnessLoginOutcome, OnboardingHarness, OnboardingSeed } from './in-memory/onboarding';
+export { CHECK_MS, CREATE_MS, DEVICE_LOGIN_MS, INSTALL_MS } from './in-memory/onboarding';
 export { RECHECK_DELAY_MS, STEP_ANNOUNCE_INTERVAL_MS } from './in-memory/turns';
 export type { ChatTaskChange, ChatTaskInput } from './in-memory/chat-tasks';
 export type { ActivityInput, EngineChecks, IntegrationProbe, ScannedFile } from './in-memory/kit';

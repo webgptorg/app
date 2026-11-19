@@ -1,4 +1,4 @@
-import type { OnboardingAnswer, OnboardingPrompt } from '@ptbk/engine-api';
+import type { OnboardingAnswer, OnboardingPrompt, ReadOnboardingPrompt } from '@ptbk/engine-api';
 import { Banner, Button, ExternalLink, IconButton, Spinner } from '@ptbk/ui';
 import { ArrowUp } from 'lucide-react';
 import { useId, useLayoutEffect, useRef, useState } from 'react';
@@ -13,7 +13,7 @@ import type { UploadedFile } from './onboarding-upload';
 type HarnessLoginPrompt = Extract<OnboardingPrompt, { kind: 'harness-login' }>;
 
 interface PromptFormProps {
-    readonly prompt: OnboardingPrompt;
+    readonly prompt: ReadOnboardingPrompt;
     readonly busy: boolean;
     readonly onAnswer: (answer: OnboardingAnswer) => void;
     readonly onBack: () => void;
@@ -54,6 +54,10 @@ export function PromptForm({ prompt, busy, onAnswer, onBack }: PromptFormProps) 
             return <UploadPrompt prompt={prompt} busy={busy} onAnswer={onAnswer} onBack={onBack} />;
         case 'harness-login':
             return <HarnessLogin prompt={prompt} busy={busy} onAnswer={onAnswer} onBack={onBack} />;
+        // Placeholders until U-20 renders a secret and says what an unsupported step needs; the question is the engine's.
+        case 'secret':
+        case 'unsupported':
+            return <p className="text-sm text-text-muted">{prompt.question}</p>;
     }
 }
 

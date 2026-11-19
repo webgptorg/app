@@ -29,8 +29,11 @@ const HttpsUrl = z.url({ protocol: /^https$/ }).max(2048);
 /** A new ID for every presentation of a prompt, so an answer to a prompt the engine moved past is refused. */
 export const OnboardingPromptId = OpaqueId;
 
-/** A fact shown with the question, e.g. a line of the summary before "Create and start". */
-export const OnboardingDetail = z.strictObject({ label: ShortText, value: LongText.min(1) });
+/**
+ * A fact shown with the question, e.g. a line of the summary before "Create and start". `text`, not `value`: no
+ * response carries a field named like a credential.
+ */
+export const OnboardingDetail = z.strictObject({ label: ShortText, text: LongText.min(1) });
 export type OnboardingDetail = z.infer<typeof OnboardingDetail>;
 
 /** A path on the engine's own origin; never another origin, protocol-relative or with a backslash. */

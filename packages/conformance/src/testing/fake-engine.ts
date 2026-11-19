@@ -146,8 +146,9 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
             ),
             sessions: [],
             triggers: [...(demo.triggers ?? []), ended],
-            // Mid-setup, so the onboarding checks reach a prompt.
-            onboarding: 'pending',
+            // Mid-setup on an engine paired before its project, so the onboarding checks reach a prompt and a refused
+            // "Skip for now".
+            onboarding: 'no-project',
         },
         // Every capability, scanning included, so the suite's scan checks run against the fake too.
         capabilities: options.capabilities ?? Object.values(KNOWN_CAPABILITIES),

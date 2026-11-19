@@ -33,6 +33,7 @@ export {
     MAX_HEARTBEAT_ACKS,
     MAX_HEARTBEAT_COUNT,
     MAX_HEARTBEAT_REVOCATIONS,
+    SetupState,
     TolerantHeartbeatReply,
     UpdateState,
     buildHeartbeat,

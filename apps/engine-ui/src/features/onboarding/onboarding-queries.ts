@@ -1,4 +1,4 @@
-import type { EngineApiClient, OnboardingState } from '@ptbk/engine-api';
+import type { EngineApiClient, ReadOnboardingState as OnboardingState } from '@ptbk/engine-api';
 import { queryOptions } from '@tanstack/react-query';
 
 import { unwrap } from '../../app/api-errors';
