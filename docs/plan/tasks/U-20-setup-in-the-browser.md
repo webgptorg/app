@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M5
 - **Depends on:** C-15
-- **Status:** todo
+- **Status:** in progress (feat/u-20-setup-in-the-browser)
 - **Spec:** Security hardening; ADRs: [0015](../../adr/0015-ui-architecture-and-design-system.md), [0016](../../adr/0016-engine-capabilities.md)
 - **Design:** [ui.md](../../design/ui.md), [onboarding.md](../../design/onboarding.md)
 
