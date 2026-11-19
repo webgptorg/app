@@ -162,7 +162,7 @@ function guideFor(prompt: ReadOnboardingPrompt | null): { readonly pose: RobotPo
         case 'harness-login':
             return { pose: 'working', line: m.onboarding_guide_login() };
         case 'unsupported':
-            return { pose: 'resting', line: m.onboarding_guide_other() };
+            return { pose: 'resting', line: m.onboarding_guide_unsupported() };
     }
 }
 
