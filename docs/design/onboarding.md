@@ -1,3 +1,5 @@
+> Revision of 18 November 2026: the engine-first flow below supersedes Docker-first and mandatory card-before-install recommendations. It completes the existing Reborn onboarding; it does not introduce a second wizard or alter billing adapters. See [the current installation handoff](engine-first-installation.md).
+
 # Onboarding
 
 **Someone who runs, or wants to run, the open Promptbook engine pastes one command and creates one passkey in the browser window the engine opens. After that, their engine has an address, a certificate, a tunnel, the signed UI and an owner, and we never held a key to any of it.**
@@ -18,10 +20,10 @@ Copy in quotes is the English source text; Czech follows through i18n. Where the
 
 | Surface                                            | Who builds it      | Code                          | Onboarding job                                                                                            |
 | -------------------------------------------------- | ------------------ | ----------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Dashboard, `app.ptbk.io`                           | Us                 | Private                       | Account, billing gate, link code and install command, live link progress, engine list                     |
+| Dashboard, `app.ptbk.io`                           | Us                 | Private                       | Account eligibility, link code and installation choices, live link progress, engine list                  |
 | Installer and engine CLI, on the engine's host     | Engine team        | Open                          | Preflight checks, verified install, key, registration, progress, the setup link and QR, recovery commands |
 | Engine gateway pages: `/setup`, sign-in, step-up   | Engine team        | Open                          | Owner's first passkey, later sign-ins                                                                     |
-| Engine UI first run, `<engineId>.<engine domain>/` | Us (signed bundle) | Private, served by the engine | Welcome, first LLM provider, first agent, invite members                                                  |
+| Engine UI first run, `<engineId>.<engine domain>/` | Us (signed bundle) | Private, served by the engine | Render engine-owned onboarding prompts, then normal project UI                                            |
 
 The gateway pages are engine code by design: anonymous visitors only ever reach open code ([spec, Architecture](../spec/zero-trust-spec.md#architecture)). We specify their behaviour and copy here. So that the first screen an owner sees matches our UI, we publish a small MIT stylesheet with the design tokens, and the mock engine's `/setup` and sign-in pages are portable, CSP-safe MIT reference pages the engine team may copy ([M-08](../plan/tasks/M-08-mock-engine-onboarding.md)). The engine team owns and reviews whatever it ships.
 
@@ -43,7 +45,7 @@ The engine sees everything about itself and narrates it in the terminal ([instal
 
 ## Journey 1: new person, new engine
 
-The spec's v0 flow. Target from landing on `app.ptbk.io` to a signed-in engine: **under 10 minutes** on a VPS with Docker, of which the person actively spends under 3.
+The spec's v0 flow. Target from landing on `app.ptbk.io` to a signed-in engine: **under 10 minutes** on a supported host with its published runtime or the supported Ubuntu bootstrap, of which the person actively spends under 3.
 
 ```mermaid
 sequenceDiagram
@@ -76,22 +78,19 @@ sequenceDiagram
 - Target: under 2 minutes. The email round trip dominates.
 - The empty state already says: "No engines yet" / "Link an engine to this organization to see it here with its status, fingerprint and address. Linking ties it to the organization for routing and billing only; it grants nothing inside the engine." Action: "Link an engine".
 
-### Step 2. Billing gate (dashboard, built in D-07, order to change)
+### Step 2. Account eligibility (existing adapters)
 
-Engines need a paid, verified account ([spec, Abuse on our domains](../spec/zero-trust-spec.md#abuse-on-our-domains), item 4). Decided: a **trial with a card on file** comes before the install command. Today a new account has no plan, and the person finds out only after clicking "Create link code" (toast plus "Your plan does not include engines" / "Subscribe to a plan to link an engine." with "Go to billing").
-
-Built in [D-10](../plan/tasks/D-10-live-link-progress.md):
-
-- `/engines/new` checks entitlements on load. Without `engines.create`, the page shows the plan step first: "Choose a plan to link your engine" with the plans inline and "Start your {n}-day trial" (the card is collected by Stripe Checkout; nothing is charged until the trial ends), not an error after a click.
-- A trial is offered once per organization. A `trialing` subscription already grants its plan (D-07), so the install command appears as soon as Checkout returns.
-- Checkout returns to `/engines/new`, not to `/billing`, with "Thank you, your trial has started." and the link step ready.
-- At the engine limit: "Your plan's engine limit is reached" / "Upgrade your plan or remove an engine to link another one." stays as is.
+The dashboard checks whether this account may issue a link code using the existing eligibility API. This installation change adds no payment, licence enforcement or card step. In the existing billing-off staging configuration the install choices appear directly. An explicitly configured legacy Stripe/fake billing adapter retains its existing eligibility and Checkout behavior; it is not a prerequisite imposed by this installer. Website-owned licensing is a separate integration.
 
 ### Step 3. Install command (dashboard, built in D-03, to extend)
 
-Built: "Link an engine", the intro copy with the configured code lifetime, the code issued on load once the organization is entitled (D-10; "Create link code" stays only as the retry after a refused issuance), then the "Install command" card with "Copy it now: the link code is shown only once.", a copy button and "works until <date and time>" (30 days by default). At expiry: "The link code expired" / "Create a new one to link your engine." The card holds the install paths as tabs ([D-11](../plan/tasks/D-11-install-command-tabs.md)), the first selected: **Linux server with Docker** (the one-line installer), **Docker Compose** (three commands, after the `compose.yaml` from the guide), **Already running Promptbook** (the exact `promptbook-engine connect --link <code>` one-liner, plus the move from the predecessor, Journey 2a). Each tab shows one copyable block with the same link code, so every path is one paste, and under it: "Run it on the machine that will host your engine. It needs outbound HTTPS (port 443) and nothing inbound." with "Requirements and proxies", a link to the tab's heading in the public install guide. The commands, their order and the guide's address are configuration (`INSTALL_COMMANDS`, `INSTALL_GUIDE_URL`); exact commands are in [installation.md](../engine-integration/installation.md#install-paths). Docker is the first and only distribution in v0; other forms may get a tab later.
+The one-time code is issued once on load, expires at its returned `expiresAt`, and is never fetched again. Engine-first configurations show **New project** first, **Install with AI**, and **Windows EXE**. New project has Bash/zsh, Windows PowerShell and a clean Ubuntu VPS bootstrap; the local blocks install one exact published package and verify the CLI on PATH before `init --prepare-only --link`. No working directory, agenda, framework-scope question or second interactive init/connect is required.
 
-Below the tabs (2026-11-06): "Or give this address to your engine's connect command." with the link URL (`https://<dashboard>/link#<code>`) and its own "Copy address" button. Staging's and production's tabs put the same URL into `connect --link '<link URL>'`, so the engine needs no dashboard setting. Opened in a browser, `/link` says only "To link your engine, run this on the machine where it runs:" with that command and a copy button; the code stays in the fragment, which the browser never sends.
+AI prompts are localized, distinguish this computer from an existing VPS over SSH, and retain the exact issuance-time pairing context. They preserve data/sign-ins and native approvals, run the engine as an ordinary user, and leave agenda/harness choices to the engine's `onboarding@1` UI. The EXE is an actual version-matched asset with its SHA-256 and a checked PowerShell pairing block after installation. There is no invented pairing deep link. macOS DMG remains available through the public catalogue.
+
+`ENGINE_INSTALLATION` contains reviewed release metadata. Its optional `installationOptions` response is a discriminated union of command, AI and download payloads; long prompts never enter the 512-character legacy shell-template schema. `INSTALL_COMMANDS` and `INSTALL_GUIDE_URL` remain supported, with configured existing-engine/Compose choices and the raw pairing URL behind a secondary disclosure. Older configurations keep their existing tabs. A generated Bash block is also retained in `installCommands` for the legacy presentation.
+
+The next step is the owner setup link printed by the engine, followed by passkey, brief/files and harness setup on that engine's origin. The dashboard never receives the owner setup secret or project content. A short note explains host permissions and indirect access when sharing an engine, with dedicated hardware/VPS as alternatives.
 
 Also built in [D-10](../plan/tasks/D-10-live-link-progress.md):
 
@@ -184,12 +183,11 @@ The fingerprint and engine ID let a careful owner check, before creating the pas
 
 ### Step 7. First run in the engine UI (our bundle)
 
-After setup the gateway signs the owner in and loads the UI. A first-run home replaces the regular owner home until two things exist:
+After setup the gateway signs the owner in on the engine origin. An engine advertising `onboarding@1` supplies the current prompt and state: brief and optional `files@1` attachments, available harnesses and their native sign-in, preparation, proposed project name/folder and final confirmation. The UI renders these prompts rather than inventing a provider list or requiring a provider API key. Native subscription sign-in and its terminal fallback stay available where supported. Every answer carries the current `promptId`; stale answers are refused.
 
-1. "Connect a model provider": add an LLM provider key as a write-only secret ([spec, What our platform can and cannot do](../spec/zero-trust-spec.md#what-our-platform-can-and-cannot-do)). Copy: "Your key is stored on this engine, encrypted. Nobody can read it back, not even you; you can replace it."
-2. "Create your first agent": the guided wizard ([ui.md, Key screens](ui.md#key-screens)).
+While preparation runs, the service remains available and the UI shows the actual working state. Continue later saves accepted answers/files, including across a service restart. A pending engine cannot start ordinary agent work. Final confirmation publishes one project under the shared projects home and preserves its engine identity, pairing, passkeys, uploads and verified harness settings. Only then does the normal product UI open; it requires the approved signed bundle. An absent bundle is an actionable readiness problem, never permission to bypass signature checks.
 
-Then optional cards: "Add another device", "Invite a member" (when the engine advertises invites), "Choose how updates install" (update policy, default automatic). The trust mark seals once on the first load with "Private engine: your data stays on your server".
+After completion, optional actions include adding another device, inviting a member where supported, and choosing an update policy. Existing engines without a pending initialization keep their normal first-run controls.
 
 Target: first chat reply within 10 minutes of landing on the dashboard.
 
@@ -350,10 +348,10 @@ Engine-side work is listed in [installation.md](../engine-integration/installati
 Taken 2026-10-26. Seb decided 1, 2, 5 and 7, and delegated 3, 4, 6 and 8 with one priority: "secure as well as seamless and very intuitive".
 
 1. **Link flow:** a link code from the dashboard inside the install command; `connect --link <code>` for an engine that already runs. An engine-shown code approved in the dashboard (a device flow) is revisited after v0: it needs a new engine-facing endpoint, and it lets someone talk a person into approving a stranger's engine into their account.
-2. **Distribution:** Docker first: a signed multi-architecture image, a verifying installer and a published Compose file. Other forms may come later; the guide stays open to them without specifying them. npm only for local development.
+2. **Distribution (revised 18 November):** published npm/Reborn engine-first setup is the default, alongside paired AI installation and Windows EXE. Clean Ubuntu uses the verified bootstrap; existing configured Docker/Compose remains advanced. macOS DMG remains in the public catalogue.
 3. **Connecting a running engine:** from the CLI only in v0, shown in the dashboard as an exact one-liner with a copy button. A connect form in the engine UI comes in v1, with the passkey handover to the new hostname designed then.
 4. **Account first** is promoted; engine first (local mode, `connect` later) works and is documented, not promoted (Journey 2c).
-5. **Billing gate:** a trial with a card on file before the install command (D-10).
+5. **Billing (revised 18 November):** this installation flow adds no card or billing prerequisite. Existing explicitly selected billing adapters retain their behavior; website licensing is separate.
 6. **No engine contract change** beyond C-11's additive pieces. Progress comes from the registration, the heartbeat (`members` is 0 until the owner's first passkey, normative in installation.md) and the relays' presence reports (R-07).
 7. **First UI bundle:** the engine image carries its own release's UI bundle, with the delay counted from the release's trusted log time, and the installer pins only releases already past their delay. Until UI bundles ship inside engine releases, running the installer counts as the owner approving the first bundle by hand. This needs the engine team and the release key holders.
 8. **Gateway pages:** we publish a small MIT stylesheet with the design tokens; the mock engine's `/setup` and sign-in pages are portable, CSP-safe MIT reference pages the engine team may copy (M-08). The engine team owns and reviews what it ships.

@@ -12,17 +12,17 @@ import {
 } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import { apiRoutes, type LinkCodeView, type SessionView } from '../../../shared/api/routes';
 import type { InstallPathLabelKey } from '../../../shared/install-paths';
+import type { InstallationOption } from '../../../shared/engine-installation';
 import { useApiClient } from '../../api/api-client-context';
 import { billingQuery, dataOrThrow, problemCode } from '../../api/queries';
 import { useBrowser } from '../../core/browser';
 import { Link } from '../../core/link';
 import { useAppMutation } from '../../core/mutations';
-import { PlanOfferList } from '../billing/plan-offers';
 import { useSession } from '../session/use-session';
 import { Crumb, Page } from '../shell/page';
 import { TrustLink } from '../trust/trust-link';
@@ -30,7 +30,13 @@ import { LINK_POLL_MS, LinkProgress, useObservedLinkState } from './link-progres
 import type { LinkState } from './link-progress';
 import { linkCodeQuery, linkEligibilityQuery } from './link-queries';
 import { LinkSteps } from './link-steps';
+import { InstallationOptionPanel } from './installation-options';
 import type { LinkStep } from './link-steps';
+
+const NewEnginePlanStep = lazy(async () => {
+    const module = await import('./new-engine-plan-step');
+    return { default: module.NewEnginePlanStep };
+});
 
 const LINK_PERMISSION = 'engine.link';
 const BILLING_PERMISSION = 'billing.manage';
@@ -43,6 +49,12 @@ const INSTALL_PATH_LABELS: Record<InstallPathLabelKey, () => string> = {
     'docker-compose': () => m.engines_new_tab_docker_compose(),
     'already-running': () => m.engines_new_tab_already_running(),
     'new-project': () => m.engines_new_tab_new_project(),
+};
+
+const INSTALL_OPTION_LABELS: Record<InstallationOption['id'], () => string> = {
+    'new-project': () => m.engines_new_tab_new_project(),
+    ai: () => m.engines_new_tab_ai(),
+    windows: () => 'Windows EXE',
 };
 
 type InstallCommandView = LinkCodeView['installCommands'][number];
@@ -211,7 +223,8 @@ function InstallCommand(props: {
     const locale = useLocale();
     const remaining = useRemainingMs(props.view.expiresAt);
     const paths = props.view.installCommands;
-    const [selectedId, setSelectedId] = useState<string>(paths[0]?.id ?? '');
+    const options = props.view.installationOptions;
+    const [selectedId, setSelectedId] = useState<string>(options?.[0]?.id ?? paths[0]?.id ?? '');
     // Only observes what the progress panel polls; it never asks on its own.
     const status = useQuery({ ...linkCodeQuery(api, props.view.linkCodeId), enabled: false }).data?.status;
     if (status === 'linked') {
@@ -221,20 +234,55 @@ function InstallCommand(props: {
         return <ExpiredBanner onRenew={props.onRenew} renewing={props.renewing} />;
     }
     return (
-        <Section title={m.engines_new_command_title()} divided={false} description={m.engines_new_intro()}>
+        <Section
+            title={m.engines_new_command_title()}
+            divided={false}
+            description={options === undefined ? m.engines_new_intro() : m.engines_new_install_intro()}
+        >
             <div className="flex flex-col gap-3">
                 <Tabs
                     label={m.engines_new_tabs_label()}
                     selectedId={selectedId}
                     onSelect={setSelectedId}
-                    tabs={paths.map((path) => ({
-                        id: path.id,
-                        label: INSTALL_PATH_LABELS[path.labelKey](),
-                        // Keyed, so "Copied" on one command never shows on the next tab's.
-                        panel: <InstallPathPanel key={path.id} path={path} guideUrl={props.view.installGuideUrl} />,
-                    }))}
+                    tabs={
+                        options === undefined
+                            ? paths.map((path) => ({
+                                  id: path.id,
+                                  label: INSTALL_PATH_LABELS[path.labelKey](),
+                                  // Keyed, so "Copied" on one command never shows on the next tab's.
+                                  panel: (
+                                      <InstallPathPanel
+                                          key={path.id}
+                                          path={path}
+                                          guideUrl={props.view.installGuideUrl}
+                                      />
+                                  ),
+                              }))
+                            : options.map((option) => ({
+                                  id: option.id,
+                                  label: INSTALL_OPTION_LABELS[option.id](),
+                                  panel: <InstallationOptionPanel key={option.id} option={option} />,
+                              }))
+                    }
                 />
-                {props.view.linkUrl === null ? null : <LinkUrl url={props.view.linkUrl} />}
+                {options === undefined ? null : (
+                    <details className="text-sm">
+                        <summary>{m.engines_new_advanced_installation()}</summary>
+                        <div className="mt-3 flex flex-col gap-4">
+                            {paths
+                                .filter((path) => path.id !== 'installer')
+                                .map((path) => (
+                                    <div key={path.id}>
+                                        <p className="mb-2 font-medium">{INSTALL_PATH_LABELS[path.labelKey]()}</p>
+                                        <InstallPathPanel path={path} guideUrl={props.view.installGuideUrl} />
+                                    </div>
+                                ))}
+                            {props.view.linkUrl === null ? null : <LinkUrl url={props.view.linkUrl} />}
+                            <ExternalLink href={props.view.installGuideUrl}>{m.engines_new_docs()}</ExternalLink>
+                        </div>
+                    </details>
+                )}
+                {options !== undefined || props.view.linkUrl === null ? null : <LinkUrl url={props.view.linkUrl} />}
                 <p className="text-sm text-text-muted" aria-live="off">
                     {m.engines_new_command_body({ time: locale.formatDateTime(new Date(props.view.expiresAt)) })}
                 </p>
@@ -248,35 +296,14 @@ function canChoosePlan(session: SessionView): boolean {
     return session.billingEnabled && session.activeOrg.permissions.includes(BILLING_PERMISSION);
 }
 
-/** Step 2 of onboarding.md: without `engines.create`, the plans come first, and Checkout returns here. */
+/** Load the existing legacy billing UI only for an eligible account that actually needs it. */
 function PlanStep(props: { readonly checkout: CheckoutReturn | undefined }) {
-    const api = useApiClient();
     const session = useSession();
-    const billing = useQuery({ ...billingQuery(api), enabled: canChoosePlan(session) });
-    if (!canChoosePlan(session)) {
-        return <UpgradeBanner reason="not-entitled" />;
-    }
+    if (!canChoosePlan(session)) return <UpgradeBanner reason="not-entitled" />;
     return (
-        <Section title={m.engines_new_plan_title()} divided={false} description={m.engines_new_plan_body()}>
-            {props.checkout === 'cancel' ? <Banner tone="info">{m.billing_checkout_cancel()}</Banner> : null}
-            {billing.data === undefined ? (
-                billing.isError ? (
-                    <ErrorState
-                        message={m.billing_load_failed()}
-                        onRetry={() => void billing.refetch()}
-                        retrying={billing.isFetching}
-                    />
-                ) : (
-                    <Skeleton className="h-32 w-full" />
-                )
-            ) : (
-                <PlanOfferList
-                    plans={billing.data.plans}
-                    trialAvailable={billing.data.trialAvailable}
-                    returnTo="engines-new"
-                />
-            )}
-        </Section>
+        <Suspense fallback={<Skeleton className="h-32 w-full" />}>
+            <NewEnginePlanStep checkout={props.checkout} />
+        </Suspense>
     );
 }
 

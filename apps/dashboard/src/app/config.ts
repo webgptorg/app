@@ -16,6 +16,7 @@ import { LINK_CODE_TTL_MS } from '../domain/registration/issue-link-code';
 import type { HeartbeatTiming } from '../domain/status/engine-status';
 import { DEFAULT_THRESHOLDS, thresholdsSchema, type AlertThresholds } from '../domain/monitoring/alert-rules';
 import { environmentSchema, type Environment } from '../shared/environment';
+import { engineInstallReleaseSchema, type EngineInstallRelease } from '../shared/engine-installation';
 import {
     docsAnchorSchema,
     installPathIdSchema,
@@ -258,6 +259,8 @@ const varsSchema = z
                 'duplicate relayId',
             ),
         INSTALL_COMMANDS: installCommandsSchema.optional(),
+        /** Reviewed published artifacts for engine-first command, AI and Windows installation. */
+        ENGINE_INSTALLATION: engineInstallReleaseSchema.optional(),
         /** D-03's single command; read only without `INSTALL_COMMANDS`, for one release. */
         INSTALL_COMMAND: installCommandSchema.optional(),
         INSTALL_GUIDE_URL: installGuideUrlSchema,
@@ -283,7 +286,11 @@ const varsSchema = z
         WEB_RISK_API_KEY: webRiskKeySchema.optional(),
     })
     .superRefine((vars, ctx) => {
-        if (vars.INSTALL_COMMANDS === undefined && vars.INSTALL_COMMAND === undefined) {
+        if (
+            vars.INSTALL_COMMANDS === undefined &&
+            vars.INSTALL_COMMAND === undefined &&
+            vars.ENGINE_INSTALLATION === undefined
+        ) {
             ctx.addIssue({ code: 'custom', path: ['INSTALL_COMMANDS'], message: 'required' });
         }
         if (vars.INSTALL_COMMANDS !== undefined && vars.INSTALL_COMMAND !== undefined) {
@@ -291,7 +298,9 @@ const varsSchema = z
         }
         // Engines accept only https:// link URLs, so a plain-http dev origin can hand out codes only.
         const templates = [...(vars.INSTALL_COMMANDS ?? []).map((path) => path.template), vars.INSTALL_COMMAND ?? ''];
-        const usesLinkUrl = templates.some((template) => template.includes(LINK_URL_PLACEHOLDER));
+        const usesLinkUrl =
+            vars.ENGINE_INSTALLATION !== undefined ||
+            templates.some((template) => template.includes(LINK_URL_PLACEHOLDER));
         if (usesLinkUrl && !vars.DASHBOARD_ORIGIN.startsWith('https://')) {
             ctx.addIssue({
                 code: 'custom',
@@ -403,6 +412,7 @@ export interface DashboardConfig {
     readonly relays: readonly Readonly<RelayConfig>[];
     /** The tabs of `/engines/new`, in order; each template contains one placeholder exactly once. */
     readonly installCommands: readonly InstallCommandConfig[];
+    readonly engineInstallation?: Readonly<EngineInstallRelease>;
     /** The public install guide, without a fragment. */
     readonly installGuideUrl: string;
     readonly adapters: Readonly<AdapterSelection>;
@@ -532,6 +542,9 @@ export function parseConfig(env: object): DashboardConfig {
         engineDomain: parsed.ENGINE_DOMAIN,
         relays: Object.freeze(parsed.RELAYS.map((relay) => Object.freeze({ ...relay }))),
         installCommands: installCommandsConfig(parsed),
+        ...(parsed.ENGINE_INSTALLATION === undefined
+            ? {}
+            : { engineInstallation: Object.freeze({ ...parsed.ENGINE_INSTALLATION }) }),
         installGuideUrl: parsed.INSTALL_GUIDE_URL,
         adapters: Object.freeze({ ...parsed.ADAPTERS }),
         emailFrom: parsed.EMAIL_FROM,

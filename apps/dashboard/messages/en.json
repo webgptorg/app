@@ -769,5 +769,21 @@
   "ui_trust_mark_verifying": "Verifying the engine",
   "ui_type_to_confirm": "Type {phrase} to confirm",
   "user_menu": "Account menu",
-  "user_menu_for": "Account menu for {email}"
+  "user_menu_for": "Account menu for {email}",
+  "engines_new_advanced_installation": "Already running an engine or another installation method",
+  "engines_new_ai_hint": "Paste the complete prompt into your local AI agent. It keeps this App pairing and leaves agenda setup to the engine.",
+  "engines_new_ai_local": "This computer",
+  "engines_new_ai_server": "Existing VPS over SSH",
+  "engines_new_ai_target": "Install destination",
+  "engines_new_checksum": "Installer SHA-256",
+  "engines_new_computer_access": "Agents use this computer’s permissions, files and signed-in services. Sharing engine access can let colleagues work with them indirectly. You can use a dedicated computer or VPS.",
+  "engines_new_copy_prompt": "Copy prompt",
+  "engines_new_download_windows": "Download Windows EXE · {version}",
+  "engines_new_next_step": "Next: open the owner setup link printed by the engine. Create your passkey there, then add the brief, files and AI tools. You can close setup and continue later.",
+  "engines_new_prerequisites": "For this computer: Node.js 22.13+ in the 22 line or 24+, npm 10+ and Git. Select Ubuntu VPS for a clean supported server.",
+  "engines_new_shell": "Computer or server",
+  "engines_new_tab_ai": "Install with AI",
+  "engines_new_ubuntu": "Ubuntu 24.04 x64 with systemd and root or sudo access. The bootstrap prepares dependencies and runs the engine as the ordinary promptbook user.",
+  "engines_new_windows_handoff": "Finish the installer, then open a new PowerShell window and run this block to pair this engine. If a standalone project wizard opens, close it without creating a project.",
+  "engines_new_install_intro": "Choose an installation method. Set up the agenda and AI tools on the engine’s page."
 }

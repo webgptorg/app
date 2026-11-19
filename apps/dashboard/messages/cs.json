@@ -775,5 +775,21 @@
   "ui_trust_mark_verifying": "Ověřování enginu",
   "ui_type_to_confirm": "Pro potvrzení napište {phrase}",
   "user_menu": "Nabídka účtu",
-  "user_menu_for": "Nabídka účtu {email}"
+  "user_menu_for": "Nabídka účtu {email}",
+  "engines_new_advanced_installation": "Již běžící engine a další způsoby instalace",
+  "engines_new_ai_hint": "Celý prompt vložte do svého místního AI agenta. Zachová toto propojení z App a nastavení agendy ponechá enginu.",
+  "engines_new_ai_local": "Tento počítač",
+  "engines_new_ai_server": "Existující VPS přes SSH",
+  "engines_new_ai_target": "Cíl instalace",
+  "engines_new_checksum": "SHA-256 instalátoru",
+  "engines_new_computer_access": "Agenti pracují s oprávněními, soubory a přihlášenými službami tohoto počítače. Sdílením enginu mohou kolegové získat nepřímý přístup i k nim. Můžete použít vyhrazený počítač nebo VPS.",
+  "engines_new_copy_prompt": "Kopírovat prompt",
+  "engines_new_download_windows": "Stáhnout Windows EXE · {version}",
+  "engines_new_next_step": "Dále otevřete owner setup link vypsaný enginem. Na jeho stránce založíte passkey, zadáte agendu, přílohy a AI nástroje. Nastavení lze zavřít a dokončit později.",
+  "engines_new_prerequisites": "Pro tento počítač: Node.js 22.13+ v řadě 22 nebo 24+, npm 10+ a Git. Pro čistý podporovaný server vyberte Ubuntu VPS.",
+  "engines_new_shell": "Počítač nebo server",
+  "engines_new_tab_ai": "Instalace pomocí AI",
+  "engines_new_ubuntu": "Ubuntu 24.04 x64 se systemd a přístupem root nebo sudo. Bootstrap doplní závislosti a spustí engine pod běžným účtem promptbook.",
+  "engines_new_windows_handoff": "Dokončete instalátor, otevřete nové okno PowerShellu a tímto blokem připojte engine. Pokud se otevře průvodce samostatným projektem, zavřete jej bez vytvoření projektu.",
+  "engines_new_install_intro": "Vyberte způsob instalace. Agendu a AI nástroje nastavíte na stránce enginu."
 }

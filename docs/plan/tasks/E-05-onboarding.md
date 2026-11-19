@@ -1,5 +1,7 @@
 # E-05. Onboarding: product spec and engine install guide
 
+> 18 November revision: see [engine-first installation](../../design/engine-first-installation.md). It supersedes the historical Docker-first/card-first recommendations below, preserves the existing engine-owned wizard and adds typed command/AI/download presentation. Status above/below records the original completed task; this follow-up awaits review and a real-engine release walkthrough.
+
 - **Lane:** Engine integration · **Module:** `docs/design/`, `docs/engine-integration/` · **Milestone:** M3
 - **Depends on:** E-01, D-03, D-06, D-09, M-06
 - **Status:** done (#83)
@@ -13,7 +15,7 @@ Someone who runs, or wants to run, the open engine can link it to the platform a
 
 The dashboard side of linking exists (D-03 link codes and registration, D-05 heartbeat status, D-06 engine list and revoke, D-09 auth screens), and the mock engine registers and heartbeats (M-06). What is missing is the flow between them as a person experiences it: there is no live view while an engine links, the install command is a placeholder outside dev, and nothing specifies the engine's terminal output, setup link or setup page. The mock engine has no setup secret at all; it signs in with a development-only member picker.
 
-The engine is built by an external maintainer in `webgptorg/promptbook`. Today it is the `agents-server` Next.js app, distributed as a git-clone VPS installer (pm2, nginx, certbot), a stateless Docker image needing Supabase, a Vercel deploy and the `ptbk agents-server` npm command, with a password admin and no setup flow. The realistic first users are its current operators, so moving them is a first-class journey.
+The engine is built by an external maintainer in `webgptorg/promptbook`. At the time of this original brief it was the `agents-server` Next.js app, distributed as a git-clone VPS installer (pm2, nginx, certbot), a stateless Docker image needing Supabase, a Vercel deploy and the `ptbk agents-server` npm command, with a password admin and no setup flow. The realistic first users are its current operators, so moving them is a first-class journey.
 
 `docs/engine-integration/` moves public with the contracts (E-02): `installation.md` follows E-01's rules (nothing private, no infra, no secrets, relative links, the guide's content checks). `docs/design/onboarding.md` is a private product document and may name dashboard internals and task IDs.
 
