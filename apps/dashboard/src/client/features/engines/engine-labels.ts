@@ -14,6 +14,8 @@ export function engineStatusLabel(engine: Pick<EngineView, 'status' | 'suspended
             return m.engines_status_never_seen();
         case 'owner-pending':
             return m.engines_status_owner_pending();
+        case 'setup-pending':
+            return m.engines_status_setup_pending();
         case 'unknown':
             return m.engines_status_unknown();
         case 'suspended':
@@ -31,6 +33,7 @@ export function engineStatusTone(status: EngineView['status']): StatusTone {
             return 'danger';
         case 'never-seen':
         case 'owner-pending':
+        case 'setup-pending':
             return 'waiting';
         case 'unknown':
             return 'neutral';
@@ -47,6 +50,15 @@ export function updateStateLabel(update: HeartbeatView['update']): string {
             return m.engines_update_pending();
         case 'installing':
             return m.engines_update_installing();
+    }
+}
+
+export function setupStateLabel(setup: NonNullable<HeartbeatView['setup']>): string {
+    switch (setup) {
+        case 'pending':
+            return m.engines_setup_pending();
+        case 'done':
+            return m.engines_setup_done();
     }
 }
 

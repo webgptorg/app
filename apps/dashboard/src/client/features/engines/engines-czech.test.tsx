@@ -52,6 +52,32 @@ describe('engines in Czech', () => {
         expect(document.body.textContent).not.toMatch(/engines_|engine_[a-z]/);
     });
 
+    it('says in Czech that the setup is not finished, on the list and the engine page', async () => {
+        const base = engineView();
+        const pending = engineView({
+            status: 'setup-pending',
+            heartbeat: base.heartbeat === null ? null : { ...base.heartbeat, setup: 'pending' },
+        });
+        const app = renderApp({
+            path: '/engines/all',
+            session: OWNER,
+            script: (api) => {
+                api.on(apiRoutes.listEngines, ok({ engines: [pending] }));
+                api.on(apiRoutes.getEngine, ok({ engine: pending }));
+            },
+        });
+        expect(await screen.findByText('Nastavení není dokončené')).toBeTruthy();
+        expect(
+            screen.getByRole('link', { name: `Pokračovat v nastavení enginu ${ENGINE_ID.slice(0, 8)}… v nové kartě` }),
+        ).toBeTruthy();
+
+        await app.user.click(screen.getByRole('link', { name: `${ENGINE_ID.slice(0, 8)}…` }));
+        expect(await screen.findByText('Nastavení pokračuje na enginu tam, kde jste skončili.')).toBeTruthy();
+        await app.user.click(screen.getByText('Co engine nahlásil'));
+        expect(screen.getByText('Nastavení', { selector: 'dt' }).nextElementSibling?.textContent).toBe('Nedokončené');
+        expect(document.body.textContent).not.toMatch(/engines_|engine_[a-z]/);
+    });
+
     it('offers the install tabs without missing texts', async () => {
         const app = renderApp({
             path: '/engines/new',

@@ -52,7 +52,7 @@ function TeamRow(props: { readonly team: TeamView; readonly engine: EngineView |
                     <span>{m.team_people_count({ count: team.memberCount })}</span>
                 </span>
             </div>
-            <OpenTeamButton team={team} />
+            <OpenTeamButton team={team} engine={engine} />
         </li>
     );
 }

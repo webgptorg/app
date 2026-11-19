@@ -1,3 +1,4 @@
+import type { HeartbeatInput } from '@ptbk/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { engineLabelSchema } from '../../shared/engine-label';
@@ -31,7 +32,11 @@ describe('engine status service', () => {
     function setup(options: Parameters<typeof createStatusTestDeps>[0] = {}) {
         const t = createStatusTestDeps({ recipients: new Map([[orgId, [OWNER]]]), ...options });
         const service = createEngineStatusService(t.deps);
-        const beat = async (seq: number, atMs = t.clock.nowMs(), overrides: { members?: number } = {}) => {
+        const beat = async (
+            seq: number,
+            atMs = t.clock.nowMs(),
+            overrides: Partial<Pick<HeartbeatInput, 'members' | 'setup'>> = {},
+        ) => {
             const { body, signature } = await signedHeartbeat(engine, seq, atMs, overrides);
             return service.recordHeartbeat({
                 engineId: engine.engineId,
@@ -82,6 +87,22 @@ describe('engine status service', () => {
         t.clock.advance(60_000);
         expect((await t.beat(2)).kind).toBe('accepted');
         expect(t.storage.alarmAt()).toBe(START + 60_000 + OFFLINE_AFTER_MS);
+    });
+
+    it('stores the setup state each heartbeat reports, and none when a heartbeat leaves it out', async () => {
+        const t = setup();
+        const setupOf = async () => {
+            const status = await t.service.getStatus();
+            return status.state === 'never-seen' ? undefined : status.payload;
+        };
+        await t.beat(1, t.clock.nowMs(), { setup: 'pending' });
+        expect(await setupOf()).toMatchObject({ setup: 'pending' });
+        t.clock.advance(60_000);
+        await t.beat(2, t.clock.nowMs(), { setup: 'done' });
+        expect(await setupOf()).toMatchObject({ setup: 'done' });
+        t.clock.advance(60_000);
+        await t.beat(3);
+        expect(await setupOf()).not.toHaveProperty('setup');
     });
 
     it('refuses an equal and a lower seq as replayed, through verifyHeartbeat with the stored lastSeq', async () => {
@@ -549,6 +570,8 @@ describe('engine status service', () => {
             alert: { kind: 'none' },
         };
         expect(storedEngineStatusSchema.parse(legacy)).toMatchObject({ notice: { kind: 'none' } });
+        // Nor did it know setup states: its payload parses without one, which reads as set up.
+        expect(storedEngineStatusSchema.parse(legacy)).not.toHaveProperty('payload.setup');
     });
 
     describe('a heartbeat accepted while the alarm is sending', () => {

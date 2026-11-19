@@ -1,5 +1,6 @@
 import vectors from '@ptbk/protocol/fingerprint-vectors.json';
 import { EngineId } from '@ptbk/protocol';
+import { buttonClassName } from '@ptbk/ui';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -918,5 +919,106 @@ describe('revoke', () => {
         await confirmIn(app, 'Revoke permanently');
         expect(await screen.findByText(/recovered/i)).toBeTruthy();
         expect(screen.getAllByText('Online').length).toBeGreaterThan(0);
+    });
+});
+
+describe('unfinished setup', () => {
+    const base = engineView();
+    const withSetup = (setup: 'pending' | 'done' | undefined): EngineView => {
+        if (base.heartbeat === null) throw new Error('the fixture has a heartbeat');
+        return engineView({
+            status: setup === 'pending' ? 'setup-pending' : 'online',
+            heartbeat: setup === undefined ? base.heartbeat : { ...base.heartbeat, setup },
+        });
+    };
+    const engineAddress = `https://${ENGINE_ID}.${ENGINE_DOMAIN}/`;
+
+    it('says so in the list and continues the setup at the engine’s address instead of opening it', async () => {
+        const app = renderApp({ path: '/engines/all', session: OWNER, script: engines(withSetup('pending')) });
+        expect(await screen.findByText('Setup not finished')).toBeTruthy();
+        expect(screen.queryByText('Online')).toBeNull();
+        const link = screen.getByRole('link', {
+            name: `Continue setup on engine ${ENGINE_ID.slice(0, 8)}…, in a new tab`,
+        });
+        expect(link.getAttribute('href')).toBe(engineAddress);
+        expect(screen.queryByRole('link', { name: OPEN_NAME })).toBeNull();
+        // Still live: its version and update state are current, not history.
+        expect(screen.getByText('Update available')).toBeTruthy();
+        expectOnlyLinksToEngines();
+        await expectNoAxeViolations(app.container);
+    });
+
+    it.each([
+        ['done', 'done'],
+        ['absent', undefined],
+    ] as const)('shows today’s list when the setup is %s', async (_, setup) => {
+        renderApp({ path: '/engines/all', session: OWNER, script: engines(withSetup(setup)) });
+        expect(await screen.findByText('Online')).toBeTruthy();
+        expect(screen.queryByText('Setup not finished')).toBeNull();
+        expect(screen.queryByRole('link', { name: /^Continue setup/ })).toBeNull();
+        expect(screen.getByRole('link', { name: OPEN_NAME })).toBeTruthy();
+    });
+
+    it('puts Continue setup first on the engine page, with one quiet line and the state among the numbers', async () => {
+        const app = renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: OWNER,
+            script: engine(withSetup('pending')),
+        });
+        expect(await screen.findByText('Setup not finished')).toBeTruthy();
+        expect(screen.getByText('Setup continues on the engine, where you left off.')).toBeTruthy();
+        expect(screen.queryByRole('alert')).toBeNull();
+        const link = screen.getByRole('link', { name: /^Continue setup on engine/ });
+        expect(link.getAttribute('href')).toBe(engineAddress);
+        expect(link.className).toBe(buttonClassName('primary', 'md'));
+        expect(screen.queryByRole('link', { name: OPEN_NAME })).toBeNull();
+        await app.user.click(screen.getByText('What the engine reported'));
+        const setupTerm = screen.getByText('Setup', { selector: 'dt' });
+        expect(setupTerm.nextElementSibling?.textContent).toBe('Not finished');
+        expectOnlyLinksToEngines();
+        await expectNoAxeViolations(app.container);
+    });
+
+    it('continues the setup through the plain link for someone in the engine’s team, without a ticket', async () => {
+        const app = renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: session({ permissions: ['engine.read', 'team.read'] }),
+            script: (api) => {
+                engine(withSetup('pending'))(api);
+                api.on(
+                    apiRoutes.listTeams,
+                    ok({
+                        teams: [
+                            {
+                                teamId: 'tttttttttttttttttttttttttt',
+                                name: 'Northwind' as TeamView['name'],
+                                engineId: ENGINE_ID as TeamView['engineId'],
+                                memberCount: 1,
+                                isMember: true,
+                                createdAt: NOW,
+                            },
+                        ],
+                    }),
+                );
+            },
+        });
+        const link = await screen.findByRole('link', { name: 'Continue setup on engine Northwind, in a new tab' });
+        expect(link.getAttribute('href')).toBe(engineAddress);
+        expect(screen.queryByRole('button', { name: 'Open Northwind' })).toBeNull();
+        expect(app.api.callsTo(apiRoutes.createAccessTicket)).toEqual([]);
+    });
+
+    it.each([
+        ['done', 'done'],
+        ['absent', undefined],
+    ] as const)('shows today’s engine page when the setup is %s', async (_, setup) => {
+        const app = renderApp({ path: `/engines/${ENGINE_ID}`, session: OWNER, script: engine(withSetup(setup)) });
+        expect(await screen.findByRole('link', { name: OPEN_NAME })).toBeTruthy();
+        expect(screen.getByText('Online')).toBeTruthy();
+        expect(screen.queryByText('Setup not finished')).toBeNull();
+        expect(screen.queryByText(/where you left off/)).toBeNull();
+        await app.user.click(screen.getByText('What the engine reported'));
+        const setupTerm = screen.queryByText('Setup', { selector: 'dt' });
+        expect(setupTerm?.nextElementSibling?.textContent).toBe(setup === 'done' ? 'Finished' : undefined);
     });
 });

@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M5
 - **Depends on:** C-15
-- **Status:** todo
+- **Status:** done (#338)
 - **Spec:** Health without content
 
 ## Goal
@@ -25,7 +25,7 @@ The engine keeps the setup draft itself; the dashboard learns only the heartbeat
 
 ## Acceptance criteria
 
-- [ ] A heartbeat with and without `setup` is accepted; the stored state follows it.
-- [ ] UI tests show "Setup not finished" and "Continue setup" for `pending`, and today's view for `done` or absent.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] A heartbeat with and without `setup` is accepted; the stored state follows it.
+- [x] UI tests show "Setup not finished" and "Continue setup" for `pending`, and today's view for `done` or absent.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.

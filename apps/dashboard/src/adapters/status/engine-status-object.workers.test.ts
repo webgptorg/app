@@ -116,6 +116,24 @@ describe('EngineStatus Durable Object behind POST /v1/engines/:engineId/heartbea
         });
     });
 
+    it('stores the setup state a v1 or v2 heartbeat reports, and refuses one outside the enum with 400', async () => {
+        expect((await post(engine.engineId, await signedHeartbeat(engine, 1, NOW, { setup: 'pending' }))).status).toBe(
+            204,
+        );
+        expect(await stub(engine.engineId).getStatus()).toMatchObject({ payload: { setup: 'pending' } });
+        const v2 = await signedJson(engine, {
+            ...heartbeatJson(engine, 2, NOW),
+            v: 2,
+            setup: 'done',
+            accessRequests: 0,
+            acks: [],
+        });
+        expect((await post(engine.engineId, v2)).status).toBe(200);
+        expect(await stub(engine.engineId).getStatus()).toMatchObject({ payload: { setup: 'done' } });
+        const unknown = await signedJson(engine, { ...heartbeatJson(engine, 3, NOW), setup: 'half' });
+        await expectProblem(await post(engine.engineId, unknown), 400, 'invalid-body');
+    });
+
     it('refuses a missing header and the wrong scheme with 401 bad-signature-header', async () => {
         const { body, signature } = await signedHeartbeat(engine, 1, NOW);
         await expectProblem(await post(engine.engineId, { body }), 401, 'bad-signature-header');

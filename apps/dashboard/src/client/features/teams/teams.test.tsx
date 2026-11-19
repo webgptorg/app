@@ -126,6 +126,29 @@ describe('teams list', () => {
         });
     });
 
+    it('offers Continue setup instead of Open for an engine whose setup is not finished', async () => {
+        const base = engineView();
+        const pending = engineView({
+            status: 'setup-pending',
+            heartbeat: base.heartbeat === null ? null : { ...base.heartbeat, setup: 'pending' },
+        });
+        const app = renderApp({
+            path: '/',
+            session: ADMIN,
+            script: (api) => {
+                api.on(apiRoutes.listEngines, ok({ engines: [pending] }));
+                api.on(apiRoutes.listTeams, ok({ teams: [team()] }));
+            },
+        });
+        const list = await screen.findByRole('list', { name: 'Engines' });
+        const row = within(list).getByRole('listitem');
+        expect(await within(row).findByText('Setup not finished')).toBeTruthy();
+        const link = within(row).getByRole('link', { name: 'Continue setup on engine Northwind, in a new tab' });
+        expect(link.getAttribute('href')).toBe(`https://${ENGINE_ID}.engines.ptbk.test/`);
+        expect(within(row).queryByRole('button', { name: 'Open Northwind' })).toBeNull();
+        await expectNoAxeViolations(app.container);
+    });
+
     it('lists unused link codes with their expiry and revokes one after asking', async () => {
         const formatters = createFormatters('en');
         const format = (at: number) => formatters.formatDateTime(new Date(at));
@@ -225,6 +248,31 @@ describe('teams list', () => {
 });
 
 describe('team page', () => {
+    it('leads with Continue setup while its engine reports the setup unfinished', async () => {
+        const base = engineView();
+        renderApp({
+            path: `/teams/${TEAM_ID}`,
+            session: ADMIN,
+            script: (api) => {
+                teamPage(api);
+                api.on(
+                    apiRoutes.listEngines,
+                    ok({
+                        engines: [
+                            engineView({
+                                status: 'setup-pending',
+                                heartbeat: base.heartbeat === null ? null : { ...base.heartbeat, setup: 'pending' },
+                            }),
+                        ],
+                    }),
+                );
+            },
+        });
+        expect(await screen.findByText('Setup not finished')).toBeTruthy();
+        expect(screen.getByRole('link', { name: 'Continue setup on engine Northwind, in a new tab' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Open Northwind' })).toBeNull();
+    });
+
     it('shows where each person stands, and invites more people to this team', async () => {
         const app = renderApp({
             path: `/teams/${TEAM_ID}`,

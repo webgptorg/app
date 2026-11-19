@@ -48,6 +48,16 @@ const OWNER_PENDING = engineView({
     heartbeat: READY.heartbeat === null ? null : { ...READY.heartbeat, members: 0 },
 });
 
+/** The first heartbeats after pairing and after the passkey, of an engine whose setup is still a draft. */
+const SETUP_OWNER_PENDING = engineView({
+    status: 'owner-pending',
+    heartbeat: READY.heartbeat === null ? null : { ...READY.heartbeat, members: 0, setup: 'pending' },
+});
+const SETUP_PENDING = engineView({
+    status: 'setup-pending',
+    heartbeat: READY.heartbeat === null ? null : { ...READY.heartbeat, setup: 'pending' },
+});
+
 function eligible(eligibility: 'allowed' | 'not-entitled' | 'engine-limit' = 'allowed', linkCodeTtlS = 2_592_000) {
     return (api: ScriptedApi) =>
         api.on(apiRoutes.linkEligibility, ok({ eligibility, linkCodeTtlS, installGuideUrl: INSTALL_GUIDE_URL }));
@@ -548,6 +558,36 @@ describe('new engine page', () => {
             await elapse(10 * LINK_POLL_MS);
             expect(app.api.calls.length).toBe(calls);
             expect(app.api.callsTo(apiRoutes.getEngine)[0]).toEqual({ params: { engineId: ENGINE_ID } });
+        });
+
+        it('ends on Continue setup instead of Open when the engine reports its setup unfinished', async () => {
+            const fake = useFakeClock();
+            const app = renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                fakeTimers: fake,
+                script: linking([LINKED], [SETUP_OWNER_PENDING, SETUP_PENDING]),
+            });
+            expect(await screen.findByText(OWNER_TEXT)).toBeTruthy();
+            expect(screen.queryByRole('link', { name: /^Continue setup/ })).toBeNull();
+
+            await elapse(LINK_POLL_MS);
+            expect(await screen.findByRole('heading', { name: 'Your engine is connected', level: 2 })).toBeTruthy();
+            expect(progress().dataset['linkState']).toBe('ready');
+            expect(
+                screen.getByText(
+                    "Finish setting it up on the engine. It keeps what you've done so far, so you can also come back to it later.",
+                ),
+            ).toBeTruthy();
+            expect(progress().querySelector('[aria-live="polite"]')?.textContent).toBe('Your engine is connected');
+            const link = screen.getByRole('link', {
+                name: `Continue setup on engine ${ENGINE_ID.slice(0, 8)}…, in a new tab`,
+            });
+            expect(link.getAttribute('href')).toBe(`https://${HOSTNAME}/`);
+            expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+            expect(screen.queryByRole('link', { name: /^Open engine/ })).toBeNull();
+            expect(screen.queryByText('Your engine is ready')).toBeNull();
+            await expectNoAxeViolations(app.container);
         });
 
         it('ticks the rows in their order, whichever arrives first, and says how many relays reach it', async () => {

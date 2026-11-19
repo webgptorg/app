@@ -39,7 +39,11 @@ function Address(props: { readonly engine: EngineView }) {
                 </span>
                 <CopyButton value={engine.hostname} label={m.engines_copy_hostname()} />
                 {engine.status === 'suspended' ? null : (
-                    <EngineOpenLink name={engineLabel(engine)} hostname={engine.hostname} />
+                    <EngineOpenLink
+                        name={engineLabel(engine)}
+                        hostname={engine.hostname}
+                        {...(engine.status === 'setup-pending' ? { wording: 'setup' } : {})}
+                    />
                 )}
             </span>
             {engine.customHostnames.map((hostname) => (
