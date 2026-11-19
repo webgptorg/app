@@ -2,7 +2,7 @@
 
 - **Lane:** C · **Module:** `packages/engine-api`, `packages/protocol`, `packages/conformance` · **Milestone:** M5
 - **Depends on:** —
-- **Status:** in progress (feat/c-15-onboarding-input-kinds)
+- **Status:** done (#336)
 - **Spec:** Pairing and identity; ADRs: [0010](../../adr/0010-protocol-design-principles.md), [0016](../../adr/0016-engine-capabilities.md)
 
 ## Goal
