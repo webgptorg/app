@@ -234,8 +234,13 @@ function Reachability(props: { readonly engine: EngineView; readonly troubleshoo
     );
 }
 
+/** Ready, but the engine reports its setup unfinished: onboarding ends on continuing it there rather than opening. */
+function setupPending(engine: EngineView | undefined): boolean {
+    return engine?.heartbeat?.setup === 'pending';
+}
+
 /** The one sentence the live region speaks, so a screen reader hears each change once and nothing else. */
-function announcement(state: LinkState): string {
+function announcement(state: LinkState, engine: EngineView | undefined): string {
     switch (state) {
         case 'waiting':
             return m.link_progress_waiting();
@@ -246,7 +251,7 @@ function announcement(state: LinkState): string {
         case 'owner-pending':
             return m.link_progress_owner_announcement();
         case 'ready':
-            return m.link_progress_ready();
+            return setupPending(engine) ? m.link_progress_setup_pending() : m.link_progress_ready();
     }
 }
 
@@ -393,7 +398,7 @@ export function LinkProgress(props: {
             className="flex flex-col gap-4 border-t border-hairline pt-5"
         >
             <p className="sr-only" aria-live="polite">
-                {announcement(state)}
+                {announcement(state, engine.data)}
             </p>
             {ready === null ? (
                 <>
@@ -433,6 +438,7 @@ function ReadyPanel(props: {
     const session = useSession();
     const { givenName } = useEngineTeam(props.engineId, props.hostname);
     const name = givenName ?? engineLabel({ engineId: props.engineId, label: props.engine?.label ?? null });
+    const setup = setupPending(props.engine);
     return (
         <div
             className={`soft-surface flex flex-col items-center gap-4 rounded-surface px-6 py-8 text-center ${STATUS_TINT_CLASSES.success}`}
@@ -447,9 +453,9 @@ function ReadyPanel(props: {
             />
             <div className="flex max-w-md flex-col gap-2">
                 <h2 id="link-ready-title" className="text-xl font-semibold tracking-display">
-                    {m.link_progress_ready()}
+                    {setup ? m.link_progress_setup_pending() : m.link_progress_ready()}
                 </h2>
-                <p>{m.link_progress_ready_body()}</p>
+                <p>{setup ? m.link_progress_setup_pending_body() : m.link_progress_ready_body()}</p>
                 <p className="text-sm text-text-muted">{m.link_progress_compare()}</p>
             </div>
             {givenName !== null || props.engine === undefined || !canRename(session.activeOrg.permissions) ? null : (
@@ -459,7 +465,13 @@ function ReadyPanel(props: {
                 </div>
             )}
             <div className="flex flex-wrap justify-center gap-3">
-                <EngineOpenLink name={name} hostname={props.hostname} variant="primary" size="md" prominent />
+                <EngineOpenLink
+                    name={name}
+                    hostname={props.hostname}
+                    variant="primary"
+                    size="md"
+                    wording={setup ? 'setup' : 'engine'}
+                />
                 <ButtonLink to="/engines" variant="secondary">
                     {m.link_progress_back()}
                 </ButtonLink>

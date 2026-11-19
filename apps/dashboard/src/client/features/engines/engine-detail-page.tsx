@@ -27,7 +27,7 @@ import { useSession } from '../session/use-session';
 import { OpenTeamButton } from '../teams/open-team-button';
 import { ENGINE_STATUS_COMMAND, TROUBLESHOOTING_ANCHOR } from './engine-guide';
 import { EngineMark } from './engine-identity';
-import { cpuLoadLabel, modeLabel, updateStateLabel } from './engine-labels';
+import { cpuLoadLabel, modeLabel, setupStateLabel, updateStateLabel } from './engine-labels';
 import { canRename, RenameEngineButton } from './engine-name';
 import { EngineOpenLink } from './engine-open-link';
 import { EngineReachability } from './engine-reachability';
@@ -73,6 +73,9 @@ function HeartbeatFields(props: { readonly heartbeat: HeartbeatView }) {
                 [m.engine_heartbeat_uptime(), formatters.formatDuration(heartbeat.uptimeS * 1000)],
                 [m.engine_heartbeat_agents(), formatters.formatNumber(heartbeat.agents)],
                 [m.engine_heartbeat_members(), formatters.formatNumber(heartbeat.members)],
+                ...(heartbeat.setup === undefined
+                    ? []
+                    : [[m.engine_heartbeat_setup(), setupStateLabel(heartbeat.setup)] as const]),
                 [m.engine_heartbeat_disk(), percent(heartbeat.diskPct)],
                 [m.engine_heartbeat_ram(), percent(heartbeat.ramPct)],
                 [m.engine_heartbeat_cpu(), cpuLoadLabel(heartbeat.cpuLoad)],
@@ -127,6 +130,10 @@ function StatusNotice(props: { readonly engine: EngineView }) {
     }
     if (engine.status === 'unknown') {
         return <Banner tone="info">{m.engine_status_unknown_body()}</Banner>;
+    }
+    if (engine.status === 'setup-pending') {
+        // A line, not a banner: nothing is wrong, the owner only has a step left, and the action is right above.
+        return <p className="text-sm text-text-muted">{m.engine_setup_pending_body()}</p>;
     }
     return engine.status === 'offline' ? <OfflineHint /> : null;
 }
@@ -198,9 +205,15 @@ function EngineDetail(props: {
                         </Button>
                     )}
                     {engine.status === 'suspended' ? null : team?.isMember === true ? (
-                        <OpenTeamButton team={team} variant="primary" size="md" />
+                        <OpenTeamButton team={team} engine={engine} variant="primary" size="md" />
                     ) : (
-                        <EngineOpenLink name={name} hostname={engine.hostname} variant="primary" size="md" prominent />
+                        <EngineOpenLink
+                            name={name}
+                            hostname={engine.hostname}
+                            variant="primary"
+                            size="md"
+                            wording={engine.status === 'setup-pending' ? 'setup' : 'engine'}
+                        />
                     )}
                     {props.canRevoke && engine.status !== 'suspended' ? (
                         <EngineActionMenu engine={engine} name={name} />

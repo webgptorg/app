@@ -8,6 +8,7 @@ import {
     MAX_REGISTRY_HOSTNAMES,
     MAX_RELAYS,
     RegistrationMode,
+    SetupState,
     Timestamp,
     UpdateState,
 } from '@ptbk/protocol';
@@ -237,12 +238,14 @@ const adminHostnameParams = z.strictObject({ engineId: EngineId, hostname: Hostn
 
 /**
  * `unknown`: the engine's status object did not answer in time; the rest of the list is unaffected. `owner-pending`: online,
- * but its heartbeat counts no member yet, so nobody has set up the owner's passkey on the engine.
+ * but its heartbeat counts no member yet, so nobody has set up the owner's passkey on the engine. `setup-pending`:
+ * online with an owner, but the engine reports its setup unfinished.
  */
 export const engineDisplayStatusSchema = z.enum([
     'suspended',
     'never-seen',
     'owner-pending',
+    'setup-pending',
     'online',
     'offline',
     'unknown',
@@ -266,6 +269,8 @@ export const heartbeatViewSchema = z.strictObject({
     update: UpdateState,
     agents: countSchema,
     members: countSchema,
+    /** Absent: the engine has no browser setup, or reported before it had one; read as set up. */
+    setup: SetupState.optional(),
 });
 export type HeartbeatView = z.infer<typeof heartbeatViewSchema>;
 

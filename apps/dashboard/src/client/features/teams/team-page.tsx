@@ -340,7 +340,7 @@ export function TeamPage(props: { readonly teamId: string }) {
             ]}
             actions={
                 <>
-                    <OpenTeamButton team={view} variant="primary" size="md" />
+                    <OpenTeamButton team={view} engine={engine} variant="primary" size="md" />
                     <TeamMenu team={view} />
                 </>
             }

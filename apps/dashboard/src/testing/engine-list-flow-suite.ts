@@ -1,4 +1,11 @@
-import { heartbeatPath, LinkCode, REGISTER_PATH, type EngineId, type HostnameClaim } from '@ptbk/protocol';
+import {
+    heartbeatPath,
+    LinkCode,
+    REGISTER_PATH,
+    type EngineId,
+    type HeartbeatInput,
+    type HostnameClaim,
+} from '@ptbk/protocol';
 import { ed25519SignatureFromBytes, Hostname } from '@ptbk/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -87,8 +94,12 @@ export function describeEngineListFlows(
             return engine;
         }
 
-        async function beat(engine: TestEngine, seq: number): Promise<TestResponse> {
-            const heartbeat = await signedHeartbeat(engine, seq, harness.clock.nowMs());
+        async function beat(
+            engine: TestEngine,
+            seq: number,
+            overrides: Partial<HeartbeatInput> = {},
+        ): Promise<TestResponse> {
+            const heartbeat = await signedHeartbeat(engine, seq, harness.clock.nowMs(), overrides);
             return harness.post(heartbeatPath(engine.engineId), heartbeat.body, heartbeat.headers);
         }
 
@@ -194,6 +205,29 @@ export function describeEngineListFlows(
                 harness.clock.advance(10 * MINUTE_MS);
                 expect(await harness.engineStatuses.runAlarm(engine.engineId)).toBe(true);
                 expect((await list(browser))[0]).toMatchObject({ status: 'offline', lastSeenAt: receivedAt });
+            });
+
+            it('shows setup-pending while the engine reports its setup unfinished, and online once it is done', async () => {
+                const { browser } = await owner();
+                const engine = await registered(browser);
+                expect((await beat(engine, 1)).status).toBe(204);
+                const unreported = ((await detail(browser, engine.engineId)).body as { engine: EngineView }).engine;
+                expect(unreported.status).toBe('online');
+                expect(unreported.heartbeat).not.toHaveProperty('setup');
+
+                harness.clock.advance(MINUTE_MS);
+                expect((await beat(engine, 2, { setup: 'pending' })).status).toBe(204);
+                expect((await list(browser))[0]).toMatchObject({
+                    status: 'setup-pending',
+                    heartbeat: { seq: 2, setup: 'pending' },
+                });
+
+                harness.clock.advance(MINUTE_MS);
+                expect((await beat(engine, 3, { setup: 'done' })).status).toBe(204);
+                expect(((await detail(browser, engine.engineId)).body as { engine: EngineView }).engine).toMatchObject({
+                    status: 'online',
+                    heartbeat: { seq: 3, setup: 'done' },
+                });
             });
 
             it('lists the engine’s active custom hostnames', async () => {

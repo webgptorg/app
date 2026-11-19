@@ -1,4 +1,12 @@
-import { CpuLoad, EngineId, EngineVersion, Timestamp, UpdateState, type AnyHeartbeat } from '@ptbk/protocol';
+import {
+    CpuLoad,
+    EngineId,
+    EngineVersion,
+    SetupState,
+    Timestamp,
+    UpdateState,
+    type AnyHeartbeat,
+} from '@ptbk/protocol';
 import { z } from 'zod';
 
 import { orgIdSchema } from '../ids';
@@ -28,7 +36,10 @@ export function offlineAfterMs(timing: HeartbeatTiming): number {
 
 const count = z.int().min(0);
 
-/** What we keep of an accepted heartbeat: C-03's numbers and closed enums, and when it was sent and received. */
+/**
+ * What we keep of an accepted heartbeat: C-03's numbers and closed enums, and when it was sent and received. `setup` is
+ * absent from engines without browser setup and from payloads stored before C-15; both read as set up.
+ */
 export const heartbeatPayloadSchema = z.strictObject({
     ts: Timestamp,
     receivedAt: count,
@@ -40,6 +51,7 @@ export const heartbeatPayloadSchema = z.strictObject({
     update: UpdateState,
     agents: count,
     members: count,
+    setup: SetupState.optional(),
 });
 export type HeartbeatPayload = z.infer<typeof heartbeatPayloadSchema>;
 
@@ -183,6 +195,7 @@ export function acceptHeartbeat(input: {
             update: heartbeat.update,
             agents: heartbeat.agents,
             members: heartbeat.members,
+            ...(heartbeat.setup === undefined ? {} : { setup: heartbeat.setup }),
         },
         offlineSince: null,
         alert: { kind: 'none' },

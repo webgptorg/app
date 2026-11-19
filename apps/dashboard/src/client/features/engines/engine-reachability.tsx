@@ -2,10 +2,11 @@ import { Unplug } from 'lucide-react';
 
 import { m } from '../../../paraglide/messages';
 import type { EngineView } from '../../../shared/api/routes';
+import { reportsLive } from './engine-order';
 
 /** Whether there is anything to say: heartbeats prove an engine online, only the relays' reports prove it reachable. */
 function hasReachability(engine: Pick<EngineView, 'status' | 'reachableRelays'>): boolean {
-    return (engine.status === 'online' || engine.status === 'owner-pending') && engine.reachableRelays !== null;
+    return reportsLive(engine) && engine.reachableRelays !== null;
 }
 
 /**

@@ -58,6 +58,47 @@ describe('the link page in Czech', () => {
         expect(document.body.textContent).not.toMatch(/engines_|link_progress_|billing_/);
     });
 
+    it('ends on continuing the setup in Czech when the engine reports it unfinished', async () => {
+        const base = engineView();
+        renderApp({
+            path: `/engines/new?link=${LINK_ID}`,
+            session: OWNER,
+            script: (api) => {
+                api.on(
+                    apiRoutes.linkEligibility,
+                    ok({
+                        eligibility: 'allowed',
+                        linkCodeTtlS: 2_592_000,
+                        installGuideUrl: 'https://docs.ptbk.test/engine/installation',
+                    }),
+                );
+                api.on(
+                    apiRoutes.getLinkCode,
+                    ok({
+                        status: 'linked',
+                        engineId: ENGINE_ID as EngineView['engineId'],
+                        hostname: `${ENGINE_ID}.${ENGINE_DOMAIN}` as EngineView['hostname'],
+                    }),
+                );
+                api.on(
+                    apiRoutes.getEngine,
+                    ok({
+                        engine: engineView({
+                            status: 'setup-pending',
+                            heartbeat: base.heartbeat === null ? null : { ...base.heartbeat, setup: 'pending' },
+                        }),
+                    }),
+                );
+            },
+        });
+        expect(await screen.findByText('Váš engine je připojený', { selector: 'h2' })).toBeTruthy();
+        expect(screen.getByText(/Dokončete jeho nastavení na enginu/)).toBeTruthy();
+        expect(
+            screen.getByRole('link', { name: `Pokračovat v nastavení enginu ${ENGINE_ID.slice(0, 8)}… v nové kartě` }),
+        ).toBeTruthy();
+        expect(document.body.textContent).not.toMatch(/engines_|link_progress_|billing_/);
+    });
+
     it('names the trial and the code lifetime in Czech', async () => {
         const [standard] = billingView().plans;
         if (standard === undefined) throw new Error('a plan');
