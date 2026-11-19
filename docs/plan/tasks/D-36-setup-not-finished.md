@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M5
 - **Depends on:** C-15
-- **Status:** todo
+- **Status:** in progress (feat/d-36-setup-not-finished)
 - **Spec:** Health without content
 
 ## Goal
