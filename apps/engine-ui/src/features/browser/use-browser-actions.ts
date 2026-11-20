@@ -12,7 +12,6 @@ import { m } from '../../paraglide/messages';
 import { browserKeys } from './browser-queries';
 import { createWebSocketLiveChannels } from './live-channel';
 import { createLiveSession } from './live-session';
-import type { LiveSession } from './live-session';
 import { useLiveSessions } from './live-sessions';
 
 /** Mutations are not cancelled by navigation, so they carry their own timeout instead of a component's signal. */
@@ -46,7 +45,7 @@ function parsed<Value>(schema: { safeParse: (value: unknown) => { data?: Value }
 }
 
 /** Starts the session's channel, makes it the member's current one and opens the viewer. */
-export function useShowSession(): (opened: ReadBrowserSession) => LiveSession {
+export function useShowSession(): (opened: ReadBrowserSession) => void {
     const engineApi = useEngineApi();
     const browser = useBrowser();
     const sessions = useLiveSessions();
@@ -61,7 +60,6 @@ export function useShowSession(): (opened: ReadBrowserSession) => LiveSession {
                 sessions.show(createLiveSession({ engineApi, openChannel }, opened));
             }
             void navigate({ to: '/browser/$sessionId', params: { sessionId: opened.id } });
-            return sessions.current() as LiveSession;
         },
         [engineApi, browser, sessions, navigate],
     );

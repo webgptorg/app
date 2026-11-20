@@ -4,7 +4,7 @@ import { ActionMenu, Button, EmptyState, Skeleton, StatusPill } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
 import { MonitorX, X } from 'lucide-react';
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useMemo } from 'react';
 
 import { unwrap } from '../../app/api-errors';
 import { useBrowser } from '../../app/browser-context';
@@ -48,12 +48,24 @@ function useViewerSession(sessionId: LiveSessionId | undefined): LiveSession | n
         gcTime: 0,
         retry: false,
     });
+    const found = lookup.data?.id === sessionId ? lookup.data : undefined;
+    const deps = useMemo(
+        () => ({
+            engineApi,
+            openChannel: browser.openLiveChannel ?? createWebSocketLiveChannels(browser.location.origin),
+        }),
+        [engineApi, browser],
+    );
+    // Only a live session becomes the member's current one; an ended one is shown here and replaces nothing.
+    const ended = useMemo(
+        () => (found?.status === 'open' || found === undefined ? null : createLiveSession(deps, found)),
+        [found, deps],
+    );
     useEffect(() => {
-        if (shown !== null || lookup.data === undefined || lookup.data.id !== sessionId) return;
-        const openChannel = browser.openLiveChannel ?? createWebSocketLiveChannels(browser.location.origin);
-        sessions.show(createLiveSession({ engineApi, openChannel }, lookup.data));
-    }, [shown, lookup.data, sessionId, sessions, engineApi, browser]);
+        if (shown === null && found?.status === 'open') sessions.show(createLiveSession(deps, found));
+    }, [shown, found, sessions, deps]);
     if (shown !== null) return shown;
+    if (ended !== null) return ended;
     return sessionId === undefined || lookup.isError ? 'missing' : null;
 }
 

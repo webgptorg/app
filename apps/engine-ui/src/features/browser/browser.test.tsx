@@ -326,6 +326,17 @@ describe('the live browser', () => {
         expect(engine.controller.getBrowserTab(tab.id)?.agentState).toBe('paused');
     });
 
+    it('shows an ended session read after a reload without making it current', async () => {
+        const engine = createLiveBrowserTestEngine();
+        const tab = engine.controller.openAgentTab({ agentId: 'ada', origin: SITE });
+        const opened = await engine.client.browser.watch(tab.id, AbortSignal.timeout(1_000));
+        if (opened.kind !== 'ok') throw new Error('not opened');
+        engine.controller.elapseBrowserSession(opened.data.id, 'expired');
+        render(engine, { path: `/browser/${opened.data.id}` });
+        expect(await screen.findByText('The session reached its 10-minute limit.')).toBeDefined();
+        expect(engine.channels()).toBe(0);
+    });
+
     it('says when a session is not this sign-in’s', async () => {
         const engine = createLiveBrowserTestEngine();
         render(engine, { path: '/browser/live-missing' });
