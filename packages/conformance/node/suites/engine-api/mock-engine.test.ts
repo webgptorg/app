@@ -12,29 +12,13 @@ import { ENGINE_API_PLATFORM_SUITE, createEngineApiPlatformSuite } from './index
 
 const SUITE_TIMEOUT_MS = 300_000;
 
-const BROWSER_TAB_CHECKS = [
-    'audit-metadata',
-    'blocked-pages',
-    'channel-auth',
-    'channel-handshake',
-    'help-requests',
-    'protocol-errors',
-    'session-binding',
-    'single-controller',
-    'step-up',
-    'time-limits',
-    'watcher-input',
-] as const;
-
 /**
- * What the mock cannot show: it advertises every known capability but no reserved one and not the live browser, which
- * stays behind `MOCK_LIVE_BROWSER` (M-11), and its member sessions come without a passkey.
+ * What the mock cannot show: it advertises every known capability (the live browser through `MOCK_LIVE_BROWSER`, which
+ * the mock's target factory turns on) but no reserved one, and its member sessions come without a passkey.
  */
 const MOCK_SKIPS = {
+    'engine-api.capabilities.unadvertised-404': 'skip: the engine advertises every capability this contract defines',
     'engine-api.live-audio.session': 'skip: capability-not-advertised',
-    ...Object.fromEntries(
-        BROWSER_TAB_CHECKS.map((check) => [`engine-api.browser-tab.${check}`, 'skip: capability-not-advertised']),
-    ),
     'engine-api.me.own-passkeys': 'skip: the member has no passkey to revoke (listing passed)',
 };
 
