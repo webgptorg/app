@@ -255,3 +255,52 @@ describe('a live session over the in-memory engine', () => {
         session.dispose();
     });
 });
+
+describe('a live session when the engine is unreachable', () => {
+    it('still ends locally and stops sending when ending fails', async () => {
+        const { engine, session } = await open('watch');
+        vi.spyOn(engine.client.browser, 'end').mockRejectedValueOnce(new Error('offline'));
+        const drawer = createManualDrawer();
+        const detach = session.attach(drawer, SIZE);
+        session.resize(SIZE);
+        session.resize({ width: 800, height: 500 });
+        session.setPageVisible(true);
+        session.setPageVisible(false);
+        expect(engine.sent.filter((message) => message.type === 'view').at(-1)).toEqual({
+            type: 'view',
+            width: 800,
+            height: 500,
+            visible: false,
+        });
+        await session.end();
+        expect(session.getView().endReason).toBe('ended');
+        detach();
+        detach();
+    });
+
+    it('retries on the default timer', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        try {
+            const engine = createLiveBrowserTestEngine();
+            const tab = engine.controller.openAgentTab({ origin: SITE });
+            const opened = ok(await engine.client.browser.watch(tab.id, signal()));
+            const session = createLiveSession(
+                { engineApi: engine.client, openChannel: engine.openLiveChannel },
+                opened,
+            );
+            await vi.advanceTimersByTimeAsync(0);
+            engine.drop();
+            await vi.advanceTimersByTimeAsync(0);
+            expect(session.getView().connection).toBe('reconnecting');
+            await vi.advanceTimersByTimeAsync(500);
+            expect(engine.channels()).toBe(2);
+            engine.drop();
+            await vi.advanceTimersByTimeAsync(0);
+            session.dispose();
+            await vi.advanceTimersByTimeAsync(10_000);
+            expect(engine.channels()).toBe(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+});

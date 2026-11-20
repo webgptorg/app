@@ -38,11 +38,27 @@ function problemMessage(failure: ApiFailure): string {
     return message?.() ?? m.error_mutation_failed();
 }
 
-/** Saved input is untrusted: only a well-formed ID comes back from storage. */
+/** Saved input is untrusted: only a well-formed value comes back from storage. */
 function parsed<Value>(schema: { safeParse: (value: unknown) => { data?: Value } }, data: unknown, key: string) {
     if (typeof data !== 'object' || data === null) return undefined;
     return schema.safeParse((data as Record<string, unknown>)[key]).data;
 }
+
+/** The inputs an automatic rerun after a full-page step-up takes back from storage, or `undefined` to drop it. */
+export const RERUN = {
+    controlTab: (data: unknown) => {
+        const tabId = parsed(BrowserTabId, data, 'tabId');
+        return tabId === undefined ? undefined : { tabId };
+    },
+    takeControl: (data: unknown) => {
+        const sessionId = parsed(LiveSessionId, data, 'sessionId');
+        return sessionId === undefined ? undefined : { sessionId };
+    },
+    signIn: (data: unknown) => {
+        const origin = parsed(BrowserOrigin, data, 'origin');
+        return origin === undefined ? undefined : { origin };
+    },
+};
 
 /** Starts the session's channel, makes it the member's current one and opens the viewer. */
 export function useShowSession(): (opened: ReadBrowserSession) => void {
@@ -77,32 +93,20 @@ export function useWatchTab() {
     });
 }
 
-/**
- * The one click on a help request or a tab: control of the tab (step-up), answering its open help request. A session
- * already watching that tab takes control instead, so the member holds one place in it.
- */
+/** The one click on a help request: control of the tab (step-up), which answers its open help request. */
 export function useControlTab() {
     const engineApi = useEngineApi();
-    const sessions = useLiveSessions();
     const show = useShowSession();
     return useStepUpAwareMutation({
-        mutationFn: async ({ tabId }: { readonly tabId: BrowserTabId }) => {
-            const current = sessions.current();
-            if (current?.tabId === tabId && current.getView().endReason === null) {
-                return unwrap(await engineApi.browser.takeControl(current.id, signal()));
-            }
-            return unwrap(await engineApi.browser.control(tabId, signal()));
-        },
+        mutationFn: async ({ tabId }: { readonly tabId: BrowserTabId }) =>
+            unwrap(await engineApi.browser.control(tabId, signal())),
         invalidates: INVALIDATES,
         errorMessage: problemMessage,
         onSuccess: show,
         resumeAs: {
             action: CONTROL_TAB_ACTION,
             data: ({ tabId }) => ({ tabId }),
-            rerun: (data) => {
-                const tabId = parsed(BrowserTabId, data, 'tabId');
-                return tabId === undefined ? undefined : { tabId };
-            },
+            rerun: RERUN.controlTab,
         },
     });
 }
@@ -122,10 +126,7 @@ export function useTakeControl() {
         resumeAs: {
             action: TAKE_CONTROL_ACTION,
             data: ({ sessionId }) => ({ sessionId }),
-            rerun: (data) => {
-                const sessionId = parsed(LiveSessionId, data, 'sessionId');
-                return sessionId === undefined ? undefined : { sessionId };
-            },
+            rerun: RERUN.takeControl,
         },
     });
 }
@@ -172,10 +173,7 @@ export function useOpenSignIn() {
         resumeAs: {
             action: SIGN_IN_ACTION,
             data: ({ origin }) => ({ origin }),
-            rerun: (data) => {
-                const origin = parsed(BrowserOrigin, data, 'origin');
-                return origin === undefined ? undefined : { origin };
-            },
+            rerun: RERUN.signIn,
         },
     });
 }

@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createFakePopups } from '../../testing/fake-popups';
+import { createMemoryStorage } from '../../testing/memory-storage';
 import { createLiveBrowserTestEngine, createManualDrawer, flushLive } from '../../testing/live-browser-engine';
 import type { LiveBrowserTestEngine } from '../../testing/live-browser-engine';
 import { renderWithProviders } from '../../testing/render-with-providers';
@@ -341,6 +342,58 @@ describe('the live browser', () => {
         const engine = createLiveBrowserTestEngine();
         render(engine, { path: '/browser/live-missing' });
         expect(await screen.findByText(/This browser session isn't available/)).toBeDefined();
+    });
+
+    it('names each kind of help an agent asks for', async () => {
+        const engine = createLiveBrowserTestEngine();
+        for (const reason of ['captcha', 'confirmation', 'blocked', 'other'] as const) {
+            const tab = engine.controller.openAgentTab({ agentId: 'ada', origin: SITE });
+            engine.controller.requestBrowserHelp(tab.id, { reason, message: '' });
+        }
+        render(engine);
+        const needsYou = await screen.findByRole('region', { name: /^Needs you/ });
+        for (const title of [
+            'Ada needs you to solve a check',
+            'Ada needs you to confirm a step',
+            'Ada is stuck on a page',
+            'Ada needs your help in the browser',
+        ]) {
+            expect(await within(needsYou).findByText(title)).toBeDefined();
+        }
+    });
+
+    it('takes over by itself on return from a full-page passkey check', async () => {
+        const { engine } = engineWithHelp();
+        const storage = createMemoryStorage();
+        const control = vi
+            .spyOn(engine.client.browser, 'control')
+            .mockImplementationOnce(() => problemResponse('step-up-required'));
+        const first = render(engine, { storage, popups: createFakePopups({ blocked: true }) });
+        const needsYou = await screen.findByRole('region', { name: /^Needs you/ });
+        const item = (await within(needsYou).findByText('Ada needs you to sign in')).closest('li');
+        if (item === null) throw new Error('no help item');
+        await first.user.click(within(item).getByRole('button', { name: 'Take over' }));
+        const stepUp = await screen.findByRole('dialog', { name: 'Confirm it is you' });
+        await first.user.click(within(stepUp).getByRole('button', { name: 'Continue with passkey' }));
+        expect(first.location.assign).toHaveBeenCalledOnce();
+        first.unmount();
+
+        render(engine, { storage });
+        expect(await screen.findByText("You're in control")).toBeDefined();
+        expect(control).toHaveBeenCalledTimes(2);
+    });
+
+    it('says when someone else already controls the tab', async () => {
+        const { engine } = engineWithHelp();
+        vi.spyOn(engine.client.browser, 'control').mockImplementationOnce(() =>
+            problemResponse('browser-tab-controlled'),
+        );
+        const { user } = render(engine);
+        const needsYou = await screen.findByRole('region', { name: /^Needs you/ });
+        const item = (await within(needsYou).findByText('Ada needs you to sign in')).closest('li');
+        if (item === null) throw new Error('no help item');
+        await user.click(within(item).getByRole('button', { name: 'Take over' }));
+        expect(await screen.findByText('Someone else is controlling this tab.')).toBeDefined();
     });
 
     it('dismisses a help request from its overflow menu', async () => {
