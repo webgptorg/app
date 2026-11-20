@@ -206,6 +206,21 @@ export function parseLinkCode(args: readonly string[]): string | null {
     return value !== undefined && rest.length === 0 && DEV_LINK.test(value) ? value : null;
 }
 
+/**
+ * A command's JSON report on stdout: all of it (ptbk's `--json` is pretty-printed), else its last line (the mock's
+ * `register` logs before its report). Null when neither is JSON.
+ */
+export function parseReport(stdout: string): unknown {
+    for (const candidate of [stdout.trim(), stdout.trim().split('\n').at(-1) ?? '']) {
+        try {
+            return JSON.parse(candidate) as unknown;
+        } catch {
+            // Try the next reading.
+        }
+    }
+    return null;
+}
+
 export interface RealEngine {
     readonly engineId: string;
     /** Whether the engine's own setup finished (it then runs a project); until then the dashboard says so. */

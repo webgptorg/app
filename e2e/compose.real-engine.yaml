@@ -26,6 +26,12 @@ services:
     networks:
       host-access: {}
 
+  # Serves once real-engine-release published; that dependency also lets `up --wait` take the one-shot's exit as done.
+  release-store:
+    depends_on:
+      real-engine-release:
+        condition: service_completed_successfully
+
   # One-shot after init: the installed UI bundle, signed for the conformance build, below /conformance/ in the store,
   # and the matching conformance trust file. New keys and a new test Sigstore on every `up`, like init's.
   real-engine-release:

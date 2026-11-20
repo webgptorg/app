@@ -51,6 +51,7 @@ import {
     parseDevStackArgs,
     parseLinkCode,
     parseRealEngineStatus,
+    parseReport,
     staleNetwork,
 } from './dev-stack-config.ts';
 import type { DevEngine, RealEngine } from './dev-stack-config.ts';
@@ -342,15 +343,6 @@ interface RegisterReport {
     readonly outcome?: unknown;
     readonly hostname?: unknown;
     readonly reason?: unknown;
-}
-
-/** A command's last stdout line as its JSON report (the mock's `register`, ptbk's `--json`). */
-function parseReport(stdout: string): unknown {
-    try {
-        return JSON.parse(stdout.trim().split('\n').at(-1) ?? '') as unknown;
-    } catch {
-        return null;
-    }
 }
 
 interface PairingReport {

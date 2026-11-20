@@ -42,7 +42,12 @@ test('sign up, link the real engine with dev:link, see it listed, open it and be
     const engineHost = new URL(setupLink ?? '').hostname;
     expect(engineHost.endsWith(`.${DEV_ENGINE_DOMAIN}`)).toBe(true);
 
-    const state = await expectEngineListed(page, ['Online', 'Setup not finished'], LISTED_WITHIN_MS);
+    // Paired before setup and without an owner, it is listed as online with the step that comes next.
+    const state = await expectEngineListed(
+        page,
+        ['Online', 'Owner not set up', 'Setup not finished'],
+        LISTED_WITHIN_MS,
+    );
     test.info().annotations.push({ type: 'dashboard state', description: state });
     await expect(engineRow(page).getByText(engineHost, { exact: true })).toBeVisible();
 
@@ -72,6 +77,9 @@ test('sign up, link the real engine with dev:link, see it listed, open it and be
         await enginePage.locator('button[data-action="create"]').click();
         await expect(enginePage.getByRole('heading', { name: 'You are the owner' })).toBeVisible();
     });
+    // The engine's next heartbeat reports the owner, and the dashboard moves on to the engine's own setup.
+    const afterOwner = await expectEngineListed(page, ['Online', 'Setup not finished'], LISTED_WITHIN_MS);
+    test.info().annotations.push({ type: 'dashboard state with an owner', description: afterOwner });
 
     await test.step('the engine opens on our signed UI, which its loader installed from the stack', async () => {
         await enginePage.goto(`https://${engineHost}/`);

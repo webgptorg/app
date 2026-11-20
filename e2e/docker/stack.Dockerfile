@@ -130,6 +130,8 @@ RUN bun build e2e/real-engine/sign-release.ts --target=node --outfile /out/sign-
 FROM ${NODE_IMAGE} AS real-engine-release
 COPY --from=real-engine-release-build /out/sign-release.mjs /app/sign-release.mjs
 COPY --from=ui-bundle /ui-bundles/0.0.0-dryrun.1 /ui-bundle
+# Seeds the trust volume with an owner that may write to it.
+RUN install -d -o node -g node /trust
 USER node
 CMD ["node", "/app/sign-release.mjs", "--bundle", "/ui-bundle", "--store", "/releases/conformance", "--trust", "/trust/conformance-trust.json"]
 

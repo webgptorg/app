@@ -20,6 +20,7 @@ import {
     parseDevStackArgs,
     parseLinkCode,
     parseRealEngineStatus,
+    parseReport,
 } from './dev-stack-config.ts';
 import { projectName } from './cli.ts';
 
@@ -210,6 +211,15 @@ describe('the engine the dev stack runs', () => {
         ]);
         expect(parseRealEngineStatus('')).toEqual([]);
         expect(parseRealEngineStatus('{"engines":{}}')).toEqual([]);
+    });
+
+    it('reads a pretty-printed JSON report, or the last line after log output', () => {
+        expect(parseReport('{\n  "outcome": "issued",\n  "engineId": "abc"\n}\n')).toEqual({
+            outcome: 'issued',
+            engineId: 'abc',
+        });
+        expect(parseReport('registering\n{"outcome":"registered"}\n')).toEqual({ outcome: 'registered' });
+        expect(parseReport('not json\n')).toBeNull();
     });
 
     it('pairs the real engine from the whole link URL, which a bare code becomes', () => {
