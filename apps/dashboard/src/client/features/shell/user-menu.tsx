@@ -18,7 +18,9 @@ export function UserMenu() {
             kind: 'item',
             id: 'website-licenses',
             label: m.website_licenses(),
-            onSelect: () => window.location.assign('https://www.ptbk.io/cs/pricing/predplatne'),
+            onSelect: () => {
+                window.location.assign('https://www.ptbk.io/cs/pricing/predplatne');
+            },
         },
         { kind: 'separator', id: 'preferences-separator' },
         ...useThemeEntries(),
