@@ -3,7 +3,7 @@ import type { TLSSocket } from 'node:tls';
 import { checkServerIdentity, connect } from 'node:tls';
 
 import type { EngineApiClient } from '@ptbk/engine-api';
-import { createFetchEngineApiClient } from '@ptbk/engine-api';
+import { KNOWN_CAPABILITIES, createFetchEngineApiClient, supports } from '@ptbk/engine-api';
 import type { InMemoryEngineCore } from '@ptbk/engine-api/in-memory';
 import { createCryptoRandom } from '@ptbk/protocol';
 
@@ -80,6 +80,8 @@ export interface ApiHarnessOptions {
     readonly passkeys?: 'seeded' | 'none';
     /** `MOCK_LIVE_BROWSER`: off by default, as in a started mock. */
     readonly liveBrowser?: boolean;
+    /** `MOCK_VOICE`: off by default, as in a started mock. */
+    readonly voice?: boolean;
 }
 
 /** The onboarding side of the harness, for tests that drive the setup link and passkeys. */
@@ -199,6 +201,7 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
                   simulation: options.simulation ?? { mode: 'paused', speed: 1 },
                   passkeys: options.passkeys ?? (options.onboarding === undefined ? 'seeded' : 'none'),
                   liveBrowser: options.liveBrowser ?? false,
+                  voice: options.voice ?? false,
                   faults: () => faults.plan(),
                   onSimulationError: (error) => {
                       logger.error('simulation.error', { problem: error instanceof Error ? error.message : 'unknown' });
@@ -231,6 +234,7 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
         engineId: HARNESS_ENGINE_ID,
         certificates,
         core,
+        ...(runtime === null ? {} : { microphone: () => supports(runtime.current(), KNOWN_CAPABILITIES.voiceInput) }),
         sessions,
         faults,
         seed: options.seed ?? 42,

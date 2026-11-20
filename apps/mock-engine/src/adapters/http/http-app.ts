@@ -42,8 +42,8 @@ const DEFAULT_CACHE_CONTROL = 'no-store';
  * The engine's security headers on every response, whatever the route set: a handler, a UI bundle or an error can
  * never send a different CSP or drop one.
  */
-export function applySecurityHeaders(headers: Headers): void {
-    for (const [name, value] of Object.entries(engineSecurityHeaders())) headers.set(name, value);
+export function applySecurityHeaders(headers: Headers, microphone = false): void {
+    for (const [name, value] of Object.entries(engineSecurityHeaders({ microphone }))) headers.set(name, value);
     if (!headers.has('Cache-Control')) headers.set('Cache-Control', DEFAULT_CACHE_CONTROL);
 }
 
@@ -55,6 +55,8 @@ export interface HttpAppDeps {
     readonly sessions?: SessionStore;
     /** Applied to every HTTP route the plan's `routes` filter matches. */
     readonly faults?: Faults;
+    /** Whether `Permissions-Policy` allows the microphone for the engine's origin: while it advertises `voice-input@1`. */
+    readonly microphone?: () => boolean;
 }
 
 export interface HttpApp {
@@ -67,7 +69,7 @@ export interface HttpApp {
     close(): void;
 }
 
-function rejectUpgrade(socket: Duplex, body: ProblemDetails, retryAfterS?: number): void {
+function rejectUpgrade(socket: Duplex, body: ProblemDetails, microphone: boolean, retryAfterS?: number): void {
     const text = JSON.stringify(body);
     const lines = [
         `HTTP/1.1 ${String(body.status)} ${STATUS_CODES[body.status] ?? ''}`,
@@ -75,14 +77,14 @@ function rejectUpgrade(socket: Duplex, body: ProblemDetails, retryAfterS?: numbe
         'Content-Type: application/problem+json',
         `Content-Length: ${String(Buffer.byteLength(text))}`,
         `Cache-Control: ${DEFAULT_CACHE_CONTROL}`,
-        ...Object.entries(engineSecurityHeaders()).map(([name, value]) => `${name}: ${value}`),
+        ...Object.entries(engineSecurityHeaders({ microphone })).map(([name, value]) => `${name}: ${value}`),
         ...(retryAfterS === undefined ? [] : [`Retry-After: ${String(retryAfterS)}`]),
     ];
     socket.end(`${lines.join('\r\n')}\r\n\r\n${text}`);
 }
 
-function rejectUpgradeWith(socket: Duplex, problem: Problem): void {
-    rejectUpgrade(socket, createProblem(problem.code, problem.extras), problem.retryAfterS);
+function rejectUpgradeWith(socket: Duplex, problem: Problem, microphone: boolean): void {
+    rejectUpgrade(socket, createProblem(problem.code, problem.extras), microphone, problem.retryAfterS);
 }
 
 /** The `{name}` segments of `template` in `pathname`, still percent-encoded, or `null` if it does not match. */
@@ -133,6 +135,7 @@ function assertMountable(routes: readonly Route[], deps: HttpAppDeps): void {
  */
 export function createHttpApp(deps: HttpAppDeps): HttpApp {
     const { routes, logger } = deps;
+    const microphone = deps.microphone ?? (() => false);
     assertMountable(routes, deps);
     const connectionOf = new WeakMap<Socket, SecureConnection>();
     const sockets = new Set<Socket>();
@@ -140,7 +143,7 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
 
     app.use(async (c, next) => {
         await next();
-        applySecurityHeaders(c.res.headers);
+        applySecurityHeaders(c.res.headers, microphone());
     });
 
     function connectionFor(c: Context<{ Bindings: HttpBindings }>): SecureConnection {
@@ -236,13 +239,13 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         const url = URL.parse(request.url ?? '', 'https://engine.invalid');
         const target = url === null ? undefined : webSocketFor(url.pathname);
         if (connection === undefined || url === null || target === undefined || request.method !== 'GET') {
-            rejectUpgradeWith(socket, { code: 'not-found' });
+            rejectUpgradeWith(socket, { code: 'not-found' }, microphone());
             return;
         }
         const { route } = target;
         const limited = rateLimited(route, deps.rateLimiter, connection.clientIp);
         if (limited !== null) {
-            rejectUpgradeWith(socket, limited);
+            rejectUpgradeWith(socket, limited, microphone());
             return;
         }
         const header = (name: string): string | undefined => {
@@ -252,19 +255,19 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         // A malformed ID names no session, so it is as unknown as any other: 404, never a validation error.
         const params = route.params === null ? null : route.params.safeParse(target.params);
         if (params?.success === false) {
-            rejectUpgradeWith(socket, { code: 'not-found' });
+            rejectUpgradeWith(socket, { code: 'not-found' }, microphone());
             return;
         }
         const admitted = admitQueryAndHeaders(route, url, header);
         if (!('kind' in admitted)) {
-            rejectUpgradeWith(socket, admitted);
+            rejectUpgradeWith(socket, admitted, microphone());
             return;
         }
         let actor: Actor | null = null;
         if (route.auth === 'session') {
             // A browser sends cookies with a cross-site WebSocket too, and no CORS stops one: only `Origin` does.
             if (!isOwnOrigin({ hostname: connection.hostname, header })) {
-                rejectUpgradeWith(socket, { code: 'forbidden', extras: { detail: 'Cross-site request refused.' } });
+                rejectUpgradeWith(socket, { code: 'forbidden', extras: { detail: 'Cross-site request refused.' } }, microphone());
                 return;
             }
             const outcome =
@@ -279,7 +282,7 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
                           clientIp: connection.clientIp,
                       });
             if (outcome?.kind !== 'signed-in') {
-                rejectUpgradeWith(socket, { code: 'unauthenticated' });
+                rejectUpgradeWith(socket, { code: 'unauthenticated' }, microphone());
                 return;
             }
             actor = outcome.actor;
@@ -290,7 +293,7 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
                 extras: {
                     errors: [{ path: 'headers.sec-websocket-protocol', message: `Offer ${route.subprotocol}.` }],
                 },
-            });
+            }, microphone());
             return;
         }
         const admission = route.handle({
@@ -302,7 +305,7 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
             clientIp: connection.clientIp,
         } as Parameters<WebSocketRoute['handle']>[0]);
         if (admission.kind === 'refuse') {
-            rejectUpgrade(socket, admission.problem);
+            rejectUpgrade(socket, admission.problem, microphone());
             return;
         }
         const handshake = { completed: false };

@@ -18,6 +18,7 @@ export const DEFAULT_MOCK_SETTINGS: Pick<
     | 'passkeys'
     | 'onboarding'
     | 'liveBrowser'
+    | 'voice'
     | 'control'
     | 'dashboard'
     | 'stats'
@@ -33,6 +34,7 @@ export const DEFAULT_MOCK_SETTINGS: Pick<
     passkeys: 'seeded',
     onboarding: null,
     liveBrowser: false,
+    voice: false,
     control: null,
     dashboard: null,
     stats: 'os',

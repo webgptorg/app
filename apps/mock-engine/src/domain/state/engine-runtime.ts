@@ -17,7 +17,7 @@ import type { Simulation } from '../simulation/simulation';
 import { createSimulation } from '../simulation/simulation';
 import type { SimulationClock, SimulationMode } from '../simulation/simulation-clock';
 import { createSimulationClock } from '../simulation/simulation-clock';
-import { MOCK_UPLOAD_POLICIES } from './capabilities';
+import { MOCK_UPLOAD_POLICIES, withVoice } from './capabilities';
 import { setUpLiveBrowser, withLiveBrowser } from './live-browser';
 import type { Scenario } from './scenarios';
 import { HOSTILE_AGENT_NAME, ownerOf, seedEngine } from './seed';
@@ -83,6 +83,8 @@ export interface EngineRuntimeOptions {
      * with the fake agent tab and sign-in allowlist.
      */
     readonly liveBrowser?: boolean;
+    /** `MOCK_VOICE=enabled`: every core advertises `voice-input@1` and `voice-output@1` whatever the capability list says. */
+    readonly voice?: boolean;
 }
 
 export interface ResetInput {
@@ -176,8 +178,10 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
     // Each core's own placeholder, so it comes back when a revocation leaves no bundle active.
     const placeholderUi = new WeakMap<InMemoryEngineCore, SecurityOverview['ui']>();
     const listeners: (() => void)[] = [];
-    const effective = (capabilities: readonly CapabilityRef[]): readonly CapabilityRef[] =>
-        options.liveBrowser === true ? withLiveBrowser(capabilities) : capabilities;
+    const effective = (capabilities: readonly CapabilityRef[]): readonly CapabilityRef[] => {
+        const browser = options.liveBrowser === true ? withLiveBrowser(capabilities) : capabilities;
+        return options.voice === true ? withVoice(browser) : browser;
+    };
     let current = { seed: options.seed, scenario: options.scenario, capabilities: effective(options.capabilities) };
     const now = (): string => new Date(clock.nowMs()).toISOString().replace(/\.\d{3}Z$/, 'Z');
 

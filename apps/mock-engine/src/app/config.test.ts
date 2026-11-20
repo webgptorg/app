@@ -652,6 +652,15 @@ describe('parseIdentityConfig', () => {
             expect(problems.every((problem) => problem.startsWith(`${name}: `))).toBe(true);
         });
 
+        it('serves voice only with MOCK_VOICE=enabled, and never in production', () => {
+            expect(parseMockEngineConfig(BASE).voice).toBe(false);
+            expect(parseMockEngineConfig({ ...BASE, MOCK_VOICE: 'enabled' }).voice).toBe(true);
+            expect(problemsOf({ ...BASE, MOCK_VOICE: 'on' })).toEqual(['MOCK_VOICE: must be enabled or disabled']);
+            expect(problemsOf({ ...BASE, NODE_ENV: 'production', MOCK_VOICE: 'enabled' })).toEqual([
+                'MOCK_VOICE: must not be enabled in production',
+            ]);
+        });
+
         it('refuses the control listener and dev login in production', () => {
             expect(
                 problemsOf({ ...BASE, NODE_ENV: 'production', MOCK_CONTROL: 'enabled', MOCK_DEV_LOGIN: 'enabled' }),

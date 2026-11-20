@@ -12,6 +12,7 @@ import { ROLE_PERMISSIONS } from '../src/domain/authorization/policy';
 import { SESSION_COOKIE_NAME } from '../src/domain/gateway/sessions';
 import type { ApiHarness } from '../src/testing/api-harness';
 import { HARNESS_ORIGIN, createApiHarness } from '../src/testing/api-harness';
+import { silentWav } from '../src/testing/wav';
 
 const ROLES = ['owner', 'admin', 'member', 'viewer'] as const;
 const FUTURE = '2030-01-01T00:00:00Z';
@@ -84,46 +85,14 @@ function validBody(route: RouteDefinition): unknown {
             return { promptId: 'matrix-prompt', action: 'back' };
         case 'openBrowserSignIn':
             return { browser: null, origin: 'https://accounts.example' };
+        case 'speakChatMessage':
+            return { formats: ['audio/wav'] };
         case 'testAgentDraft':
             return { book: 'Matrix', messages: [{ role: 'user', content: 'hello' }] };
         default:
             return undefined;
     }
 }
-
-const WAV_HEADER = Uint8Array.from([
-    ...'RIFF'.split('').map((c) => c.charCodeAt(0)),
-    36,
-    0,
-    0,
-    0,
-    ...'WAVEfmt '.split('').map((c) => c.charCodeAt(0)),
-    16,
-    0,
-    0,
-    0,
-    1,
-    0,
-    1,
-    0,
-    0x80,
-    0x3e,
-    0,
-    0,
-    0,
-    0x7d,
-    0,
-    0,
-    2,
-    0,
-    16,
-    0,
-    ...'data'.split('').map((c) => c.charCodeAt(0)),
-    0,
-    0,
-    0,
-    0,
-]);
 
 /** Every path parameter names a resource nobody has, so an allowed call answers 404 and changes nothing. */
 function pathOf(route: RouteDefinition, ids: Readonly<Record<string, string>> = {}): string {
@@ -142,8 +111,7 @@ async function call(
         init.headers['content-type'] = 'application/json';
         init.body = JSON.stringify(body);
     } else if (route.body?.kind === 'binary') {
-        // A silent WAV header with no samples: a clip the route accepts, so the permission decides.
-        init.body = new Blob([WAV_HEADER], { type: 'audio/wav' });
+        init.body = silentWav(320);
     } else if (route.body?.kind === 'multipart') {
         const form = new FormData();
         form.set('file', new Blob(['matrix']), 'matrix.txt');
@@ -181,14 +149,9 @@ function expectDecision(
     expect(result.body, label).toMatchObject({ code: 'forbidden', requiredPermission: route.permission });
 }
 
-// Reserved capabilities are never advertised, nor is voice without `MOCK_VOICE`, so their routes answer 404 before
-// any permission check.
+// Reserved capabilities are never advertised, so their routes answer 404 before any permission check.
 const SERVED_ROUTES = ENGINE_API_ROUTE_LIST.filter(
-    (route) =>
-        route.capability === undefined ||
-        (!isReservedCapability(route.capability) &&
-            route.capability.id !== KNOWN_CAPABILITIES.voiceInput.id &&
-            route.capability.id !== KNOWN_CAPABILITIES.voiceOutput.id),
+    (route) => route.capability === undefined || !isReservedCapability(route.capability),
 );
 
 let harness: ApiHarness;
@@ -202,8 +165,12 @@ const memberOf = (role: (typeof ROLES)[number]): string => {
 };
 
 beforeAll(async () => {
-    // With the live browser too, so its watch and control routes are in the matrix.
-    harness = await createApiHarness({ rateLimiter: { consume: () => ({ kind: 'allowed' }) }, liveBrowser: true });
+    // With the live browser and voice too, so their routes are in the matrix.
+    harness = await createApiHarness({
+        rateLimiter: { consume: () => ({ kind: 'allowed' }) },
+        liveBrowser: true,
+        voice: true,
+    });
 });
 
 afterAll(async () => {
