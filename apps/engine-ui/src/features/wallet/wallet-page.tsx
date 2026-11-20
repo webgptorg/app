@@ -13,7 +13,7 @@ import {
 } from '@ptbk/ui';
 import type { MenuEntry, StatusTone } from '@ptbk/ui';
 import { getRouteApi } from '@tanstack/react-router';
-import { Ban, Eye, Globe, KeyRound, Plus } from 'lucide-react';
+import { Ban, Eye, Globe, KeyRound, Plus, Upload } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 
 import { cx } from '../../app/cx';
@@ -35,6 +35,9 @@ const route = getRouteApi('/wallet');
 
 // The dialog brings the form layer, so it loads when first opened rather than with the page.
 const LoginDialog = lazy(() => import('./login-dialog').then((module) => ({ default: module.LoginDialog })));
+const WalletImportDialog = lazy(() =>
+    import('./wallet-import-dialog').then((module) => ({ default: module.WalletImportDialog })),
+);
 
 function verificationLook(record: ReadWalletRecord): { readonly label: string; readonly tone: StatusTone } {
     switch (record.verification?.state) {
@@ -311,6 +314,7 @@ const withRequest = (request: ReadWalletRequest | undefined) => (request === und
 
 type Pending =
     | { readonly kind: 'login'; readonly target: LoginDialogTarget }
+    | { readonly kind: 'import' }
     | { readonly kind: 'remove'; readonly record: ReadWalletRecord };
 
 /**
@@ -352,19 +356,34 @@ export function WalletPage() {
 
     const addLogin =
         canManage && ready ? (
-            <Button
-                variant="primary"
-                onClick={() => {
-                    setPending({ kind: 'login', target: {} });
-                }}
-            >
-                <Plus aria-hidden className="size-4" />
-                {m.wallet_add_login()}
-            </Button>
+            <>
+                <Button
+                    onClick={() => {
+                        setPending({ kind: 'import' });
+                    }}
+                >
+                    <Upload aria-hidden className="size-4" />
+                    {m.wallet_import_title()}
+                </Button>
+                <Button
+                    variant="primary"
+                    onClick={() => {
+                        setPending({ kind: 'login', target: {} });
+                    }}
+                >
+                    <Plus aria-hidden className="size-4" />
+                    {m.wallet_add_login()}
+                </Button>
+            </>
         ) : null;
 
     return (
         <Page title={m.wallet_title()} description={m.wallet_description()} actions={addLogin}>
+            {pending?.kind === 'import' && canManage && ready ? (
+                <Suspense fallback={null}>
+                    <WalletImportDialog records={records} onClose={close} />
+                </Suspense>
+            ) : null}
             {wallet.isPending ? (
                 <Skeleton shape="block" className="h-40 w-full" />
             ) : wallet.isError ? (
