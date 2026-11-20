@@ -22,7 +22,7 @@ The mock engine can speak the voice contract (C-17) for local development and th
 
 ## Acceptance criteria
 
-- [ ] Tests cover the flag (off by default, on, refused in production), the header both ways, the byte cap and the rate limit.
-- [ ] The engine-api conformance suite passes against the mock engine with and without the flag.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Tests cover the flag (off by default, on, refused in production), the header both ways, the byte cap and the rate limit.
+- [x] The engine-api conformance suite passes against the mock engine with and without the flag.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.

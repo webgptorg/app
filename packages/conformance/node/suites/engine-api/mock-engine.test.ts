@@ -14,17 +14,26 @@ const SUITE_TIMEOUT_MS = 300_000;
 
 /**
  * What the mock cannot show: it advertises every known capability (the live browser through `MOCK_LIVE_BROWSER`, which
- * the mock's target factory turns on) but no reserved one and not voice, which stays behind `MOCK_VOICE` (so its routes
- * are the unadvertised ones `engine-api.capabilities.unadvertised-404` tries); its member sessions come without a
- * passkey.
+ * the mock's target factory turns on) but no reserved one, and its member sessions come without a passkey.
  */
 const MOCK_SKIPS = {
     'engine-api.live-audio.session': 'skip: capability-not-advertised',
+    'engine-api.me.own-passkeys': 'skip: the member has no passkey to revoke (listing passed)',
+};
+
+/** With `MOCK_VOICE=enabled` the mock advertises every capability this contract defines. */
+const WITH_VOICE = {
+    ...MOCK_SKIPS,
+    'engine-api.capabilities.unadvertised-404': 'skip: the engine advertises every capability this contract defines',
+};
+
+/** Without it the voice checks skip, and the voice routes are the unadvertised ones that must answer 404. */
+const WITHOUT_VOICE = {
+    ...MOCK_SKIPS,
     'engine-api.voice.transcription-caps': 'skip: capability-not-advertised',
     'engine-api.voice.transcription-draft': 'skip: capability-not-advertised',
     'engine-api.voice.speech': 'skip: capability-not-advertised',
     'engine-api.voice.permissions': 'skip: capability-not-advertised',
-    'engine-api.me.own-passkeys': 'skip: the member has no passkey to revoke (listing passed)',
 };
 
 function notPassed(results: readonly CheckResult[]): Record<string, string> {
@@ -37,12 +46,16 @@ function notPassed(results: readonly CheckResult[]): Record<string, string> {
     );
 }
 
-async function runAgainstMock(targets: EngineTargetFactory, skips: Readonly<Record<string, string>>) {
+async function runAgainstMock(
+    targets: EngineTargetFactory,
+    skips: Readonly<Record<string, string>>,
+    voice: 'enabled' | 'disabled',
+) {
     const report = await runPlatformConformance({
         // A seeded team, so the checks that need existing data (an infected file, an ended trigger) have it, with the
         // optional file scanning switched on so its checks run too.
         command: mockEngineCommand(
-            'MOCK_SCENARIO=small-team MOCK_SEED=1 ' +
+            `MOCK_SCENARIO=small-team MOCK_SEED=1 MOCK_VOICE=${voice} ` +
                 'MOCK_CAPABILITIES=runs,tasks,files,triggers,integrations,test-chat,access-requests,file-scanning,' +
                 'members,api-tokens,audit,book-editor,agent-management,onboarding,wallet',
         ),
@@ -66,7 +79,7 @@ describe('the engine-api suite on one engine the harness starts', () => {
     it(
         'passes every check against the mock engine with its control listener',
         async () => {
-            await runAgainstMock(createMockEngineTargetFactory(), MOCK_SKIPS);
+            await runAgainstMock(createMockEngineTargetFactory(), WITH_VOICE, 'enabled');
         },
         SUITE_TIMEOUT_MS,
     );
@@ -84,7 +97,7 @@ describe('the engine-api suite on one engine the harness starts', () => {
             await runAgainstMock(
                 { ...sessions, engineEnv: () => mockControl.engineEnv() },
                 {
-                    ...MOCK_SKIPS,
+                    ...WITHOUT_VOICE,
                     // Engine policy that only the mock's own target reports.
                     'engine-api.cross-member.private-resources':
                         'skip: the target reports no resources private to one member',
@@ -101,6 +114,7 @@ describe('the engine-api suite on one engine the harness starts', () => {
                             ]),
                     ),
                 },
+                'disabled',
             );
         },
         SUITE_TIMEOUT_MS,
