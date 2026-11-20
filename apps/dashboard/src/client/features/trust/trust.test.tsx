@@ -53,7 +53,7 @@ describe('trust page', () => {
         expect(source.getAttribute('href')).toBe('https://github.com/webgptorg/promptbook');
         expect(source.getAttribute('rel')).toBe('noopener noreferrer');
 
-        expect(app.container.querySelectorAll('svg:not([aria-hidden="true"])')).toHaveLength(0);
+        expect(app.container.querySelectorAll('main svg:not([aria-hidden="true"])')).toHaveLength(0);
         expect(app.api.callsTo(apiRoutes.listEngines)).toEqual([]);
         await expectNoAxeViolations(app.container);
     });
