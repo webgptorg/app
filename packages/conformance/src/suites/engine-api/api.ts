@@ -217,7 +217,8 @@ export class EngineApi {
         let body: BodyInit | undefined;
         if (request.body instanceof FormData) body = request.body;
         else if (request.body instanceof Blob) {
-            headers.set('Content-Type', request.body.type);
+            // An untyped Blob goes without the header, as a browser sends it.
+            if (request.body.type !== '') headers.set('Content-Type', request.body.type);
             body = request.body;
         } else if (request.body !== undefined) {
             headers.set('Content-Type', 'application/json');
