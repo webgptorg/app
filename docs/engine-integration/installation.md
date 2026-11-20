@@ -81,7 +81,7 @@ For a clean VPS, download the reviewed immutable Ubuntu bootstrap, verify its SH
 
 AI prompts must use the current pairing URL and this flow rather than creating an unrelated project from a generic website prompt. Preserve supported dependencies, sign-ins, data, native tool approvals and SSH host verification; do not buy a server. After Windows EXE, open a fresh PowerShell and run the checked block from App; close any standalone project wizard without creating a project. There is no assumed installer deep link.
 
-A working relay alone is not a usable signed UI. Configure the approved release mirror and trust policy; inspect the authenticated security response's UI version, bundle hash, release-log index and last update outcome. The loader refuses unsigned/incompatible/revoked bundles and does not serve a cached bundle without a trust policy. Never bypass these checks to make the installer appear complete.
+A working relay alone is not a usable signed UI. Configure the approved release mirror and trust policy (a [staging build](ui-loader.md#staging-builds) embeds both); inspect the authenticated security response's UI version, bundle hash, release-log index and last update outcome. The loader refuses unsigned/incompatible/revoked bundles and does not serve a cached bundle without a trust policy. Never bypass these checks to make the installer appear complete.
 
 ### Historical Docker installer (advanced configured deployments)
 
