@@ -211,7 +211,7 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     await addPasskeyAuthenticator(enginePage);
     await test.step('the setup link makes the person the owner with a passkey', async () => {
         await enginePage.goto(setupLink.url);
-        await expect(enginePage.getByRole('heading', { name: 'Set up your engine' })).toBeVisible();
+        await expect(enginePage.getByRole('heading', { name: 'Set up your project' })).toBeVisible();
         expect(new URL(enginePage.url()).hash).toBe('');
         await expect(enginePage.locator('section[data-state="valid"]')).toContainText(identity.fingerprint);
         await enginePage.locator('button[data-action="create"]').click();

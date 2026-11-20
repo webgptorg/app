@@ -23,7 +23,7 @@ const TEAM = 'Northwind';
 const DASHBOARD_RP_ID = new URL(DASHBOARD_ORIGIN).hostname;
 // The approver email goes out with the heartbeat that first counts the request; the one in flight may miss it.
 const WAITING_EMAIL_WITHIN_MS = ACKED_WITHIN_MS;
-const APPROVED = /can now use this engine$/;
+const APPROVED = /can now use this project$/;
 
 function approveDialog(page: Page, email: string): Locator {
     return page.getByRole('dialog', { name: `Approve ${email}` });

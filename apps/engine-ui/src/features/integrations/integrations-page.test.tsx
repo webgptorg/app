@@ -225,7 +225,7 @@ describe('integrations access', { timeout: TIMEOUT_MS }, () => {
         const capabilities = Object.values(KNOWN_CAPABILITIES).filter(({ id }) => id !== 'integrations');
         const engine = createIntegrationsEngine({ capabilities });
         renderWithProviders({ path: '/integrations', engineApi: engine.client });
-        expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Not available in this project' })).toBeDefined();
         const nav = screen.getByRole('navigation', { name: 'Main' });
         expect(within(nav).queryByRole('link', { name: 'Integrations' })).toBeNull();
 

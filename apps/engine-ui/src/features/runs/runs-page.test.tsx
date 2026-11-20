@@ -247,7 +247,7 @@ describe('runs access', { timeout: TIMEOUT_MS }, () => {
     it('without runs@1: no nav item and /runs says "not available on this engine"', async () => {
         const without = Object.values(KNOWN_CAPABILITIES).filter(({ id }) => id !== 'runs');
         renderWithProviders({ path: '/runs', capabilities: without });
-        expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Not available in this project' })).toBeDefined();
         const nav = screen.getByRole('navigation', { name: 'Main' });
         expect(within(nav).queryByRole('link', { name: 'Runs' })).toBeNull();
     });

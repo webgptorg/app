@@ -548,7 +548,7 @@ describe('audit log: chain status and refresh', { timeout: TIMEOUT_MS }, () => {
         expect(status.getAttribute('title')).toMatch(/all 3 entries are intact, none removed or edited\.$/);
         await app.user.click(status);
         expect(status.getAttribute('aria-expanded')).toBe('true');
-        expect(screen.getByText(/^The engine checked the whole chain at .+: all 3 entries are intact/)).toBeDefined();
+        expect(screen.getByText(/^The project checked the whole chain at .+: all 3 entries are intact/)).toBeDefined();
     });
 
     it('words a single checked entry in the singular', async () => {
@@ -595,7 +595,7 @@ describe('audit log: chain status and refresh', { timeout: TIMEOUT_MS }, () => {
         const engine = auditEngine({ count: 3 });
         engine.spies.verify.mockImplementation(() => problemResponse('validation-failed'));
         const app = renderWithProviders({ path: '/audit', engineApi: engine.client });
-        expect(await screen.findByText("The engine's chain check could not be loaded.")).toBeDefined();
+        expect(await screen.findByText("The project's chain check could not be loaded.")).toBeDefined();
         engine.spies.verify.mockRestore();
         await app.user.click(screen.getByRole('button', { name: 'Try again' }));
         expect(await screen.findByRole('button', { name: /^Chain verified / })).toBeDefined();

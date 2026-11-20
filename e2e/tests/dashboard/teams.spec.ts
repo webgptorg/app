@@ -64,7 +64,7 @@ async function inviteAndApprove(
             await dialog.getByLabel('Code').fill(code);
         };
         await withStepUp(owner, approve, () =>
-            expect(owner.getByText(/can now use this engine$/).first()).toBeVisible({ timeout: 15_000 }),
+            expect(owner.getByText(/can now use this project$/).first()).toBeVisible({ timeout: 15_000 }),
         );
     });
 
@@ -146,7 +146,7 @@ test('with dashboard removals switched off, the person stays and the team page s
         await withStepUp(
             owner,
             () => toggle.click(),
-            () => expect(owner.getByText('Only this engine can remove members now').first()).toBeVisible(),
+            () => expect(owner.getByText('Only this project can remove members now').first()).toBeVisible(),
         );
     });
 

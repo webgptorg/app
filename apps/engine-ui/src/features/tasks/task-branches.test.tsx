@@ -191,7 +191,7 @@ describe('task screens, the less common cases', { timeout: TIMEOUT_MS }, () => {
         await user.keyboard('{Escape}');
         await user.click(screen.getByRole('button', { name: 'Filter' }));
         await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Kind' }));
-        await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Engine tasks' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Built-in tasks' }));
         await waitFor(() => {
             expect(router.state.location.search).toMatchObject({ kind: 'engine' });
         });

@@ -66,7 +66,7 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         // The sixth digit approves: no button to find after reading the code out.
         await user.type(codeInput(dialog), CODE);
 
-        expect(await screen.findByText('Petr Svoboda can now use this engine')).toBeDefined();
+        expect(await screen.findByText('Petr Svoboda can now use this project')).toBeDefined();
         expect(approve).toHaveBeenCalledExactlyOnceWith(
             'access-petr',
             { code: CODE, role: 'viewer' },
@@ -119,7 +119,7 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         expect(codeInput(dialog).value).toBe('1');
         await user.clear(codeInput(dialog));
         await user.paste('482 913');
-        expect(await screen.findByText('Petr Svoboda can now use this engine')).toBeDefined();
+        expect(await screen.findByText('Petr Svoboda can now use this project')).toBeDefined();
         expect(approve).toHaveBeenCalledExactlyOnceWith(
             'access-petr',
             { code: CODE, role: 'member' },
@@ -142,7 +142,7 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         const removed = await screen.findByRole('dialog', { name: 'Approve Petr Svoboda' });
         expect(
             await within(removed).findByText(
-                "Too many wrong codes, so Petr Svoboda's request was removed. Ask them to open the engine from the dashboard again.",
+                "Too many wrong codes, so Petr Svoboda's request was removed. Ask them to open the project from the dashboard again.",
             ),
         ).toBeDefined();
         expect(within(removed).queryByRole('textbox', { name: /Code/ })).toBeNull();
@@ -204,7 +204,7 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         const stepUp = await screen.findByRole('dialog', { name: 'Confirm it is you' });
         await user.click(within(stepUp).getByRole('button', { name: 'Continue with passkey' }));
         popups.confirm();
-        expect(await screen.findByText('Petr Svoboda can now use this engine')).toBeDefined();
+        expect(await screen.findByText('Petr Svoboda can now use this project')).toBeDefined();
         expect(approve).toHaveBeenCalledTimes(2);
         expect(approve.mock.calls[1]?.slice(0, 2)).toEqual(['access-petr', { code: CODE, role: 'member' }]);
     });
@@ -300,7 +300,7 @@ describe('dashboard removals', { timeout: TIMEOUT_MS }, () => {
         expect((control as HTMLInputElement).checked).toBe(true);
         await expectNoAxeViolations(container);
         await user.click(control);
-        expect(await screen.findByText('Only this engine can remove members now')).toBeDefined();
+        expect(await screen.findByText('Only this project can remove members now')).toBeDefined();
         await waitFor(() => {
             expect(screen.getByRole<HTMLInputElement>('switch').checked).toBe(false);
         });

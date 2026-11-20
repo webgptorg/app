@@ -253,7 +253,7 @@ describe('no response', { timeout: TIMEOUT_MS }, () => {
         app.ticker.advance(150_000);
         const card = within(history()).getByRole('alert', { name: 'Ada didn’t respond' });
         await app.user.click(within(card).getByRole('button', { name: 'Retry' }));
-        const note = await within(card).findByText('Retry isn’t available on this engine.', { selector: 'p' });
+        const note = await within(card).findByText('Retry isn’t available in this project.', { selector: 'p' });
         expect(note.closest('section')).toBe(card);
         const retry = within(card).getByRole('button', { name: 'Retry' });
         expect(retry.getAttribute('aria-disabled')).toBe('true');

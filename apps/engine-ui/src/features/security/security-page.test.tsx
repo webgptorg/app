@@ -72,8 +72,8 @@ describe('security panel: trust panel', { timeout: TIMEOUT_MS }, () => {
         renderSecurity();
         const vector = vectors.vectors.find(({ engineId }) => engineId === 'memoryengine234567abcdefgh');
         if (vector === undefined) throw new Error('no vector for the in-memory engine ID');
-        await screen.findByRole('heading', { name: 'Private engine: your data stays on your server' });
-        const trust = screen.getByRole('heading', { name: /Private engine/ }).closest('section') as HTMLElement;
+        await screen.findByRole('heading', { name: 'Private project: your data stays on your server' });
+        const trust = screen.getByRole('heading', { name: /Private project/ }).closest('section') as HTMLElement;
         const mark = within(trust).getByRole('img', { name: new RegExp(vector.formatted) });
         expect(mark.textContent).toContain(vector.formatted);
         expect(within(trust).getByText('memoryengine234567abcdefgh')).toBeDefined();
@@ -97,7 +97,7 @@ describe('security panel: trust panel', { timeout: TIMEOUT_MS }, () => {
         linked.unmount();
 
         renderSecurity();
-        await screen.findByRole('heading', { name: 'Private engine: your data stays on your server' });
+        await screen.findByRole('heading', { name: 'Private project: your data stays on your server' });
         expect(screen.queryByRole('link', { name: /How Promptbook protects you/ })).toBeNull();
     });
 
@@ -144,7 +144,7 @@ describe('security panel: trust panel', { timeout: TIMEOUT_MS }, () => {
         await screen.findByText('relay-a.ptbk.io');
         const summary = row('This app').querySelector('summary')?.textContent ?? '';
         expect(summary).not.toContain('signed and verified');
-        expect(summary).toContain('Version 1.0.0; the engine reports no release log entry for it');
+        expect(summary).toContain('Version 1.0.0; the project reports no release log entry for it');
         expect((row('This app').querySelector('details') as HTMLDetailsElement).open).toBe(true);
         expect(container.querySelector('#trust svg')?.getAttribute('data-state')).toBe('verifying');
     });
@@ -153,7 +153,7 @@ describe('security panel: trust panel', { timeout: TIMEOUT_MS }, () => {
         const { container } = renderSecurity({
             permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'security.read'),
         });
-        await screen.findByRole('heading', { name: /Private engine/ });
+        await screen.findByRole('heading', { name: /Private project/ });
         const trust = container.querySelector('#trust') as HTMLElement;
         await waitFor(() => {
             expect(trust.querySelector('svg')?.getAttribute('data-state')).toBe('verified');
@@ -183,17 +183,17 @@ describe('security panel: trust panel', { timeout: TIMEOUT_MS }, () => {
         vi.spyOn(engine.client.security, 'get').mockImplementation(() => problemResponse('internal-error'));
         const failed = renderWithProviders({ path: '/security', engineApi: engine.client });
         await screen.findByRole('button', { name: 'Try again' }, { timeout: 10_000 });
-        expect(trustText(failed.container)).toContain('Checks unavailable: the engine could not report them.');
+        expect(trustText(failed.container)).toContain('Checks unavailable: the project could not report them.');
     });
 
     it("opens from the engine switcher's verify item and moves focus to the trust panel heading", async () => {
         const { user, router } = renderSecurity({}, '/settings');
-        await user.click(await screen.findByRole('button', { name: /Switch engine|Test engine/ }));
-        await user.click(screen.getByRole('menuitem', { name: /Verify this engine/ }));
+        await user.click(await screen.findByRole('button', { name: /Switch project|Test engine/ }));
+        await user.click(screen.getByRole('menuitem', { name: /Verify this project/ }));
         await waitFor(() => {
             expect(router.state.location.pathname).toBe('/security');
         });
-        const heading = await screen.findByRole('heading', { name: 'Private engine: your data stays on your server' });
+        const heading = await screen.findByRole('heading', { name: 'Private project: your data stays on your server' });
         await waitFor(() => {
             expect(document.activeElement).toBe(heading);
         });
@@ -205,7 +205,7 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
         const { container } = renderSecurity();
         await screen.findByText('relay-a.ptbk.io');
         expect(row('Engine').textContent).toContain('Version 1.4.0 · Update waiting to install');
-        expect(row('This app').textContent).toContain('Version 1.0.0, signed and verified by the engine');
+        expect(row('This app').textContent).toContain('Version 1.0.0, signed and verified by the project');
         expect(row('Secure connection').textContent).toContain(
             'Valid until Dec 1, 2026; no foreign certificates in CT logs',
         );
@@ -279,7 +279,7 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
         const certificate = row('Secure connection');
         expect((certificate.querySelector('details') as HTMLDetailsElement).open).toBe(true);
         expect(certificate.querySelector('summary')?.textContent).toContain(
-            'A certificate this engine did not request exists for its hostname',
+            'A certificate this project did not request exists for its hostname',
         );
         expect(certificate.textContent).toContain('99'.repeat(32));
         expect(certificate.textContent).toContain('Issuer: CN=<b>Other</b> CA');
@@ -362,12 +362,12 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
                 },
             },
         });
-        expect((await screen.findAllByText('The engine refused a UI release')).length).toBeGreaterThan(0);
+        expect((await screen.findAllByText('The project refused a UI release')).length).toBeGreaterThan(0);
         expect(screen.getByText('Reason: the revocation list could not be verified')).toBeDefined();
         expect(screen.getByText('Revocation list: older than one already accepted')).toBeDefined();
         const heartbeat = row('Last report to the dashboard');
-        expect(heartbeat.querySelector('summary')?.textContent).toContain("The engine's clock is off");
-        expect(heartbeat.textContent).toContain("The engine's clock is 300 s behind the dashboard's");
+        expect(heartbeat.querySelector('summary')?.textContent).toContain("The project's clock is off");
+        expect(heartbeat.textContent).toContain("The project's clock is 300 s behind the dashboard's");
     });
 
     it('says what is missing in one line instead of empty boxes', async () => {
@@ -383,7 +383,7 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
                 },
             },
         });
-        await screen.findAllByText('This engine is reached directly, not through a relay.');
+        await screen.findAllByText('This project is reached directly, not through a relay.');
         expect(row('Addresses').textContent).toContain('memoryengine234567abcdefgh.ptbk.io, no custom domains');
         expect(row('Where it connects').querySelector('summary')?.textContent).toContain('No outbound destinations');
         expect(row('Last report to the dashboard').querySelector('summary')?.textContent).toContain(
@@ -398,7 +398,7 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
         const get = vi.spyOn(engine.client.security, 'get').mockImplementation(() => problemResponse('internal-error'));
         const { user } = renderWithProviders({ path: '/security', engineApi: engine.client });
         const retry = await screen.findByRole('button', { name: 'Try again' }, { timeout: 10_000 });
-        expect(screen.getByRole('heading', { name: /Private engine/ })).toBeDefined();
+        expect(screen.getByRole('heading', { name: /Private project/ })).toBeDefined();
         expect(screen.getByText('memoryengine234567abcdefgh')).toBeDefined();
 
         get.mockRestore();
@@ -412,9 +412,9 @@ describe('security panel: access', { timeout: TIMEOUT_MS }, () => {
         const { user, router, container } = renderSecurity({
             permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'security.read'),
         });
-        expect(await screen.findByRole('heading', { name: /Private engine/ })).toBeDefined();
+        expect(await screen.findByRole('heading', { name: /Private project/ })).toBeDefined();
         expect(screen.getByText('memoryengine234567abcdefgh')).toBeDefined();
-        const trust = screen.getByRole('heading', { name: /Private engine/ }).closest('section') as HTMLElement;
+        const trust = screen.getByRole('heading', { name: /Private project/ }).closest('section') as HTMLElement;
         expect(within(trust).getByText('engine.localhost')).toBeDefined();
         expect(screen.queryByRole('heading', { name: 'Verification' })).toBeNull();
         expect(screen.getByRole('heading', { name: 'Access' })).toBeDefined();

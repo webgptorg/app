@@ -63,7 +63,7 @@ describe('settings: updates', { timeout: TIMEOUT_MS }, () => {
         const version = screen.getByRole('textbox', { name: /^Version/ });
         expect((version as HTMLInputElement).value).toBe('1.0.0');
         expect(version.getAttribute('placeholder')).toBeNull();
-        expect(screen.getByText('This engine runs 1.0.0 now.')).toBeDefined();
+        expect(screen.getByText('This project runs 1.0.0 now.')).toBeDefined();
 
         await user.clear(version);
         await user.type(version, 'nope');

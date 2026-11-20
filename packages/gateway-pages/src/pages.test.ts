@@ -175,7 +175,7 @@ describe('setup.html', () => {
     it("uses onboarding.md's English copy", () => {
         const text = parse('setup.html').body.textContent.replace(/\s+/g, ' ');
         for (const copy of [
-            'Set up your engine',
+            'Set up your project',
             'You are about to become the owner of this engine. Your passkey stays with you; the engine keeps only its public half.',
             'Confirm on your device: fingerprint, face, PIN or security key.',
             'The passkey prompt was closed or timed out. Try again when you are ready.',
@@ -188,7 +188,7 @@ describe('setup.html', () => {
             "This page needs the setup link from the engine's terminal",
             'This browser cannot create passkeys',
             'Create passkey',
-            'Open your engine',
+            'Open your project',
             'Try again',
         ]) {
             expect(text).toContain(copy);

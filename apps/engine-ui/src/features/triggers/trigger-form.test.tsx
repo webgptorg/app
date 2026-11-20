@@ -165,7 +165,7 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
             expect(errorOf(field(/^Cron expression/))).toContain('The expression never fires.');
         });
         expect(app.engine.spies.create).toHaveBeenCalledTimes(1);
-        expect(screen.queryByText('The engine refused the trigger')).toBeNull();
+        expect(screen.queryByText('The project refused the trigger')).toBeNull();
         expect(app.router.state.location.pathname).toBe('/triggers/new');
     });
 
@@ -180,7 +180,7 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
         const app = await renderForm('/triggers/new', engine);
         await fillSchedule(app, '0 8 * * *', 'Europe/Prague');
         await app.user.click(screen.getByRole('button', { name: 'Create trigger' }));
-        const banner = (await screen.findByText('The engine refused the trigger')).closest('[role="alert"]');
+        const banner = (await screen.findByText('The project refused the trigger')).closest('[role="alert"]');
         expect(banner?.textContent).toContain('The scheduler is full this hour.');
     });
 

@@ -80,7 +80,7 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
 
     it('says "not available on this engine" for a deep link to a tab whose capability is missing', async () => {
         await renderAgent('/agents/agent-001/runs', { features: FEATURES, capabilities: [] });
-        expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Not available in this project' })).toBeDefined();
     });
 
     it('checks a tab’s own requirement on a deep link, and says "not found" for a tab nobody registers', async () => {
@@ -487,7 +487,7 @@ describe('agent settings', { timeout: TIMEOUT_MS }, () => {
             agents: [seededAgent(1), { ...seededAgent(2), illustration: 'analyst' }],
         });
         const picture = await screen.findByRole('region', { name: 'Picture' });
-        expect(within(picture).getByText('Chosen for this agent on the engine.')).toBeDefined();
+        expect(within(picture).getByText('Chosen for this agent in the project.')).toBeDefined();
     });
 
     it('points to the book for the name and description, under a title that is not the field label', async () => {

@@ -78,7 +78,7 @@ describe('an engine that is only being set up', { timeout: TIMEOUT_MS }, () => {
     it('gets the whole app once setup is done', async () => {
         const { router, user } = renderWithProviders({ engineApi: pairedEngine(PENDING) });
         await user.click(await screen.findByRole('button', { name: 'Start' }));
-        expect(await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Your project is set up' })).toBeDefined();
         expect(await screen.findByRole('navigation')).toBeDefined();
         await router.navigate({ to: '/files' });
         await waitFor(() => {

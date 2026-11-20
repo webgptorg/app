@@ -433,7 +433,7 @@ describe('triggers access', { timeout: TIMEOUT_MS }, () => {
         const without = Object.values(KNOWN_CAPABILITIES).filter(({ id }) => id !== 'triggers');
         const engine = createTriggersEngine({ capabilities: without });
         renderWithProviders({ path: '/triggers', engineApi: engine.client });
-        expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Not available in this project' })).toBeDefined();
         const nav = screen.getByRole('navigation', { name: 'Main' });
         expect(within(nav).queryByRole('link', { name: 'Triggers' })).toBeNull();
 

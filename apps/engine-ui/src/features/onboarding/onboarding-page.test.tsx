@@ -81,7 +81,7 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByText(/^Create /)).toBeDefined();
         engine.advance(CREATE_MS);
         expect(
-            await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' }, { timeout: 5_000 }),
+            await screen.findByRole('heading', { level: 1, name: 'Your project is set up' }, { timeout: 5_000 }),
         ).toBeDefined();
         expect(screen.getByText('Done. Your agents can get to work.')).toBeDefined();
         expect(robotPose()).toBe('finished');
@@ -129,7 +129,7 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
             expect(router.state.location.pathname).toBe('/agents/builtin-chatter/chat');
         });
         await router.navigate({ to: '/' });
-        const notice = await screen.findByText('Your engine is not set up yet');
+        const notice = await screen.findByText('Your project is not set up yet');
         const banner = notice.closest('[role]') ?? document.body;
         expect(
             within(banner as HTMLElement)
@@ -149,6 +149,6 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         const { router } = renderWithProviders({ engineApi: engine.client });
         expect(await screen.findByRole('heading', { level: 1, name: /Good/ })).toBeDefined();
         expect(router.state.location.pathname).toBe('/');
-        expect(screen.queryByText('Your engine is not set up yet')).toBeNull();
+        expect(screen.queryByText('Your project is not set up yet')).toBeNull();
     });
 });

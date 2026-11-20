@@ -281,7 +281,7 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         renderWithProviders({ path: '/tasks/task-engine-update', engineApi: demoEngine() });
         await screen.findByRole('heading', { level: 1, name: 'Update Promptbook 0.119.0 → 0.120.0' });
         expect(screen.getByText('Promptbook engine (deterministic update, no agent)')).toBeTruthy();
-        expect(screen.getByText('Built into the engine')).toBeTruthy();
+        expect(screen.getByText('Built into the project')).toBeTruthy();
         expect(screen.getByText('The engine')).toBeTruthy();
         expect(
             within(screen.getByRole('region', { name: 'Before it can start' })).getByText('No task is running'),
