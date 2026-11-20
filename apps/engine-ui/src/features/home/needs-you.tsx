@@ -15,6 +15,8 @@ import { AgentAvatar } from '../agents/agent-avatar';
 import { chatEntriesQueryOptions } from '../chat/chat-queries';
 import { tintStyle } from '../chat/references/agent-color';
 import { chatName } from '../chat/chat-name';
+import { useOpenHelpRequests } from '../browser/browser-queries';
+import { HelpRequestItem } from '../browser/help-request-item';
 import { EntityChip } from '../entities/entity-chip';
 import { useWaitingAccessRequests } from '../members/members-feature';
 import { questionQuote } from './question-text';
@@ -196,8 +198,9 @@ function useAttentionItems() {
 }
 
 /**
- * What waits on the member, loudest first: agents' questions, tasks waiting on them, people asking to join, then
- * everything a feature counts. Each item sits on a soft surface with one action. When nothing waits, the section is one quiet line.
+ * What waits on the member, loudest first: agents' questions, tasks waiting on them, agents stuck in the browser,
+ * people asking to join, then everything a feature counts. Each item sits on a soft surface with one action. When
+ * nothing waits, the section is one quiet line.
  */
 export function NeedsYou({ chats }: { readonly chats: readonly ReadChat[] | undefined }) {
     const { tasks } = useHomeTasks('awaiting-user');
@@ -205,9 +208,11 @@ export function NeedsYou({ chats }: { readonly chats: readonly ReadChat[] | unde
     const asking = (chats ?? []).filter((chat) => chat.questions.length > 0);
     const requests = useWaitingAccessRequests();
     const waitingPeople = requests ?? [];
+    const help = useOpenHelpRequests();
     const { probes, items, pending } = useAttentionItems();
-    const loading = chats === undefined || tasks === undefined || requests === undefined || pending;
-    const count = asking.length + waitingTasks.length + waitingPeople.length + items.length;
+    const loading =
+        chats === undefined || tasks === undefined || requests === undefined || help === undefined || pending;
+    const count = asking.length + waitingTasks.length + (help?.length ?? 0) + waitingPeople.length + items.length;
     const empty = count === 0;
     return (
         <Section title={m.home_needs_you()} {...(empty ? {} : { count })}>
@@ -230,6 +235,9 @@ export function NeedsYou({ chats }: { readonly chats: readonly ReadChat[] | unde
                     ))}
                     {waitingTasks.map((task) => (
                         <TaskItem key={task.id} task={task} />
+                    ))}
+                    {help?.map((request) => (
+                        <HelpRequestItem key={request.id} request={request} />
                     ))}
                     {waitingPeople.map((request) => (
                         <AccessRequestItem key={request.id} request={request} />

@@ -17,6 +17,7 @@ import { Ban, Eye, Globe, KeyRound, Plus, Upload } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 
 import { cx } from '../../app/cx';
+import { useSignInItems } from '../browser/use-sign-in-item';
 import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
 import { usePermissions } from '../session/use-permissions';
@@ -80,6 +81,7 @@ function LoginRow({
     readonly onRemove: () => void;
 }) {
     const look = verificationLook(record);
+    const signIn = useSignInItems(record.origin);
     const { title, site } = loginTitle(record.label, siteName(record.origin));
     // The site shows once: as the title, or beside a name the owner gave the login.
     const details = [
@@ -135,6 +137,7 @@ function LoginRow({
                         variant="ghost"
                         size="sm"
                         items={[
+                            ...signIn,
                             {
                                 kind: 'item',
                                 id: 'remove',
@@ -203,7 +206,9 @@ function RequestItem({
     const canAnswer = canManage && ready && answerable(request);
     const seen = request.seenAt !== null;
     const agent = request.agents[0] ?? m.wallet_request_system_agent();
+    const signIn = useSignInItems(request.origin);
     const items: MenuEntry[] = [
+        ...signIn,
         ...(seen
             ? []
             : [
