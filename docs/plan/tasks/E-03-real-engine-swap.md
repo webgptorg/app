@@ -2,7 +2,7 @@
 
 - **Lane:** Engine integration · **Module:** `e2e/`, CI workflows; contract fixes in the public contracts repo · **Milestone:** M5
 - **Depends on:** E-02, X-02, X-04, X-05
-- **Status:** in progress (feat/e-03-real-engine-local-stack)
+- **Status:** in progress (#342 runs the real engine in the local dev stack; the e2e swap and CI job remain)
 - **Spec:** Build plan (Mock engine first, real engine last; Spike acceptance criteria; v0 epics "Mock engine and conformance", "Engine UI"); ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md)
 
 ## Goal
