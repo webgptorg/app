@@ -25,9 +25,9 @@ export const LIVE_CHANNEL_HIGH_WATER_BYTES = 16 * MAX_LIVE_MEDIA_BYTES;
 
 const decoder = new TextDecoder();
 
+/** With the default `binaryType`, every message arrives as one `Buffer`, fragmented ones included. */
 function bytesOf(data: RawData): Uint8Array {
-    if (Array.isArray(data)) return Buffer.concat(data);
-    return data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+    return data as Buffer;
 }
 
 /**

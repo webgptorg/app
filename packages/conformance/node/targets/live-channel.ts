@@ -11,9 +11,9 @@ import { LiveChannelQueue } from '../../src/testing/live-channel-queue';
 /** Far above any control message or frame a conforming engine sends; it only keeps a broken one from flooding the run. */
 const MAX_MESSAGE_BYTES = 1024 * 1024;
 
+/** With the default `binaryType`, every message arrives as one `Buffer`, fragmented ones included. */
 function bytesOf(data: RawData): Uint8Array {
-    if (Array.isArray(data)) return Buffer.concat(data);
-    return data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+    return data as Buffer;
 }
 
 /**
@@ -65,9 +65,8 @@ export function createLiveChannelOpener(
                 socket.destroy();
                 resolve({ kind: 'refused', status: response.statusCode ?? 0 });
             });
-            ws.on('error', (error) => {
-                if (ws.readyState === WebSocket.CONNECTING) reject(error);
-            });
+            // `ws` is already closing when it reports a failed handshake; after `open` or a refusal this is a no-op.
+            ws.on('error', reject);
         });
     };
 }

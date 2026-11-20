@@ -20,6 +20,10 @@ async function engine() {
     const server = createServer();
     server.on('upgrade', (request: IncomingMessage, socket, head) => {
         seen.push(request);
+        if (request.headers.cookie === 'drop') {
+            socket.destroy();
+            return;
+        }
         if (request.headers.cookie === undefined) {
             socket.end('HTTP/1.1 401 Unauthorized\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}');
             return;
@@ -88,6 +92,11 @@ describe('createLiveChannelOpener', () => {
             status: 401,
         });
         expect(seen[1]?.headers.authorization).toBe('Bearer token');
+    });
+
+    it('fails when the connection drops before the engine answers', async () => {
+        const { open } = await engine();
+        await expect(open('session-1', { cookie: 'drop' }, 'https://e.engine.localhost')).rejects.toThrow();
     });
 
     it('closes the channel when the test does', async () => {
