@@ -20,6 +20,7 @@ describe('package entries', () => {
             'DEVICE_LOGIN_MS',
             'FAKE_FRAME_HEIGHT',
             'FAKE_FRAME_WIDTH',
+            'FAKE_TRANSCRIPTS',
             'FAKE_VIEWPORT',
             'INSTALL_MS',
             'IN_MEMORY_CLIENT_MARKER',

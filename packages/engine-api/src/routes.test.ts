@@ -101,6 +101,8 @@ const CAPABILITY_BY_ROUTE: Readonly<Record<string, (typeof KNOWN_CAPABILITIES)[k
     getAgentRevision: KNOWN_CAPABILITIES.bookEditor,
     updateAgent: KNOWN_CAPABILITIES.agentManagement,
     restoreAgent: KNOWN_CAPABILITIES.agentManagement,
+    transcribeVoiceClip: KNOWN_CAPABILITIES.voiceInput,
+    speakChatMessage: KNOWN_CAPABILITIES.voiceOutput,
 };
 
 function expectedCapability(route: RouteDefinition) {
@@ -109,6 +111,9 @@ function expectedCapability(route: RouteDefinition) {
         CAPABILITY_BY_PATH.find(([prefix]) => route.path === prefix || route.path.startsWith(`${prefix}/`))?.[1]
     );
 }
+
+/** POSTs that read and change nothing, so the read permission of what they read is enough. */
+const READ_ONLY_POSTS: ReadonlySet<string> = new Set(['speakChatMessage']);
 
 const capabilityRoutes = ENGINE_API_ROUTE_LIST.filter((route) => expectedCapability(route) !== undefined);
 
@@ -151,8 +156,9 @@ describe('ENGINE_API_ROUTES', () => {
     });
 
     it('requires a non-read permission on every mutating route outside /me/**', () => {
-        // Recording what the caller read or saw changes no content: anyone who may read a thread may record it.
-        const readMarkers: ReadonlySet<string> = new Set(['markChatRead', 'markChatSeen']);
+        // Recording what the caller read or saw changes no content: anyone who may read a thread may record it. Speech
+        // changes nothing either; it is a POST only because its body carries the formats in order of preference.
+        const readMarkers: ReadonlySet<string> = new Set([...READ_ONLY_POSTS, 'markChatRead', 'markChatSeen']);
         for (const route of ENGINE_API_ROUTE_LIST.filter((candidate) => candidate.method !== 'GET')) {
             if (isSelfService(route)) continue;
             expect(route.permission, route.id).not.toBeNull();
@@ -224,7 +230,9 @@ describe('capability routes', () => {
     it('requires a non-read permission on every mutating capability route', () => {
         for (const route of capabilityRoutes.filter((candidate) => candidate.method !== 'GET')) {
             expect(route.permission, route.id).not.toBeNull();
-            if (route.permission !== null) expect(isReadPermission(route.permission), route.id).toBe(false);
+            if (route.permission !== null) {
+                expect(isReadPermission(route.permission), route.id).toBe(READ_ONLY_POSTS.has(route.id));
+            }
         }
         expect(ENGINE_API_ROUTES.cancelRun.permission).toBe('runs.control');
         expect(ENGINE_API_ROUTES.retryRun.permission).toBe('runs.control');

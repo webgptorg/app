@@ -54,6 +54,45 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
   - Treat `ptbk init --prepare-only --link` as the installer for the first bundle: `mode: 'manual'` for that bundle only, with every other check.
   - Write the engine tests STG-01 to STG-14, then run STG-20 to STG-24 on a clean machine. Done when a clean install from the block on app.ptbk.io passes `ptbk-conformance staging` with no `PTBK_*` variable set anywhere.
 
+### 2026-11-20: Voice phase 1: push-to-talk and spoken replies (lower priority)
+
+- **Priority:** lower than every other open entry. Finish the staging build (2026-11-20, PRIORITY), setup in the browser (2026-11-19) and the live browser (2026-11-20) first. Nothing breaks if you skip this: no UI uses it yet, and an engine that advertises neither capability passes conformance as before.
+- **Goal:** a member speaks to an agent and hears it answer, in the chat, with the speech work done by your harness or its provider and never by our services. Two capabilities, each on its own:
+  - `voice-input@1`, push-to-talk: the browser records up to a minute, you transcribe it, and the UI puts the text into the composer for the member to edit and send as an ordinary message.
+  - `voice-output@1`, spoken replies: you read one chat message aloud in a format the browser can play.
+- **Changed:** [voice.md](voice.md), [engine-api.md, Voice](engine-api.md#voice), [voice.ts](../../packages/engine-api/src/capabilities/voice.ts):
+  - `KNOWN_CAPABILITIES.voiceInput` and `voiceOutput`.
+  - `POST /chats/{chatId}/transcriptions` (`transcribeVoiceClip`, `chats.write`): a **raw binary body**, the first in the API (`RouteBody` kind `binary`). Its `Content-Type` is one of `VOICE_CLIP_FORMATS` after `normalizeMediaType`; at most `MAX_VOICE_CLIP_BYTES` (2 MiB) and `MAX_VOICE_CLIP_MS` (60 s); optional `?language=`. Answers 200 `TranscriptDraft { text, language, confidence, durationMs }`. It adds nothing to the chat.
+  - `POST /chats/{chatId}/messages/{messageId}/speech` (`speakChatMessage`, `chats.read`): body `{ formats }` from `SPEECH_FORMATS`, answers the audio in the first one you can make (a typed binary response) or 415.
+  - Problem codes `voice-clip-too-long` (422), `transcription-failed` (502), `speech-too-long` (422), `message-not-speakable` (409), `speech-failed` (502), `voice-unavailable` (503).
+  - `Permissions-Policy` sends `microphone=(self)` while `voice-input@1` is advertised ([gateway.md](gateway.md#security-headers)).
+  - Conformance: `engine-api.voice.transcription-caps`, `engine-api.voice.transcription-draft`, `engine-api.voice.speech`, `engine-api.voice.permissions` (skip without the capability) and `engine-api.voice.permissions-policy` (runs on every engine with a gateway, so it checks `microphone=()` today). Checklist ENG-123 to ENG-125.
+  - Phase 2, full-duplex over the live channel, is designed in [live-sessions.md](live-sessions.md#live-audio-phase-2) only; `live-audio@1` stays reserved.
+- **Redo:**
+  1. Now, whatever your priority: re-vendor the contract and keep `Permissions-Policy` at `microphone=()`; `engine-api.voice.permissions-policy` checks it on your engine today.
+  2. Tell us what your harnesses can do (questions below) before building.
+  3. When you build it: serve both routes from the route table, with the raw body read under its cap before anything else, the clip decoded to measure its length, handed to the provider and dropped. Advertise each capability only when a provider for it is configured; answer 503 `voice-unavailable` when it cannot serve right now. Switch `microphone=(self)` with `voice-input@1`. Write VO-01 to VO-12, run the voice conformance checks, then VO-13 and VO-14 by hand.
+- **Test cases** (VO-01 to VO-12 unit-level in the engine, VO-13 and VO-14 by hand):
+  - **VO-01** Each of `audio/webm;codecs=opus`, `audio/ogg; codecs="opus"` (Firefox's spelling) and `audio/wav` is accepted; `audio/mpeg`, `text/plain`, a missing `Content-Type` and `audio/webm` without codecs are 415, before the body is read.
+  - **VO-02** A `Content-Length` over 2 MiB is 413 without reading the body; a chunked body that passes 2 MiB is cut off at the cap with 413.
+  - **VO-03** The duration comes from decoding, not a header: a `MediaRecorder` WebM with no `Duration` element gives the right `durationMs`; a 61 s WAV under 2 MiB is 422 `voice-clip-too-long`, and the provider is never called for it.
+  - **VO-04** An undecodable clip (random bytes typed `audio/ogg;codecs=opus`) is 502 `transcription-failed` with a generic `detail`.
+  - **VO-05** After a transcription, successful or not, no file in the data directory, temp directory or cache holds the clip, and no log line or audit entry contains the audio, its base64 or the transcript text.
+  - **VO-06** A transcription adds no chat entry, emits no `chat.changed` and starts no turn; sending the draft afterwards is an ordinary message with the member as author.
+  - **VO-07** Silence gives 200 with `text: ""`; `language` is the asked one or the detected one or `null`; `confidence` within 0 to 1 or `null`.
+  - **VO-08** With the harness signed out or the provider down, both routes answer 503 `voice-unavailable` while `GET /engine` still advertises the capability; with no provider configured at all, neither capability is advertised and the routes answer 404 `capability-not-supported`.
+  - **VO-09** Speech: `{ formats: ['audio/mpeg'] }` is 200 `audio/mpeg` (or 415 if you cannot make MP3); the answer's type is always the first offered format you can make; none of them is 415; `Cache-Control: no-store`, `nosniff`, attachment.
+  - **VO-10** Speech of a streaming, failed, cancelled or empty message is 409 `message-not-speakable`; of a message over 4,000 UTF-16 code units 422 `speech-too-long`, without calling the provider.
+  - **VO-11** A member without `chats.write` gets 403 on transcriptions, without `chats.read` 403 on speech; a chat or message they cannot see, or a message of another chat, is 404.
+  - **VO-12** `Permissions-Policy` has `microphone=()` on every response while `voice-input@1` is not advertised, `microphone=(self)` on every response (API, UI files, gateway pages, errors) while it is, and the rest of the header unchanged.
+  - **VO-13** By hand in Safari: record through the UI's WAV fallback (or upload a 16 kHz mono PCM16 WAV with curl) and get a draft in the composer.
+  - **VO-14** By hand in Chrome and Firefox: a real recording of a sentence gives a sensible draft in the spoken language; a reply read aloud plays.
+- **Questions for you** (answer in [voice.md, Open for the engine team](voice.md#open-for-the-engine-team)):
+  1. What can each harness do for speech-to-text and text-to-speech: Codex with a ChatGPT login, Claude Code, an OpenAI or other API key, a local model?
+  2. Which formats do they take and return, and where would you transcode?
+  3. Which languages, and do they detect the language themselves?
+  4. Which per-member and per-engine limits fit the cost?
+
 ### 2026-11-19: Setup in the browser after pairing: new input kinds
 
 - **Changed:** `onboarding@1` gains what the App flow needs so the owner never goes back to the terminal after pairing ([engine-api.md, Onboarding](engine-api.md#onboarding), [onboarding.ts](../../packages/engine-api/src/capabilities/onboarding.ts)). The prompt kinds are now a fixed vocabulary the UI ships first; you compose and reorder steps from them freely. New: a `secret` prompt kind and answer (API keys; never presented back, logged or kept in the draft); `details` and `alternatives` on every prompt, with `{ action: alternative, alternativeId }` (an alternative with `href` is a same-origin link the UI opens, not an answer); `activity` on the state (each install or check `running`, `done`, `failed` with its reason, or `skipped`); `canDefer` with problem `onboarding-not-deferrable`. The heartbeat gains optional `setup: pending | done` ([heartbeat.md](heartbeat.md)). The platform's signed UI renders setup on a pending engine; it reads unknown prompt kinds as unsupported and points at `ptbk onboarding`.
