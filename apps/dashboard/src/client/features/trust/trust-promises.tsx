@@ -95,7 +95,6 @@ export function TrustCheck() {
                 </h2>
                 <p className="text-sm">{m.trust_check_security()}</p>
                 <p className="text-sm">{m.trust_check_fingerprint()}</p>
-                <p className="text-sm">{m.trust_check_certificates()}</p>
                 <p className="text-sm">
                     {m.trust_check_source()}{' '}
                     <ExternalLink href={ENGINE_SOURCE}>{m.trust_check_source_link()}</ExternalLink>

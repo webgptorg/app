@@ -15,7 +15,7 @@ describe('trust page for a Czech browser', () => {
 
     it('renders in Czech, with the Czech footer and language label', async () => {
         const app = renderApp({ path: '/trust' });
-        expect(await screen.findByRole('heading', { name: 'Jak vás Promptbook chrání', level: 1 })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Jak Vás Promptbook chrání', level: 1 })).toBeTruthy();
         expect(screen.getByText(/Spojení k nim zajišťujeme my, ale přečíst je nemůžeme\./)).toBeTruthy();
         expect(screen.getByRole('heading', { name: 'Co udělat nemůžeme', level: 2 })).toBeTruthy();
         expect(screen.getByRole('heading', { name: 'Náš relay', level: 3 })).toBeTruthy();

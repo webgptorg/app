@@ -23,7 +23,7 @@ export function TrustPage() {
                 className="mx-auto flex w-full max-w-5xl flex-col gap-12 px-4 pt-8 pb-12 outline-none sm:pt-12 md:gap-16"
             >
                 <header className="flex max-w-2xl flex-col gap-3">
-                    <h1 className="font-display text-3xl font-semibold">{m.trust_title()}</h1>
+                    <h1 className="text-3xl font-semibold tracking-display">{m.trust_title()}</h1>
                     <p className="text-lg sm:text-xl">{m.trust_promise()}</p>
                 </header>
                 <TrustPath />

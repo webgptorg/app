@@ -41,7 +41,7 @@ test('the public trust page, signed out, reached from the sign-in footer', async
 
     await page.context().addCookies([{ name: 'ptbk_locale', value: 'cs', url: page.url() }]);
     await page.reload();
-    await expect(page.getByRole('heading', { name: 'Jak vás Promptbook chrání', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Jak Vás Promptbook chrání', level: 1 })).toBeVisible();
     await checkScreen('trust, Czech');
     expectNoBrowserErrors(browserReport());
 });

@@ -193,7 +193,7 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 
 ### 2026-11-11: Certificate transparency watch
 
-- **Changed:** the dashboard's public trust page now promises that the engine checks the public certificate logs every hour and warns the owner about a certificate for its address that someone else made. The spec always asked for it ([Residual risks](../spec/zero-trust-spec.md#residual-risks-certificates-and-engine-updates), item 1); it is now tracked as ENG-119 in the [checklist](checklist.md#tunnel-interfaces-2-and-3).
+- **Changed:** the hourly check of the public certificate logs, which warns the owner about a certificate for the engine's address that someone else made, is now tracked. The dashboard's trust page will promise it once engines ship it. The spec always asked for it ([Residual risks](../spec/zero-trust-spec.md#residual-risks-certificates-and-engine-updates), item 1); it is now tracked as ENG-122 in the [checklist](checklist.md#tunnel-interfaces-2-and-3).
 - **Redo:** implement it per the spec: every hour, check the CT logs for each of the engine's hostnames, and warn the owner (UI, email, push) about any certificate whose key is not the engine's.
 
 ### 2026-11-11: Where a release build gets its trust policy, and live staging
