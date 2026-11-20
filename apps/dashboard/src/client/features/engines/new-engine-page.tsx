@@ -26,8 +26,8 @@ import { useAppMutation } from '../../core/mutations';
 import { useSession } from '../session/use-session';
 import { Crumb, Page } from '../shell/page';
 import { TrustLink } from '../trust/trust-link';
-import { LINK_POLL_MS, LinkProgress, useObservedLinkState } from './link-progress';
-import type { LinkState } from './link-progress';
+import { LINK_POLL_MS, LinkProgress, useObservedLink } from './link-progress';
+import type { ObservedLink } from './link-progress';
 import { linkCodeQuery, linkEligibilityQuery } from './link-queries';
 import { LinkSteps } from './link-steps';
 import { InstallationOptionPanel } from './installation-options';
@@ -325,11 +325,11 @@ function flowSteps(planShown: boolean): readonly LinkStep[] {
     return planShown ? ['plan', 'install', 'connect', 'finish'] : ['install', 'connect', 'finish'];
 }
 
-function currentStep(planStep: boolean, link: LinkState | undefined): LinkStep | null {
+function currentStep(planStep: boolean, link: ObservedLink | undefined): LinkStep | null {
     if (planStep) {
         return 'plan';
     }
-    switch (link) {
+    switch (link?.state) {
         case undefined:
         case 'waiting':
         case 'expired':
@@ -339,7 +339,7 @@ function currentStep(planStep: boolean, link: LinkState | undefined): LinkStep |
         case 'owner-pending':
             return 'finish';
         case 'ready':
-            return null;
+            return link.setupPending ? 'finish' : null;
     }
 }
 
@@ -409,7 +409,7 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
     const renew = () => {
         mutate();
     };
-    const linkState = useObservedLinkState(linkCodeId);
+    const observedLink = useObservedLink(linkCodeId);
     const state = eligibility.data?.eligibility;
     const planStep = linkCodeId === undefined && state === 'not-entitled';
     // Once shown, the plan step stays in the steps for this visit, done.
@@ -421,7 +421,10 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
         (linkCodeId === undefined && state === undefined) ||
         state === 'engine-limit' ||
         (state === 'not-entitled' && !canChoosePlan(session)) ? null : (
-            <LinkSteps steps={flowSteps(planShown)} current={currentStep(planStep && !backFromCheckout, linkState)} />
+            <LinkSteps
+                steps={flowSteps(planShown)}
+                current={currentStep(planStep && !backFromCheckout, observedLink)}
+            />
         );
 
     if (linkCodeId !== undefined) {
