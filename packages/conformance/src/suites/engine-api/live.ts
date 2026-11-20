@@ -1,5 +1,6 @@
 import {
     ENGINE_API_ROUTE_LIST,
+    KNOWN_CAPABILITIES,
     RESERVED_CAPABILITIES,
     capabilityLabel,
     isReservedCapability,
@@ -63,7 +64,7 @@ export const LIVE_CHECKS: readonly ConformanceCheck[] = [
         suite: SUITE,
         title: 'A browser tab session is owner-only, behind step-up and limited to one allowed origin (browser-tab@1, not written yet)',
         async run(ctx) {
-            await requireCapability(await createWorld(ctx), RESERVED_CAPABILITIES.browserTab);
+            await requireCapability(await createWorld(ctx), KNOWN_CAPABILITIES.browserTab);
             skip('not-implemented');
         },
     },

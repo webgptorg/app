@@ -20,6 +20,7 @@ import { Trigger, TriggerFire } from './capabilities/triggers';
 import { ParticipantRef } from './chats';
 import type { Chat, ChatStatus, Message } from './chats';
 import { WalletRecord, WalletRequest } from './capabilities/wallet';
+import type { BrowserHelpReason, BrowserHelpRequest, BrowserTab } from './capabilities/live';
 import type { WalletState } from './capabilities/wallet';
 import { createEngineApiClient, EngineApiContractError } from './client';
 import type { EngineApiClient, EngineApiResponse, EngineApiTransport, EngineApiTransportRequest } from './client';
@@ -104,6 +105,18 @@ import {
     touch,
 } from './in-memory/threads';
 import type { ChatRecord } from './in-memory/threads';
+import {
+    attachLiveChannel,
+    browserTabOf,
+    browserTick,
+    closeAgentTab,
+    createInMemoryBrowser,
+    elapseBrowserSession,
+    navigateBrowserTab,
+    openAgentTab,
+    requestBrowserHelp,
+} from './in-memory/live';
+import type { FakePage, LiveChannelAttach, LiveChannelSink, NewAgentTab } from './in-memory/live';
 import { requestWalletLogin } from './in-memory/wallet';
 import type { NewWalletRequest } from './in-memory/wallet';
 import { findTriggers, fireTrigger } from './in-memory/triggers';
@@ -545,6 +558,24 @@ export interface InMemoryEngineController {
     /** An entry for something the gateway or the host did outside the API (a sign-in, a reset), on the same chain. */
     recordAudit(entry: InMemoryAuditInput): void;
     inspect(): InMemoryEngineSnapshot;
+    /** Agent work opened a browser tab (`browser-tab@1`); throws for an origin that is not a URL. */
+    openAgentTab(tab: NewAgentTab): BrowserTab;
+    /** The tab moved to another origin, a browser page or a secret page; throws for an unknown tab. */
+    navigateBrowserTab(tabId: string, page: FakePage): void;
+    /** The agent working in the tab asks a human for help; asking again while one is open answers that one. */
+    requestBrowserHelp(
+        tabId: string,
+        request: { readonly reason: BrowserHelpReason; readonly message: string },
+    ): BrowserHelpRequest;
+    /** The agent's work ended or closed its tab: its sessions end and an open help request is cancelled. */
+    closeAgentTab(tabId: string): void;
+    getBrowserTab(tabId: string): BrowserTab | undefined;
+    /** Origins the owner allowed for remote sign-in, besides the Wallet's. */
+    setBrowserSignInOrigins(origins: readonly string[]): void;
+    /** Ends what ran out of time or was revoked, then sends each attached viewer its next frame: call on a timer. */
+    browserTick(): void;
+    /** Test mode: the session behaves as if its time or its controller's idle limit ran out now. */
+    elapseBrowserSession(sessionId: string, what: 'expired' | 'idle'): boolean;
 }
 
 export interface InMemoryAuditInput {
@@ -566,6 +597,11 @@ export interface InMemoryEngine {
 export interface InMemoryEngineCore {
     /** Resolves with exactly what an engine would send (strictly checked), so it can be served over HTTP. */
     transport(actor: Actor): EngineApiTransport;
+    /**
+     * Binds a live session's WebSocket (`LIVE_CHANNEL_PATH`) once the server's gateway authenticated the upgrade from
+     * the session cookie and checked its `Origin`. Refused with 404 for another gateway session's session.
+     */
+    attachLiveChannel(actor: Actor, sessionId: string, sink: LiveChannelSink): LiveChannelAttach;
     readonly controller: InMemoryEngineController;
 }
 
@@ -637,9 +673,12 @@ const DEFAULT_REPLY_SCRIPT: ReplyScript = ({ agent, content }) => ({
 
 export const DEFAULT_EVENT_BUFFER_SIZE = 1_000;
 
-/** Every capability this contract knows except malware scanning, which an engine offers only with a scanner. */
+/**
+ * Every capability this contract knows except malware scanning, which an engine offers only with a scanner, and the
+ * live browser, which no environment advertises until it is rolled out.
+ */
 export const DEFAULT_CAPABILITIES: readonly CapabilityRef[] = Object.values(KNOWN_CAPABILITIES).filter(
-    (ref) => ref !== KNOWN_CAPABILITIES.fileScanning,
+    (ref) => ref !== KNOWN_CAPABILITIES.fileScanning && ref !== KNOWN_CAPABILITIES.browserTab,
 );
 
 const timerSleep: Sleep = (ms, signal) =>
@@ -781,6 +820,9 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         });
     };
 
+    state.browser.audit = (input) => {
+        appendAudit(input);
+    };
     const checks: EngineChecks = { ...DEFAULT_ENGINE_CHECKS, ...options.checks };
     const system: EngineContext = { state, checks, now, newId, publish, replies };
     const chatRecord = (chatId: string): ChatRecord => {
@@ -974,6 +1016,22 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             sessions: [...state.sessions.values()].map((session) => ({ ...session, current: false })),
             accessRequests: [...state.accessRequests.values()].map((record) => record.request),
         }),
+        openAgentTab: (tab) => openAgentTab(system, tab),
+        navigateBrowserTab: (tabId, page) => {
+            navigateBrowserTab(system, tabId, page);
+        },
+        requestBrowserHelp: (tabId, request) => requestBrowserHelp(system, tabId, request),
+        closeAgentTab: (tabId) => {
+            closeAgentTab(system, tabId);
+        },
+        getBrowserTab: (tabId) => browserTabOf(system, tabId),
+        setBrowserSignInOrigins: (origins) => {
+            state.browser.signInOrigins = new Set(origins.map((origin) => new URL(origin).origin));
+        },
+        browserTick: () => {
+            browserTick(system);
+        },
+        elapseBrowserSession: (sessionId, what) => elapseBrowserSession(system, sessionId, what),
     };
 
     const transport =
@@ -1033,7 +1091,20 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             if (result.kind === 'problem') return result;
             return { kind: 'ok', data: checkSuccess(route, result.data) };
         };
-    return { transport, controller };
+    const attach: InMemoryEngineCore['attachLiveChannel'] = (actor, sessionId, sink) => {
+        if (!supports(state.engine, KNOWN_CAPABILITIES.browserTab)) {
+            return { kind: 'refused', problem: createProblem('capability-not-supported') };
+        }
+        if (!state.members.has(actor.memberId)) return { kind: 'refused', problem: createProblem('unauthenticated') };
+        if (!actor.permissions.has('browser.watch') && !actor.permissions.has('browser.control')) {
+            return {
+                kind: 'refused',
+                problem: createProblem('forbidden', { requiredPermission: 'browser.watch' }),
+            };
+        }
+        return attachLiveChannel(system, actor, sessionId, sink);
+    };
+    return { transport, attachLiveChannel: attach, controller };
 }
 
 const PARAM_RESOURCES: Readonly<Record<string, ResourceKind>> = {
@@ -1250,6 +1321,13 @@ const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
     disableIntegration: { action: 'integration.disable', kind: 'integration', param: 'integrationId' },
     deleteIntegration: { action: 'integration.delete', kind: 'integration', param: 'integrationId' },
     testAgentDraft: { action: 'agent.test-chat.start', kind: 'agent', param: 'agentId', successWhen: startsTestChat },
+    openBrowserSignIn: { action: 'browser.sign-in.open', kind: 'browser-session' },
+    watchBrowserTab: { action: 'browser.watch', kind: 'browser-session' },
+    controlBrowserTab: { action: 'browser.control.take', kind: 'browser-session' },
+    takeBrowserControl: { action: 'browser.control.take', kind: 'browser-session', param: 'sessionId' },
+    handBackBrowserTab: { action: 'browser.control.hand-back', kind: 'browser-session', param: 'sessionId' },
+    endBrowserSession: { action: 'browser.session.end', kind: 'browser-session', param: 'sessionId' },
+    dismissBrowserHelpRequest: { action: 'browser.help.dismiss', kind: 'browser-help-request', param: 'requestId' },
 };
 
 function auditTarget(state: InMemoryState, rule: AuditRule, params: unknown, created: unknown): AuditTarget | null {
@@ -1289,6 +1367,14 @@ function targetName(state: InMemoryState, kind: AuditTarget['kind'], id: string)
             return state.integrations.get(id)?.name;
         case 'access-request':
             return null;
+        case 'browser-session': {
+            // The site, never the page: an origin is the most a log may say about where the tab was.
+            const tabId = state.browser.sessions.get(id)?.tabId;
+            const tab = tabId === undefined ? undefined : state.browser.tabs.get(tabId);
+            return tab?.page.kind === 'web' ? tab.page.origin : null;
+        }
+        case 'browser-help-request':
+            return state.browser.helpRequests.get(id)?.origin ?? null;
         case 'message':
         case 'invite':
         case 'session':
@@ -1468,6 +1554,7 @@ function createState(
             records: byId((seed.wallet?.records ?? []).map((record) => WalletRecord.parse(record))),
             requests: byId((seed.wallet?.pending ?? []).map((record) => WalletRequest.parse(record))),
         },
+        browser: createInMemoryBrowser(),
         apiTokens: byId((seed.apiTokens ?? []).map((record) => ApiToken.parse(record))),
         passkeys: byId(
             (

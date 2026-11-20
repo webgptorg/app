@@ -61,6 +61,13 @@ const ACTION_LABELS: Readonly<Record<AuditAction, () => string>> = {
     'integration.enable': m.audit_action_integration_enable,
     'integration.disable': m.audit_action_integration_disable,
     'integration.delete': m.audit_action_integration_delete,
+    'browser.sign-in.open': m.audit_action_browser_sign_in_open,
+    'browser.watch': m.audit_action_browser_watch,
+    'browser.control.take': m.audit_action_browser_control_take,
+    'browser.control.hand-back': m.audit_action_browser_control_hand_back,
+    'browser.session.end': m.audit_action_browser_session_end,
+    'browser.channel.attach': m.audit_action_browser_channel_attach,
+    'browser.help.dismiss': m.audit_action_browser_help_dismiss,
     'engine.update.install': m.audit_action_engine_update_install,
     'ui.update.install': m.audit_action_ui_update_install,
 };
@@ -89,6 +96,8 @@ const TARGET_KIND_LABELS: Readonly<Record<TargetKind, () => string>> = {
     run: m.audit_target_run,
     trigger: m.audit_target_trigger,
     integration: m.audit_target_integration,
+    'browser-session': m.audit_target_browser_session,
+    'browser-help-request': m.audit_target_browser_help_request,
 };
 
 export function auditTargetKindLabel(kind: TargetKind): string {

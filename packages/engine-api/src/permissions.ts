@@ -38,7 +38,14 @@ export const PERMISSIONS = [
     'triggers.manage',
     'integrations.read',
     'integrations.manage',
-    /** Driving an engine browser tab by hand (`browser-tab@1`); engine policy gives it to owners only. */
+    /**
+     * Watching the tabs agents work in and their help requests (`browser-tab@1`), for work the member can see anyway.
+     */
+    'browser.watch',
+    /**
+     * Controlling an engine browser tab by hand, behind step-up: taking over an agent's tab, signing in in a fresh one,
+     * dismissing a help request. Acting as the engine's accounts, so engine policy gives it to owners only.
+     */
     'browser.control',
 ] as const;
 export const Permission = z.enum(PERMISSIONS);

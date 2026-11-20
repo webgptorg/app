@@ -17,6 +17,7 @@ import type { AccessRequestRecord } from './access-requests';
 import type { OnboardingRecord } from './onboarding';
 import type { ChatEvent, ChatRecord, RequestKeyRecord } from './threads';
 import type { InMemoryWallet } from './wallet';
+import type { InMemoryBrowser } from './live';
 import type { Passkey } from '../passkeys';
 import type { SecurityOverview } from '../security';
 import type { Session } from '../sessions';
@@ -96,6 +97,8 @@ export interface InMemoryState {
     readonly replies: Map<string, ReplyRecord>;
     readonly integrationSecrets: Map<string, IntegrationSecret>;
     readonly wallet: InMemoryWallet;
+    /** The fake browser's tabs, live sessions and help requests (`browser-tab@1`). */
+    readonly browser: InMemoryBrowser;
     readonly apiTokens: Map<string, ApiToken>;
     readonly passkeys: Map<string, Passkey>;
     readonly sessions: Map<string, Session>;

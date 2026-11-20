@@ -246,6 +246,41 @@ export interface EngineApiClient {
             signal: AbortSignal,
         ): Result<'rejectWalletRequest'>;
     };
+    /**
+     * `browser-tab@1` (draft): watch and take over agents' tabs, sign in in a fresh tab, help requests. The frames and
+     * input flow over the session's channel (`LIVE_CHANNEL_PATH`), a WebSocket the client opens itself.
+     */
+    readonly browser: {
+        openSignIn(body: Body<'openBrowserSignIn'>, signal: AbortSignal): Result<'openBrowserSignIn'>;
+        listTabs(query: Query<'listBrowserTabs'>, signal: AbortSignal): Result<'listBrowserTabs'>;
+        watch(tabId: Param<'watchBrowserTab', 'tabId'>, signal: AbortSignal): Result<'watchBrowserTab'>;
+        control(tabId: Param<'controlBrowserTab', 'tabId'>, signal: AbortSignal): Result<'controlBrowserTab'>;
+        getSession(
+            sessionId: Param<'getBrowserSession', 'sessionId'>,
+            signal: AbortSignal,
+        ): Result<'getBrowserSession'>;
+        takeControl(
+            sessionId: Param<'takeBrowserControl', 'sessionId'>,
+            signal: AbortSignal,
+        ): Result<'takeBrowserControl'>;
+        handBack(
+            sessionId: Param<'handBackBrowserTab', 'sessionId'>,
+            signal: AbortSignal,
+        ): Result<'handBackBrowserTab'>;
+        end(sessionId: Param<'endBrowserSession', 'sessionId'>, signal: AbortSignal): Result<'endBrowserSession'>;
+        listHelpRequests(
+            query: Query<'listBrowserHelpRequests'>,
+            signal: AbortSignal,
+        ): Result<'listBrowserHelpRequests'>;
+        getHelpRequest(
+            requestId: Param<'getBrowserHelpRequest', 'requestId'>,
+            signal: AbortSignal,
+        ): Result<'getBrowserHelpRequest'>;
+        dismissHelpRequest(
+            requestId: Param<'dismissBrowserHelpRequest', 'requestId'>,
+            signal: AbortSignal,
+        ): Result<'dismissBrowserHelpRequest'>;
+    };
     /** `files@1`; every capability group answers 404 `capability-not-supported` unless `GET /engine` advertises it. */
     readonly files: {
         list(query: Query<'listFiles'>, signal: AbortSignal): Result<'listFiles'>;
@@ -469,6 +504,20 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
             markSeen: (requestId, body, signal) =>
                 call(R.markWalletRequestSeen, { params: { requestId }, body }, signal),
             reject: (requestId, body, signal) => call(R.rejectWalletRequest, { params: { requestId }, body }, signal),
+        },
+        browser: {
+            openSignIn: (body, signal) => call(R.openBrowserSignIn, { body }, signal),
+            listTabs: (query, signal) => call(R.listBrowserTabs, { query }, signal),
+            watch: (tabId, signal) => call(R.watchBrowserTab, { params: { tabId } }, signal),
+            control: (tabId, signal) => call(R.controlBrowserTab, { params: { tabId } }, signal),
+            getSession: (sessionId, signal) => call(R.getBrowserSession, { params: { sessionId } }, signal),
+            takeControl: (sessionId, signal) => call(R.takeBrowserControl, { params: { sessionId } }, signal),
+            handBack: (sessionId, signal) => call(R.handBackBrowserTab, { params: { sessionId } }, signal),
+            end: (sessionId, signal) => call(R.endBrowserSession, { params: { sessionId } }, signal),
+            listHelpRequests: (query, signal) => call(R.listBrowserHelpRequests, { query }, signal),
+            getHelpRequest: (requestId, signal) => call(R.getBrowserHelpRequest, { params: { requestId } }, signal),
+            dismissHelpRequest: (requestId, signal) =>
+                call(R.dismissBrowserHelpRequest, { params: { requestId } }, signal),
         },
         files: {
             list: (query, signal) => call(R.listFiles, { query }, signal),

@@ -5,6 +5,7 @@ import { ActivityEvent, parseActivity } from './capabilities/activity';
 import type { ActivityItem } from './capabilities/activity';
 import { FileChangedEvent } from './capabilities/files';
 import { IntegrationChangedEvent } from './capabilities/integrations';
+import { BrowserHelpChangedEvent, BrowserTabChangedEvent } from './capabilities/live';
 import { RunChangedEvent, RunChangedEventReader } from './capabilities/runs';
 import { TaskChangedEvent, TaskChangedEventReader } from './capabilities/tasks';
 import { TriggerChangedEvent } from './capabilities/triggers';
@@ -19,6 +20,8 @@ const coreEvents = [
     TriggerChangedEvent,
     FileChangedEvent,
     IntegrationChangedEvent,
+    BrowserTabChangedEvent,
+    BrowserHelpChangedEvent,
 ] as const;
 const CoreEngineEvent = z.discriminatedUnion('type', [...coreEvents, RunChangedEvent, TaskChangedEvent]);
 

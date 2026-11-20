@@ -76,7 +76,9 @@ const CAPABILITY_BY_PATH = [
     ['/access-requests', KNOWN_CAPABILITIES.accessRequests],
     ['/settings/dashboard-removals', KNOWN_CAPABILITIES.accessRequests],
     ['/chats/{chatId}/live-audio', RESERVED_CAPABILITIES.liveAudio],
-    ['/browser-tab-sessions', RESERVED_CAPABILITIES.browserTab],
+    ['/browser-sessions', KNOWN_CAPABILITIES.browserTab],
+    ['/browser-tabs', KNOWN_CAPABILITIES.browserTab],
+    ['/browser-help-requests', KNOWN_CAPABILITIES.browserTab],
     ['/onboarding', KNOWN_CAPABILITIES.onboarding],
     ['/wallet', KNOWN_CAPABILITIES.wallet],
 ] as const;

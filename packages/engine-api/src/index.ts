@@ -29,6 +29,7 @@ export * from './capabilities/integrations';
 export * from './capabilities/test-chat';
 export * from './capabilities/access-requests';
 export * from './capabilities/live';
+export * from './capabilities/live-channel';
 export * from './capabilities/onboarding';
 export * from './capabilities/wallet';
 export { stripUnknownFields, toTolerant } from './tolerant';
