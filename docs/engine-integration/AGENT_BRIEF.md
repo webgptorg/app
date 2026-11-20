@@ -26,6 +26,21 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 
 ### 2026-11-20: PRIORITY: our UI out of the box, with a staging build of `ptbk`
 
+- **Goal:** the owner types two things into a terminal, and that is the last time they use it:
+  1. `npm install --global ptbk@<version>`.
+  2. The `ptbk init --prepare-only --link …` command shown on app.ptbk.io → Engines → New engine.
+
+  From there:
+  - **Paired at once.** The engine pairs immediately, before it is initialized. The terminal asks nothing more and only prints the setup link.
+  - **Setup in the browser.** The owner opens the engine and finishes setup in our signed UI on the engine's origin, end to end encrypted through the relay: the brief, the AI tools and their sign-in, the project and its folder. The terminal is offered only as a fallback link.
+  - **Controlled from the web.** Afterwards everything runs in that UI, and the engine keeps running as a service across reboots.
+  - **No configuration.** No setting or `PTBK_*` variable is needed anywhere.
+
+  The work comes in this order:
+  1. This entry: the engine serves our UI with no configuration.
+  2. The 2026-11-19 entry: setup in the browser.
+  3. Then the platform releases engine-ui 0.2.4 with the setup screens, and together we run STG-20 to STG-24 on a clean machine.
+
 - **Changed:** Decided 2026-11-20, described in [ui-loader.md, Staging builds](ui-loader.md#staging-builds), until the key ceremony:
   - The published `ptbk` is a staging build. Its build profile is fixed at build time and never read at runtime.
   - It embeds the platform's staging trust policy and the staging defaults (`https://ui.ptbk.link/`, `engines.ptbk.link`).
