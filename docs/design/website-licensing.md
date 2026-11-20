@@ -44,6 +44,7 @@ Validation in the App: `manageUrl` is any https URL on `WEBSITE_ORIGIN` (any loc
 | `WEBSITE_ORIGIN`                | var, optional | The website, an https origin. Defaults to `https://www.ptbk.io`; staging may point elsewhere.                                                                                                                                                   |
 | `WEBSITE_HANDOFF_URL`           | var           | Required with `website`. The website page that starts the handoff, on `WEBSITE_ORIGIN`; the App adds `?challenge=`. No default: on 16 November 2026 the website had no such page yet (see open points).                                         |
 | `PROMPTBOOK_APP_LICENSE_SECRET` | Worker secret | Required with `website`, refused if missing or shorter than 32 characters. The same value as the website's variable of that name; server to server only, never in the SPA, a var, a log or the repo. Not the Stripe, session or engine secrets. |
+| `LICENSE_ENFORCEMENT`           | var, optional | `advisory` (default, and every environment) or `enforce`, with `website` only. See [Enforcement](#enforcement).                                                                                                                                 |
 
 ## Website-first handoff
 
@@ -77,9 +78,45 @@ All five are mounted only with `ADAPTERS.billing = "website"`. `license.read` an
 
 ## In the App
 
-- **Reads.** `GET /api/license` reads through the polling client when License or Engines loads: the cached snapshot until `refreshAfterSeconds`, then the website with a 5-second timeout; on any failure the last snapshot shows as stale, or nothing as unknown. `website_license_snapshots` keeps one per organization (subject, JSON, fetched-at).
+- **Reads.** `GET /api/license` reads through the licence reader (`domain/licensing/license-reader.ts`) when License, Engines, New engine or the invitation dialog loads: the stored licence until `refreshAfterSeconds`, then the website with a 5-second timeout; on any failure the last one shows as stale, or nothing as unknown. `website_license_snapshots` keeps one per organization (subject, the licence as JSON, fetched-at), validated again on every read.
 - **Coverage.** Engines are the organization's active engines (`engineProjects`), people its members (each engine's `controllingUsers` at most that many). Specialists, harness instances and browser profiles stay unknown, never zero, until engines report them. The notice is `unlinked`, `missing`, `expired` (no active grant, one ended) or `exceeded` (an engine not covered); it never blocks anything.
-- **Screens.** With `website`, Billing becomes License (`/billing` redirects there): the linked account or "Link your ptbk.io account", "Last checked …", coverage, each grant (validity, capacities, null as unlimited) and "Manage on ptbk.io" to `manageUrl`. The Engines screen shows the notice to owners and admins.
+- **Status.** The grants decide, as of now, so a stale snapshot never shows an ended grant as active: `active` (and when it ends: the last active grant's end, none if any is open-ended), `scheduled` (when the first future grant starts), `expired` (when the last one ended) or `none`. The website's own status adds only what grants cannot say: that an active grant is a `trial`, or, as its lookup sends no past or future grants, that a licence has ended or not started. The plan name is the website's `display.label`, shown as text; without one, "ptbk.io license" or "N licenses".
+- **Screens.** With `website`, Billing becomes License (`/billing` redirects there). Its first section is the status: plan name, a state pill (Active, Trial, Starts later, Expired, Not checked; none without a licence), the term ("Valid until …", "Trial ends …", "Ended …", "Starts …"), projects and people against the licence (the screens call engines projects), and "Manage on ptbk.io" (`manageUrl`), or "Buy on ptbk.io" and "Link your ptbk.io account" without one. Then the linked account with "Last checked …", and each grant. The projects list (`/engines`) shows the notice to owners and admins. All of it is quiet: no alarm tone, and nothing waits on it.
+
+## Enforcement
+
+Decided by Seb on 20 November 2026: the licence is shown, not enforced, but the App is ready to enforce it later at exactly two **check points**, and only for what is new.
+
+| Check point     | Asked when                                                                          | Projects                    | Denied as                                                                                        |
+| --------------- | ----------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------ |
+| `engine.link`   | the New engine page checks eligibility, and a link code is issued (also for a team) | one more engine             | `engine-limit` (over the licence) or `not-entitled` (no licence, none linked), the existing 403s |
+| `member.invite` | invitations are sent (`POST /api/invites`)                                          | one more person per address | 403 `license-limit`                                                                              |
+
+A running engine, its control, a link code already issued (its engine still registers) and everyone's existing access are never checked, so a licence can never cut them off.
+
+`checkLicense` (`domain/licensing/license-checks.ts`) answers `ok`, `warn` or `deny` with a reason (`unlinked`, `missing`, `expired`, `over-limit`), from the same summary License shows with the action's engine or people added. One switch, `LICENSE_ENFORCEMENT`, decides what a shortfall means:
+
+- **`advisory`** (the default, and every environment today): a shortfall is `warn`. The routes don't even read the licence (`LicenseGate` answers `ok` at once), so a slow website never slows linking or inviting. `GET /api/license` returns both check points (`checks.engineLink`, `checks.memberInvite`), and New engine and the invitation dialog show one calm line when one would warn.
+- **`enforce`**: a shortfall is `deny` only when the website answered just now, or no account is linked. A stale snapshot only warns and a website that hasn't answered passes, so an outage never stops anyone. It needs billing `website`; config refuses it otherwise, and a test fails if any committed environment sets it.
+
+Turning it on is a product decision and a var; its behaviour is tested (`license-checks.test.ts`, `license-service.test.ts`, and "licence check points" in `test/http/website-licensing.test.ts`).
+
+## Where the website plugs in
+
+Everything the App asks the website goes through two ports, each with one HTTP adapter, so a change on the website's side is a change in one adapter:
+
+| Port                                                                          | Adapter                                        | Today                                                                                                    |
+| ----------------------------------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `WebsiteLicenseApi.lookup({ subject })` (`license-contract.ts`)               | `adapters/licensing/website-license-api.ts`    | `GET /api/promptbook-billing/app/licenses?subject=`: the bare snapshot, so status and plan name are null |
+| `WebsiteIdentityExchange.exchange({ code, challenge })` (`website-access.ts`) | `adapters/licensing/website-handoff-client.ts` | `POST /api/promptbook-billing/app/exchange`                                                              |
+
+The adapters are built in `create-dashboard.ts` and handed to the routes as `deps.licensing`. Tests use them against a fake website (`testing/fake-website.ts`, over `fetch`) in the HTTP tests, and a deterministic fake of the licence port (`testing/fake-website-license-api.ts`, shaped after the website's lookup fixtures) in the domain tests.
+
+When Pavol's endpoint for linking organizations lands (expected 20 November 2026):
+
+- **A licence lookup that sends status and plan name** (as the website's `POST /api/promptbook-billing/app/licenses` lookup does, with `status`, `display.label` and a nested `snapshot`): parse it in `website-license-api.ts` into `{ snapshot, status, label }`. Nothing else changes; License then shows the plan name and Trial.
+- **Another way to address the account** (an email or an organization reference instead of the subject): extend `WebsiteAccountRef` and what `website_links` stores for it. The reader, checks and screens don't look inside it.
+- **A changed handoff**: `website-handoff-client.ts` for the exchange; the routes and cookies stay unless the flow itself changes, which would need the separate security review again.
 
 ## Deployment checklist
 
@@ -87,6 +124,9 @@ All five are mounted only with `ADAPTERS.billing = "website"`. `license.read` an
 - [x] App numeric parsers, polling client, advisory matching, website billing selection and identity-linking guard prepared.
 - [x] Organization-scoped link and snapshot persistence, typed handoff routes with the App's own email confirmation and passkey enrollment (PR #290; its auth part needs a separate review).
 - [x] Coverage notices on the License and Engines screens, with the manage link.
+- [x] The licence status on License, and the `engine.link` and `member.invite` check points, advisory (`LICENSE_ENFORCEMENT` unset everywhere).
+- [ ] Pavol's endpoint for linking organizations, behind the ports above.
+- [ ] Follow-up (#327): a quiet licence line in the engine UI, linking to the dashboard or the website.
 - [ ] The website's handoff page and "Open app" link (open point below), then `WEBSITE_HANDOFF_URL`.
 - [ ] Install the dedicated shared server credential in both deployments, then select website billing ([apply.md](../plan/apply.md), step 13). Do not reuse Stripe/session/engine secrets.
 - [ ] Test one-time handoff, forged/replayed/expired tickets, account mismatch, multiple Start/Business grants, unknown telemetry, outage and expired trial with actual staging control.
