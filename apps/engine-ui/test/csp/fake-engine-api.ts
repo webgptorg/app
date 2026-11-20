@@ -1,5 +1,7 @@
 import {
     AgentId,
+    BrowserHelpRequestId,
+    BrowserTabId,
     ChatId,
     FileId,
     IntegrationId,
@@ -13,6 +15,8 @@ import {
     encodeSseMessage,
     ENGINE_API_PREFIX,
     KNOWN_CAPABILITIES,
+    LIVE_CHANNEL_PATH,
+    LiveSessionId,
     MemberId,
     MessageId,
 } from '@ptbk/engine-api';
@@ -26,11 +30,16 @@ import type {
     TestChatBody,
     TestChatEvent,
 } from '@ptbk/engine-api';
-import { DEFAULT_CAPABILITIES, createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
-import type { InMemoryMember, InMemorySeed } from '@ptbk/engine-api/in-memory';
+import { DEFAULT_CAPABILITIES, createInMemoryEngine } from '@ptbk/engine-api/in-memory';
+import type {
+    InMemoryEngine,
+    InMemoryEngineController,
+    InMemoryMember,
+    InMemorySeed,
+} from '@ptbk/engine-api/in-memory';
 import { readFileSync } from 'node:fs';
 
-import type { Page, Route } from '@playwright/test';
+import type { Page, Route, WebSocketRoute } from '@playwright/test';
 
 /** The agent page the CSP checks visit. */
 export const FAKE_AGENT_ID = 'ada';
@@ -73,6 +82,75 @@ const triggerId = (match: RegExpExecArray) => TriggerId.parse(match[1] ?? '');
 const fileId = (match: RegExpExecArray) => FileId.parse(match[1] ?? '');
 const integrationId = (match: RegExpExecArray) => IntegrationId.parse(match[1] ?? '');
 const revisionId = (match: RegExpExecArray) => RevisionId.parse(match[2] ?? '');
+
+const tabId = (match: RegExpExecArray) => BrowserTabId.parse(match[1] ?? '');
+const liveSessionId = (match: RegExpExecArray) => LiveSessionId.parse(match[1] ?? '');
+const helpRequestId = (match: RegExpExecArray) => BrowserHelpRequestId.parse(match[1] ?? '');
+
+/** `browser-tab@1`; an engine that does not advertise it answers each with 404, as a real one does. */
+const BROWSER_ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
+    [
+        'GET',
+        /^\/browser-tabs$/,
+        200,
+        (api, _, query, __, signal) => api.browser.listTabs(Object.fromEntries(query), signal),
+    ],
+    [
+        'POST',
+        /^\/browser-tabs\/([\w-]+)\/watch$/,
+        201,
+        (api, match, _, __, signal) => api.browser.watch(tabId(match), signal),
+    ],
+    [
+        'POST',
+        /^\/browser-tabs\/([\w-]+)\/control$/,
+        201,
+        (api, match, _, __, signal) => api.browser.control(tabId(match), signal),
+    ],
+    ['POST', /^\/browser-sessions$/, 201, (api, _, __, body, signal) => api.browser.openSignIn(body as never, signal)],
+    [
+        'GET',
+        /^\/browser-sessions\/([\w-]+)$/,
+        200,
+        (api, match, _, __, signal) => api.browser.getSession(liveSessionId(match), signal),
+    ],
+    [
+        'POST',
+        /^\/browser-sessions\/([\w-]+)\/control$/,
+        200,
+        (api, match, _, __, signal) => api.browser.takeControl(liveSessionId(match), signal),
+    ],
+    [
+        'POST',
+        /^\/browser-sessions\/([\w-]+)\/hand-back$/,
+        200,
+        (api, match, _, __, signal) => api.browser.handBack(liveSessionId(match), signal),
+    ],
+    [
+        'POST',
+        /^\/browser-sessions\/([\w-]+)\/end$/,
+        200,
+        (api, match, _, __, signal) => api.browser.end(liveSessionId(match), signal),
+    ],
+    [
+        'GET',
+        /^\/browser-help-requests$/,
+        200,
+        (api, _, query, __, signal) => api.browser.listHelpRequests(Object.fromEntries(query), signal),
+    ],
+    [
+        'GET',
+        /^\/browser-help-requests\/([\w-]+)$/,
+        200,
+        (api, match, _, __, signal) => api.browser.getHelpRequest(helpRequestId(match), signal),
+    ],
+    [
+        'POST',
+        /^\/browser-help-requests\/([\w-]+)\/dismiss$/,
+        200,
+        (api, match, _, __, signal) => api.browser.dismissHelpRequest(helpRequestId(match), signal),
+    ],
+];
 
 /** The routes the visited pages call, with the success status the contract gives each; anything else answers 404. */
 const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])[] = [
@@ -177,6 +255,7 @@ const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])
         200,
         (api, _, query, __, signal) => api.members.listInvites(Object.fromEntries(query), signal),
     ],
+    ...BROWSER_ROUTES,
     ['GET', /^\/wallet$/, 200, (api, _, __, ___, signal) => api.wallet.get(signal)],
     ['POST', /^\/wallet\/records$/, 200, (api, _, __, body, signal) => api.wallet.add(body as never, signal)],
     [
@@ -930,11 +1009,16 @@ export async function routeFakeEngineApi(
         readonly member?: InMemoryMember;
         readonly onboarding?: 'pending';
         readonly capabilities?: readonly CapabilityRef[];
+        /** Advertises `browser-tab@1` and serves its channel over a routed WebSocket. */
+        readonly liveBrowser?: boolean;
     } = {},
-): Promise<void> {
-    const engineApi = createInMemoryEngineApiClient({
+): Promise<InMemoryEngineController> {
+    const engine = createInMemoryEngine({
         // File scanning is optional (#189); these checks cover its badges and the blocked download.
-        capabilities: options.capabilities ?? [...DEFAULT_CAPABILITIES, KNOWN_CAPABILITIES.fileScanning],
+        capabilities: [
+            ...(options.capabilities ?? [...DEFAULT_CAPABILITIES, KNOWN_CAPABILITIES.fileScanning]),
+            ...(options.liveBrowser === true ? [KNOWN_CAPABILITIES.browserTab] : []),
+        ],
         ...(options.member === undefined ? {} : { member: options.member }),
         seed: {
             activity: [...FAKE_ACTIVITY],
@@ -1038,7 +1122,9 @@ export async function routeFakeEngineApi(
         // Sent messages get the same hostile reply, streamed in pieces.
         replyScript: () => ({ chunks: HOSTILE_REPLY.match(/[\s\S]{1,40}/g) ?? [] }),
     });
+    const engineApi = engine.client;
     await saveSecondBookVersion(engineApi);
+    if (options.liveBrowser === true) await routeLiveChannels(page, engine);
     await page.route(`**${ENGINE_API_PREFIX}/**`, async (route) => {
         const request = route.request();
         const url = new URL(request.url());
@@ -1077,6 +1163,53 @@ export async function routeFakeEngineApi(
             }
         }
         await fulfil(route, { kind: 'problem', problem: createProblem('not-found') }, 404);
+    });
+    return engine.controller;
+}
+
+/** Frames reach the page at most this often, so the screencast does not spin the CPU for the length of a check. */
+const FRAME_INTERVAL_MS = 100;
+
+/**
+ * The live channel as the engine's gateway binds it: Playwright answers the page's WebSocket at `LIVE_CHANNEL_PATH`
+ * from the in-memory engine, so the bundle draws real PNG frames under the engine CSP.
+ */
+async function routeLiveChannels(page: Page, engine: InMemoryEngine): Promise<void> {
+    const path = new RegExp(`${ENGINE_API_PREFIX}${LIVE_CHANNEL_PATH.replace('{sessionId}', '([\\w-]+)')}$`);
+    await page.routeWebSocket(path, (socket: WebSocketRoute) => {
+        const sessionId = path.exec(new URL(socket.url()).pathname)?.[1] ?? '';
+        let lastFrame = 0;
+        const attached = engine.attachLiveChannel(sessionId, {
+            send: (data) => {
+                if (typeof data === 'string') {
+                    socket.send(data);
+                    return;
+                }
+                const wait = Math.max(0, lastFrame + FRAME_INTERVAL_MS - Date.now());
+                lastFrame = Date.now() + wait;
+                setTimeout(() => {
+                    // The page may have closed the socket meanwhile; a frame for nobody is dropped.
+                    try {
+                        socket.send(Buffer.from(data));
+                    } catch {
+                        return;
+                    }
+                }, wait);
+            },
+            close: (code) => {
+                void socket.close({ code });
+            },
+        });
+        if (attached.kind === 'refused') {
+            void socket.close({ code: 1008 });
+            return;
+        }
+        socket.onMessage((message) => {
+            attached.peer.receive(typeof message === 'string' ? message : new Uint8Array(message));
+        });
+        socket.onClose(() => {
+            attached.peer.closed();
+        });
     });
 }
 

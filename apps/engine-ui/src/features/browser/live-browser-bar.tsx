@@ -9,13 +9,14 @@ import type { LiveSession } from './live-session';
 import { useLiveView } from './use-live-view';
 
 /**
- * The shell's line while a session is live, on every page: whose browser, where, and whether the member is driving it,
- * with the way back to it and the way out. Gone once the session ends.
+ * The shell's line while a session is live, on every other page: whose browser, where, and whether the member is
+ * driving it, with the way back to it and the way out. Gone once the session ends.
  */
 export function LiveBrowserBar({ session }: { readonly session: LiveSession }) {
     const view = useLiveView(session);
     const onViewer = useMatchRoute()({ to: '/browser/$sessionId', params: { sessionId: session.id } }) !== false;
-    if (view.endReason !== null) return null;
+    // The viewer says all of this itself, and a line appearing above it would push the picture down.
+    if (view.endReason !== null || onViewer) return null;
     const where = whereLabel(view.origin);
     const controlling = view.mode === 'controlling';
     let label = m.browser_bar_watching({ where });
@@ -39,11 +40,9 @@ export function LiveBrowserBar({ session }: { readonly session: LiveSession }) {
             />
             <span className="min-w-0 flex-1 font-medium [overflow-wrap:anywhere]">{label}</span>
             <span className="flex shrink-0 items-center gap-1">
-                {onViewer ? null : (
-                    <ButtonLink to="/browser/$sessionId" params={{ sessionId: session.id }} size="sm" variant="ghost">
-                        {m.browser_bar_open()}
-                    </ButtonLink>
-                )}
+                <ButtonLink to="/browser/$sessionId" params={{ sessionId: session.id }} size="sm" variant="ghost">
+                    {m.browser_bar_open()}
+                </ButtonLink>
                 <Button
                     size="sm"
                     variant="ghost"

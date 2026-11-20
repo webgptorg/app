@@ -89,7 +89,6 @@ describe('the live browser', () => {
         await screen.findByRole('heading', { level: 1, name: "Ada's browser" });
         expect(await screen.findByText("You're in control")).toBeDefined();
         expect(screen.getByText('on shop.example', { selector: 'span' })).toBeDefined();
-        expect(await screen.findByText("You're controlling the agent's browser on shop.example")).toBeDefined();
         expect(engine.controller.getBrowserTab(help.tabId)?.agentState).toBe('paused');
 
         fireEvent.keyDown(canvas(), { key: 'Enter' });
@@ -99,7 +98,13 @@ describe('the live browser', () => {
             { kind: 'key', action: 'up', key: 'Enter', shift: false },
         ]);
 
-        await rendered.user.click(screen.getByRole('button', { name: 'Hand back to agent' }));
+        await rendered.router.navigate({ to: '/' });
+        const bar = (await screen.findByText("You're controlling the agent's browser on shop.example")).closest(
+            '[role="status"]',
+        );
+        if (!(bar instanceof HTMLElement)) throw new Error('no indicator');
+        await rendered.user.click(within(bar).getByRole('link', { name: 'Open' }));
+        await rendered.user.click(await screen.findByRole('button', { name: 'Hand back to agent' }));
         expect(await screen.findByText('Watching')).toBeDefined();
         expect(engine.controller.getBrowserTab(help.tabId)?.agentState).toBe('working');
         const resolved = await engine.client.browser.getHelpRequest(help.id, AbortSignal.timeout(1_000));
@@ -379,13 +384,16 @@ describe('the live browser', () => {
                 },
             },
         });
-        const { user } = render(engine, { path: '/wallet' });
+        const { user, router } = render(engine, { path: '/wallet' });
         const logins = await screen.findByRole('region', { name: 'Saved logins' });
         await user.click(await within(logins).findByRole('button', { name: /^More for github\.com/ }));
         await user.click(await screen.findByRole('menuitem', { name: "Sign in in the engine's browser" }));
         expect(await screen.findByRole('heading', { level: 1, name: 'Sign in on github.com' })).toBeDefined();
+        expect(await screen.findByText(/Your clicks and keys go to the site/)).toBeDefined();
+        await router.navigate({ to: '/wallet' });
         expect(await screen.findByText("You're signing in on github.com in the engine's browser")).toBeDefined();
-        await user.click(screen.getByRole('button', { name: 'Done' }));
+        router.history.back();
+        await user.click(await screen.findByRole('button', { name: 'Done' }));
         expect(await screen.findByText('The session ended.')).toBeDefined();
         expect(screen.queryByRole('button', { name: 'Watch again' })).toBeNull();
     });
