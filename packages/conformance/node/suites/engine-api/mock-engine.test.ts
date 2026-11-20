@@ -86,6 +86,15 @@ describe('the engine-api suite on one engine the harness starts', () => {
                     // Raising a Wallet request is a test-mode lever the session command does not offer.
                     'engine-api.wallet.requests':
                         'skip: the target cannot raise a Wallet request (ConformanceTarget.walletRequest)',
+                    // So are the live browser's levers and channel.
+                    ...Object.fromEntries(
+                        ENGINE_API_SUITE.checks
+                            .filter(({ id }) => id.startsWith('engine-api.browser-tab.'))
+                            .map(({ id }) => [
+                                id,
+                                'skip: the target cannot reach the live browser (ConformanceTarget.liveBrowser)',
+                            ]),
+                    ),
                 },
             );
         },
