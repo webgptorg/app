@@ -21,6 +21,8 @@ function bodyOf(route: RouteDefinition): RouteBody | null {
             return null;
         case 'json':
             return { kind: 'json', schema: route.body.schema, maxBytes: JSON_MAX_BYTES };
+        case 'binary':
+            return { kind: 'binary', schema: route.body.schema, maxBytes: route.body.maxBytes };
         case 'multipart':
             return {
                 kind: 'multipart',

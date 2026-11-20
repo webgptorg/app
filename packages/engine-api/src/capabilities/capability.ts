@@ -63,6 +63,13 @@ export const KNOWN_CAPABILITIES = {
      * signs in to a site in a fresh tab, and agents ask for help. No real environment advertises it yet.
      */
     browserTab: { id: 'browser-tab', version: 1 },
+    /**
+     * Push-to-talk: the engine transcribes a short recorded clip into a draft for the composer. While it is advertised
+     * the engine's `Permissions-Policy` allows `microphone=(self)`, and only then.
+     */
+    voiceInput: { id: 'voice-input', version: 1 },
+    /** Spoken replies: the engine reads a message aloud in a format the browser can play. */
+    voiceOutput: { id: 'voice-output', version: 1 },
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export type KnownCapability = (typeof KNOWN_CAPABILITIES)[keyof typeof KNOWN_CAPABILITIES];

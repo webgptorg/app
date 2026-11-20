@@ -381,6 +381,26 @@ export interface EngineApiClient {
         answer(body: Body<'answerOnboarding'>, signal: AbortSignal): Result<'answerOnboarding'>;
         defer(signal: AbortSignal): Result<'deferOnboarding'>;
     };
+    /**
+     * `voice-input@1` and `voice-output@1`, each on its own. A transcript is a draft for the composer; only
+     * `chats.sendMessage` puts anything in the chat.
+     */
+    readonly voice: {
+        /** The clip's `type` is sent as its `Content-Type` and must be one of `VOICE_CLIP_FORMATS`. */
+        transcribe(
+            chatId: Param<'transcribeVoiceClip', 'chatId'>,
+            clip: Blob,
+            query: Query<'transcribeVoiceClip'>,
+            signal: AbortSignal,
+        ): Result<'transcribeVoiceClip'>;
+        /** Resolves with the audio; its `type` is the one of `body.formats` the engine chose. */
+        speak(
+            chatId: Param<'speakChatMessage', 'chatId'>,
+            messageId: Param<'speakChatMessage', 'messageId'>,
+            body: Body<'speakChatMessage'>,
+            signal: AbortSignal,
+        ): Result<'speakChatMessage'>;
+    };
     /** Items of unknown kinds read as `{ kind: 'unknown' }`; items without a valid base are dropped and counted. */
     readonly activity: {
         list(query: Query<'listActivity'>, signal: AbortSignal): Result<'listActivity'>;
@@ -573,6 +593,12 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
             get: (signal) => call(R.getOnboarding, {}, signal),
             answer: (body, signal) => call(R.answerOnboarding, { body }, signal),
             defer: (signal) => call(R.deferOnboarding, {}, signal),
+        },
+        voice: {
+            transcribe: (chatId, clip, query, signal) =>
+                call(R.transcribeVoiceClip, { params: { chatId }, query, body: clip }, signal),
+            speak: (chatId, messageId, body, signal) =>
+                call(R.speakChatMessage, { params: { chatId, messageId }, body }, signal),
         },
         activity: {
             list: (query, signal) => call(R.listActivity, { query }, signal),

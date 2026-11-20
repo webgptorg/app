@@ -8,6 +8,7 @@ import type {
 } from './client';
 import { ProblemDetails } from './common';
 import { ENGINE_API_PREFIX } from './constants';
+import { matchMediaType } from './media-type';
 import type { EngineApiStreamItem, RouteDefinition, RouteResponse, SuccessStatus } from './route';
 import { readJsonResponse, readStreamEvent, readTolerantly } from './reader';
 import { parseSseStream } from './sse';
@@ -214,6 +215,7 @@ function requestHeaders(
 ): Record<string, string> {
     const headers: Record<string, string> = { accept: acceptFor(success) };
     if (route.body?.kind === 'json') headers['content-type'] = 'application/json';
+    if (route.body?.kind === 'binary') headers['content-type'] = binaryBody(route, request).type;
     if (request.lastEventId !== undefined) headers['last-event-id'] = request.lastEventId;
     return headers;
 }
@@ -226,8 +228,16 @@ function acceptFor(success: RouteResponse): string {
         case 'sse':
             return 'text/event-stream, application/problem+json';
         case 'binary':
-            return '*/*';
+            return success.mediaTypes === undefined
+                ? '*/*'
+                : [...success.mediaTypes, 'application/problem+json'].join(', ');
     }
+}
+
+/** The caller's clip as is; its `type` becomes `Content-Type`, which the engine checks against the route's list. */
+function binaryBody(route: RouteDefinition, request: EngineApiTransportRequest): Blob {
+    if (!(request.body instanceof Blob)) throw new Error(`Route ${route.id} takes a Blob as its body`);
+    return request.body;
 }
 
 function requestBody(route: RouteDefinition, request: EngineApiTransportRequest): BodyInit | null {
@@ -236,6 +246,8 @@ function requestBody(route: RouteDefinition, request: EngineApiTransportRequest)
             return null;
         case 'json':
             return JSON.stringify(request.body);
+        case 'binary':
+            return binaryBody(route, request);
         case 'multipart': {
             const form = new FormData();
             for (const [name, value] of Object.entries(request.body as Record<string, unknown>)) {
@@ -256,8 +268,14 @@ async function decodeSuccess(
     switch (success.kind) {
         case 'empty':
             return null;
-        case 'binary':
-            return await response.blob();
+        case 'binary': {
+            if (success.mediaTypes === undefined) return await response.blob();
+            const type = matchMediaType(response.headers.get('content-type'), success.mediaTypes);
+            if (type === null) {
+                throw new EngineApiContractError(route.id, `status ${String(response.status)} in an undeclared format`);
+            }
+            return new Blob([await response.arrayBuffer()], { type });
+        }
         case 'json':
             requireMediaType(route, response, 'application/json');
             return readJsonResponse(route, success, await readJson(route, response));

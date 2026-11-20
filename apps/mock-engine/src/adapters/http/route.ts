@@ -24,7 +24,9 @@ export type RouteBody =
     | { readonly kind: 'json'; readonly schema: z.ZodType; readonly maxBytes: number }
     | { readonly kind: 'multipart'; readonly schema: z.ZodType; readonly maxBytes: number }
     /** `application/x-www-form-urlencoded`, as an HTML form posts it. */
-    | { readonly kind: 'form'; readonly schema: z.ZodType; readonly maxBytes: number };
+    | { readonly kind: 'form'; readonly schema: z.ZodType; readonly maxBytes: number }
+    /** The raw bytes as one `Blob` typed with the request's `Content-Type`, e.g. a voice clip. */
+    | { readonly kind: 'binary'; readonly schema: z.ZodType; readonly maxBytes: number };
 
 type Params = z.ZodObject | null;
 

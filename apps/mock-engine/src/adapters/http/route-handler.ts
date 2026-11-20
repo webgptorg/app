@@ -160,6 +160,11 @@ async function decodeBody(
             }
             return { kind: 'ok', value: form };
         }
+        case 'binary':
+            return {
+                kind: 'ok',
+                value: new Blob(bytes === null ? [] : [bytes], { type: request.headers.get('content-type') ?? '' }),
+            };
         case 'multipart': {
             try {
                 const parsed = await new Response(bytes, { headers: request.headers }).formData();

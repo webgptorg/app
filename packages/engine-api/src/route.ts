@@ -9,7 +9,18 @@ export type SuccessStatus = 200 | 201 | 202 | 204;
 
 export type RouteBody =
     | { readonly kind: 'json'; readonly schema: z.ZodType }
-    | { readonly kind: 'multipart'; readonly schema: z.ZodObject };
+    | { readonly kind: 'multipart'; readonly schema: z.ZodObject }
+    /**
+     * The raw request body as one `Blob`, its `Content-Type` one of `mediaTypes` after `normalizeMediaType`. Anything
+     * else is 415 `unsupported-media-type`, more than `maxBytes` is 413 `payload-too-large`, both before the engine
+     * looks at the bytes. The handler gets a `Blob` typed with the matched media type.
+     */
+    | {
+          readonly kind: 'binary';
+          readonly schema: z.ZodType<Blob>;
+          readonly mediaTypes: readonly string[];
+          readonly maxBytes: number;
+      };
 
 /** An SSE event schema; every event's `type` is also sent as the SSE `event` field. */
 export type SseEventSchema = z.ZodType<{ readonly type: string }>;
@@ -24,7 +35,11 @@ export type RouteResponse =
     | { readonly kind: 'empty' }
     /** An SSE `read` resolves to `null` for events the client skips. */
     | { readonly kind: 'sse'; readonly event: SseEventSchema; readonly read?: z.ZodType }
-    | { readonly kind: 'binary' };
+    /**
+     * Raw bytes. Without `mediaTypes` a download: always `application/octet-stream` as an attachment. With them the
+     * engine sends one of these as `Content-Type`, still with `nosniff` and as an attachment, and the client checks it.
+     */
+    | { readonly kind: 'binary'; readonly mediaTypes?: readonly string[] };
 
 /**
  * One operation of the engine API. Framework-agnostic on purpose: the client, the OpenAPI document, the conformance

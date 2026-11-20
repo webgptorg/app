@@ -19,6 +19,7 @@ import { TASK_HANDLERS } from './tasks';
 import { ACCESS_REQUEST_HANDLERS, activeOwnerCount, signOutEverywhere } from './access-requests';
 import { LIVE_HANDLERS } from './live';
 import { ONBOARDING_HANDLERS } from './onboarding';
+import { VOICE_HANDLERS } from './voice';
 import { TEST_CHAT_HANDLERS } from './test-chat';
 import {
     USER,
@@ -607,6 +608,7 @@ export const HANDLERS: Handlers = {
     ...LIVE_HANDLERS,
     ...ONBOARDING_HANDLERS,
     ...WALLET_HANDLERS,
+    ...VOICE_HANDLERS,
 };
 
 function saveAgent(ctx: HandlerContext, agent: Agent): HandlerResult<Agent> {

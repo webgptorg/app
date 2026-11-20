@@ -395,6 +395,14 @@ function requestBodyOf(route: RouteDefinition, components: ComponentCollector): 
                 },
             };
         }
+        case 'binary':
+            return {
+                required: true,
+                description: `The raw bytes, at most ${String(body.maxBytes)}.`,
+                content: Object.fromEntries(
+                    body.mediaTypes.map((type) => [type, { schema: { type: 'string', contentMediaType: type } }]),
+                ),
+            };
     }
 }
 
@@ -413,15 +421,15 @@ function successResponseOf(response: RouteResponse, components: ComponentCollect
                     "Server-sent events; each event's `type` is also its SSE `event` field, and `data` is the event as JSON.",
                 content: { 'text/event-stream': { schema: components.convert(response.event, 'output') } },
             };
-        case 'binary':
+        case 'binary': {
+            const types = response.mediaTypes ?? ['application/octet-stream'];
             return {
-                description: 'The bytes.',
-                content: {
-                    'application/octet-stream': {
-                        schema: { type: 'string', contentMediaType: 'application/octet-stream' },
-                    },
-                },
+                description: response.mediaTypes === undefined ? 'The bytes.' : 'The bytes, in one of these formats.',
+                content: Object.fromEntries(
+                    types.map((type) => [type, { schema: { type: 'string', contentMediaType: type } }]),
+                ),
             };
+        }
     }
 }
 
