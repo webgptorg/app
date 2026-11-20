@@ -52,6 +52,9 @@ import { createMemoryRegistryReader, createMemoryRelayTokenStore } from './memor
 import { createMemoryRelayPresenceStore } from './memory-relay-presence-store';
 import type { RelayPresenceStore } from '../domain/presence/relay-presence-store';
 import { createTestBilling } from './test-billing';
+import { createUsageRecorder } from '../domain/usage/usage-recorder';
+import type { UsageStore } from '../domain/usage/usage-store';
+import { createMemoryUsageStore, type MemoryUsageStore } from './memory-usage-store';
 import {
     createMemoryDashboardMetrics,
     type MemoryDashboardMetrics,
@@ -103,6 +106,8 @@ export interface AuthHarness {
     /** The engines' status objects, in process, with their alarms fired by hand. */
     readonly engineStatuses: MemoryEngineStatuses;
     readonly relayPresence: RelayPresenceStore;
+    /** The usage events the routes and status objects recorded (ADR 0022). */
+    readonly usage: MemoryUsageStore;
     /** Sends `body` exactly as given, for routes whose signature covers the raw bytes. */
     post(
         path: string,
@@ -170,6 +175,8 @@ export function createAuthHarness(options: {
     readonly teams?: TeamStore;
     /** The `RELAYS` var's relay IDs; one relay by default. */
     readonly relays?: readonly string[];
+    /** Where usage events go instead of `usage`, e.g. a store that fails. */
+    readonly usageStore?: Pick<UsageStore, 'insertEvents'>;
 }): AuthHarness {
     const clock = createFakeClock(START_MS);
     const timer = createManualTimer();
@@ -222,9 +229,17 @@ export function createAuthHarness(options: {
     const dns = createFakeDnsResolver();
     const customHostnames = options.customHostnames ?? engineHostnames;
     const heartbeatEngines = options.heartbeatEngines ?? createMemoryHeartbeatEngineReader(registration.engines);
+    const usage = createMemoryUsageStore();
+    const usageRecorder = createUsageRecorder({
+        store: options.usageStore ?? usage,
+        clock,
+        random: cryptoRandom,
+        logger,
+    });
     const engineStatuses = createMemoryEngineStatuses({
         clock,
         logger,
+        usage: usageRecorder,
         timing: config.heartbeat,
         heartbeatEngines,
         recipients: options.alertRecipients ?? { forEngineStatus: () => Promise.resolve([]) },
@@ -264,6 +279,7 @@ export function createAuthHarness(options: {
         heartbeatEngines,
         engineStatus: options.wrapEngineStatus?.(engineStatuses) ?? engineStatuses,
         relayPresence,
+        usage: usageRecorder,
     };
     const { app: http, routes } = createHttpApp({
         ...deps,
@@ -302,6 +318,7 @@ export function createAuthHarness(options: {
         dns,
         engineStatuses,
         relayPresence,
+        usage,
         settle,
         async post(path, body, headers = {}, postOptions = {}) {
             const response = await http.request(

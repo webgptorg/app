@@ -73,6 +73,7 @@ export function createMemoryEngineStatuses(deps: Omit<EngineStatusServiceDeps, '
         storage: (engineId) => object(engineId).storage,
         recordHeartbeat: (input) => object(input.engineId).service.recordHeartbeat(input),
         getStatus: (engineId) => object(engineId).service.getStatus(),
+        getActivity: (engineId) => object(engineId).service.getActivity(),
         reset: (engineId) => object(engineId).service.reset(),
         async runAlarm(engineId) {
             const { storage, service } = object(engineId);

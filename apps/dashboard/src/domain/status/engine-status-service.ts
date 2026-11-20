@@ -10,6 +10,9 @@ import { engineLabel } from '../../shared/engine-label';
 import type { Clock } from '../ports/clock';
 import type { EmailMessage, EmailSender } from '../ports/email-sender';
 import type { Logger } from '../ports/logger';
+import type { EngineActivity } from '../usage/engine-activity';
+import { heartbeatMilestones } from '../usage/engine-milestones';
+import type { UsageRecorder } from '../usage/usage-recorder';
 import type { AlertRecipients } from './alert-recipients';
 import type { RecordHeartbeatInput } from './engine-status-directory';
 import type { EngineStatusStorage } from './engine-status-storage';
@@ -46,6 +49,8 @@ export interface EngineStatusServiceDeps {
     readonly engineHostname: (engineId: EngineId) => string;
     /** The engine's page in the dashboard. */
     readonly engineLink: (engineId: EngineId) => string;
+    /** The first heartbeat and setup completion; written only on those, never per heartbeat. */
+    readonly usage: UsageRecorder;
 }
 
 /**
@@ -55,6 +60,8 @@ export interface EngineStatusServiceDeps {
 export interface EngineStatusService {
     recordHeartbeat(input: RecordHeartbeatInput): Promise<HeartbeatVerification>;
     getStatus(): Promise<EngineStatusSnapshot>;
+    /** The daily counters for the usage rollup (ADR 0022); null before the first counted heartbeat. */
+    getActivity(): Promise<EngineActivity | null>;
     reset(): Promise<void>;
     alarm(): Promise<void>;
 }
@@ -155,12 +162,19 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                 await deps.storage.save(status);
                 // A notice now owed fires the alarm at once, so the heartbeat's answer never waits on email.
                 await deps.storage.setAlarm(nextAlarmAt(status, deps.timing));
+                // Once or twice in an engine's life; best effort, so a failed write costs only the event.
+                await deps.usage.record(heartbeatMilestones(stored, status));
             }
             return verification;
         },
 
         async getStatus() {
             return snapshotOf(await deps.storage.load());
+        },
+
+        async getActivity() {
+            const stored = await deps.storage.load();
+            return stored?.kind === 'tracked' ? (stored.activity ?? null) : null;
         },
 
         async reset() {

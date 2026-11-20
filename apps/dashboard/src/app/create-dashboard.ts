@@ -18,6 +18,7 @@ import {
     createD1LinkCodeStore,
     createD1PlatformEngineStore,
 } from '../adapters/db/d1-registration-store';
+import { createD1UsageStore } from '../adapters/db/d1-usage-store';
 import { createD1RelayPresenceStore } from '../adapters/db/d1-relay-presence-store';
 import { createD1TeamStore } from '../adapters/db/d1-team-store';
 import { memberKeySource } from '../domain/teams/member-key';
@@ -40,6 +41,7 @@ import { DASHBOARD_POLICY } from '../domain/authz/policy';
 import type { Logger } from '../domain/ports/logger';
 import type { DashboardMetrics } from '../domain/monitoring/dashboard-metrics';
 import { ConfigError, parseConfig, type DashboardConfig } from './config';
+import { createUsageRecorder } from '../domain/usage/usage-recorder';
 import { authLinks, type DashboardDeps } from './deps';
 import { createDevAdapters, type DevAdapters } from './dev-adapters';
 import { createHttpApp } from './http/create-http-app';
@@ -214,6 +216,7 @@ export function createDashboard(
         heartbeatEngines: createD1HeartbeatEngineReader(db),
         engineStatus: createDurableObjectEngineStatus(env.ENGINE_STATUS),
         relayPresence: createD1RelayPresenceStore(db),
+        usage: createUsageRecorder({ store: createD1UsageStore(db), clock: systemClock, random: cryptoRandom, logger }),
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: config.dashboardOrigin, rpName: RP_NAME }),
         rateLimiter: rateLimiter(env, config, dev),
         links: authLinks(config.dashboardOrigin),

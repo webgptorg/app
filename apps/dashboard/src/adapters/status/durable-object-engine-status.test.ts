@@ -18,6 +18,7 @@ describe('Durable Object engine status directory', () => {
                         Promise.resolve({ kind: 'bad-signature' })
                     ),
                     getStatus: () => (calls.push(`status ${name}`), Promise.resolve({ state: 'never-seen' })),
+                    getActivity: () => (calls.push(`activity ${name}`), Promise.resolve(null)),
                     reset: () => (calls.push(`reset ${name}`), Promise.resolve()),
                 };
             },
@@ -33,10 +34,12 @@ describe('Durable Object engine status directory', () => {
         });
         expect(outcome).toEqual({ kind: 'bad-signature' });
         expect(await directory.getStatus(engine.engineId)).toEqual({ state: 'never-seen' });
+        expect(await directory.getActivity(engine.engineId)).toBeNull();
         await directory.reset(engine.engineId);
         expect(calls).toEqual([
             `record ${engine.engineId} ${engine.engineId}`,
             `status ${engine.engineId}`,
+            `activity ${engine.engineId}`,
             `reset ${engine.engineId}`,
         ]);
     });

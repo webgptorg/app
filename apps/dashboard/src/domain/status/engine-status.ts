@@ -11,6 +11,7 @@ import { z } from 'zod';
 
 import { orgIdSchema } from '../ids';
 import { localeSchema } from '../locale';
+import { countHeartbeat, engineActivitySchema } from '../usage/engine-activity';
 
 const SECOND_MS = 1000;
 const DAY_MS = 24 * 60 * 60 * SECOND_MS;
@@ -106,6 +107,8 @@ const trackedSchema = z.strictObject({
     alert: outageAlertSchema,
     // Statuses stored before D-12 have no notice and owe none.
     notice: noticeSchema.default({ kind: 'none' }),
+    // Statuses stored before ADR 0022 start counting at their next heartbeat.
+    activity: engineActivitySchema.optional(),
 });
 
 /** After the retention purge: nothing about the engine but that it is offline and when it was last seen. */
@@ -200,6 +203,11 @@ export function acceptHeartbeat(input: {
         offlineSince: null,
         alert: { kind: 'none' },
         notice: noticeAfter(input.stored, heartbeat.members, input.receivedAt),
+        activity: countHeartbeat(
+            input.stored?.kind === 'tracked' ? input.stored.activity : undefined,
+            heartbeat,
+            input.receivedAt,
+        ),
     };
 }
 

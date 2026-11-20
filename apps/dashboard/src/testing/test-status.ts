@@ -11,6 +11,9 @@ import type { EngineStatusServiceDeps } from '../domain/status/engine-status-ser
 import type { EngineLabel } from '../shared/engine-label';
 import { testOrgId } from './billing-fixtures';
 import { createMemoryEngineStatusStorage, type MemoryEngineStatusStorage } from './memory-engine-status';
+import { cryptoRandom } from '../adapters/crypto-random';
+import { createUsageRecorder } from '../domain/usage/usage-recorder';
+import { createMemoryUsageStore, type MemoryUsageStore } from './memory-usage-store';
 import { TEST_ENGINE_DOMAIN } from './test-engine';
 
 export const STATUS_START_MS = 1_800_000_000_000;
@@ -59,16 +62,19 @@ export function createStatusTestDeps(
     readonly logger: MemoryLogger;
     readonly email: FlakyOutbox;
     readonly storage: MemoryEngineStatusStorage;
+    readonly usage: MemoryUsageStore;
 } {
     const clock = createFakeClock(STATUS_START_MS);
     const logger = createMemoryLogger();
     const email = createFlakyOutbox();
     const storage = createMemoryEngineStatusStorage();
+    const usage = createMemoryUsageStore();
     return {
         clock,
         logger,
         email,
         storage,
+        usage,
         deps: {
             storage,
             clock,
@@ -96,6 +102,7 @@ export function createStatusTestDeps(
             email,
             engineHostname: (engineId) => defaultHostname(engineId, TEST_ENGINE_DOMAIN),
             engineLink: (engineId) => `https://app.ptbk.test/engines/${engineId}`,
+            usage: createUsageRecorder({ store: usage, clock, random: cryptoRandom, logger }),
         },
     };
 }

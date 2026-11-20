@@ -1,7 +1,8 @@
 import type { Hono } from 'hono';
 
 import { emailAddressSchema, type EmailAddress } from '../../domain/auth/email-address';
-import { inviteIdSchema, teamIdSchema, userIdSchema } from '../../domain/ids';
+import { inviteIdSchema, teamIdSchema, userIdSchema, type OrgId } from '../../domain/ids';
+import type { UsageEvent } from '../../domain/usage/usage-event';
 import { resolveRequestLocale } from '../i18n/resolve-request-locale';
 import { issueLinkCode } from '../../domain/registration/issue-link-code';
 import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
@@ -141,9 +142,25 @@ export function bindTeamRoutes(
         return team === null ? NOT_FOUND : { kind: 'ok', body: { team: await teamView(deps, session.actor, team) } };
     });
 
-    bind(router, mount, apiRoutes.deleteTeam, async ({ input, session }) => {
+    bind(router, mount, apiRoutes.deleteTeam, async ({ input, request, session }) => {
         const outcome = await deleteTeam(deps, session.actor, teamIdSchema.parse(input.params.teamId));
-        return outcome === 'deleted' ? NO_CONTENT : NOT_FOUND;
+        if (outcome.kind === 'not-found') {
+            return NOT_FOUND;
+        }
+        if (outcome.engineId !== null) {
+            request.waitUntil(
+                deps.usage.record([
+                    {
+                        event: 'engine.removed',
+                        orgId: session.actor.orgId,
+                        userId: session.actor.userId,
+                        engineId: outcome.engineId,
+                        props: { via: 'team-deleted' },
+                    },
+                ]),
+            );
+        }
+        return NO_CONTENT;
     });
 
     bind(router, mount, apiRoutes.createTeamLinkCode, async ({ input, request, session }) => {
@@ -171,13 +188,24 @@ export function bindTeamRoutes(
             }
         }
         await deps.teams.attachLinkCode(session.actor.orgId, outcome.linkCodeId, team.id, deps.clock.nowMs());
+        request.waitUntil(
+            deps.usage.record([
+                {
+                    event: 'engine.created',
+                    orgId: session.actor.orgId,
+                    userId: session.actor.userId,
+                    engineId: null,
+                    props: { forTeam: true },
+                },
+            ]),
+        );
         return {
             kind: 'ok',
             body: issuedLinkCodeView(deps.config, outcome),
         };
     });
 
-    bind(router, mount, apiRoutes.createAccessTicket, async ({ input, session }) => {
+    bind(router, mount, apiRoutes.createAccessTicket, async ({ input, request, session }) => {
         const outcome = await issueAccessTicket(
             memberAccessDeps(deps),
             { ...session.actor, email: session.user.email },
@@ -185,6 +213,17 @@ export function bindTeamRoutes(
         );
         switch (outcome.kind) {
             case 'issued':
+                request.waitUntil(
+                    deps.usage.record([
+                        {
+                            event: 'access.requested',
+                            orgId: session.actor.orgId,
+                            userId: session.actor.userId,
+                            engineId: outcome.engineId,
+                            props: {},
+                        },
+                    ]),
+                );
                 return {
                     kind: 'ok',
                     body: {
@@ -323,6 +362,19 @@ export function bindTeamRoutes(
         switch (outcome.kind) {
             case 'ok':
                 request.waitUntil(sendInBackground(deps, outcome.deliver));
+                request.waitUntil(
+                    deps.usage.record(
+                        outcome.results
+                            .filter((result) => result.outcome === 'invited')
+                            .map(() => ({
+                                event: 'invite.sent' as const,
+                                orgId: session.actor.orgId,
+                                userId: session.actor.userId,
+                                engineId: null,
+                                props: { role: input.body.role, teams: input.body.teamIds.length },
+                            })),
+                    ),
+                );
                 return { kind: 'ok', body: { results: [...outcome.results] } };
             case 'forbidden':
                 return { kind: 'problem', status: 403, code: 'forbidden' };
@@ -379,6 +431,7 @@ export function bindTeamRoutes(
                 : await acceptInvite(inviteDeps, { userId: session.user.id, email: session.user.email }, token);
         switch (outcome.kind) {
             case 'accepted':
+                request.waitUntil(deps.usage.record([inviteAccepted(outcome.orgId, session)]));
                 return {
                     kind: 'ok',
                     body: { orgId: outcome.orgId, teamIds: [...outcome.teamIds] },
@@ -407,12 +460,24 @@ export function bindTeamRoutes(
         };
     });
 
-    bind(router, mount, apiRoutes.acceptInviteOffer, async ({ input, session }) => {
+    bind(router, mount, apiRoutes.acceptInviteOffer, async ({ input, request, session }) => {
         const outcome = await acceptOfferedInvite(deps, session.user, inviteIdSchema.parse(input.params.inviteId));
-        return outcome.kind === 'accepted'
-            ? { kind: 'ok', body: { orgId: outcome.orgId, teamIds: [...outcome.teamIds] } }
-            : { kind: 'problem', status: 404, code: 'invite-invalid' };
+        if (outcome.kind !== 'accepted') {
+            return { kind: 'problem', status: 404, code: 'invite-invalid' };
+        }
+        request.waitUntil(deps.usage.record([inviteAccepted(outcome.orgId, session)]));
+        return { kind: 'ok', body: { orgId: outcome.orgId, teamIds: [...outcome.teamIds] } };
     });
+}
+
+function inviteAccepted(orgId: OrgId, session: ActiveSession): UsageEvent {
+    return {
+        event: 'invite.accepted',
+        orgId,
+        userId: session.user.id,
+        engineId: null,
+        props: { as: 'existing-account' },
+    };
 }
 
 function inviter(session: ActiveSession): Inviter {
