@@ -1,9 +1,11 @@
-import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
+import { KNOWN_CAPABILITIES, RESERVED_CAPABILITIES, encodeLiveMedia } from '@ptbk/engine-api';
 import { describe, expect, it } from 'vitest';
 
 import type { CheckOutcome } from '../../check';
 import { runConformance } from '../../runner';
-import type { FakeEngineOptions, LiveDefect, Tamper } from '../../testing/fake-engine';
+import type { FakeEngineOptions, LiveDefect, LiveTamper, Tamper } from '../../testing/fake-engine';
+import { DEFAULT_CAPABILITIES } from '@ptbk/engine-api/in-memory';
+
 import { createFakeEngine } from '../../testing/fake-engine';
 import { ENGINE_API_SUITE } from './index';
 
@@ -132,6 +134,188 @@ describe('the browser-tab checks', () => {
             'engine-api.browser-tab.audit-metadata',
             'no browser entries',
             edit('GET', /^\/audit$/, (data) => ({ ...data, items: [] })),
+        ],
+    ])('%s fails an engine where %s', async (id, _what, tamper) => {
+        expect(await outcome(id, { tamper })).toMatchObject({ kind: 'fail' });
+    });
+});
+
+/** Rewrites one engine message type on the channel; `null` drops it. */
+function rewrite(type: string, change: (message: Record<string, unknown>) => unknown): LiveTamper {
+    return (text) => {
+        const message = JSON.parse(text) as Record<string, unknown>;
+        if (message['type'] !== type) return [text];
+        const changed = change(message);
+        return changed === null ? [] : [typeof changed === 'string' ? changed : JSON.stringify(changed)];
+    };
+}
+
+function frame(seq: number): Uint8Array {
+    const encoded = encodeLiveMedia({ kind: 'tab-frame-png', seq, timestamp: 0, payload: new Uint8Array(4) });
+    if (encoded.kind !== 'ok') throw new Error('not encoded');
+    return encoded.bytes;
+}
+
+const problem = (code: string, status: number): Response =>
+    new Response(JSON.stringify({ type: `https://ptbk.io/problems/${code}`, title: code, status, code }), {
+        status,
+        headers: { 'content-type': 'application/problem+json' },
+    });
+
+describe('the browser-tab checks on the channel', () => {
+    it.each<[string, string, LiveTamper]>([
+        ['engine-api.browser-tab.channel-handshake', 'no hello', rewrite('hello', () => null)],
+        [
+            'engine-api.browser-tab.channel-handshake',
+            'a hello for version 2',
+            rewrite('hello', (m) => ({ ...m, version: 2 })),
+        ],
+        ['engine-api.browser-tab.channel-handshake', 'no state', rewrite('state', () => null)],
+        [
+            'engine-api.browser-tab.channel-handshake',
+            'a watcher told it controls',
+            rewrite('state', (m) => ({ ...m, mode: 'controlling' })),
+        ],
+        [
+            'engine-api.browser-tab.channel-handshake',
+            'another origin',
+            rewrite('navigated', (m) => ({ ...m, origin: 'https://other.invalid' })),
+        ],
+        [
+            'engine-api.browser-tab.channel-handshake',
+            'frames past the credit',
+            (text) => (text.includes('"navigated"') ? [text, frame(1), frame(2), frame(3)] : [text]),
+        ],
+        ['engine-api.browser-tab.channel-handshake', 'text that is not JSON', (text) => [text, '{not json']],
+        [
+            'engine-api.browser-tab.channel-handshake',
+            'an unknown message with a URL',
+            (text) => [text, JSON.stringify({ type: 'url', url: 'https://example.invalid/secret' })],
+        ],
+        ['engine-api.browser-tab.blocked-pages', 'no blocked', rewrite('blocked', () => null)],
+        [
+            'engine-api.browser-tab.blocked-pages',
+            'blocked naming an origin',
+            rewrite('blocked', (m) => ({ ...m, origin: m['origin'] ?? 'https://x.invalid' })),
+        ],
+        [
+            'engine-api.browser-tab.blocked-pages',
+            'the wrong reason',
+            rewrite('blocked', (m) => ({ ...m, reason: 'browser-page', origin: null })),
+        ],
+        ['engine-api.browser-tab.blocked-pages', 'no refusal', rewrite('input-refused', () => null)],
+        [
+            'engine-api.browser-tab.blocked-pages',
+            'no navigated back',
+            (text) => (text.includes('"navigated"') && text.includes('blocked-') ? [] : [text]),
+        ],
+        ['engine-api.browser-tab.channel-handshake', 'neither navigated nor blocked', rewrite('navigated', () => null)],
+    ])('%s fails an engine that sends %s', async (id, _what, liveTamper) => {
+        expect(await outcome(id, { liveTamper })).toMatchObject({ kind: 'fail' });
+    });
+
+    it('fails when the channel cannot be opened at all', async () => {
+        expect(
+            await outcome('engine-api.browser-tab.channel-handshake', { liveDefect: 'channel-refused' }),
+        ).toMatchObject({
+            kind: 'fail',
+        });
+    });
+
+    it('skips what needs a step-up the suite cannot give, a stale session or the audit log', async () => {
+        const wantsStepUp: Tamper = (request, response) =>
+            request.method === 'POST' && /^\/browser-(tabs\/[^/]+\/control|sessions)$/.test(path(request))
+                ? problem('step-up-required', 401)
+                : response;
+        expect(await outcome('engine-api.browser-tab.single-controller', { tamper: wantsStepUp })).toMatchObject({
+            kind: 'skip',
+        });
+        expect(await outcome('engine-api.browser-tab.audit-metadata', { tamper: wantsStepUp })).toMatchObject({
+            kind: 'skip',
+        });
+        expect(await outcome('engine-api.browser-tab.step-up', { staleOwnerSessions: false })).toMatchObject({
+            kind: 'skip',
+        });
+        expect(
+            await outcome('engine-api.browser-tab.audit-metadata', {
+                capabilities: [KNOWN_CAPABILITIES.browserTab, KNOWN_CAPABILITIES.wallet],
+            }),
+        ).toMatchObject({ kind: 'skip' });
+    });
+
+    it('fails an engine that advertises reserved live audio, and skips its unwritten check', async () => {
+        const capabilities = [...DEFAULT_CAPABILITIES, RESERVED_CAPABILITIES.liveAudio];
+        expect(await outcome('engine-api.live.reserved', { capabilities })).toMatchObject({ kind: 'fail' });
+        expect(await outcome('engine-api.live-audio.session', { capabilities })).toEqual({
+            kind: 'skip',
+            reason: 'not-implemented',
+        });
+    });
+});
+
+const tabs = (change: (tab: Record<string, unknown>) => unknown) =>
+    edit('GET', /^\/browser-tabs$/, (data) => ({
+        items: (data['items'] as Record<string, unknown>[]).map(change),
+    }));
+
+describe('the browser-tab checks on the API', () => {
+    it.each<[string, string, Tamper]>([
+        [
+            'engine-api.browser-tab.session-binding',
+            'another session takes control',
+            forge('POST', /^\/browser-sessions\/[^/]+\/control$/, 200, SESSION, 404),
+        ],
+        [
+            'engine-api.browser-tab.session-binding',
+            'the owner’s session ended',
+            edit('GET', /^\/browser-sessions\/[^/]+$/, (data) => ({ ...data, status: 'ended', endReason: 'ended' })),
+        ],
+        ['engine-api.browser-tab.watcher-input', 'the agent paused', tabs((tab) => ({ ...tab, agentState: 'paused' }))],
+        [
+            'engine-api.browser-tab.single-controller',
+            'a session that does not control',
+            edit('POST', /^\/browser-tabs\/[^/]+\/control$/, (data) => ({ ...data, mode: 'watching' })),
+        ],
+        [
+            'engine-api.browser-tab.single-controller',
+            'a hand-back that keeps control',
+            edit('POST', /^\/browser-sessions\/[^/]+\/hand-back$/, (data) => ({ ...data, mode: 'controlling' })),
+        ],
+        [
+            'engine-api.browser-tab.single-controller',
+            'the agent never resumes',
+            tabs((tab) => ({ ...tab, agentState: 'paused' })),
+        ],
+        [
+            'engine-api.browser-tab.help-requests',
+            'the wrong reason',
+            edit('GET', /^\/browser-help-requests\/[^/]+$/, (data) => ({ ...data, reason: 'login' })),
+        ],
+        [
+            'engine-api.browser-tab.help-requests',
+            'a request that never goes in progress',
+            edit('GET', /^\/browser-help-requests\/[^/]+$/, (data) =>
+                data['status'] === 'in-progress' ? { ...data, status: 'pending' } : data,
+            ),
+        ],
+        ['engine-api.browser-tab.help-requests', 'a tab not waiting', tabs((tab) => ({ ...tab, helpRequestId: null }))],
+        [
+            'engine-api.browser-tab.help-requests',
+            'control that does not answer the request',
+            edit('POST', /^\/browser-tabs\/[^/]+\/control$/, (data) => ({ ...data, helpRequestId: null })),
+        ],
+        [
+            'engine-api.browser-tab.help-requests',
+            'a dismissal with another outcome',
+            edit('POST', /^\/browser-help-requests\/[^/]+\/dismiss$/, (data) => ({
+                ...data,
+                resolution: { ...(data['resolution'] as object), outcome: 'ended' },
+            })),
+        ],
+        [
+            'engine-api.browser-tab.time-limits',
+            'no expired end reason',
+            edit('GET', /^\/browser-sessions\/[^/]+$/, (data) => ({ ...data, endReason: 'ended' })),
         ],
     ])('%s fails an engine where %s', async (id, _what, tamper) => {
         expect(await outcome(id, { tamper })).toMatchObject({ kind: 'fail' });

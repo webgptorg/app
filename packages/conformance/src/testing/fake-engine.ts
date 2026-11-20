@@ -51,8 +51,11 @@ export const LIVE_DEFECTS = [
     'oversized-media',
     'no-expiry',
     'typed-text-audited',
+    'channel-refused',
 ] as const;
 export type LiveDefect = (typeof LIVE_DEFECTS)[number];
+
+export type LiveTamper = (text: string) => readonly (string | Uint8Array)[];
 
 /** On the fake's sign-in allowlist. */
 export const FAKE_SIGN_IN_ORIGIN = 'https://accounts.conformance.invalid';
@@ -69,6 +72,10 @@ export interface FakeEngineOptions {
     /** By default knowledge takes Markdown and plain text up to 1 KiB, so both upload policy refusals are exercised. */
     readonly uploadPolicies?: FileUploadPolicies;
     readonly liveDefect?: LiveDefect;
+    /** Rewrites each text message the engine sends on a live channel into any number of messages, frames included. */
+    readonly liveTamper?: LiveTamper;
+    /** `false` leaves out `staleOwnerSession`. */
+    readonly staleOwnerSessions?: boolean;
     /** `false` leaves out `liveBrowser`, as a target that cannot reach the channel would. */
     readonly liveBrowser?: boolean;
 }
@@ -237,6 +244,8 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
         actorOf,
         actors,
         defect: options.liveDefect,
+        tamper: options.liveTamper,
+        stale: options.staleOwnerSessions !== false,
         typed,
         staleOwner: () => `${COOKIE}=${signIn({ kind: 'owner' }, false)}`,
     });
@@ -581,6 +590,8 @@ interface FakeLiveDeps {
     readonly actorOf: (cookie: string | null) => Actor | undefined;
     readonly actors: ReadonlyMap<string, Actor>;
     readonly defect: LiveDefect | undefined;
+    readonly tamper: LiveTamper | undefined;
+    readonly stale: boolean;
     readonly typed: string[];
     readonly staleOwner: () => string;
 }
@@ -597,6 +608,7 @@ function createFakeLiveBrowser(deps: FakeLiveDeps): LiveBrowserTarget {
     return {
         signInOrigin: FAKE_SIGN_IN_ORIGIN,
         openChannel(sessionId, credential, origin) {
+            if (defect === 'channel-refused') return Promise.resolve({ kind: 'refused', status: 503 });
             if (origin !== deps.origin && defect !== 'channel-any-origin') {
                 return Promise.resolve({ kind: 'refused', status: 403 });
             }
@@ -624,7 +636,11 @@ function createFakeLiveBrowser(deps: FakeLiveDeps): LiveBrowserTarget {
                         return;
                     }
                     if (defect === 'watcher-input-silent' && data.includes('"input-refused"')) return;
-                    queue.push({ kind: 'text', text: data });
+                    for (const out of deps.tamper?.(data) ?? [data]) {
+                        queue.push(
+                            typeof out === 'string' ? { kind: 'text', text: out } : { kind: 'binary', bytes: out },
+                        );
+                    }
                     if (defect === 'frames-while-blocked' && data.includes('"blocked"')) {
                         queue.push({ kind: 'binary', bytes: frame() });
                     }
@@ -663,6 +679,6 @@ function createFakeLiveBrowser(deps: FakeLiveDeps): LiveBrowserTarget {
             if (defect !== 'no-expiry') core.controller.elapseBrowserSession(sessionId, what);
             return Promise.resolve();
         },
-        staleOwnerSession: () => Promise.resolve({ cookie: deps.staleOwner() }),
+        ...(deps.stale ? { staleOwnerSession: () => Promise.resolve({ cookie: deps.staleOwner() }) } : {}),
     };
 }
