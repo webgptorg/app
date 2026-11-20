@@ -59,16 +59,26 @@ export function linkState(code: LinkCodeStatusView, engine: EngineView | undefin
     return heartbeat.members > 0 ? 'ready' : 'owner-pending';
 }
 
+export interface ObservedLink {
+    readonly state: LinkState;
+    /** Ready, but the engine still reports its setup unfinished (D-36). */
+    readonly setupPending: boolean;
+}
+
 /**
  * The link state as `LinkProgress` last fetched it, for the page around it; it only reads what that component polls
  * and never asks on its own.
  */
-export function useObservedLinkState(linkCodeId: string | undefined): LinkState | undefined {
+export function useObservedLink(linkCodeId: string | undefined): ObservedLink | undefined {
     const api = useApiClient();
     const code = useQuery({ ...linkCodeQuery(api, linkCodeId ?? ''), enabled: false }).data;
     const engineId = linkCodeId !== undefined && code?.status === 'linked' ? code.engineId : '';
     const engine = useQuery({ ...engineQuery(api, engineId), enabled: false }).data;
-    return linkCodeId === undefined || code === undefined ? undefined : linkState(code, engine);
+    if (linkCodeId === undefined || code === undefined) {
+        return undefined;
+    }
+    const state = linkState(code, engine);
+    return { state, setupPending: state === 'ready' && setupPending(engine) };
 }
 
 /** The page's clock, ticking only while a hint may still appear. */
@@ -353,7 +363,9 @@ export function LinkProgress(props: {
     const engine = useQuery({
         ...engineQuery(api, linked?.engineId ?? ''),
         enabled: linked !== null,
-        refetchInterval: (query) => ((query.state.data?.heartbeat?.members ?? 0) > 0 ? false : LINK_POLL_MS),
+        // Keeps asking through an unfinished setup, so the page turns ready by itself once the engine reports it done.
+        refetchInterval: (query) =>
+            (query.state.data?.heartbeat?.members ?? 0) > 0 && !setupPending(query.state.data) ? false : LINK_POLL_MS,
         refetchIntervalInBackground: false,
     });
     if (code.data === undefined) {

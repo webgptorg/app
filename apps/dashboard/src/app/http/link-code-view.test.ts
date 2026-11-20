@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { linkCodeIdSchema } from '../../domain/ids';
 import type { InstallCommandConfig } from '../config';
 import { issuedLinkCodeView } from './link-code-view';
+import { TEST_ENGINE_INSTALLATION } from '../../testing/install-fixtures';
+import { linkCodeViewSchema } from '../../shared/api/routes';
 
 const CODE = LinkCode.parse('abcdefghijklmnopqrstuvwxya');
 const ISSUED = {
@@ -20,6 +22,20 @@ function config(origin: string, templates: readonly string[]) {
 }
 
 describe('issuedLinkCodeView', () => {
+    it('adds typed installation choices and retains a usable command for older clients', () => {
+        const view = issuedLinkCodeView(
+            {
+                ...config('https://app.ptbk.io', ['ptbk connect --link {linkUrl}']),
+                engineInstallation: TEST_ENGINE_INSTALLATION,
+            },
+            ISSUED,
+        );
+        expect(linkCodeViewSchema.parse(view)).toEqual(view);
+        expect(view.installCommands[0]?.labelKey).toBe('new-project');
+        expect(view.installCommands[0]?.command).toContain('--prepare-only');
+        expect(view.installCommands[1]?.id).toBe('connect');
+        expect(view.installationOptions?.map((option) => option.kind)).toEqual(['command', 'ai', 'download']);
+    });
     it('fills in the link URL, single-quoted as the template has it, and the code', () => {
         const view = issuedLinkCodeView(
             config('https://app.ptbk.link', ["ptbk connect --link '{linkUrl}'", 'connect --link {linkCode} $&']),

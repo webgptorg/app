@@ -28,6 +28,7 @@ import { engineLabelSchema } from '../engine-label';
 import { teamNameSchema } from '../team-name';
 import { environmentSchema } from '../environment';
 import { docsAnchorSchema, installPathIdSchema, installPathLabelKeySchema } from '../install-paths';
+import { installationOptionSchema } from '../engine-installation';
 import { defineRoute, NO_CONTENT, NO_INPUT } from './contract';
 import {
     authenticationOptionsSchema,
@@ -175,6 +176,8 @@ export const linkCodeViewSchema = z.strictObject({
         )
         .min(1)
         .max(installPathIdSchema.options.length),
+    /** Optional for legacy configurations; generated and disclosed only alongside the just-issued link code. */
+    installationOptions: z.array(installationOptionSchema).length(3).optional(),
     /** The public install guide; each path's `docsAnchor` is a heading in it. */
     installGuideUrl: z.url({ protocol: /^https$/ }).max(512),
     expiresAt: timestampSchema,

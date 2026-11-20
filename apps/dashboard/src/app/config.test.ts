@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_OFF_PLAN, TEST_PLANS } from '../testing/billing-fixtures';
-import { TEST_INSTALL_VARS } from '../testing/install-fixtures';
+import { TEST_ENGINE_INSTALLATION, TEST_INSTALL_VARS } from '../testing/install-fixtures';
 import { readWranglerConfig } from '../testing/wrangler-config';
 import { DEFAULT_THRESHOLDS } from '../domain/monitoring/alert-rules';
 import {
@@ -57,6 +57,23 @@ function failedPaths(env: object): readonly string[] {
 }
 
 describe('parseConfig', () => {
+    it('accepts reviewed engine installation without legacy templates and requires HTTPS for its pairing URLs', () => {
+        const vars = { ...without(devVars, 'INSTALL_COMMANDS'), ENGINE_INSTALLATION: TEST_ENGINE_INSTALLATION };
+        const config = parseConfig({ ...bindings, ...vars });
+        expect(config.engineInstallation).toEqual(TEST_ENGINE_INSTALLATION);
+        expect(Object.isFrozen(config.engineInstallation)).toBe(true);
+        expect(config.installCommands).toEqual([]);
+        expect(failedPaths({ ...bindings, ...vars, DASHBOARD_ORIGIN: 'http://localhost:5173' })).toEqual([
+            'INSTALL_COMMANDS',
+        ]);
+        expect(
+            failedPaths({
+                ...bindings,
+                ...vars,
+                ENGINE_INSTALLATION: { ...TEST_ENGINE_INSTALLATION, version: 'latest' },
+            }),
+        ).toEqual(['ENGINE_INSTALLATION.version']);
+    });
     it('parses a complete dev configuration into a frozen object', () => {
         const { billing, ...config } = parseConfig({ ...bindings, ...devVars });
         expect(config).toEqual({

@@ -1,5 +1,7 @@
 # D-11. Install command tabs from configuration
 
+> 18 November revision: see [engine-first installation](../../design/engine-first-installation.md). It supersedes the historical Docker-first/card-first recommendations below, preserves the existing engine-owned wizard and adds typed command/AI/download presentation. Status above/below records the original completed task; this follow-up awaits review and a real-engine release walkthrough.
+
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-03, M-08
 - **Status:** done (#122)

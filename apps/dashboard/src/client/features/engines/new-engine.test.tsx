@@ -566,7 +566,7 @@ describe('new engine page', () => {
                 path: '/engines/new',
                 session: OWNER,
                 fakeTimers: fake,
-                script: linking([LINKED], [SETUP_OWNER_PENDING, SETUP_PENDING]),
+                script: linking([LINKED], [SETUP_OWNER_PENDING, SETUP_PENDING, READY]),
             });
             expect(await screen.findByText(OWNER_TEXT)).toBeTruthy();
             expect(screen.queryByRole('link', { name: /^Continue setup/ })).toBeNull();
@@ -587,7 +587,13 @@ describe('new engine page', () => {
             expect(link.getAttribute('rel')).toBe('noopener noreferrer');
             expect(screen.queryByRole('link', { name: /^Open engine/ })).toBeNull();
             expect(screen.queryByText('Your engine is ready')).toBeNull();
+            expect(steps()).toEqual(['install:done', 'connect:done', 'finish:current']);
             await expectNoAxeViolations(app.container);
+
+            await elapse(LINK_POLL_MS);
+            expect(await screen.findByRole('heading', { name: 'Your engine is ready', level: 2 })).toBeTruthy();
+            expect(steps()).toEqual(['install:done', 'connect:done', 'finish:done']);
+            expect(screen.getByRole('link', { name: /^Open engine/ })).toBeTruthy();
         });
 
         it('ticks the rows in their order, whichever arrives first, and says how many relays reach it', async () => {
