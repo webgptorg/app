@@ -42,7 +42,11 @@ export function docker(
         const child = spawn('docker', [...args], {
             stdio: [input === undefined ? 'ignore' : 'pipe', typeof stdout === 'string' ? stdout : 'pipe', stderr],
         });
-        if (input !== undefined) child.stdin?.end(input);
+        if (input !== undefined) {
+            // A docker that exits before reading stdin (EPIPE) must not crash us: its exit code says what happened.
+            child.stdin?.once('error', () => undefined);
+            child.stdin?.end(input);
+        }
         if (typeof stdout !== 'string') child.stdout?.pipe(stdout, { end: false });
         child.once('error', reject);
         child.once('close', (code) => {
