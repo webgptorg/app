@@ -63,6 +63,7 @@ A `ConformanceTarget` tells the suite how to reach your engine and how to get se
 - `baseUrl` and `fetch`.
 - `session(subject)`, where `subject` is `{ kind: 'owner' }` or `{ kind: 'member', permissions }`, returns a cookie or bearer credential, or `null` to skip checks that need that subject.
 - Optional: `enginePublicKey`, `gateway: false`, and `memberPrivateResources` (the routes your policy keeps private to the member who created an agent).
+- Optional for `browser-tab@1`: `liveBrowser`, which opens the live channel (a WebSocket with the credential's cookie and a given `Origin`) and pulls the test-mode levers of your engine's browser: open an agent tab, raise a help request, move the tab, and make a session's time or idle limit run out now. Like sessions, the levers belong in your engine's conformance build, never in a production endpoint. Without it, the browser-tab checks that need a channel or a lever skip.
 
 Subjects are described by permissions, not role names, because the role-to-permission mapping is engine policy. Every request carries `Origin` (the base URL's origin) and `Sec-Fetch-Site: same-origin`, as a browser on the engine's origin would, so a gateway that checks them accepts the suite. Checks create resources named `conformance-<runId>-…` and delete them after each check, so you can run the suite against a test engine repeatedly.
 

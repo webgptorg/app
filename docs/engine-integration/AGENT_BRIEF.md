@@ -65,6 +65,53 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
   - Report the harness installs and real checks as `activity` while `working`, and keep failed additional harnesses in it on the next prompt. Put the final summary (project, folder, harnesses) in the review prompt's `details`.
   - Fill the new fields with defaults where there is nothing to say: `details: []`, `alternatives: []`, `activity: []`, `canDefer: true`. Re-run the onboarding conformance checks.
 
+### 2026-11-20: Live browser: contract ready
+
+**Lower priority than the 2026-11-20 PRIORITY entry and the 2026-11-19 setup entry. Finish both first.** Nothing here is rolled out: keep `browser-tab@1` unadvertised by default.
+
+- **Goal:** a member watches the tab an agent works in, live, from our UI on the engine's origin; the owner takes it over with one click and a passkey when the agent is stuck (a captcha, a login, a confirmation), then hands it back and the agent carries on; the owner can also open a fresh tab to sign in to a site by hand. Frames and input stay inside the engine's TLS: no relay, tunnel or CSP change.
+- **Changed:** `browser-tab@1` moves from reserved to a known draft capability ([live-sessions.md](live-sessions.md), [ADR 0019](../adr/0019-live-sessions-inside-the-tunnel.md) Accepted with revisions):
+  - Routes ([live.ts](../../packages/engine-api/src/capabilities/live.ts)): `POST /browser-sessions` (sign-in tab; replaces the reserved `POST /browser-tab-sessions`), `GET /browser-tabs`, `POST /browser-tabs/{tabId}/watch` and `/control`, `GET /browser-sessions/{sessionId}`, `POST /browser-sessions/{sessionId}/control`, `/hand-back`, `/end`, `GET /browser-help-requests` and `/{requestId}`, `POST /browser-help-requests/{requestId}/dismiss`. Events `browser-tab.changed` and `browser-help.changed`.
+  - New permission `browser.watch`, beside the owner-only `browser.control`. Step-up on opening a sign-in tab and on taking control. New problem codes `browser-tab-controlled`, `browser-tab-full`, `browser-busy`, `browser-session-ended`, `browser-help-resolved`, `live-channel-attached` (409) and `browser-origin-refused` (422). New audit actions `browser.*` and targets `browser-session`, `browser-help-request`.
+  - The channel format is fixed ([live-channel.ts](../../packages/engine-api/src/capabilities/live-channel.ts)): `hello`, `view`, `frame-ack`, `input`, `end` in; `hello`, `state`, `navigated`, `blocked`, `input-refused`, `end` out; a closed set of pointer, wheel and key events; media as a 13-byte header plus one image, 64 KiB at most.
+  - Reference behaviour: the in-memory engine ([in-memory/live.ts](../../packages/engine-api/src/in-memory/live.ts) and its tests). Conformance: the `engine-api.browser-tab.*` checks replace "must not be advertised" for this capability; `live-audio@1` and `live-video@1` stay reserved.
+- **Redo:**
+  1. Keep it off: advertise `browser-tab@1` only when an engine setting or test mode turns it on, and only while the browser tool runs. Everything else stays as it is until the platform asks to roll out.
+  2. Serve the routes through your route table with their permissions and step-up, and the WebSocket at `/api/v1/live-sessions/{sessionId}/channel` behind the gateway: session cookie, `Origin` equal to the engine's own origin, subprotocol `ptbk-live`, nothing in the URL.
+  3. Frames: CDP `Page.startScreencast` on the one tab (format JPEG, `maxWidth`/`maxHeight` from the viewer's `view`, a quality that keeps each frame under 64 KiB with the header), each `Page.screencastFrame` sent as `encodeLiveMedia({ kind: 'tab-frame-jpeg', … })`, `Page.screencastFrameAck` only once the viewer's `frame-ack` frees credit (at most 2 unacknowledged). `Page.stopScreencast` while the view is hidden or the page is blocked.
+  4. Input: replay each `LiveInputEvent` with `Input.dispatchMouseEvent` (pointer and wheel) and `Input.dispatchKeyEvent` (named keys as `key`/`code`, a character with `text`), modifiers Shift only. Nothing else from the client reaches CDP. While a human controls a tab, cancel file choosers (`Page.setInterceptFileChooserDialog`) and deny downloads (`Browser.setDownloadBehavior`).
+  5. Blocking: watch `Page.frameNavigated` and the target's URL; send `navigated { origin }` or `blocked { reason }` and stop frames and input on `chrome://`, `about:`, `devtools:`, extension, `file:` and `view-source:` pages, the password manager and settings, the Wallet's protected entry, and, while a human controls the tab, any origin outside the tab's origin at takeover plus the sign-in allowlist.
+  6. Pause and resume: taking control marks the agent's tab paused; the agent's browser tool waits at its next action instead of acting (the run keeps running, nothing is cancelled). When control ends (hand back, end, expiry, idle, revocation, protocol error) the tool resumes and gets the outcome `{ outcome, origin }` as a tool result: `handed-back`, `ended`, `expired`, `idle`, `blocked-origin` (control ended on a page the session could not show), `revoked`, or `cancelled`.
+  7. Help requests: let the agent's browser tool raise one (reason `login`, `captcha`, `confirmation`, `blocked` or `other`, and a short message of at most 500 characters), one open per tab, and wait for its resolution as above; `dismissed` when the owner declines.
+  8. Limits: one controller per tab, 5 sessions per tab, one sign-in session per engine, `endsAt` 10 minutes after opening, `attachBy` 30 s, 2 minutes without input ends a controller's session, more than 120 input events a second is a protocol error. A session is bound to the gateway session that opened it; revoking that session or the member ends it.
+  9. Audit metadata only (session, origin, outcome, reason, duration). Never log frames, input or typed text.
+  10. Write the engine tests LB-01 to LB-17, then run LB-20 to LB-25 by hand. Done when the `engine-api.browser-tab.*` checks pass against your engine in test mode and the by-hand cases pass on a headless VPS.
+- **Test cases (engine, unit level):**
+  - LB-01 Without the setting, `GET /engine` lacks `browser-tab@1` and every route answers 404 `capability-not-supported`.
+  - LB-02 A session opened by one gateway session is 404 to every other one, the same member's included, on every route and on the channel.
+  - LB-03 The channel upgrade without a cookie is 401, with another `Origin` 403, without `ptbk-live` refused, a second attach 409 `live-channel-attached`; after a drop the same gateway session attaches again.
+  - LB-04 `POST /browser-sessions`, `POST /browser-tabs/{id}/control` and `POST /browser-sessions/{id}/control` answer 401 `step-up-required` without a fresh assertion, 403 without `browser.control`.
+  - LB-05 A watcher's `input` is answered `input-refused { reason: 'not-controlling' }` and nothing reaches `Input.dispatch*`.
+  - LB-06 A second controller gets 409 `browser-tab-controlled`; watchers keep their frames.
+  - LB-07 Taking control pauses the agent's browser tool at its next action; handing back resumes it with `handed-back`.
+  - LB-08 On a `chrome://` page, the password manager and the Wallet's entry page, no frame is forwarded, input is refused `blocked`, and `blocked` carries no origin.
+  - LB-09 A sign-in at an origin outside the allowlist or at the engine's own origin is 422 `browser-origin-refused`; while controlled, a link to another origin stops frames until the tab returns.
+  - LB-10 Every `LiveInputEvent` maps to one `Input.dispatchMouseEvent` or `Input.dispatchKeyEvent` with Shift as the only modifier; file choosers and downloads are refused while controlled.
+  - LB-11 An unknown message, a message over 4 KiB, a binary message from the browser, or anything before `hello` ends the channel with `end { reason: 'protocol-error' }` and close 1008.
+  - LB-12 Every media message decodes with `decodeLiveMedia`, is at most 64 KiB, and no third frame is sent before an ack.
+  - LB-13 With a fake clock: no attach in 30 s ends with `not-attached`, `endsAt` with `expired`, 2 minutes without a controller's input with `idle`; watchers are not idle-ended.
+  - LB-14 Revoking the gateway session or removing the member ends their sessions with `revoked`.
+  - LB-15 A help request goes `pending` (tab `waiting`), `in-progress` on control, `resolved` with `handed-back`, `dismissed`, `blocked-origin` or `cancelled` (the agent's work closed the tab); its `message` is stored as plain text.
+  - LB-16 After a session in which `hunter2` was typed, the audit log holds the `browser.*` entries and neither the typed text nor a URL path.
+  - LB-17 `browser-tab.changed` and `browser-help.changed` go out, IDs only, to members with `browser.watch` only.
+- **Test cases (by hand, on a headless VPS engine with the setting on):**
+  - LB-20 An agent task browses a site; a member watches it from the engine UI and sees it move; the relay's packet capture shows only TLS.
+  - LB-21 The agent hits a captcha and raises a help request; the owner gets it in the UI, takes control in one click with a passkey, solves it, hands back, and the agent carries on and mentions the outcome.
+  - LB-22 The owner opens a sign-in tab at a Wallet login's origin, signs in, ends it; the agent's next task is signed in.
+  - LB-23 During control, opening the browser's settings or the Wallet's entry stops the frames until the tab leaves it.
+  - LB-24 Leaving a controlled tab alone for 2 minutes ends the session as `idle` and the agent resumes.
+  - LB-25 `ptbk-conformance` runs the `engine-api.browser-tab.*` checks with the engine's test-mode levers ([conformance.md](conformance.md#writing-a-target)) and none fails.
+
 ### 2026-11-18: Sign-in shows ways forward without a passkey
 
 - **Changed:** [`sign-in.html`, `gateway.js` and `gateway.css`](../../packages/gateway-pages/pages/) in `@ptbk/gateway-pages`. Under the sign-in button, and after a cancelled, failed or unrecognised passkey, the page says what to do without a passkey for this engine on this device: use the phone option in the browser's prompt, use a synced passkey or the device that has it, or open the engine from the Promptbook dashboard to join. The copy sits once after the sections in an element with `data-shown-in="<states>"`, which `gateway.js` shows only in those states. The button still opens the prompt only on a click. Endpoints, placeholders and CSP are unchanged ([gateway.md, Sessions](gateway.md#sessions)).
