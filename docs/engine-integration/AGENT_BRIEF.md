@@ -24,6 +24,21 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-20: PRIORITY: our UI out of the box, with a staging build of `ptbk`
+
+- **Changed:** Decided 2026-11-20, described in [ui-loader.md, Staging builds](ui-loader.md#staging-builds), until the key ceremony:
+  - The published `ptbk` is a staging build. Its build profile is fixed at build time and never read at runtime.
+  - It embeds the platform's staging trust policy and the staging defaults (`https://ui.ptbk.link/`, `engines.ptbk.link`).
+  - For the trust policy it is not production, whatever `NODE_ENV` says. Like a production build, it refuses `PTBK_CONFORMANCE_TRUST_FILE`.
+  - `ptbk init --prepare-only --link` approves the first UI bundle by hand, so our UI is the first page without the 5-minute wait.
+  - New checklist item ENG-121, with test cases STG-01 to STG-24. ENG-59, ENG-116, [installation.md, Configuration](installation.md#configuration) and [staging.md, Settings](staging.md#settings) follow.
+- **Redo:**
+  - **Do this first, before the 2026-11-19 entry.** Without it, an engine installed with `npm install` and one command serves only the plain engine page, so the owner never reaches setup in the browser.
+  - Add the build-time profile. Embed `trust-policy.staging.json` from a pinned platform commit, check its SHA-256 at build, and default the release URL and engine domain in staging builds. Publish the npm package as a staging build.
+  - Let the profile, not `NODE_ENV`, decide the trust policy in a staging build. The installed service keeps `NODE_ENV=production`, and production builds keep refusing staging policies.
+  - Treat `ptbk init --prepare-only --link` as the installer for the first bundle: `mode: 'manual'` for that bundle only, with every other check.
+  - Write the engine tests STG-01 to STG-14, then run STG-20 to STG-24 on a clean machine. Done when a clean install from the block on app.ptbk.io passes `ptbk-conformance staging` with no `PTBK_*` variable set anywhere.
+
 ### 2026-11-19: Setup in the browser after pairing: new input kinds
 
 - **Changed:** `onboarding@1` gains what the App flow needs so the owner never goes back to the terminal after pairing ([engine-api.md, Onboarding](engine-api.md#onboarding), [onboarding.ts](../../packages/engine-api/src/capabilities/onboarding.ts)). The prompt kinds are now a fixed vocabulary the UI ships first; you compose and reorder steps from them freely. New: a `secret` prompt kind and answer (API keys; never presented back, logged or kept in the draft); `details` and `alternatives` on every prompt, with `{ action: alternative, alternativeId }` (an alternative with `href` is a same-origin link the UI opens, not an answer); `activity` on the state (each install or check `running`, `done`, `failed` with its reason, or `skipped`); `canDefer` with problem `onboarding-not-deferrable`. The heartbeat gains optional `setup: pending | done` ([heartbeat.md](heartbeat.md)). The platform's signed UI renders setup on a pending engine; it reads unknown prompt kinds as unsupported and points at `ptbk onboarding`.
