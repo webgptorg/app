@@ -14,13 +14,13 @@ describe('trust page', () => {
             screen.getByText(/stay on your own server\. We connect you to them, but we can't read them\./),
         ).toBeTruthy();
 
-        const path = screen.getByRole('region', { name: 'How you reach your engine' });
+        const path = screen.getByRole('region', { name: 'How you reach your project' });
         expect(
             within(path)
                 .getAllByRole('heading', { level: 3 })
                 .map((heading) => heading.textContent),
-        ).toEqual(['Your browser', 'Our relay', 'Your engine', 'This dashboard']);
-        expect(within(path).getByText(/Passes the sealed traffic on to your engine\. It can't open it\./)).toBeTruthy();
+        ).toEqual(['Your browser', 'Our relay', 'Your project', 'This dashboard']);
+        expect(within(path).getByText(/Passes the sealed traffic on to your project\. It can't open it\./)).toBeTruthy();
         expect(within(path).getByText(/Holds your data and its keys\./)).toBeTruthy();
         expect(within(path).getByText(/Never what is inside them\./)).toBeTruthy();
 
@@ -44,11 +44,11 @@ describe('trust page', () => {
 
         const can = screen.getByRole('region', { name: 'What we can do' });
         expect(within(can).getByText(/Never names or text\./)).toBeTruthy();
-        expect(within(can).getByText(/unless your engine's owner turns that off/)).toBeTruthy();
+        expect(within(can).getByText(/unless your project's owner turns that off/)).toBeTruthy();
         expect(within(can).getByText(/your agents keep running and nothing is lost/)).toBeTruthy();
 
         const check = screen.getByRole('region', { name: 'Check it yourself' });
-        expect(within(check).getByText(/enter nothing there and open your engine from this dashboard/)).toBeTruthy();
+        expect(within(check).getByText(/enter nothing there and open your project from this dashboard/)).toBeTruthy();
         const source = within(check).getByRole('link', { name: /^read its code/ });
         expect(source.getAttribute('href')).toBe('https://github.com/webgptorg/promptbook');
         expect(source.getAttribute('rel')).toBe('noopener noreferrer');
@@ -61,7 +61,7 @@ describe('trust page', () => {
     it('stays the same page for someone signed in', async () => {
         renderApp({ path: '/trust', session: session() });
         expect(await screen.findByRole('heading', { name: 'How Promptbook protects you', level: 1 })).toBeTruthy();
-        expect(screen.queryByRole('heading', { name: 'Your engines' })).toBeNull();
+        expect(screen.queryByRole('heading', { name: 'Your projects' })).toBeNull();
     });
 
     it('does not link to itself from its footer', async () => {

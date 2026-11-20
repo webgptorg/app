@@ -23,7 +23,7 @@ describe('billing for a Czech browser', () => {
         });
         expect(await screen.findByRole('heading', { name: 'Fakturace', level: 1 })).toBeTruthy();
         expect(
-            await screen.findByRole('heading', { name: 'Vyberte si tarif a připojte enginy', level: 2 }),
+            await screen.findByRole('heading', { name: 'Vyberte si tarif a připojte projekty', level: 2 }),
         ).toBeTruthy();
         expect(screen.getByText('Nezahrnuto')).toBeTruthy();
         expect(screen.getByRole('heading', { name: 'Standard', level: 3 })).toBeTruthy();

@@ -88,7 +88,7 @@ test('an existing account on a new device and a new address get the same answer,
         await page.getByRole('button', { name: 'Register new passkey' }).click();
         await expect(page.getByRole('heading', { name: 'Access recovered' })).toBeVisible();
         await page.goto(`${DASHBOARD_ORIGIN}/`);
-        await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
         expect(await newDevice.passkeys(new URL(DASHBOARD_ORIGIN).hostname)).toBe(1);
     });
 
@@ -97,7 +97,7 @@ test('an existing account on a new device and a new address get the same answer,
         expect((await dashboard.emails(fresh)).map((email) => email.template)).toEqual(['signup-link']);
         await page.goto(await dashboard.emailedLink(fresh, 'signup-link'));
         await page.getByRole('button', { name: 'Create passkey' }).click();
-        await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
     });
 
     await newDevice.page.context().close();

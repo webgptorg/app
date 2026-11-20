@@ -156,10 +156,10 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         await page.goto(`${DASHBOARD_ORIGIN}/engines/new`);
         if (BILLING_OFF) {
             await expect(page).toHaveURL(/\/engines\/new\?link=[a-z2-7]{26}$/);
-            await expect(page.getByRole('heading', { name: 'Choose a plan to link your engine' })).toHaveCount(0);
+            await expect(page.getByRole('heading', { name: 'Choose a plan to link your project' })).toHaveCount(0);
             return;
         }
-        await expect(page.getByRole('heading', { name: 'Choose a plan to link your engine' })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Choose a plan to link your project' })).toBeVisible();
         await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
         await expect(page.getByText('Thank you, your trial has started.')).toBeVisible();
         // Thanked once: the address no longer carries `checkout`, so a reload does not thank again.
@@ -194,12 +194,12 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         await expect(row('linked').getByText(identity.fingerprint, { exact: true })).toBeVisible();
         await expect(row('linked').getByText(identity.hostname, { exact: true })).toBeVisible();
         await expect(row('online')).toHaveAttribute('data-step-state', 'done', { timeout: NEXT_HEARTBEAT_MS });
-        await expect(row('online').locator('p')).toHaveText(/^Engine online, version \S+\.$/);
+        await expect(row('online').locator('p')).toHaveText(/^Project online, version \S+\.$/);
         await expect(row('reachable')).toHaveAttribute('data-step-state', 'done', { timeout: REACHABLE_WITHIN_MS });
         await expect(row('reachable')).toContainText('Reachable through 2 relays');
         await expect(progress).toHaveAttribute('data-link-state', 'owner-pending');
         await expect(row('owner')).toHaveAttribute('data-step-state', 'current');
-        await expect(row('owner')).toContainText('browser window that opened on the engine');
+        await expect(row('owner')).toContainText('browser window that opened on the project');
     });
 
     const setupLink = parseSetupLink(await takeSetupLink(engine));
@@ -229,9 +229,9 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
 
     await test.step('"Continue setup" opens the engine on its setup, signed in, with no passkey prompt', async () => {
         const ready = page.locator('[data-link-ready]');
-        await expect(ready.getByRole('link', { name: 'Back to engines' })).toBeVisible();
+        await expect(ready.getByRole('link', { name: 'Back to projects' })).toBeVisible();
         // The engine reports its setup unfinished, so the ready panel continues it rather than opening the engine (D-36).
-        const open = ready.getByRole('link', { name: /^Continue setup on engine/ });
+        const open = ready.getByRole('link', { name: /^Continue setup on project/ });
         await expect(open).toHaveAttribute('href', `https://${identity.hostname}/`);
         const [appPage] = await Promise.all([context.waitForEvent('page'), open.click()]);
         await appPage.waitForLoadState('load');
@@ -260,9 +260,9 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         const [online, ...more] = await onlineEmails();
         expect(more).toEqual([]);
         // Unnamed when its first heartbeat arrives, so the email names it by its short ID and gives the address below.
-        expect(online?.subject).toBe(`Your engine ${identity.hostname.slice(0, 8)}… is online`);
+        expect(online?.subject).toBe(`Your project ${identity.hostname.slice(0, 8)}… is online`);
         expect(online?.text).toContain(identity.hostname);
-        expect(online?.text).toContain("open the setup link in the engine's terminal");
+        expect(online?.text).toContain("open the setup link in the project's terminal");
     });
 
     const engineRow = async () => (await dashboard.reloadEngineRows()).filter({ hasText: identity.hostname });

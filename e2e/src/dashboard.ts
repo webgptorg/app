@@ -135,7 +135,7 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
         if (link === undefined) throw new Error('no emailed link');
         return link;
     };
-    const landing = page.getByRole('heading', { name: 'Engines', level: 1 });
+    const landing = page.getByRole('heading', { name: 'Projects', level: 1 });
     return {
         origin: DASHBOARD_ORIGIN,
         async signUp(email) {
@@ -206,7 +206,7 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
             await page.goto(`${DASHBOARD_ORIGIN}/engines/all`);
             const rows = page.getByRole('row').filter({ hasText: `.${ENGINE_DOMAIN}` });
             // Loaded: engine rows or the empty state, not the skeleton rows shown while the list loads.
-            await expect(rows.first().or(page.getByText('No engines yet', { exact: true }))).toBeVisible();
+            await expect(rows.first().or(page.getByText('No projects yet', { exact: true }))).toBeVisible();
             return rows;
         },
     };

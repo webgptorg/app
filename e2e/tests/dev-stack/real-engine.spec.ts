@@ -56,7 +56,7 @@ test('sign up, link the real engine with dev:link, see it listed, open it and be
             context.waitForEvent('page'),
             context.waitForEvent('response', (candidate) => new URL(candidate.url()).hostname === engineHost),
             engineRow(page)
-                .getByRole('link', { name: /^(Open|Continue setup on) engine/ })
+                .getByRole('link', { name: /^(Open|Continue setup on) project/ })
                 .click(),
         ]);
         await opened.waitForLoadState('load');
