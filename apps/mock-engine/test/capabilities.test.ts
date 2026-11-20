@@ -197,11 +197,14 @@ describe('capabilities through the mock HTTP server (contract)', () => {
         const coreFeatures = new Set<string>(
             [members, apiTokens, audit, bookEditor, agentManagement].map(({ id }) => id),
         );
+        // Voice is served only with `MOCK_VOICE`; voice.test.ts answers its routes.
+        const notServed = new Set<string>([KNOWN_CAPABILITIES.voiceInput.id, KNOWN_CAPABILITIES.voiceOutput.id]);
         const capabilityRoutes = ENGINE_API_ROUTE_LIST.filter(
             (route) =>
                 route.capability !== undefined &&
                 !isReservedCapability(route.capability) &&
-                !coreFeatures.has(route.capability.id),
+                !coreFeatures.has(route.capability.id) &&
+                !notServed.has(route.capability.id),
         ).map(({ id }) => id);
         expect([...answered].filter((id) => id !== 'listActivity').sort()).toEqual([...capabilityRoutes].sort());
     });
@@ -220,7 +223,9 @@ describe('capabilities through the mock HTTP server (contract)', () => {
                     ? { headers: { 'content-type': 'application/json' }, body: '{}' }
                     : route.body?.kind === 'multipart'
                       ? { body: new FormData() }
-                      : {}),
+                      : route.body?.kind === 'binary'
+                        ? { body: new Blob([], { type: route.body.mediaTypes[0] ?? '' }) }
+                        : {}),
             });
             const body = (await response.json()) as { code?: string };
             if (route.capability.id === 'runs') expect(body.code, route.id).not.toBe('capability-not-supported');
