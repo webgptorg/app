@@ -15,9 +15,18 @@ const STATE_COOKIE = '__Host-ptbk_website_state';
 const LINK_COOKIE = '__Host-ptbk_website_link';
 const DAY = 86_400_000;
 
-function websiteHarness(): AuthHarness & { readonly state: MemoryAuthState } {
+function websiteHarness(
+    licenseEnforcement?: 'advisory' | 'enforce',
+): AuthHarness & { readonly state: MemoryAuthState } {
     const store = createMemoryAuthStore();
-    return Object.assign(createAuthHarness({ store, billing: 'website' }), { state: store.state });
+    return Object.assign(
+        createAuthHarness({
+            store,
+            billing: 'website',
+            ...(licenseEnforcement === undefined ? {} : { licenseEnforcement }),
+        }),
+        { state: store.state },
+    );
 }
 
 function subject(): string {
@@ -441,5 +450,69 @@ describe('billing website: licences', () => {
         harness.clock.advance(2 * DAY);
         expect(await license(browser)).toMatchObject({ notice: 'expired', grants: [{ active: false }] });
         await linkEngine(harness, browser);
+    });
+});
+
+describe('billing website: licence check points', () => {
+    const invite = (browser: TestBrowser, emails: readonly string[]) =>
+        browser.request('POST', '/api/invites', { emails, role: 'member', teamIds: [] });
+
+    it('advisory (the default): warns in the licence view, and links and invites beyond the licence', async () => {
+        const harness = websiteHarness();
+        const { browser } = await linkedOwner(harness, [grant({ engineProjects: 1, controllingUsers: 1 })]);
+        await linkEngine(harness, browser);
+        expect(await license(browser)).toMatchObject({
+            enforcement: 'advisory',
+            checks: {
+                engineLink: { outcome: 'warn', reason: 'over-limit' },
+                memberInvite: { outcome: 'warn', reason: 'over-limit' },
+            },
+        });
+        const callsBefore = harness.website.calls.length;
+        await linkEngine(harness, browser);
+        expect((await invite(browser, ['eve@example.test'])).status).toBe(200);
+        // The gate does not read the licence in advisory mode; only the screens do.
+        expect(harness.website.calls).toHaveLength(callsBefore);
+    });
+
+    it('enforce: refuses a new engine or person beyond the licence, never what already runs', async () => {
+        const harness = websiteHarness('enforce');
+        const { browser } = await linkedOwner(harness, [grant({ engineProjects: 1, controllingUsers: 2 })]);
+        expect((await license(browser)).checks.engineLink).toEqual({ outcome: 'ok', reason: null });
+        await linkEngine(harness, browser);
+        expect((await license(browser)).checks).toEqual({
+            engineLink: { outcome: 'deny', reason: 'over-limit' },
+            memberInvite: { outcome: 'ok', reason: null },
+        });
+        const refused = await browser.request('POST', '/api/engines/link-codes');
+        expect(refused.status).toBe(403);
+        expect(problemCode(refused)).toBe('engine-limit');
+        const eligibility = await browser.request('GET', '/api/engines/link-eligibility');
+        expect(eligibility.body).toMatchObject({ eligibility: 'engine-limit' });
+
+        const tooMany = await invite(browser, ['eve@example.test', 'fay@example.test']);
+        expect(tooMany.status).toBe(403);
+        expect(problemCode(tooMany)).toBe('license-limit');
+        expect((await invite(browser, ['eve@example.test'])).status).toBe(200);
+
+        const engines = await browser.request('GET', '/api/engines');
+        expect(engines.status).toBe(200);
+    });
+
+    it('enforce: lets an organization link when the website does not answer', async () => {
+        const harness = websiteHarness('enforce');
+        const { browser } = await linkedOwner(harness);
+        harness.website.outage = 503;
+        expect((await license(browser)).checks.engineLink).toEqual({ outcome: 'ok', reason: null });
+        await linkEngine(harness, browser);
+    });
+
+    it('enforce: refuses to link an engine without a linked ptbk.io account', async () => {
+        const harness = websiteHarness('enforce');
+        const browser = harness.browser();
+        await signUp(harness, browser);
+        const refused = await browser.request('POST', '/api/engines/link-codes');
+        expect(refused.status).toBe(403);
+        expect(problemCode(refused)).toBe('not-entitled');
     });
 });

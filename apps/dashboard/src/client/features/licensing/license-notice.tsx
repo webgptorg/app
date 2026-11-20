@@ -17,13 +17,18 @@ const MESSAGES: Readonly<Record<NonNullable<LicenseView['notice']>, () => string
     exceeded: () => m.license_notice_exceeded(),
 };
 
+/** True for whoever may read the licence, with billing `website`; nobody else asks for it. */
+export function useLicenseReadable(): boolean {
+    const session = useSession();
+    return session.licensing && session.activeOrg.permissions.includes(READ_PERMISSION);
+}
+
 /**
  * A quiet line on the engines screen when licences are missing, expired or exceeded. Advisory (ADR 0021): it never
  * blocks anything, and nothing renders while the licence loads, fails or is simply unknown.
  */
 export function LicenseNotice() {
-    const session = useSession();
-    const enabled = session.licensing && session.activeOrg.permissions.includes(READ_PERMISSION);
+    const enabled = useLicenseReadable();
     const api = useApiClient();
     const license = useQuery({ ...licenseQuery(api), enabled });
     const notice = enabled ? license.data?.notice : null;

@@ -38,6 +38,8 @@ import { createFixedEntitlements } from '../domain/billing/entitlements';
 import { createAdvisoryEntitlements } from '../domain/licensing/advisory-entitlements';
 import type { WebsiteLicensingStore } from '../domain/licensing/website-licensing-store';
 import { createFakeWebsite, FAKE_HANDOFF_URL, type FakeWebsite } from './fake-website';
+import { createWebsiteIdentityExchange } from '../adapters/licensing/website-handoff-client';
+import { createWebsiteLicenseHttpApi } from '../adapters/licensing/website-license-api';
 import { syntheticLicenseSecret } from './licensing-fixtures';
 import { createMemoryWebsiteLicensingStore } from './memory-website-licensing-store';
 import { createPlanCatalogue, planCatalogueSchema } from '../domain/billing/plan-catalogue';
@@ -142,6 +144,14 @@ function matches(pattern: string, path: string): boolean {
     return want.length === got.length && want.every((part, index) => part.startsWith(':') || part === got[index]);
 }
 
+/** The real HTTP adapters, talking to the fake website, so the handoff and licence tests cover them too. */
+function websitePorts(
+    store: WebsiteLicensingStore,
+    api: { readonly websiteOrigin: string; readonly secret: string; readonly fetch: typeof fetch },
+) {
+    return { store, licenses: createWebsiteLicenseHttpApi(api), identities: createWebsiteIdentityExchange(api) };
+}
+
 /** Outputs are strict schemas: a field the contract does not declare fails the test that caused it. */
 function expectDeclaredOutput(routes: readonly RouteContract[], method: string, path: string, text: string): void {
     const route = routes.find((candidate) => candidate.method === method && matches(candidate.path, path));
@@ -162,6 +172,8 @@ export function createAuthHarness(options: {
     readonly billing?: 'fake' | 'off' | 'website';
     /** With billing `website`; an in-memory store by default (the D1 one in the workers project). */
     readonly websiteLicensing?: WebsiteLicensingStore;
+    /** With billing `website`: `LICENSE_ENFORCEMENT`, unset (advisory) by default. */
+    readonly licenseEnforcement?: 'advisory' | 'enforce';
     /** Defaults to an in-memory store; the auth tests that use the default never touch billing. */
     readonly billingStore?: BillingStore;
     /** Default to in-memory stores whose organizations always exist. */
@@ -225,7 +237,13 @@ export function createAuthHarness(options: {
         ...(options.billing === 'off'
             ? { BILLING_OFF_PLAN: TEST_OFF_PLAN }
             : options.billing === 'website'
-              ? { WEBSITE_HANDOFF_URL: FAKE_HANDOFF_URL, PROMPTBOOK_APP_LICENSE_SECRET: licenseSecret }
+              ? {
+                    WEBSITE_HANDOFF_URL: FAKE_HANDOFF_URL,
+                    PROMPTBOOK_APP_LICENSE_SECRET: licenseSecret,
+                    ...(options.licenseEnforcement === undefined
+                        ? {}
+                        : { LICENSE_ENFORCEMENT: options.licenseEnforcement }),
+                }
               : { BILLING_PLANS: TEST_PLANS, STRIPE_WEBHOOK_SECRET: webhookSecret }),
         ...(options.heartbeat === undefined ? {} : { HEARTBEAT: options.heartbeat }),
     });
@@ -299,7 +317,14 @@ export function createAuthHarness(options: {
             : config.billing.adapter === 'website'
               ? { billing: null, entitlements: createAdvisoryEntitlements() }
               : { billing: testBilling.billing, entitlements: testBilling.entitlements }),
-        licensing: config.billing.adapter === 'website' ? { store: websiteLicensing, fetch: website.fetch } : null,
+        licensing:
+            config.billing.adapter === 'website'
+                ? websitePorts(websiteLicensing, {
+                      websiteOrigin: config.billing.websiteOrigin,
+                      secret: config.billing.licenseSecret,
+                      fetch: website.fetch,
+                  })
+                : null,
         linkCodes: registration.linkCodes,
         engines: registration.engines,
         teams,

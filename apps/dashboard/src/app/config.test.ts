@@ -296,6 +296,7 @@ describe('parseConfig', () => {
                 websiteOrigin: 'https://www.ptbk.io',
                 handoffUrl: 'https://www.ptbk.io/cs/app/pripojit',
                 licenseSecret: secret,
+                enforcement: 'advisory',
             });
             expect(Object.isFrozen(config.billing)).toBe(true);
         });
@@ -338,6 +339,28 @@ describe('parseConfig', () => {
             expect(
                 failedPaths({ ...bindings, ...stagingWebsite, PROMPTBOOK_APP_LICENSE_SECRET: 'short-and-guessable' }),
             ).toEqual(['PROMPTBOOK_APP_LICENSE_SECRET']);
+        });
+
+        it('keeps licences advisory unless enforcement is asked for, and only enforces with website billing', () => {
+            const enforced = parseConfig({ ...bindings, ...stagingWebsite, LICENSE_ENFORCEMENT: 'enforce' });
+            expect(enforced.billing.adapter === 'website' ? enforced.billing.enforcement : null).toBe('enforce');
+            expect(failedPaths({ ...bindings, ...stagingWebsite, LICENSE_ENFORCEMENT: 'strict' })).toEqual([
+                'LICENSE_ENFORCEMENT',
+            ]);
+            expect(failedPaths({ ...bindings, ...stagingVars, LICENSE_ENFORCEMENT: 'enforce' })).toEqual([
+                'LICENSE_ENFORCEMENT',
+            ]);
+            expect(parseConfig({ ...bindings, ...stagingVars, LICENSE_ENFORCEMENT: 'advisory' }).billing.adapter).toBe(
+                'stripe',
+            );
+        });
+
+        it('enforces licences in no committed environment', () => {
+            const vars = z.object({ vars: z.record(z.string(), z.unknown()) });
+            const wrangler = vars.extend({ env: z.record(z.string(), vars) }).parse(readWranglerConfig());
+            for (const config of [wrangler, ...Object.values(wrangler.env)]) {
+                expect(config.vars['LICENSE_ENFORCEMENT'] ?? 'advisory').toBe('advisory');
+            }
         });
 
         it('lets the credential be staged, validated and unused, under another adapter', () => {

@@ -12,6 +12,7 @@ import {
 } from '../domain/billing/plan-catalogue';
 import { CT_SOURCES, type CtSourceName } from '../domain/abuse/ct-log-source';
 import { MOCK_ENGINE_SIGN_IN_FINGERPRINT } from '../domain/abuse/public-face';
+import { LICENSE_ENFORCEMENT_MODES, type LicenseEnforcement } from '../domain/licensing/license-checks';
 import { LINK_CODE_TTL_MS } from '../domain/registration/issue-link-code';
 import type { HeartbeatTiming } from '../domain/status/engine-status';
 import { DEFAULT_THRESHOLDS, thresholdsSchema, type AlertThresholds } from '../domain/monitoring/alert-rules';
@@ -169,6 +170,12 @@ const websiteHandoffUrlSchema = z
 const licenseSecretSchema = z.string().regex(/^[\x21-\x7e]{32,512}$/);
 
 /**
+ * Whether the licence check points (`engine.link`, `member.invite`) may deny, or only warn (website-licensing.md,
+ * "Enforcement"). `advisory` when unset, and in every environment today; `enforce` needs billing `website`.
+ */
+const licenseEnforcementSchema = z.enum(LICENSE_ENFORCEMENT_MODES);
+
+/**
  * Vars and secrets are JSON values. Anything else (D1, ASSETS, service bindings the runtime or the test pool adds) is a
  * runtime object that the composition root wires up; config never reads it. Every JSON value must be a known var.
  */
@@ -310,6 +317,7 @@ const varsSchema = z
         WEBSITE_ORIGIN: websiteOriginSchema.optional(),
         WEBSITE_HANDOFF_URL: websiteHandoffUrlSchema.optional(),
         PROMPTBOOK_APP_LICENSE_SECRET: licenseSecretSchema.optional(),
+        LICENSE_ENFORCEMENT: licenseEnforcementSchema.optional(),
     })
     .superRefine((vars, ctx) => {
         if (
@@ -354,6 +362,13 @@ const varsSchema = z
             if (vars.BILLING_OFF_PLAN !== undefined) {
                 ctx.addIssue({ code: 'custom', path: ['BILLING_OFF_PLAN'], message: 'only with billing off' });
             }
+        }
+        if (vars.LICENSE_ENFORCEMENT === 'enforce' && vars.ADAPTERS.billing !== 'website') {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['LICENSE_ENFORCEMENT'],
+                message: 'needs the website billing adapter',
+            });
         }
         if (vars.ADAPTERS.billing === 'website') {
             for (const name of ['WEBSITE_HANDOFF_URL', 'PROMPTBOOK_APP_LICENSE_SECRET'] as const) {
@@ -440,6 +455,7 @@ export type BillingConfig =
           readonly handoffUrl: string;
           /** Secret: the website's App credential; server to server only. */
           readonly licenseSecret: string;
+          readonly enforcement: LicenseEnforcement;
       }
     | { readonly adapter: 'off'; readonly grant: PlanEntitlements }
     | { readonly adapter: 'stripe' | 'fake'; readonly plans: PlanCatalogue };
@@ -560,6 +576,7 @@ function billingConfig(parsed: z.infer<typeof varsSchema>): BillingConfig {
             websiteOrigin: parsed.WEBSITE_ORIGIN ?? DEFAULT_WEBSITE_ORIGIN,
             handoffUrl: parsed.WEBSITE_HANDOFF_URL as string,
             licenseSecret: parsed.PROMPTBOOK_APP_LICENSE_SECRET as string,
+            enforcement: parsed.LICENSE_ENFORCEMENT ?? 'advisory',
         });
     }
     return adapter === 'off'

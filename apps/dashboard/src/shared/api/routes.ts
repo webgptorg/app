@@ -342,15 +342,27 @@ const SMALL_BODY_BYTES = 1024;
 
 const capacitySchema = z.number().int().nonnegative().nullable();
 
-/** ADR 0021's advisory licence view; numbers and dates from the website, never a price or a plan name. */
+const licenseCheckSchema = z.strictObject({
+    outcome: z.enum(['ok', 'warn', 'deny']),
+    reason: z.enum(['unlinked', 'missing', 'expired', 'over-limit']).nullable(),
+});
+export type LicenseCheckView = z.infer<typeof licenseCheckSchema>;
+
+/** ADR 0021's licence view: numbers, dates and the website's own plan name; never a price. */
 export const licenseViewSchema = z.strictObject({
     /** The website account linked to the active organization, by whoever linked it. */
     link: z.strictObject({ linkedAt: timestampSchema, linkedByEmail: z.string().nullable() }).nullable(),
     /** `stale`: the website did not answer and this is the last snapshot; `unknown`: there is none. */
     state: z.enum(['current', 'stale', 'unknown']),
+    /** Null while unknown; `trial`, `scheduled` and `expired` as the website and the grants say. */
+    status: z.enum(['active', 'trial', 'scheduled', 'expired', 'none']).nullable(),
+    /** The plan's name as the website writes it; plain text, never an entitlement. */
+    label: z.string().max(160).nullable(),
+    /** When the licence ends, ended or starts; null without an end date or a licence. */
+    term: z.strictObject({ kind: z.enum(['ends', 'ended', 'starts']), at: z.string() }).nullable(),
     checkedAt: z.string().nullable(),
-    /** An https page on the website origin; the server checked it. */
-    manageUrl: z.string().nullable(),
+    /** An https page on the website origin, which the server checked; the website's pricing page without a licence. */
+    manageUrl: z.string(),
     grants: z.array(
         z.strictObject({
             id: z.string(),
@@ -380,6 +392,10 @@ export const licenseViewSchema = z.strictObject({
         .nullable(),
     /** Advisory: nothing is ever blocked by it. */
     notice: z.enum(['unlinked', 'missing', 'expired', 'exceeded']).nullable(),
+    /** `LICENSE_ENFORCEMENT`: `advisory` warns at the check points, `enforce` may deny there. */
+    enforcement: z.enum(['advisory', 'enforce']),
+    /** How each check point would answer one more engine or person now. */
+    checks: z.strictObject({ engineLink: licenseCheckSchema, memberInvite: licenseCheckSchema }),
 });
 export type LicenseView = z.infer<typeof licenseViewSchema>;
 
@@ -1208,7 +1224,8 @@ export const apiRoutes = {
         output: z.strictObject({
             results: z.array(z.strictObject({ email: z.string(), outcome: z.enum(['invited', 'added']) })),
         }),
-        errorCodes: ['invalid-email', 'team-not-found'],
+        // `license-limit` (403): only with `LICENSE_ENFORCEMENT` `enforce`, which no environment sets yet.
+        errorCodes: ['invalid-email', 'team-not-found', 'license-limit'],
     }),
     resendInvite: defineRoute({
         method: 'POST',

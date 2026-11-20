@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { LicenseGrant, LicenseSnapshot } from './license-contract';
+import type { LicenseGrant, LicenseSnapshot, WebsiteLicense, WebsiteLicenseStatus } from './license-contract';
 import { summarizeLicense } from './license-summary';
 
 const now = Date.parse('2026-11-16T12:00:00.000Z');
@@ -40,13 +40,24 @@ function snapshot(grants: readonly LicenseGrant[]): LicenseSnapshot {
     };
 }
 
-const current = (grants: readonly LicenseGrant[]) => ({ kind: 'current', snapshot: snapshot(grants) }) as const;
+function license(
+    grants: readonly LicenseGrant[],
+    website: { readonly status?: WebsiteLicenseStatus; readonly label?: string } = {},
+): WebsiteLicense {
+    return { snapshot: snapshot(grants), status: website.status ?? null, label: website.label ?? null };
+}
+
+const current = (grants: readonly LicenseGrant[], website?: Parameters<typeof license>[1]) =>
+    ({ kind: 'current', license: license(grants, website) }) as const;
 
 describe('summarizeLicense', () => {
     it('asks an unlinked organization to link, and shows nothing it does not know for a linked one', () => {
         const usage = { engines: 2, people: 3 };
         expect(summarizeLicense({ linked: false, read: { kind: 'unknown' }, usage, now })).toEqual({
             state: 'unknown',
+            status: null,
+            label: null,
+            term: null,
             checkedAt: null,
             manageUrl: null,
             grants: [],
@@ -133,10 +144,73 @@ describe('summarizeLicense', () => {
     it('shows the last snapshot during an outage as stale, with when it was checked', () => {
         const summary = summarizeLicense({
             linked: true,
-            read: { kind: 'stale', snapshot: snapshot([grant('one')]) },
+            read: { kind: 'stale', license: license([grant('one')]) },
             usage: { engines: 1, people: 1 },
             now,
         });
         expect(summary).toMatchObject({ state: 'stale', checkedAt: '2026-11-16T10:00:00.000Z', notice: null });
+    });
+
+    describe('status, plan name and term', () => {
+        const at = (days: number) => new Date(now + days * DAY).toISOString();
+        const summary = (read: ReturnType<typeof current>) =>
+            summarizeLicense({ linked: true, read, usage: { engines: 1, people: 1 }, now });
+
+        it('is active until the last active grant ends, and has no end while any grant is open-ended', () => {
+            expect(
+                summary(
+                    current([grant('b', {}, { validUntil: at(10) }), grant('a', {}, { validUntil: at(3) })], {
+                        label: 'Business',
+                    }),
+                ),
+            ).toMatchObject({ status: 'active', label: 'Business', term: { kind: 'ends', at: at(10) } });
+            expect(summary(current([grant('a', {}, { validUntil: at(3) }), grant('open')]))).toMatchObject({
+                status: 'active',
+                label: null,
+                term: null,
+            });
+        });
+
+        it('takes a trial from the website, but only while a grant is active', () => {
+            const trial = grant('trial', {}, { validUntil: at(14) });
+            expect(summary(current([trial], { status: 'trial' }))).toMatchObject({
+                status: 'trial',
+                term: { kind: 'ends', at: at(14) },
+            });
+            const ended = grant('trial', {}, { validFrom: at(-15), validUntil: at(-1) });
+            expect(summary(current([ended], { status: 'trial' }))).toMatchObject({
+                status: 'expired',
+                term: { kind: 'ended', at: at(-1) },
+                notice: 'expired',
+            });
+        });
+
+        it('says when a future grant starts, and when the last one ended', () => {
+            expect(
+                summary(current([grant('sooner', {}, { validFrom: at(5) }), grant('later', {}, { validFrom: at(9) })])),
+            ).toMatchObject({
+                status: 'scheduled',
+                term: { kind: 'starts', at: at(5) },
+            });
+            expect(
+                summary(
+                    current([
+                        grant('old', {}, { validFrom: at(-40), validUntil: at(-20) }),
+                        grant('newer', {}, { validFrom: at(-20), validUntil: at(-2) }),
+                    ]),
+                ),
+            ).toMatchObject({ status: 'expired', term: { kind: 'ended', at: at(-2) } });
+        });
+
+        it('trusts the website for an ended or future licence it sends without grants, and is none otherwise', () => {
+            expect(summary(current([], { status: 'expired' }))).toMatchObject({
+                status: 'expired',
+                term: null,
+                notice: 'expired',
+            });
+            expect(summary(current([], { status: 'scheduled' }))).toMatchObject({ status: 'scheduled', term: null });
+            expect(summary(current([], { status: 'active' }))).toMatchObject({ status: 'none', notice: 'missing' });
+            expect(summary(current([]))).toMatchObject({ status: 'none', term: null });
+        });
     });
 });

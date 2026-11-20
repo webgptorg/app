@@ -3,13 +3,15 @@ import { describe, expect, it } from 'vitest';
 
 import { apiRoutes, type LicenseView, type WebsitePendingView } from '../../../shared/api/routes';
 import { expectNoAxeViolations } from '../../testing/axe';
-import { NOW, session } from '../../testing/fixtures';
+import { INSTALL_GUIDE_URL, NOW, session } from '../../testing/fixtures';
 import { renderApp } from '../../testing/render-app';
 import type { ScriptedApi } from '../../testing/scripted-api';
 import { ok, problem } from '../../testing/scripted-api';
 import { afterSignUp, rememberWebsiteLink } from './website-link-marker';
 
 const DAY = 86_400_000;
+const MANAGE_URL = 'https://www.ptbk.io/cs/pricing/predplatne';
+const OK_CHECK = { outcome: 'ok', reason: null } as const;
 const MANAGER = session({
     licensing: true,
     billingEnabled: false,
@@ -39,11 +41,16 @@ export function licenseView(overrides: Partial<LicenseView> = {}): LicenseView {
     return {
         link: { linkedAt: NOW - 3 * DAY, linkedByEmail: 'ada@example.test' },
         state: 'current',
+        status: 'active',
+        label: null,
+        term: null,
         checkedAt: new Date(NOW - 2 * 3_600_000).toISOString(),
-        manageUrl: 'https://www.ptbk.io/cs/pricing/predplatne',
+        manageUrl: MANAGE_URL,
         grants: [grant()],
         coverage: { engines: { used: 1, covered: 1, capacity: 1 }, people: { used: 2, limit: 5 } },
         notice: null,
+        enforcement: 'advisory',
+        checks: { engineLink: OK_CHECK, memberInvite: OK_CHECK },
         ...overrides,
     };
 }
@@ -107,8 +114,8 @@ describe('license page', () => {
                 licenseView({
                     link: null,
                     state: 'unknown',
+                    status: null,
                     checkedAt: null,
-                    manageUrl: null,
                     grants: [],
                     coverage: null,
                     notice: 'unlinked',
@@ -134,8 +141,8 @@ describe('license page', () => {
                 licenseView({
                     link: { linkedAt: NOW - DAY, linkedByEmail: null },
                     state: 'unknown',
+                    status: null,
                     checkedAt: null,
-                    manageUrl: null,
                     grants: [],
                     coverage: null,
                 }),
@@ -143,7 +150,9 @@ describe('license page', () => {
         });
         expect(await screen.findByText(/hasn’t answered yet/)).toBeTruthy();
         expect(screen.getByText(/^Linked on /)).toBeTruthy();
-        expect(screen.queryByRole('link', { name: /Manage on ptbk\.io/ })).toBeNull();
+        expect(screen.getByText('ptbk.io license')).toBeTruthy();
+        expect(screen.getByText('Not checked')).toBeTruthy();
+        expect(screen.queryByLabelText('Limits and usage')).toBeNull();
     });
 
     it('offers a retry when the licence cannot be loaded', async () => {
@@ -186,6 +195,161 @@ describe('license page', () => {
         const app = renderApp({ path: '/billing', session: MANAGER, script: withLicense(licenseView()) });
         expect(await screen.findByRole('heading', { name: 'License', level: 1 })).toBeTruthy();
         expect(app.history.location.pathname).toBe('/license');
+    });
+});
+
+describe('license status', () => {
+    it('shows the plan, its state and when it ends, with the manage link', async () => {
+        const app = renderApp({
+            path: '/license',
+            session: MANAGER,
+            script: withLicense(
+                licenseView({ label: 'Business', term: { kind: 'ends', at: new Date(NOW + 10 * DAY).toISOString() } }),
+            ),
+        });
+        const status = await screen.findByRole('region', { name: 'Your license' });
+        expect(within(status).getByText('Business')).toBeTruthy();
+        expect(within(status).getByText('Active')).toBeTruthy();
+        expect(within(status).getByText(/^Valid until /)).toBeTruthy();
+        expect(
+            within(status)
+                .getByRole('link', { name: /Manage on ptbk\.io/ })
+                .getAttribute('href'),
+        ).toBe(MANAGE_URL);
+        const limits = within(status).getByLabelText('Limits and usage');
+        expect(within(limits).getByText('Projects')).toBeTruthy();
+        expect(within(limits).getByText('People')).toBeTruthy();
+        await expectNoAxeViolations(app.container);
+    });
+
+    it.each([
+        ['trial', { kind: 'ends', at: NOW + 5 * DAY }, 'Trial', /^Trial ends /],
+        ['scheduled', { kind: 'starts', at: NOW + 5 * DAY }, 'Starts later', /^Starts (?!later)/],
+        ['expired', { kind: 'ended', at: NOW - 5 * DAY }, 'Expired', /^Ended /],
+    ] as const)('words a %s licence calmly', async (status, term, pill, line) => {
+        renderApp({
+            path: '/license',
+            session: MANAGER,
+            script: withLicense(
+                licenseView({
+                    status,
+                    term: { kind: term.kind, at: new Date(term.at).toISOString() },
+                    grants: status === 'trial' ? [grant()] : [],
+                }),
+            ),
+        });
+        const region = await screen.findByRole('region', { name: 'Your license' });
+        expect(within(region).getByText(pill)).toBeTruthy();
+        expect(within(region).getByText(line)).toBeTruthy();
+        expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('names several licences without a plan name, and says when there is no end date', async () => {
+        renderApp({
+            path: '/license',
+            session: MANAGER,
+            script: withLicense(licenseView({ grants: [grant(), grant()] })),
+        });
+        const region = await screen.findByRole('region', { name: 'Your license' });
+        expect(within(region).getByText('2 licenses')).toBeTruthy();
+        expect(within(region).getByText('No end date')).toBeTruthy();
+    });
+
+    it('shows a quiet "No license" with a way to buy and to link, without a status pill', async () => {
+        renderApp({
+            path: '/license',
+            session: MANAGER,
+            script: withLicense(
+                licenseView({
+                    link: null,
+                    state: 'unknown',
+                    status: null,
+                    checkedAt: null,
+                    grants: [],
+                    coverage: null,
+                    notice: 'unlinked',
+                }),
+            ),
+        });
+        const region = await screen.findByRole('region', { name: 'Your license' });
+        expect(within(region).getByText('No license')).toBeTruthy();
+        expect(
+            within(region)
+                .getByRole('link', { name: /Buy on ptbk\.io/ })
+                .getAttribute('href'),
+        ).toBe(MANAGE_URL);
+        expect(within(region).getByRole('button', { name: 'Link your ptbk.io account' })).toBeTruthy();
+        expect(within(region).queryByText('Active')).toBeNull();
+        expect(screen.queryByRole('region', { name: 'ptbk.io account' })).toBeNull();
+    });
+});
+
+describe('license check points', () => {
+    const WARN = { outcome: 'warn', reason: 'over-limit' } as const;
+
+    it('warns before linking an engine the licence does not cover, and still links it', async () => {
+        const app = renderApp({
+            path: '/engines/new',
+            session: MANAGER,
+            script: (api) => {
+                withLicense(licenseView({ checks: { engineLink: WARN, memberInvite: OK_CHECK } }))(api);
+                api.on(
+                    apiRoutes.linkEligibility,
+                    ok({ eligibility: 'allowed', linkCodeTtlS: 3600, installGuideUrl: INSTALL_GUIDE_URL }),
+                );
+            },
+        });
+        expect(
+            await screen.findByText('Your license doesn’t cover another project. It links and runs as usual.'),
+        ).toBeTruthy();
+        await waitFor(() => {
+            expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(1);
+        });
+    });
+
+    it('says nothing before linking when the licence covers it', async () => {
+        const app = renderApp({
+            path: '/engines/new',
+            session: MANAGER,
+            script: (api) => {
+                withLicense(licenseView())(api);
+                api.on(
+                    apiRoutes.linkEligibility,
+                    ok({ eligibility: 'engine-limit', linkCodeTtlS: 3600, installGuideUrl: INSTALL_GUIDE_URL }),
+                );
+            },
+        });
+        expect(await screen.findByText('Your license covers no more projects')).toBeTruthy();
+        expect(screen.getByText('Add one on ptbk.io. The projects you have keep running.')).toBeTruthy();
+        expect(screen.queryByText(/doesn’t cover another project/)).toBeNull();
+        expect(app.api.callsTo(apiRoutes.getLicense)).toHaveLength(1);
+    });
+
+    it('warns in the invitation dialog, and explains an enforced refusal', async () => {
+        const app = renderApp({
+            path: '/people',
+            session: session({
+                licensing: true,
+                billingEnabled: false,
+                permissions: ['org.read', 'team.read', 'license.read', 'org.members.manage'],
+            }),
+            script: (api) => {
+                withLicense(licenseView({ checks: { engineLink: OK_CHECK, memberInvite: WARN } }))(api);
+                api.on(apiRoutes.listOrgMembers, ok({ members: [], invites: [] }));
+                api.on(apiRoutes.createInvites, problem(403, 'license-limit'));
+            },
+        });
+        await app.user.click(await screen.findByRole('button', { name: 'Invite people' }));
+        const dialog = await screen.findByRole('dialog');
+        expect(
+            await within(dialog).findByText('Your license doesn’t cover more people. They can still join.'),
+        ).toBeTruthy();
+        expect(within(dialog).queryByRole('link', { name: 'See license' })).toBeNull();
+        await app.user.type(within(dialog).getByLabelText('Email addresses'), 'eve@example.test');
+        await app.user.click(within(dialog).getByRole('button', { name: 'Send invitations' }));
+        expect(
+            await screen.findByText('Your license doesn’t cover more people. Everyone already here keeps access.'),
+        ).toBeTruthy();
     });
 });
 

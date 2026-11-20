@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { createAccountFlows } from '../../domain/auth/account';
 import { authenticateRelay } from '../../domain/registry/authenticate-relay';
 import { createEngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
+import { createLicenseService, OPEN_LICENSE_GATE } from '../../domain/licensing/license-service';
 import { toBase64Url } from '../../domain/auth/secrets';
 import type { RouteContract } from '../../shared/api/contract';
 import type { DashboardDeps } from '../deps';
@@ -76,9 +77,22 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
             },
         },
     });
-    const policy = createEngineCreationPolicy(deps);
+    const { licensing } = deps;
+    const licenses =
+        licensing === null || deps.config.billing.adapter !== 'website'
+            ? null
+            : createLicenseService({
+                  mode: deps.config.billing.enforcement,
+                  api: licensing.licenses,
+                  store: licensing.store,
+                  engines: deps.engines,
+                  teams: deps.teams,
+                  clock: deps.clock,
+              });
+    const licenseGate = licenses?.gate ?? OPEN_LICENSE_GATE;
+    const policy = createEngineCreationPolicy({ ...deps, licenseGate });
     const routers = [
-        [API_MOUNT, createApiRouter({ ...deps, policy, routes })],
+        [API_MOUNT, createApiRouter({ ...deps, policy, routes, licenses, licenseGate })],
         [V1_MOUNT, createV1Router({ ...deps, policy, routes })],
         [INTERNAL_MOUNT, createInternalRouter({ ...deps, routes })],
         [WEBHOOKS_MOUNT, createWebhooksRouter({ billing: deps.billing, routes })],

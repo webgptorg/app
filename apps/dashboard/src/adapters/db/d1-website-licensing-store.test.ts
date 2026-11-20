@@ -34,23 +34,27 @@ describeWebsiteLicensingStoreContract('D1', () => {
     };
 });
 
-it('drops a stored snapshot that no longer validates, such as a manage link off the configured website', async () => {
+it('drops a stored licence that no longer validates, such as a manage link off the configured website', async () => {
     const db = createDatabase(env.DB);
     const account = testAccount();
     await createD1AuthStore(db).accounts.createAccount(account);
     const subject = crypto.randomUUID();
-    const snapshot = {
-        version: 1 as const,
-        subject,
-        generatedAt: '2026-11-13T00:00:00.000Z',
-        refreshAfterSeconds: 900,
-        enforcement: 'advisory' as const,
-        manageUrl: `${CONTRACT_WEBSITE_ORIGIN}/cs/pricing/predplatne`,
-        grants: [],
+    const license = {
+        snapshot: {
+            version: 1 as const,
+            subject,
+            generatedAt: '2026-11-13T00:00:00.000Z',
+            refreshAfterSeconds: 900,
+            enforcement: 'advisory' as const,
+            manageUrl: `${CONTRACT_WEBSITE_ORIGIN}/cs/pricing/predplatne`,
+            grants: [],
+        },
+        status: null,
+        label: null,
     };
-    await createD1WebsiteLicensingStore(db, { websiteOrigin: CONTRACT_WEBSITE_ORIGIN, clock }).saveSnapshot(
+    await createD1WebsiteLicensingStore(db, { websiteOrigin: CONTRACT_WEBSITE_ORIGIN, clock }).saveLicense(
         account.orgId,
-        snapshot,
+        license,
     );
     const row = await db
         .select()
@@ -59,13 +63,13 @@ it('drops a stored snapshot that no longer validates, such as a manage link off 
         .get();
     expect(row?.fetchedAt).toBe(clock.nowMs());
     const moved = createD1WebsiteLicensingStore(db, { websiteOrigin: 'https://staging.ptbk.io', clock });
-    expect(await moved.readSnapshot(account.orgId)).toBeNull();
+    expect(await moved.readLicense(account.orgId)).toBeNull();
     await db
         .update(websiteLicenseSnapshots)
         .set({ snapshot: '{' })
         .where(eq(websiteLicenseSnapshots.orgId, account.orgId));
     expect(
-        await createD1WebsiteLicensingStore(db, { websiteOrigin: CONTRACT_WEBSITE_ORIGIN, clock }).readSnapshot(
+        await createD1WebsiteLicensingStore(db, { websiteOrigin: CONTRACT_WEBSITE_ORIGIN, clock }).readLicense(
             account.orgId,
         ),
     ).toBeNull();
