@@ -31,15 +31,18 @@ export function composeArgs(target: ComposeTarget, ...args: readonly string[]): 
 
 type Output = 'inherit' | 'ignore' | NodeJS.WritableStream;
 
+/** `input`, when given, is written to the command's stdin, so a secret such as a link URL stays out of its argv. */
 export function docker(
     args: readonly string[],
     stdout: Output = 'inherit',
     stderr: 'inherit' | 'ignore' = 'inherit',
+    input?: string,
 ): Promise<number> {
     return new Promise((resolve, reject) => {
         const child = spawn('docker', [...args], {
-            stdio: ['ignore', typeof stdout === 'string' ? stdout : 'pipe', stderr],
+            stdio: [input === undefined ? 'ignore' : 'pipe', typeof stdout === 'string' ? stdout : 'pipe', stderr],
         });
+        if (input !== undefined) child.stdin?.end(input);
         if (typeof stdout !== 'string') child.stdout?.pipe(stdout, { end: false });
         child.once('error', reject);
         child.once('close', (code) => {
@@ -52,6 +55,7 @@ export function docker(
 export async function dockerCapture(
     args: readonly string[],
     stderr: 'inherit' | 'ignore' = 'inherit',
+    input?: string,
 ): Promise<{ readonly code: number; readonly stdout: string }> {
     const chunks: Buffer[] = [];
     const sink = new Writable({
@@ -60,7 +64,7 @@ export async function dockerCapture(
             callback();
         },
     });
-    const code = await docker(args, sink, stderr);
+    const code = await docker(args, sink, stderr, input);
     return { code, stdout: Buffer.concat(chunks).toString('utf8') };
 }
 

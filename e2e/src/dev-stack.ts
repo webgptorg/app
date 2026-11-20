@@ -1,6 +1,8 @@
 // `bun run dev:stack`, `dev:link`, `dev:trust` and `dev:untrust` (X-06): the e2e stack as a person runs it on their
 // own machine. Same images and service definitions as the e2e dashboard scenario, plus compose.dev.yaml; state lives
-// in the project's named volumes and the dev CA in .dev/pki/, both kept across `down`. Only node: imports.
+// in the project's named volumes and the dev CA in .dev/pki/, both kept across `down`. `up --engine real` (E-03)
+// runs the real engine instead of the mock, from compose.real-engine.yaml, on a stack with no way out. Only node:
+// imports.
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { connect } from 'node:net';
 import { homedir } from 'node:os';
@@ -25,25 +27,38 @@ import {
     DEV_CHROMIUM_PROFILE,
     DEV_COREDNS_DIR,
     DEV_DASHBOARD_ORIGIN,
+    DEV_ENGINE_DOMAIN,
+    DEV_ENGINE_FILE,
     DEV_ENGINE_SERVICE,
     DEV_ON_DEMAND_PROFILE,
     DEV_PKI_DIR,
     DEV_PORTS,
+    DEV_REAL_ENGINE_SERVICE,
     DEV_STACK_NET,
     DEV_STACK_USAGE,
     DEV_SUBNET,
+    ENGINE_DIR_VARIABLE,
     STACK_NET_VARIABLE,
     chromiumLaunchLine,
+    devLinkUrl,
     devTarget,
+    engineCheckoutProblem,
+    engineDir,
+    engineNetworkMismatch,
     moveStackAddresses,
     nonLoopbackPorts,
+    parseDevEngine,
     parseDevStackArgs,
     parseLinkCode,
+    parseRealEngineStatus,
     staleNetwork,
 } from './dev-stack-config.ts';
+import type { DevEngine, RealEngine } from './dev-stack-config.ts';
 
 const WAIT_TIMEOUT_S = 300;
 const ENGINE_COMMAND = ['node', '--enable-source-maps', '/app/main.mjs'] as const;
+/** In the real engine's container (compose.real-engine.yaml mounts e2e/real-engine/ there). */
+const REAL_ENGINE_SCRIPTS = '/e2e/real-engine';
 /** Inside the init container, which mounts the engine's volume and the public one and has no network. */
 const REGISTERED_ENGINE_SCRIPT = 'test -f /engine/registration.json && cat /pki/engine.json';
 
@@ -54,7 +69,12 @@ function say(line: string): void {
 interface DevContext {
     readonly repoRoot: string;
     readonly e2eDir: string;
+    readonly engine: DevEngine;
     readonly target: ComposeTarget;
+}
+
+function withEngine(context: DevContext, engine: DevEngine): DevContext {
+    return { ...context, engine, target: devTarget(context.e2eDir, engine) };
 }
 
 function withOnDemand(target: ComposeTarget, ...args: readonly string[]): readonly string[] {
@@ -140,13 +160,23 @@ async function renderStackDns(context: DevContext): Promise<void> {
 }
 
 /** The project's stack network is absent before the first `up` and after `down`: nothing to check then. */
-async function assertNetworkCurrent(target: ComposeTarget): Promise<void> {
+async function assertNetworkCurrent(target: ComposeTarget, engine: DevEngine): Promise<void> {
+    const network = `${target.project}_stack`;
     const { code, stdout } = await dockerCapture(
-        ['network', 'inspect', `${target.project}_stack`, '--format', '{{range .IPAM.Config}}{{.Subnet}} {{end}}'],
+        ['network', 'inspect', network, '--format', '{{range .IPAM.Config}}{{.Subnet}} {{end}}'],
         'ignore',
     );
     const stale = code === 0 ? staleNetwork(stdout, DEV_SUBNET) : null;
     if (stale !== null) throw new Error(stale);
+    const internal = await dockerCapture(['network', 'inspect', network, '--format', '{{.Internal}}'], 'ignore');
+    const mismatch = internal.code === 0 ? engineNetworkMismatch(internal.stdout, engine) : null;
+    if (mismatch !== null) throw new Error(mismatch);
+}
+
+async function assertEngineCheckout(): Promise<void> {
+    const dir = process.env[ENGINE_DIR_VARIABLE] ?? '';
+    const problem = engineCheckoutProblem(dir, await readFile(join(dir, 'package.json'), 'utf8').catch(() => null));
+    if (problem !== null) throw new Error(problem);
 }
 
 async function composeConfig(target: ComposeTarget): Promise<unknown> {
@@ -212,11 +242,64 @@ async function printAccess(context: DevContext, ca: DevCaFacts, noSystem: boolea
     }
 }
 
+/** The engines the real engine's container holds, from its entrypoint's `status`; empty when it is not running. */
+async function realEngines(target: ComposeTarget): Promise<readonly RealEngine[]> {
+    const { code, stdout } = await dockerCapture(
+        withOnDemand(
+            target,
+            'exec',
+            '-T',
+            DEV_REAL_ENGINE_SERVICE,
+            'node',
+            `${REAL_ENGINE_SCRIPTS}/entrypoint.ts`,
+            'status',
+        ),
+        'ignore',
+    );
+    return code === 0 ? parseRealEngineStatus(stdout) : [];
+}
+
+function sayRealEngine(engine: RealEngine): void {
+    say(
+        `engine       https://${engine.engineId}.${DEV_ENGINE_DOMAIN}/ (${engine.setUp ? 'set up' : 'setup not finished'})`,
+    );
+}
+
+/**
+ * The isolation check in a one-off copy of the engine's container, with exactly its networks and resolver, before any
+ * engine code runs; the engine starts only if it passes.
+ */
+async function startRealEngine(target: ComposeTarget): Promise<void> {
+    say('checking that the engine container reaches the stack and nothing beyond it');
+    const isolated = await docker(
+        withOnDemand(
+            target,
+            'run',
+            '--rm',
+            '--no-deps',
+            DEV_REAL_ENGINE_SERVICE,
+            'node',
+            `${REAL_ENGINE_SCRIPTS}/no-egress.ts`,
+        ),
+    );
+    if (isolated !== 0) throw new Error('the real engine was not started: its container is not isolated (see above)');
+    await must(
+        withOnDemand(target, 'up', '--detach', '--no-deps', '--no-build', '--force-recreate', DEV_REAL_ENGINE_SERVICE),
+    );
+    const engines = await realEngines(target);
+    if (engines.length === 0) {
+        say('no engine linked yet: sign up, create a link code on /engines/new and run the command it shows');
+    }
+    for (const engine of engines) sayRealEngine(engine);
+    say('the real engine has no internet here: model providers and harness installs cannot be reached');
+}
+
 async function up(context: DevContext, noSystem: boolean): Promise<void> {
     const { target } = context;
     const relayPort = noSystem ? DEV_PORTS.noSystemRelay : DEV_PORTS.relay;
     process.env['PTBK_DEV_RELAY_PORT'] = String(relayPort);
-    await assertNetworkCurrent(target);
+    if (context.engine === 'real') await assertEngineCheckout();
+    await assertNetworkCurrent(target, context.engine);
     const exposed = nonLoopbackPorts(await composeConfig(target));
     if (exposed.length > 0) throw new Error(`refusing to publish beyond 127.0.0.1: ${exposed.join(', ')}`);
     if (!(await stackRunning(target, 'relay-a-net')) && (await portInUse(relayPort))) {
@@ -224,6 +307,8 @@ async function up(context: DevContext, noSystem: boolean): Promise<void> {
             `127.0.0.1:${String(relayPort)} is taken by another program; stop it${noSystem ? '' : ', or use `bun run dev:stack up --no-system`'}`,
         );
     }
+    await mkdir(dirname(join(context.repoRoot, DEV_ENGINE_FILE)), { recursive: true });
+    await writeFile(join(context.repoRoot, DEV_ENGINE_FILE), `${context.engine}\n`, 'utf8');
     await must(withOnDemand(target, 'build'));
     const ca = await ensureDevCa(context);
     await renderStackDns(context);
@@ -239,12 +324,16 @@ async function up(context: DevContext, noSystem: boolean): Promise<void> {
         }
         throw new Error('docker compose up failed; `bun run dev:stack logs` shows why');
     }
-    const engineHost = await linkedEngineHost(target);
-    if (engineHost === null) {
-        say('no engine linked yet: sign up, create a link code on /engines/new and run the command it shows');
+    if (context.engine === 'real') {
+        await startRealEngine(target);
     } else {
-        await startEngine(target);
-        say(`engine       https://${engineHost}/`);
+        const engineHost = await linkedEngineHost(target);
+        if (engineHost === null) {
+            say('no engine linked yet: sign up, create a link code on /engines/new and run the command it shows');
+        } else {
+            await startEngine(target);
+            say(`engine       https://${engineHost}/`);
+        }
     }
     await printAccess(context, ca, noSystem);
 }
@@ -255,13 +344,76 @@ interface RegisterReport {
     readonly reason?: unknown;
 }
 
-/** The register command's last stdout line, its JSON report (mock engine README, `register`). */
-function parseReport(stdout: string): RegisterReport | null {
+/** A command's last stdout line as its JSON report (the mock's `register`, ptbk's `--json`). */
+function parseReport(stdout: string): unknown {
     try {
-        return JSON.parse(stdout.trim().split('\n').at(-1) ?? '') as RegisterReport | null;
+        return JSON.parse(stdout.trim().split('\n').at(-1) ?? '') as unknown;
     } catch {
         return null;
     }
+}
+
+interface PairingReport {
+    readonly outcome?: unknown;
+    readonly url?: unknown;
+    readonly engineId?: unknown;
+    readonly expiresAt?: unknown;
+    readonly message?: unknown;
+    readonly reason?: unknown;
+}
+
+/**
+ * The real engine pairs as the dashboard's install command has it, `ptbk init --prepare-only --link`, inside its
+ * running container: the link URL goes in on stdin, and `--setup-link --json` brings back the owner's one-time setup
+ * link once the engine's address works, which a real install prints in its terminal.
+ */
+async function linkReal(context: DevContext, code: string): Promise<number> {
+    const { target } = context;
+    if (!(await stackRunning(target, DEV_REAL_ENGINE_SERVICE))) {
+        say(
+            "the real engine's container is not running; start it with `bun run dev:stack up --no-system --engine real`",
+        );
+        return 1;
+    }
+    const existing = await realEngines(target);
+    if (existing.length > 0) {
+        say('the engine was already linked, so the code was not used; `bun run dev:stack reset` starts over');
+        for (const engine of existing) sayRealEngine(engine);
+        return 0;
+    }
+    const paired = await dockerCapture(
+        withOnDemand(
+            target,
+            'exec',
+            '-T',
+            DEV_REAL_ENGINE_SERVICE,
+            'ptbk',
+            'init',
+            '--prepare-only',
+            '--link-stdin',
+            '--setup-link',
+            '--json',
+            '--no-persist',
+            '--raw',
+        ),
+        'inherit',
+        `${devLinkUrl(code)}\n`,
+    );
+    const report = parseReport(paired.stdout) as PairingReport | null;
+    if (paired.code !== 0 || report?.outcome !== 'issued' || typeof report.engineId !== 'string') {
+        say(
+            `the engine was not linked: ${JSON.stringify(report?.message ?? report?.reason ?? report?.outcome ?? 'no report')}`,
+        );
+        return 1;
+    }
+    say(
+        `engine linked: https://${report.engineId}.${DEV_ENGINE_DOMAIN}/ (online on the dashboard after its first heartbeat)`,
+    );
+    say(`setup link   ${String(report.url)}`);
+    say(
+        `open it once, in the stack's Chrome profile, to become the engine's owner (expires ${String(report.expiresAt)})`,
+    );
+    return 0;
 }
 
 /** `register --link` in a one-off engine container with the stack's key, then the engine service from that registration. */
@@ -286,7 +438,7 @@ async function link(context: DevContext, code: string): Promise<number> {
             code,
         ),
     );
-    const report = parseReport(registered.stdout);
+    const report = parseReport(registered.stdout) as RegisterReport | null;
     if (registered.code !== 0 || typeof report?.hostname !== 'string') {
         say(`the engine was not linked: ${JSON.stringify(report?.reason ?? report?.outcome ?? 'no report')}`);
         if ((await linkedEngineHost(target)) !== null) await startEngine(target);
@@ -344,8 +496,15 @@ function onlyFlags(args: readonly string[], allowed: readonly string[]): boolean
 /** Entry from cli.ts: `dev …`, `link <code>`, `trust [--dry-run]`, `untrust [--dry-run | --check]`. */
 export async function devMain(command: string, args: readonly string[], e2eDir: string): Promise<number> {
     process.env[STACK_NET_VARIABLE] = DEV_STACK_NET;
+    const repoRoot = join(e2eDir, '..');
+    process.env[ENGINE_DIR_VARIABLE] = engineDir(process.env, repoRoot);
     try {
-        return await dispatch(command, args, { repoRoot: join(e2eDir, '..'), e2eDir, target: devTarget(e2eDir) });
+        const recorded = parseDevEngine(await readFile(join(repoRoot, DEV_ENGINE_FILE), 'utf8').catch(() => null));
+        return await dispatch(
+            command,
+            args,
+            withEngine({ repoRoot, e2eDir, engine: 'mock', target: devTarget(e2eDir) }, recorded),
+        );
     } catch (error) {
         process.stderr.write(`dev:stack: ${error instanceof Error ? error.message : 'failed'}\n`);
         return 1;
@@ -361,17 +520,29 @@ async function dispatch(command: string, args: readonly string[], context: DevCo
                 return 2;
             }
             switch (parsed.kind) {
+                case 'refused':
+                    process.stderr.write(`dev:stack: ${parsed.reason}\n`);
+                    return 2;
                 case 'up':
-                    await up(context, parsed.noSystem);
+                    await up(withEngine(context, parsed.engine), parsed.noSystem);
                     return 0;
                 case 'down':
                     await must(withOnDemand(context.target, 'down', '--remove-orphans', '--timeout', '10'));
                     say('stopped; the account, passkeys and linked engine stay for the next `up`');
                     return 0;
                 case 'reset':
+                    // Every service and volume of either engine, whichever one ran last.
                     await must(
-                        withOnDemand(context.target, 'down', '--volumes', '--remove-orphans', '--timeout', '10'),
+                        withOnDemand(
+                            withEngine(context, 'real').target,
+                            'down',
+                            '--volumes',
+                            '--remove-orphans',
+                            '--timeout',
+                            '10',
+                        ),
                     );
+                    await rm(join(context.repoRoot, DEV_ENGINE_FILE), { force: true });
                     say(`stopped and every volume dropped; the dev CA in ${DEV_PKI_DIR} stays`);
                     return 0;
                 case 'logs':
@@ -385,7 +556,7 @@ async function dispatch(command: string, args: readonly string[], context: DevCo
                 process.stderr.write('usage: bun run dev:link <link code or link URL from the dashboard>\n');
                 return 2;
             }
-            return link(context, code);
+            return context.engine === 'real' ? linkReal(context, code) : link(context, code);
         }
         case 'trust':
             if (!onlyFlags(args, ['--dry-run'])) break;

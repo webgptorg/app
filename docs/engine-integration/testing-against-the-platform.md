@@ -108,7 +108,20 @@ The page shows the code inside the dev install commands and, beside them, the li
 
 **First, watch the mock engine do it.** `bun run dev:link <code>` (or `bun run dev:link '<link URL>'`) registers the stack's mock engine and starts it. It turns online after its first heartbeat (every 15 s in this stack); "Open" goes to `https://<engineId>.engine.test/` through relay-a. That is the behaviour your engine must reproduce. `bun run dev:stack reset` starts over with a new dashboard database and a new mock engine.
 
-**Then run your engine in its place.** The stack starts the mock engine only once it is linked, so with a fresh link code your engine can take its place. Run it as a container on the stack's network, so it resolves the relays and the dashboard the way the mock does:
+**Or let the stack build and run your engine.** `bun run dev:stack up --no-system --engine real` builds your conformance build from a checkout of this repository's engine (branch `reborn/2026-10`, `PTBK_ENGINE_DIR`, default `../promptbook` next to the platform checkout) and runs it in place of the mock. Everything below is set up for you, including the release your conformance build installs:
+
+```sh
+cd "$PLATFORM_DIR"
+bun run dev:stack up --no-system --engine real   # then open the Chrome line it prints
+bun run dev:link <code>                          # what the New engine page shows: runs `ptbk init --prepare-only --link-stdin --setup-link --json --no-persist` in your engine's container
+```
+
+- **What works:** registration from the dashboard's link code, heartbeats ("Setup not finished" until setup is done), tunnels through both local relays, "Open" through relay-a with your engine's own certificate, the owner's setup link that `dev:link` prints, and our signed UI installed by your loader: the stack signs its UI release the way the conformance suite does (test keys and a test Sigstore, delivered through `PTBK_CONFORMANCE_TRUST_FILE`), pinned with `PTBK_UPDATE_POLICY=pinned`.
+- **What does not:** nothing in this mode reaches the internet, by design, so no model provider, harness install or harness sign-in works, and setup steps that need one stop there. The stack network is internal and its resolver refuses outside names; `up` starts your engine only after a check from inside its container shows that `1.1.1.1:443` and public names are unreachable while the dashboard and relays answer.
+- **Your build:** the container runs `npm ci` and `npm run build:conformance`, then installs `dist-conformance/` as `dist/`, because background services start from `dist/` (`engineModule`) and would otherwise run the release build, which refuses the conformance trust file.
+- The details, and how to re-run the isolation check, are in [docs/development.md](../development.md#real-engine-in-the-local-stack).
+
+**Or run your engine in its place yourself.** The stack starts the mock engine only once it is linked, so with a fresh link code your engine can take its place. Run it as a container on the stack's network, so it resolves the relays and the dashboard the way the mock does:
 
 ```sh
 STACK_DNS="$(docker inspect -f '{{(index .NetworkSettings.Networks "ptbk-dev_stack").IPAddress}}' ptbk-dev-dns-1)"
@@ -132,8 +145,8 @@ To try the link URL instead ([identity-and-registration.md](identity-and-registr
 - **Outside names.** The stack's resolver refuses every name outside the test domains, so an engine that calls an external model provider to answer a chat fails inside the stack. Use a local or fake model provider for the click-through.
 - **Starting over.** `bun run dev:stack reset` drops the dashboard's database but not your engine's volume. Remove `my-engine-data` too, or the engine keeps its old registration, makes no registration call, and gets 404 `not-found` for its heartbeats and close code 4001 from the relays.
 - What this proves today: registration (ENG-12, ENG-13), heartbeats and the online status (ENG-40 to ENG-43), and tunnels to both relays (ENG-20 to ENG-29). `bun run dev:stack logs relay-a relay-b dashboard` shows the platform's side.
-- **Opening it in a browser.** The browser trusts the dev CA, but nothing in the stack issues a certificate for your engine's hostname: the mock issues its own from the dev CA's key, and there is no ACME server in the dev stack. Until E-03 adds one, run the stack with `bun run dev:stack up --no-system` and use the Chrome profile it prints, which ignores certificate errors and still allows WebAuthn; your engine may then use any certificate for `<engineId>.engine.test`. That profile reaches relay-a on 127.0.0.1:8443 through its resolver rules; the engine still dials the relays inside the stack's network.
-- **The UI bundle.** The stack's release store serves UI releases signed with test attestations that only the mock engine accepts. A real engine refuses them, correctly, and serves its plain page; even its conformance build cannot take them, because they carry no Sigstore bundle. Until E-03 signs the stack's releases the way C-10's suite does, the dev stack proves everything up to the gateway and the API, not the UI.
+- **Opening it in a browser.** The browser trusts the dev CA, but nothing in the stack issues a certificate for your engine's hostname: the mock issues its own from the dev CA's key, and there is no ACME server in the dev stack. Run the stack with `bun run dev:stack up --no-system` and use the Chrome profile it prints, which ignores certificate errors and still allows WebAuthn; your engine may then use any certificate for `<engineId>.engine.test`. That profile reaches relay-a on 127.0.0.1:8443 through its resolver rules; the engine still dials the relays inside the stack's network.
+- **The UI bundle.** The stack's release store serves the mock's UI releases, signed with test attestations that only the mock accepts; a real engine refuses them, correctly, and serves its plain page. With `--engine real` the stack also publishes the same bundle under `https://releases.ptbk.test/conformance/`, signed the way C-10's suite signs, for the conformance build it runs with `PTBK_CONFORMANCE_TRUST_FILE`.
 
 ## (c) The full end-to-end suite
 

@@ -1,0 +1,106 @@
+# E-03: the real engine in the local dev stack (`bun run dev:stack up --no-system --engine real`), layered over
+# compose.yaml, compose.dashboard.yaml and compose.dev.yaml. Dev-only: no e2e scenario and no CI job layers it.
+#
+# Nothing in the stack may reach the internet while a real engine runs in it, so the stack network becomes internal:
+# no default route, so nothing on it can send a packet past the Docker host. The engine sits on that network alone
+# and resolves only through the stack's CoreDNS, which refuses every name outside ptbk.test and engine.test. The
+# dashboard, relay-a and the host resolver also join `host-access`, an ordinary bridge, only because Docker publishes
+# their 127.0.0.1 ports through a network with a gateway. `dev:stack up` runs real-engine/no-egress.ts in the engine's
+# network configuration before it starts the engine, and refuses to start it unless that check passes.
+#
+# The engine is ptbk's conformance build from PTBK_ENGINE_DIR (real-engine/Dockerfile): it serves its certificate from
+# its own development CA (hence `--no-system`, whose Chrome profile ignores certificate errors) and trusts the UI
+# release that real-engine-release signs as C-10's suite does. The mock engine stays in its on-demand profile and is
+# never started in this mode.
+
+services:
+  relay-a-net:
+    networks:
+      host-access: {}
+
+  dashboard:
+    networks:
+      host-access: {}
+
+  host-dns:
+    networks:
+      host-access: {}
+
+  # One-shot after init: the installed UI bundle, signed for the conformance build, below /conformance/ in the store,
+  # and the matching conformance trust file. New keys and a new test Sigstore on every `up`, like init's.
+  real-engine-release:
+    build:
+      context: ..
+      dockerfile: e2e/docker/stack.Dockerfile
+      target: real-engine-release
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - releases:/releases
+      - real-engine-trust:/trust
+    network_mode: none
+
+  real-engine:
+    profiles: [on-demand]
+    build:
+      context: ./real-engine
+      additional_contexts:
+        engine: ${PTBK_ENGINE_DIR:?dev:stack sets PTBK_ENGINE_DIR}
+    depends_on:
+      dashboard:
+        condition: service_healthy
+      relay-a:
+        condition: service_healthy
+      relay-b:
+        condition: service_healthy
+      release-store:
+        condition: service_started
+      real-engine-release:
+        condition: service_completed_successfully
+    init: true
+    command: ['node', '/e2e/real-engine/entrypoint.ts']
+    stop_grace_period: 30s
+    environment:
+      PTBK_MODE: tunnel
+      PTBK_DASHBOARD_URL: https://app.ptbk.test:8444
+      PTBK_ENGINE_DOMAIN: engine.test
+      # The dashboard, the relays and the release store have dev CA certificates; added to Node's roots.
+      NODE_EXTRA_CA_CERTS: /pki/ca-cert.pem
+      PTBK_UI_RELEASE_URL: https://releases.ptbk.test/conformance/
+      PTBK_UPDATE_POLICY: pinned
+      PTBK_PINNED_VERSION: 0.0.0-dryrun.1
+      PTBK_CONFORMANCE_TRUST_FILE: /trust/conformance-trust.json
+      # Development, never production: the daemons ptbk starts set NODE_ENV=production for themselves anyway.
+      NODE_ENV: development
+      # The engine's own switches for outbound checks that cannot succeed here (as its conformance launcher sets them).
+      PTBK_HEALTH_CONNECTIVITY: 'off'
+      PTBK_PRICE_LISTS: 'off'
+      PTBK_KNOWLEDGE_SOURCES: 'off'
+      PTBK_BROWSER_START: lazy
+      # No keyring or systemd in the container: the Wallet's unlock key goes to a plain file in the engine's volume.
+      PTBK_HOST_UNLOCK: insecure-test-file
+      CODING_AGENT_GIT_NAME: Local stack engine
+      CODING_AGENT_GIT_EMAIL: engine@engine.test
+    volumes:
+      - public:/pki:ro
+      - real-engine-trust:/trust:ro
+      # The engine's home: its identity, registration, projects and Git repositories, kept until `dev:stack reset`.
+      - real-engine-home:/home/node
+      - ./real-engine:/e2e/real-engine:ro
+      - ./src/probe.ts:/e2e/src/probe.ts:ro
+      - ./src/tcp-check.ts:/e2e/src/tcp-check.ts:ro
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    dns: ['${PTBK_STACK_NET:-10.89.231}.53']
+    networks:
+      - stack
+
+networks:
+  stack:
+    internal: true
+  host-access: {}
+
+volumes:
+  real-engine-trust:
+  real-engine-home:

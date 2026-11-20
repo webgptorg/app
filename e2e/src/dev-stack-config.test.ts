@@ -10,10 +10,16 @@ import {
     DEV_PROJECT,
     chromiumArgs,
     chromiumLaunchLine,
+    devLinkUrl,
     devTarget,
+    engineCheckoutProblem,
+    engineDir,
+    engineNetworkMismatch,
     nonLoopbackPorts,
+    parseDevEngine,
     parseDevStackArgs,
     parseLinkCode,
+    parseRealEngineStatus,
 } from './dev-stack-config.ts';
 import { projectName } from './cli.ts';
 
@@ -109,8 +115,8 @@ describe('nonLoopbackPorts', () => {
 
 describe('parseDevStackArgs', () => {
     it('reads the four commands', () => {
-        expect(parseDevStackArgs(['up'])).toEqual({ kind: 'up', noSystem: false });
-        expect(parseDevStackArgs(['up', '--no-system'])).toEqual({ kind: 'up', noSystem: true });
+        expect(parseDevStackArgs(['up'])).toEqual({ kind: 'up', noSystem: false, engine: 'mock' });
+        expect(parseDevStackArgs(['up', '--no-system'])).toEqual({ kind: 'up', noSystem: true, engine: 'mock' });
         expect(parseDevStackArgs(['down'])).toEqual({ kind: 'down' });
         expect(parseDevStackArgs(['reset'])).toEqual({ kind: 'reset' });
         expect(parseDevStackArgs(['logs', 'dashboard', 'relay-a'])).toEqual({
@@ -125,6 +131,132 @@ describe('parseDevStackArgs', () => {
         expect(parseDevStackArgs(['up', '--yes'])).toBeNull();
         expect(parseDevStackArgs(['down', '--volumes'])).toBeNull();
         expect(parseDevStackArgs(['logs', '--follow;rm'])).toBeNull();
+    });
+
+    it('picks the engine with --engine, the mock unless told otherwise', () => {
+        const real = { kind: 'up', noSystem: true, engine: 'real' };
+        expect(parseDevStackArgs(['up', '--no-system', '--engine', 'real'])).toEqual(real);
+        expect(parseDevStackArgs(['up', '--engine=real', '--no-system'])).toEqual(real);
+        expect(parseDevStackArgs(['up', '--engine', 'mock'])).toEqual({ kind: 'up', noSystem: false, engine: 'mock' });
+    });
+
+    it('refuses an unknown or repeated engine, and the real one without --no-system', () => {
+        expect(parseDevStackArgs(['up', '--no-system', '--engine'])).toBeNull();
+        expect(parseDevStackArgs(['up', '--no-system', '--engine', 'other'])).toBeNull();
+        expect(parseDevStackArgs(['up', '--no-system', '--engine', 'real', '--engine', 'mock'])).toBeNull();
+        expect(parseDevStackArgs(['up', '--no-system', '--no-system'])).toBeNull();
+        expect(parseDevStackArgs(['up', '--engine', 'real'])).toMatchObject({
+            kind: 'refused',
+            reason: expect.stringContaining('--engine real needs --no-system') as unknown,
+        });
+    });
+});
+
+describe('the engine the dev stack runs', () => {
+    it('adds the real-engine overlay and service only for the real engine', () => {
+        expect(devTarget('/repo/e2e', 'mock')).toEqual(devTarget('/repo/e2e'));
+        expect(devTarget('/repo/e2e', 'real')).toMatchObject({
+            project: 'ptbk-dev',
+            overlays: ['dashboard', 'dev', 'real-engine'],
+            onDemand: ['real-engine'],
+        });
+    });
+
+    it('is the mock unless .dev/engine says real', () => {
+        expect(parseDevEngine('real\n')).toBe('real');
+        expect(parseDevEngine('mock\n')).toBe('mock');
+        expect(parseDevEngine(null)).toBe('mock');
+        expect(parseDevEngine('Real')).toBe('mock');
+    });
+
+    it('needs a stack network made for it: internal for the real engine, not for the mock', () => {
+        expect(engineNetworkMismatch('true\n', 'real')).toBeNull();
+        expect(engineNetworkMismatch('false\n', 'mock')).toBeNull();
+        expect(engineNetworkMismatch('', 'real')).toBeNull();
+        expect(engineNetworkMismatch('false', 'real')).toContain('still set up for the mock engine');
+        expect(engineNetworkMismatch('true', 'mock')).toContain('still set up for the real engine');
+    });
+
+    it('comes from PTBK_ENGINE_DIR, or the sibling ../promptbook checkout', () => {
+        expect(engineDir({}, '/work/app')).toBe('/work/promptbook');
+        expect(engineDir({ PTBK_ENGINE_DIR: '' }, '/work/app')).toBe('/work/promptbook');
+        expect(engineDir({ PTBK_ENGINE_DIR: '../engine' }, '/work/app')).toBe('/work/engine');
+        expect(engineDir({ PTBK_ENGINE_DIR: '/src/ptbk' }, '/work/app')).toBe('/src/ptbk');
+    });
+
+    it('is built only from a ptbk checkout with a conformance build', () => {
+        const ptbk = JSON.stringify({ name: 'ptbk', scripts: { 'build:conformance': 'node scripts/build.mjs' } });
+        expect(engineCheckoutProblem('/e', ptbk)).toBeNull();
+        expect(engineCheckoutProblem('/e', null)).toContain('/e has no package.json; set PTBK_ENGINE_DIR');
+        expect(engineCheckoutProblem('/e', JSON.stringify({ name: 'other' }))).toContain('not the ptbk package');
+        expect(engineCheckoutProblem('/e', JSON.stringify({ name: 'ptbk', scripts: {} }))).toContain(
+            'no build:conformance script',
+        );
+        expect(engineCheckoutProblem('/e', '{')).toContain('is not JSON');
+    });
+
+    it('reads the engines the real engine’s container reports, and nothing malformed', () => {
+        const status = JSON.stringify({
+            engines: [
+                { engineId: 'abc123', step: 'intent' },
+                { engineId: 'def456', step: 'done' },
+                { engineId: '../etc', step: 'done' },
+                { step: 'done' },
+            ],
+        });
+        expect(parseRealEngineStatus(`noise\n${status}\n`)).toEqual([
+            { engineId: 'abc123', setUp: false },
+            { engineId: 'def456', setUp: true },
+        ]);
+        expect(parseRealEngineStatus('')).toEqual([]);
+        expect(parseRealEngineStatus('{"engines":{}}')).toEqual([]);
+    });
+
+    it('pairs the real engine from the whole link URL, which a bare code becomes', () => {
+        const code = 'abcdefghijklmnopqrstuvwxya';
+        expect(devLinkUrl(code)).toBe(`${DEV_DASHBOARD_ORIGIN}/link#${code}`);
+        expect(devLinkUrl(`${DEV_DASHBOARD_ORIGIN}/link#${code}`)).toBe(`${DEV_DASHBOARD_ORIGIN}/link#${code}`);
+    });
+});
+
+/** One top-level entry of a compose file's `services:`, as text up to the next one. */
+function serviceBlock(compose: string, service: string): string {
+    const start = compose.indexOf(`\n  ${service}:\n`);
+    if (start < 0) throw new Error(`no service ${service}`);
+    const rest = compose.slice(start + 1);
+    const end = rest.slice(1).search(/\n {2}[a-z][a-z-]*:\n|\n[a-z]/);
+    return end < 0 ? rest : rest.slice(0, end + 1);
+}
+
+describe('compose.real-engine.yaml', () => {
+    const overlay = readFileSync(join(E2E_DIR, 'compose.real-engine.yaml'), 'utf8');
+    const engine = serviceBlock(overlay, 'real-engine');
+
+    it('puts the engine on the stack network alone, made internal, with the stack’s resolver and no port', () => {
+        expect(overlay).toMatch(/\nnetworks:\n {2}stack:\n {4}internal: true\n/);
+        expect(engine).toMatch(/\n {4}networks:\n {6}- stack\n/);
+        expect(engine).not.toContain('host-access');
+        expect(engine).not.toContain('ports:');
+        expect(engine).not.toContain('network_mode');
+        expect(engine).not.toContain('extra_hosts');
+        expect(engine).toContain("dns: ['${PTBK_STACK_NET:-10.89.231}.53']");
+        expect(engine).toContain('cap_drop: [ALL]');
+    });
+
+    it('lets only the services the host reaches join a network with a gateway', () => {
+        const joined = ['relay-a-net', 'dashboard', 'host-dns'];
+        for (const service of joined) expect(serviceBlock(overlay, service)).toContain('host-access: {}');
+        expect(overlay.match(/host-access: \{\}/g)).toHaveLength(joined.length + 1);
+    });
+
+    it('runs the conformance build against the stack, never as production', () => {
+        expect(engine).toContain('PTBK_DASHBOARD_URL: https://app.ptbk.test:8444');
+        expect(engine).toContain('PTBK_ENGINE_DOMAIN: engine.test');
+        expect(engine).toContain('PTBK_CONFORMANCE_TRUST_FILE: /trust/conformance-trust.json');
+        expect(engine).toContain('PTBK_UI_RELEASE_URL: https://releases.ptbk.test/conformance/');
+        expect(engine).toContain('NODE_ENV: development');
+        expect(engine).not.toContain('PTBK_RELAYS');
+        expect(engine).toContain('profiles: [on-demand]');
     });
 });
 
