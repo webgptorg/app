@@ -20,7 +20,9 @@ describe('trust page', () => {
                 .getAllByRole('heading', { level: 3 })
                 .map((heading) => heading.textContent),
         ).toEqual(['Your browser', 'Our relay', 'Your project', 'This dashboard']);
-        expect(within(path).getByText(/Passes the sealed traffic on to your project\. It can't open it\./)).toBeTruthy();
+        expect(
+            within(path).getByText(/Passes the sealed traffic on to your project\. It can't open it\./),
+        ).toBeTruthy();
         expect(within(path).getByText(/Holds your data and its keys\./)).toBeTruthy();
         expect(within(path).getByText(/Never what is inside them\./)).toBeTruthy();
 
