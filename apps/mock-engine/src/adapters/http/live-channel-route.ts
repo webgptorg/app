@@ -18,8 +18,8 @@ export const LIVE_CHANNEL_MAX_PAYLOAD_BYTES = MAX_LIVE_CONTROL_MESSAGE_BYTES + 1
 
 /**
  * The ack credit keeps an honest viewer at a couple of frames in flight, far below this. A client that acks frames it
- * never read (sequence numbers are predictable) would make the socket queue without bound, so above it frames are
- * dropped instead of queued.
+ * never read (sequence numbers are predictable) would make the socket queue without bound, so above it the channel
+ * closes. Dropping the frame instead would leave its sequence unacked and stall an honest viewer for good.
  */
 export const LIVE_CHANNEL_HIGH_WATER_BYTES = 16 * MAX_LIVE_MEDIA_BYTES;
 
@@ -60,7 +60,10 @@ export function createLiveChannelRoute(deps: { readonly core: () => InMemoryEngi
                         socket.send(data);
                         return;
                     }
-                    if (socket.bufferedAmount > LIVE_CHANNEL_HIGH_WATER_BYTES) return;
+                    if (socket.bufferedAmount > LIVE_CHANNEL_HIGH_WATER_BYTES) {
+                        socket.close(1008);
+                        return;
+                    }
                     socket.send(data, { binary: true });
                 },
                 close(code) {
