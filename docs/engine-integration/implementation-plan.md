@@ -164,12 +164,13 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 - The TLS server: TLS 1.3 only, certificate by SNI, no default certificate, renewals applied to new connections.
 - ACME issuance with TLS-ALPN-01, an account key separate from the engine key, certificates in `PTBK_DATA_DIR` at 0600, ordering only once a tunnel is ready, renewal before expiry with backoff, and the ACME directory URL as configuration (`PTBK_ACME_DIRECTORY_URL` in the mock engine) so tests can point it at Pebble.
 - Custom hostname claims with `signHostnameClaim` and the CNAME instructions from `expectedCnameTarget` (Enterprise; can come last).
+- The hourly Certificate Transparency watch that warns the owner about a certificate whose key is not the engine's (ENG-122; no reference yet).
 
 **Prove:**
 
 - Unit tests for the router decisions: `acme-tls/1` with and without a pending challenge, mixed with `h2`, without SNI, a non-TLS first byte, a hello that never completes.
 - The e2e `acme` scenario against Pebble through the relays (task E-03; see [testing-against-the-platform.md](testing-against-the-platform.md#c-the-full-end-to-end-suite)). Before E-03, run your ACME client against a local Pebble with your own router in front.
-- Checklist: ENG-30 to ENG-32.
+- Checklist: ENG-30 to ENG-32, ENG-122.
 
 **Reference:** [client-hello-router.ts](../../apps/mock-engine/src/adapters/client-hello-router.ts), [alpn-dispatch.ts](../../apps/mock-engine/src/domain/tls/alpn-dispatch.ts), [tls-alpn-responder.ts](../../apps/mock-engine/src/adapters/tls-alpn-responder.ts), [acme-certificate-source.ts](../../apps/mock-engine/src/adapters/acme-certificate-source.ts), [renewal-policy.ts](../../apps/mock-engine/src/domain/tls/renewal-policy.ts), [acme-account-key.ts](../../apps/mock-engine/src/adapters/acme-account-key.ts), [tls-stream-server.ts](../../apps/mock-engine/src/adapters/tls-stream-server.ts); the spike's result in [docs/spike/acme-tls-alpn-01.md](../spike/acme-tls-alpn-01.md).
 

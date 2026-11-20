@@ -145,7 +145,7 @@ The engine obtains its own certificates. TLS-ALPN-01 (RFC 8737) works through th
 - The CA's validation server connects to the engine's hostname on 443 with that SNI and ALPN `acme-tls/1` only. The relay routes it like any browser connection; it never looks at ALPN.
 - The engine must recognise that connection from the ClientHello (`parseClientHello` in `@ptbk/protocol` reads SNI and ALPN) and answer it with the challenge certificate, then serve normal connections as usual. Answer `acme-tls/1` only while a challenge for that hostname is pending, and only when it is the sole protocol offered (RFC 8737); close any other `acme-tls/1` connection without a byte.
 - The ACME account key must be separate from the engine key, stored in `PTBK_DATA_DIR` with mode 0600.
-- Renew before expiry. The spec also asks for an hourly Certificate Transparency check that alerts the owner about certificates with a key that is not the engine's, and a CAA record with `accounturi`.
+- Renew before expiry. The spec also asks for an hourly Certificate Transparency check that alerts the owner about certificates with a key that is not the engine's ([ENG-122](checklist.md#tunnel-interfaces-2-and-3)), and a CAA record with `accounturi`.
 - The production ACME client is the engine team's choice (see the [open points](README.md#open-points)).
 
 ## Contract exports
