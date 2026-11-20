@@ -145,3 +145,7 @@ export function HelpRequestItem({ request }: { readonly request: ReadBrowserHelp
         </li>
     );
 }
+
+export function HelpRequestItems({ requests }: { readonly requests: readonly ReadBrowserHelpRequest[] }) {
+    return requests.map((request) => <HelpRequestItem key={request.id} request={request} />);
+}

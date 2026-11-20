@@ -16,7 +16,7 @@ import { chatEntriesQueryOptions } from '../chat/chat-queries';
 import { tintStyle } from '../chat/references/agent-color';
 import { chatName } from '../chat/chat-name';
 import { useOpenHelpRequests } from '../browser/browser-queries';
-import { HelpRequestItem } from '../browser/help-request-item';
+import { HelpRequestsSlot } from '../browser/browser-slots';
 import { EntityChip } from '../entities/entity-chip';
 import { useWaitingAccessRequests } from '../members/members-feature';
 import { questionQuote } from './question-text';
@@ -236,9 +236,7 @@ export function NeedsYou({ chats }: { readonly chats: readonly ReadChat[] | unde
                     {waitingTasks.map((task) => (
                         <TaskItem key={task.id} task={task} />
                     ))}
-                    {help?.map((request) => (
-                        <HelpRequestItem key={request.id} request={request} />
-                    ))}
+                    <HelpRequestsSlot requests={help ?? []} />
                     {waitingPeople.map((request) => (
                         <AccessRequestItem key={request.id} request={request} />
                     ))}

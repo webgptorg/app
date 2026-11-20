@@ -24,7 +24,7 @@ import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
 import { chatName } from '../chat/chat-name';
 import { chatQueryOptions } from '../chat/chat-queries';
-import { LinkedBrowserTabs } from '../browser/linked-browser-tabs';
+import { BrowserTabsSlot } from '../browser/browser-slots';
 import { EntityChip } from '../entities/entity-chip';
 import { Crumb, Page } from '../shell/page';
 import { NARROW_QUERY, useMediaQuery } from '../shell/use-media-query';
@@ -111,7 +111,7 @@ function RunDetail({ run }: { readonly run: ReadRunDetail }) {
             {...(narrow ? {} : { actions })}
         >
             <RunSummary run={run} />
-            <LinkedBrowserTabs filter={{ runId: run.id }} />
+            <BrowserTabsSlot filter={{ runId: run.id }} />
             {run.error === null ? null : (
                 <Banner tone="danger" title={runErrorTitle(run.error.code)}>
                     <span className="flex flex-col gap-1.5">
