@@ -157,7 +157,7 @@ describe('runScheduled', () => {
         ]);
     });
 
-    it('runs the abuse jobs on the 15-minute cron, each failing on its own without the database', async () => {
+    it('runs the abuse jobs and the usage rollup on the 15-minute cron, each failing on its own without the database', async () => {
         const fetch = vi.fn(() => Promise.reject(new TypeError('offline')));
         vi.stubGlobal('fetch', fetch);
         const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -169,7 +169,7 @@ describe('runScheduled', () => {
                 .filter((entry) => entry.event === 'cron.job-failed')
                 .map((entry) => entry.job)
                 .sort();
-            expect(failed).toEqual(['ct-watch', 'public-face']);
+            expect(failed).toEqual(['ct-watch', 'public-face', 'usage-rollup']);
         } finally {
             errors.mockRestore();
         }
