@@ -15,6 +15,7 @@ import type { ControlServer, FaultSettings } from '../adapters/control-server';
 import { createFaultSettings, startControlServer } from '../adapters/control-server';
 import { createEngineApiRoutes } from '../adapters/http/api-routes';
 import { createGatewayRoutes } from '../adapters/http/dev-login';
+import { createLiveChannelRoute } from '../adapters/http/live-channel-route';
 import type { GatewayPageFiles } from '../adapters/http/gateway-page-files';
 import type { PasskeyRouteDeps } from '../adapters/http/passkey-routes';
 import { SETUP_PATH, createPasskeyRoutes } from '../adapters/http/passkey-routes';
@@ -69,6 +70,7 @@ import { createRelayLink } from '../domain/tunnel/relay-link';
 import type { EngineRuntime } from '../domain/state/engine-runtime';
 import { createEngineRuntime } from '../domain/state/engine-runtime';
 import { capabilitiesFor } from '../domain/state/capabilities';
+import { startLiveBrowserTicks } from '../domain/state/live-browser';
 import { createSeededSequence, hashSeed } from '../domain/state/seed-random';
 import type { RelayTarget } from '../domain/tunnel/relay-target';
 import { relayTargetOf } from '../domain/tunnel/relay-target';
@@ -313,12 +315,24 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         simulation: config.simulation,
         passkeys: config.passkeys,
         ...(config.onboarding === null ? {} : { onboarding: config.onboarding }),
+        liveBrowser: config.liveBrowser,
         faults: () => faults.plan(),
         onSimulationError: (error) => {
             logger.error('simulation.error', { problem: error instanceof Error ? error.name : 'unknown' });
         },
     });
     const sessions = createSessionStore({ engine: () => runtime.controller(), clock: deps.clock, random: deps.random });
+    const stopLiveBrowser = config.liveBrowser
+        ? startLiveBrowserTicks(deps.clock, () => {
+              try {
+                  runtime.controller().browserTick();
+              } catch (error) {
+                  logger.error('live-browser.tick-failed', {
+                      problem: error instanceof Error ? error.name : 'unknown',
+                  });
+              }
+          })
+        : null;
     const ownerSetUpNow = (): boolean => hasOwner(runtime.controller().inspect());
     // Assigned below; the owner changes only through requests and commands that come after startup.
     let onboardingChanged = (): void => undefined;
@@ -621,6 +635,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
     } catch (error) {
         // Nothing started so far may outlive a refused start: a listening control server would keep the process up.
         runtime.simulation().stop();
+        stopLiveBrowser?.();
         stopReportingCertificate?.();
         await control?.close();
         server?.close();
@@ -671,6 +686,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         },
         async close() {
             runtime.simulation().stop();
+            stopLiveBrowser?.();
             stopReportingCertificate?.();
             cancelHeartbeatFallback?.();
             const stopping = Promise.all([heartbeat?.stop(), ui?.stop(), ...links.map((link) => link.stop())]);
@@ -745,6 +761,7 @@ export function createInTunnelRoutes(deps: {
             ? []
             : createPasskeyRoutes({ ...deps.passkeys, engineId: deps.engineId, devLogin: deps.devLogin })),
         ...createEngineApiRoutes({ core: deps.core }),
+        createLiveChannelRoute({ core: deps.core }),
         ...createUiRoutes({ store: deps.bundles ?? NO_BUNDLES }),
     ];
 }

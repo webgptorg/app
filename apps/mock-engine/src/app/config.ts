@@ -86,6 +86,11 @@ export interface MockEngineConfig {
      * `no-project`; with the owner seeded, `empty` is `pending` and the other scenarios `completed`.
      */
     readonly onboarding: OnboardingSeed | null;
+    /**
+     * `MOCK_LIVE_BROWSER=enabled`: advertises `browser-tab@1` with a fake browser, whatever the capability list says.
+     * A draft no environment advertises by accident, so it is off by default and refused with `NODE_ENV=production`.
+     */
+    readonly liveBrowser: boolean;
     /** `MOCK_CONTROL=enabled` with `MOCK_CONTROL_HOST` and `MOCK_CONTROL_PORT`; refused with `NODE_ENV=production`. */
     readonly control: { readonly host: string; readonly port: number } | null;
     /** `PTBK_DASHBOARD_URL` and what goes with it; null runs the M1 dev mode on `PTBK_RELAYS`, without heartbeats. */
@@ -456,6 +461,7 @@ const envSchema = z.strictObject({
         z.enum(['no-project', 'pending', 'completed']),
         'must be no-project, pending or completed',
     ).optional(),
+    MOCK_LIVE_BROWSER: toggle.default('disabled'),
     MOCK_CONTROL: toggle.default('disabled'),
     MOCK_CONTROL_HOST: value(
         z.union([z.ipv4(), z.ipv6(), HostnameSchema]),
@@ -593,6 +599,9 @@ export function parseMockEngineConfig(env: Env): ParsedMockEngineConfig {
         if (result.data.MOCK_CONTROL === 'enabled') problems.push('MOCK_CONTROL: must not be enabled in production');
         if (result.data.MOCK_DEV_LOGIN === 'enabled')
             problems.push('MOCK_DEV_LOGIN: must not be enabled in production');
+        if (result.data.MOCK_LIVE_BROWSER === 'enabled') {
+            problems.push('MOCK_LIVE_BROWSER: must not be enabled in production');
+        }
         if (result.data.MOCK_UI_FAKE_PROVENANCE === 'enabled') {
             problems.push('MOCK_UI_FAKE_PROVENANCE: must not be enabled in production');
         }
@@ -638,6 +647,7 @@ export function parseMockEngineConfig(env: Env): ParsedMockEngineConfig {
         devLogin: parsedEnv.MOCK_DEV_LOGIN === 'enabled',
         passkeys: parsedEnv.MOCK_PASSKEYS,
         onboarding: parsedEnv.MOCK_ONBOARDING ?? null,
+        liveBrowser: parsedEnv.MOCK_LIVE_BROWSER === 'enabled',
         control:
             parsedEnv.MOCK_CONTROL === 'enabled'
                 ? Object.freeze({ host: parsedEnv.MOCK_CONTROL_HOST, port: parsedEnv.MOCK_CONTROL_PORT })

@@ -29,6 +29,8 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = O
         'triggers.read',
         'triggers.manage',
         'integrations.read',
+        // Watching shows only tabs of work the member can see anyway; controlling one stays with owners.
+        'browser.watch',
     ],
     viewer: [
         'agents.read',
@@ -39,6 +41,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = O
         'tasks.read',
         'triggers.read',
         'integrations.read',
+        'browser.watch',
     ],
 });
 

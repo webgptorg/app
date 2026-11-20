@@ -1,4 +1,11 @@
-import { ClientInfo, MemberId, OWNER_PERMISSIONS, SessionId, createEngineApiClient } from '@ptbk/engine-api';
+import {
+    BrowserTabId,
+    ClientInfo,
+    MemberId,
+    OWNER_PERMISSIONS,
+    SessionId,
+    createEngineApiClient,
+} from '@ptbk/engine-api';
 import type { EngineApiClient, OnboardingAnswer } from '@ptbk/engine-api';
 import { CHECK_MS } from '@ptbk/engine-api/in-memory';
 import { Timestamp, createCryptoRandom } from '@ptbk/protocol';
@@ -29,6 +36,7 @@ async function start(
         rateLimiter?: RateLimiter;
         runtime?: (runtime: EngineRuntime) => EngineRuntime;
         heartbeat?: () => HeartbeatStatus;
+        liveBrowser?: boolean;
     } = {},
 ) {
     const clock = createFakeClock(Date.parse('2026-10-01T00:00:00Z'));
@@ -43,6 +51,7 @@ async function start(
             version: '0.1.0',
         },
         clock,
+        ...(options.liveBrowser === undefined ? {} : { liveBrowser: options.liveBrowser }),
     });
     const runtime = options.runtime?.(base) ?? base;
     const logger = createMemoryLogger();
@@ -149,6 +158,24 @@ describe('control server', () => {
         expect(members.find(({ role }) => role === 'owner')?.id).toBe(owner.body['memberId']);
     });
 
+    it('signs a session in with a stale passkey assertion when asked', async () => {
+        const { sessions, post } = await start();
+        const stepUpOf = async (body: object) => {
+            const created = await post('/__mock/sessions', { subject: { kind: 'owner' }, ...body });
+            const outcome = sessions.authenticate((created.body['cookie'] as { value: string }).value, {
+                ip: '198.51.100.9',
+                userAgent: 'test',
+            });
+            return outcome.kind === 'signed-in' && outcome.actor.stepUpFresh;
+        };
+        expect(await stepUpOf({})).toBe(true);
+        expect(await stepUpOf({ stepUp: 'fresh' })).toBe(true);
+        expect(await stepUpOf({ stepUp: 'stale' })).toBe(false);
+        expect((await post('/__mock/sessions', { subject: { kind: 'owner' }, stepUp: 'old' })).response.status).toBe(
+            400,
+        );
+    });
+
     it("lets every session's passkey assertion go stale, so the next step-up route asks again", async () => {
         const { server, sessions, post } = await start();
         const owner = await post('/__mock/sessions', { subject: { kind: 'owner' } });
@@ -251,6 +278,10 @@ describe('control server', () => {
             'GET /__mock/state',
             'GET /__mock/ui',
             'POST /__mock/inbound-email',
+            'POST /__mock/live-browser/elapse',
+            'POST /__mock/live-browser/help-requests',
+            'POST /__mock/live-browser/navigate',
+            'POST /__mock/live-browser/tabs',
             'POST /__mock/onboarding/harness-check',
             'POST /__mock/onboarding/harness-login',
             'POST /__mock/reset',
@@ -288,5 +319,119 @@ describe('control server', () => {
                 now: () => '2026-10-01T00:00:00Z',
             }),
         ).rejects.toThrow();
+    });
+});
+
+describe('live browser levers', () => {
+    const SITE = 'https://shop.example';
+
+    it('answer 404 capability-not-supported while MOCK_LIVE_BROWSER is off', async () => {
+        const { post } = await start();
+        for (const [path, body] of [
+            ['/__mock/live-browser/tabs', { origin: SITE }],
+            ['/__mock/live-browser/help-requests', { reason: 'login', message: 'Stuck.' }],
+            ['/__mock/live-browser/navigate', { tabId: 'tab-1', page: { kind: 'browser-page' } }],
+            ['/__mock/live-browser/elapse', { sessionId: 'session-1', what: 'idle' }],
+        ] as const) {
+            const answer = await post(path, body);
+            expect(answer.response.status, path).toBe(404);
+            expect(answer.body['code'], path).toBe('capability-not-supported');
+        }
+    });
+
+    it('open an agent tab, in a chat or in none', async () => {
+        const { runtime, post } = await start({ liveBrowser: true, scenario: 'small-team' });
+        const plain = await post('/__mock/live-browser/tabs', { origin: 'https://work-1.conformance.invalid' });
+        expect(plain.response.status).toBe(201);
+        expect(plain.body['tab']).toMatchObject({
+            origin: 'https://work-1.conformance.invalid',
+            chatId: null,
+            taskId: null,
+            runId: null,
+            agentState: 'working',
+        });
+        const tabId = (plain.body['tab'] as { id: string }).id;
+        expect(runtime.controller().getBrowserTab(tabId)).toBeDefined();
+        const inChat = await post('/__mock/live-browser/tabs', { origin: SITE, chatId: 'chat-1' });
+        expect(inChat.body['tab']).toMatchObject({ chatId: 'chat-1' });
+        for (const body of [{ origin: 'http://shop.example' }, { origin: `${SITE}/cart` }, { origin: SITE, x: 1 }]) {
+            expect((await post('/__mock/live-browser/tabs', body)).response.status).toBe(400);
+        }
+    });
+
+    it('raise a help request on the startup tab by default, or on the tab named', async () => {
+        const { runtime, post } = await start({ liveBrowser: true });
+        const startup = runtime.liveBrowserTab();
+        const raised = await post('/__mock/live-browser/help-requests', { reason: 'captcha', message: 'A puzzle.' });
+        expect(raised.response.status).toBe(201);
+        expect(raised.body['request']).toMatchObject({ tabId: startup, reason: 'captcha', status: 'pending' });
+        const tab = await post('/__mock/live-browser/tabs', { origin: SITE });
+        const tabId = (tab.body['tab'] as { id: string }).id;
+        const named = await post('/__mock/live-browser/help-requests', { tabId, reason: 'login', message: '' });
+        expect(named.body['request']).toMatchObject({ tabId, reason: 'login' });
+        const unknown = await post('/__mock/live-browser/help-requests', {
+            tabId: 'tab-nowhere',
+            reason: 'login',
+            message: 'x',
+        });
+        expect(unknown.response.status).toBe(404);
+        const long = await post('/__mock/live-browser/help-requests', { reason: 'other', message: 'x'.repeat(501) });
+        expect(long.response.status).toBe(400);
+    });
+
+    it('refuse a help request on a sign-in tab, where no agent works', async () => {
+        const { runtime, post } = await start({ liveBrowser: true });
+        const opened = await ownerClient(runtime).browser.openSignIn(
+            { browser: null, origin: 'https://accounts.example' },
+            AbortSignal.timeout(5_000),
+        );
+        if (opened.kind !== 'ok') throw new Error(opened.problem.code);
+        const refused = await post('/__mock/live-browser/help-requests', {
+            tabId: opened.data.tabId,
+            reason: 'login',
+            message: 'x',
+        });
+        expect(refused.response.status).toBe(400);
+        expect(refused.body['errors']).toEqual([{ path: 'body.tabId', message: 'Not an agent’s tab.' }]);
+    });
+
+    it('move a tab to another origin, a browser page or a secret page', async () => {
+        const { runtime } = await start({ liveBrowser: true });
+        const tabId = runtime.liveBrowserTab() ?? '';
+        const navigate = (page: object, id = tabId) =>
+            fetch(`http://127.0.0.1:${String(servers.at(-1)?.port)}/__mock/live-browser/navigate`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ tabId: id, page }),
+            });
+        expect((await navigate({ kind: 'web', origin: 'https://elsewhere.example' })).status).toBe(204);
+        expect(runtime.controller().getBrowserTab(tabId)?.origin).toBe('https://elsewhere.example');
+        expect((await navigate({ kind: 'secret-page' })).status).toBe(204);
+        expect(runtime.controller().getBrowserTab(tabId)?.origin).toBeNull();
+        expect((await navigate({ kind: 'browser-page' })).status).toBe(204);
+        expect((await navigate({ kind: 'web', origin: 'https://x.example' }, 'tab-nowhere')).status).toBe(404);
+        expect((await navigate({ kind: 'secret-page', origin: 'https://x.example' })).status).toBe(400);
+        expect((await navigate({ kind: 'desktop' })).status).toBe(400);
+    });
+
+    it('end an open session as if its time or idle limit ran out, and 404 for any other', async () => {
+        const { runtime } = await start({ liveBrowser: true });
+        const client = ownerClient(runtime);
+        const signal = AbortSignal.timeout(5_000);
+        const tabId = runtime.liveBrowserTab() ?? '';
+        const watched = await client.browser.watch(BrowserTabId.parse(tabId), signal);
+        if (watched.kind !== 'ok') throw new Error(watched.problem.code);
+        const elapse = (sessionId: string, what: string) =>
+            fetch(`http://127.0.0.1:${String(servers.at(-1)?.port)}/__mock/live-browser/elapse`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ sessionId, what }),
+            });
+        expect((await elapse(watched.data.id, 'expired')).status).toBe(204);
+        const ended = await client.browser.getSession(watched.data.id, signal);
+        expect(ended.kind === 'ok' && ended.data).toMatchObject({ status: 'ended', endReason: 'expired' });
+        expect((await elapse(watched.data.id, 'idle')).status).toBe(404);
+        expect((await elapse('session-nowhere', 'expired')).status).toBe(404);
+        expect((await elapse(watched.data.id, 'later')).status).toBe(400);
     });
 });

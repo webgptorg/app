@@ -78,6 +78,8 @@ export interface ApiHarnessOptions {
     readonly onboarding?: { readonly ceremonies?: PasskeyCeremonies };
     /** `MOCK_PASSKEYS`; `none` by default with onboarding, so the setup link works. */
     readonly passkeys?: 'seeded' | 'none';
+    /** `MOCK_LIVE_BROWSER`: off by default, as in a started mock. */
+    readonly liveBrowser?: boolean;
 }
 
 /** The onboarding side of the harness, for tests that drive the setup link and passkeys. */
@@ -196,6 +198,7 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
                   capabilities: capabilitiesFor(options.capabilities ?? FULL_CAPABILITY_NAMES),
                   simulation: options.simulation ?? { mode: 'paused', speed: 1 },
                   passkeys: options.passkeys ?? (options.onboarding === undefined ? 'seeded' : 'none'),
+                  liveBrowser: options.liveBrowser ?? false,
                   faults: () => faults.plan(),
                   onSimulationError: (error) => {
                       logger.error('simulation.error', { problem: error instanceof Error ? error.message : 'unknown' });

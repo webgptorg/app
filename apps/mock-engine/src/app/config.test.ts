@@ -580,6 +580,7 @@ describe('parseIdentityConfig', () => {
             ['MOCK_DEV_LOGIN', 'yes'],
             ['MOCK_PASSKEYS', 'some'],
             ['MOCK_CONTROL', 'on'],
+            ['MOCK_LIVE_BROWSER', 'yes'],
             ['MOCK_CONTROL_HOST', 'not a host'],
             ['MOCK_CONTROL_PORT', '70000'],
         ])('refuses %s=%s without echoing the value', (name, text) => {
@@ -662,6 +663,15 @@ describe('parseIdentityConfig', () => {
             expect(
                 parseMockEngineConfig({ ...BASE, NODE_ENV: 'development', MOCK_CONTROL: 'enabled' }).control,
             ).not.toBeNull();
+        });
+
+        it('switches the live browser on only when asked, and never in production', () => {
+            expect(parseMockEngineConfig(BASE).liveBrowser).toBe(false);
+            expect(parseMockEngineConfig({ ...BASE, MOCK_LIVE_BROWSER: 'disabled' }).liveBrowser).toBe(false);
+            expect(parseMockEngineConfig({ ...BASE, MOCK_LIVE_BROWSER: 'enabled' }).liveBrowser).toBe(true);
+            expect(problemsOf({ ...BASE, NODE_ENV: 'production', MOCK_LIVE_BROWSER: 'enabled' })).toEqual([
+                'MOCK_LIVE_BROWSER: must not be enabled in production',
+            ]);
         });
     });
     describe('UI loader', () => {

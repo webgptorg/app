@@ -6,6 +6,7 @@ import type { Duplex } from 'node:stream';
 import type { HttpBindings } from '@hono/node-server';
 import { getRequestListener } from '@hono/node-server';
 import { createProblem } from '@ptbk/engine-api';
+import type { ProblemDetails } from '@ptbk/engine-api';
 import type { Actor } from '@ptbk/engine-api/in-memory';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
@@ -18,7 +19,7 @@ import type { RateLimiter } from '../../domain/rate-limit/rate-limiter';
 import type { SecureConnection } from '../tls-stream-server';
 import type { Faults } from './fault-middleware';
 import { withFaults } from './fault-middleware';
-import { authenticate, isSameOriginMutation, requestTarget } from './gateway-middleware';
+import { authenticate, isOwnOrigin, isSameOriginMutation, requestTarget } from './gateway-middleware';
 import type { HttpRoute, Route, WebSocketRoute } from './route';
 import type { Problem } from './route-handler';
 import {
@@ -66,19 +67,46 @@ export interface HttpApp {
     close(): void;
 }
 
-function rejectUpgrade(socket: Duplex, result: Problem): void {
-    const body = JSON.stringify(createProblem(result.code, result.extras));
-    const status = createProblem(result.code).status;
+function rejectUpgrade(socket: Duplex, body: ProblemDetails, retryAfterS?: number): void {
+    const text = JSON.stringify(body);
     const lines = [
-        `HTTP/1.1 ${String(status)} ${STATUS_CODES[status] ?? ''}`,
+        `HTTP/1.1 ${String(body.status)} ${STATUS_CODES[body.status] ?? ''}`,
         'Connection: close',
         'Content-Type: application/problem+json',
-        `Content-Length: ${String(Buffer.byteLength(body))}`,
+        `Content-Length: ${String(Buffer.byteLength(text))}`,
         `Cache-Control: ${DEFAULT_CACHE_CONTROL}`,
         ...Object.entries(engineSecurityHeaders()).map(([name, value]) => `${name}: ${value}`),
-        ...(result.retryAfterS === undefined ? [] : [`Retry-After: ${String(result.retryAfterS)}`]),
+        ...(retryAfterS === undefined ? [] : [`Retry-After: ${String(retryAfterS)}`]),
     ];
-    socket.end(`${lines.join('\r\n')}\r\n\r\n${body}`);
+    socket.end(`${lines.join('\r\n')}\r\n\r\n${text}`);
+}
+
+function rejectUpgradeWith(socket: Duplex, problem: Problem): void {
+    rejectUpgrade(socket, createProblem(problem.code, problem.extras), problem.retryAfterS);
+}
+
+/** The `{name}` segments of `template` in `pathname`, still percent-encoded, or `null` if it does not match. */
+function matchPath(template: string, pathname: string): Record<string, string> | null {
+    const expected = template.split('/');
+    const actual = pathname.split('/');
+    if (expected.length !== actual.length) return null;
+    const params = Object.create(null) as Record<string, string>;
+    for (const [index, segment] of expected.entries()) {
+        const value = actual[index] ?? '';
+        const name = /^\{(\w+)\}$/.exec(segment)?.[1];
+        if (name === undefined) {
+            if (segment !== value) return null;
+        } else {
+            if (value === '') return null;
+            params[name] = value;
+        }
+    }
+    return params;
+}
+
+/** Whether `Sec-WebSocket-Protocol` lists `protocol`; the header is a comma-separated token list. */
+function offers(header: string | undefined, protocol: string): boolean {
+    return header?.split(',').some((offered) => offered.trim() === protocol) ?? false;
 }
 
 /**
@@ -173,22 +201,25 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         return problemResponse({ code: 'internal-error' });
     });
 
-    const webSockets = new Map<string, { readonly route: WebSocketRoute; readonly server: WebSocketServer }>(
-        routes
-            .filter((route): route is WebSocketRoute => route.transport === 'websocket')
-            .map((route) => [
-                route.path,
-                {
-                    route,
-                    server: new WebSocketServer({
-                        noServer: true,
-                        maxPayload: route.maxPayloadBytes,
-                        // Compression would skew the throughput the spike measures and costs memory per socket.
-                        perMessageDeflate: false,
-                    }),
-                },
-            ]),
-    );
+    const webSockets = routes
+        .filter((route): route is WebSocketRoute => route.transport === 'websocket')
+        .map((route) => ({
+            route,
+            server: new WebSocketServer({
+                noServer: true,
+                maxPayload: route.maxPayloadBytes,
+                // Compression would skew the throughput the spike measures and costs memory per socket.
+                perMessageDeflate: false,
+                handleProtocols: () => route.subprotocol ?? false,
+            }),
+        }));
+    const webSocketFor = (pathname: string) => {
+        for (const target of webSockets) {
+            const params = matchPath(target.route.path, pathname);
+            if (params !== null) return { ...target, params };
+        }
+        return undefined;
+    };
 
     // Not overriding the global Request and Response keeps the process's fetch types untouched.
     const listener = getRequestListener(app.fetch, { overrideGlobalObjects: false });
@@ -203,32 +234,85 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         socket.on('error', () => undefined);
         const connection = connectionOf.get(request.socket);
         const url = URL.parse(request.url ?? '', 'https://engine.invalid');
-        const target = url === null ? undefined : webSockets.get(url.pathname);
+        const target = url === null ? undefined : webSocketFor(url.pathname);
         if (connection === undefined || url === null || target === undefined || request.method !== 'GET') {
-            rejectUpgrade(socket, { code: 'not-found' });
+            rejectUpgradeWith(socket, { code: 'not-found' });
             return;
         }
-        const limited = rateLimited(target.route, deps.rateLimiter, connection.clientIp);
+        const { route } = target;
+        const limited = rateLimited(route, deps.rateLimiter, connection.clientIp);
         if (limited !== null) {
-            rejectUpgrade(socket, limited);
+            rejectUpgradeWith(socket, limited);
             return;
         }
-        const admitted = admitQueryAndHeaders(target.route, url, (name) => {
+        const header = (name: string): string | undefined => {
             const value = request.headers[name];
             return typeof value === 'string' ? value : undefined;
-        });
-        if (!('kind' in admitted)) {
-            rejectUpgrade(socket, admitted);
+        };
+        // A malformed ID names no session, so it is as unknown as any other: 404, never a validation error.
+        const params = route.params === null ? null : route.params.safeParse(target.params);
+        if (params?.success === false) {
+            rejectUpgradeWith(socket, { code: 'not-found' });
             return;
         }
+        const admitted = admitQueryAndHeaders(route, url, header);
+        if (!('kind' in admitted)) {
+            rejectUpgradeWith(socket, admitted);
+            return;
+        }
+        let actor: Actor | null = null;
+        if (route.auth === 'session') {
+            // A browser sends cookies with a cross-site WebSocket too, and no CORS stops one: only `Origin` does.
+            if (!isOwnOrigin({ hostname: connection.hostname, header })) {
+                rejectUpgradeWith(socket, { code: 'forbidden', extras: { detail: 'Cross-site request refused.' } });
+                return;
+            }
+            const outcome =
+                deps.sessions === undefined
+                    ? null
+                    : authenticate(deps.sessions, {
+                          method: 'GET',
+                          path: url.pathname,
+                          target: `${url.pathname}${url.search}`,
+                          hostname: connection.hostname,
+                          header,
+                          clientIp: connection.clientIp,
+                      });
+            if (outcome?.kind !== 'signed-in') {
+                rejectUpgradeWith(socket, { code: 'unauthenticated' });
+                return;
+            }
+            actor = outcome.actor;
+        }
+        if (route.subprotocol !== null && !offers(header('sec-websocket-protocol'), route.subprotocol)) {
+            rejectUpgradeWith(socket, {
+                code: 'validation-failed',
+                extras: {
+                    errors: [{ path: 'headers.sec-websocket-protocol', message: `Offer ${route.subprotocol}.` }],
+                },
+            });
+            return;
+        }
+        const admission = route.handle({
+            params: params?.data ?? null,
+            query: admitted.query,
+            headers: admitted.headers,
+            connection,
+            actor,
+            clientIp: connection.clientIp,
+        } as Parameters<WebSocketRoute['handle']>[0]);
+        if (admission.kind === 'refuse') {
+            rejectUpgrade(socket, admission.problem);
+            return;
+        }
+        const handshake = { completed: false };
+        // Synchronous: `ws` either completes the handshake and calls back, or answers 400 and destroys the socket.
         target.server.handleUpgrade(request, socket, head, (ws) => {
+            handshake.completed = true;
             ws.on('error', () => undefined);
-            target.route.handle(ws, {
-                query: admitted.query,
-                headers: admitted.headers,
-                connection,
-            } as Parameters<WebSocketRoute['handle']>[1]);
+            admission.open(ws);
         });
+        if (!handshake.completed) admission.abandoned?.();
     });
 
     return {
@@ -241,7 +325,7 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         },
         connections: () => sockets.size,
         close() {
-            for (const { server: wss } of webSockets.values()) {
+            for (const { server: wss } of webSockets) {
                 for (const client of wss.clients) client.terminate();
             }
             for (const socket of [...sockets]) socket.destroy();

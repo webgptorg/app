@@ -160,7 +160,8 @@ const memberOf = (role: (typeof ROLES)[number]): string => {
 };
 
 beforeAll(async () => {
-    harness = await createApiHarness({ rateLimiter: { consume: () => ({ kind: 'allowed' }) } });
+    // With the live browser too, so its watch and control routes are in the matrix.
+    harness = await createApiHarness({ rateLimiter: { consume: () => ({ kind: 'allowed' }) }, liveBrowser: true });
 });
 
 afterAll(async () => {

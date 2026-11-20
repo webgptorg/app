@@ -27,11 +27,19 @@ describe('permissionsFor', () => {
         expect(member.has('agents.write')).toBe(true);
     });
 
-    it('gives viewers only read permissions', () => {
+    it('gives viewers only read permissions, and watching a browser tab', () => {
         const viewer = permissionsFor({ role: 'viewer' }, { permissions: null });
         expect(viewer.size).toBeGreaterThan(0);
-        expect([...viewer].every(isReadPermission)).toBe(true);
+        expect([...viewer].filter((permission) => !isReadPermission(permission))).toEqual(['browser.watch']);
         expect(viewer.has('wallet.read')).toBe(false);
+    });
+
+    it('lets every role watch a browser tab, and only the owner control one', () => {
+        for (const role of ROLES) {
+            const permissions = permissionsFor({ role }, { permissions: null });
+            expect(permissions.has('browser.watch'), role).toBe(true);
+            expect(permissions.has('browser.control'), role).toBe(role === 'owner');
+        }
     });
 
     it('lists only known permissions for every role, without duplicates', () => {
