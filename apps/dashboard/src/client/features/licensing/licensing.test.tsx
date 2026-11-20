@@ -253,7 +253,7 @@ describe('website access page', () => {
         expect(app.api.callsTo(apiRoutes.websiteAccessLink)).toHaveLength(0);
         await app.user.click(screen.getByRole('button', { name: 'Sign out' }));
         await waitFor(() => {
-            expect(app.history.location.pathname).toBe('/signin');
+            expect(app.history.location.pathname).toBe('/continue');
         });
         expect(app.history.location.search).toContain('returnTo=%2Fwebsite-access');
     });
@@ -290,7 +290,7 @@ describe('website access page', () => {
             script: (api) => api.on(apiRoutes.websiteAccessPending, ok(PENDING)),
         });
         const signIn = await screen.findByRole('link', { name: 'Sign in with a passkey' });
-        expect(signIn.getAttribute('href')).toBe('/signin?returnTo=%2Fwebsite-access');
+        expect(signIn.getAttribute('href')).toBe('/continue?returnTo=%2Fwebsite-access');
     });
 
     it('signs up a new person with the confirmed address, through the App’s own confirmation email', async () => {

@@ -158,7 +158,7 @@ function SignedOut(props: { readonly pending: WebsitePendingView }) {
             <Titled title={m.website_access_title()}>
                 <p>{m.website_access_signin_body({ email: pending.email })}</p>
                 <div>
-                    <ButtonLink to="/signin" search={{ returnTo: WEBSITE_ACCESS_PATH }} variant="primary">
+                    <ButtonLink to="/continue" search={{ returnTo: WEBSITE_ACCESS_PATH }} variant="primary">
                         {m.website_access_signin_action()}
                     </ButtonLink>
                 </div>
@@ -167,7 +167,7 @@ function SignedOut(props: { readonly pending: WebsitePendingView }) {
     }
     return (
         <EmailStep
-            purpose="signup"
+            purpose="continue"
             title={m.website_access_signup_title()}
             intro={<p>{m.website_access_signup_body({ email: pending.email })}</p>}
             submitLabel={m.website_access_signup_action()}
