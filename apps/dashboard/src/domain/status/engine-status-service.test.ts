@@ -686,6 +686,17 @@ describe('engine status service', () => {
             });
         });
 
+        it('answers no activity for a status saved before it was counted', async () => {
+            const t = setup();
+            await t.beat(1);
+            const stored = t.storage.stored();
+            if (stored?.kind !== 'tracked') {
+                throw new Error('expected a tracked status');
+            }
+            await t.storage.save({ ...stored, activity: undefined });
+            expect(await t.service.getActivity()).toBeNull();
+        });
+
         it('answers no activity for a purged engine', async () => {
             const t = setup();
             await t.beat(1);

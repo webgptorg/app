@@ -200,8 +200,19 @@ describe('usage events over HTTP (ADR 0022)', () => {
             },
         ]);
 
-        await approveTheOnlyTicket(harness, engine);
-        expect(recorded(harness).filter((row) => row.event === 'access.approved')).toEqual([
+        await answerTheOnlyTicket(harness, engine, 'declined');
+        expect((await existing.browser.request('POST', `/api/teams/${team.teamId}/access-ticket`)).status).toBe(200);
+        await answerTheOnlyTicket(harness, engine, 'approved');
+        expect(
+            recorded(harness).filter((row) => row.event.startsWith('access.') && row.event !== 'access.requested'),
+        ).toEqual([
+            {
+                event: 'access.declined',
+                orgId: owner.orgId,
+                userId: existing.userId,
+                engineId: engine.engineId,
+                props: {},
+            },
             {
                 event: 'access.approved',
                 orgId: owner.orgId,
@@ -237,14 +248,20 @@ describe('usage events over HTTP (ADR 0022)', () => {
     });
 });
 
-/** The engine approves the one request it holds, acking the ticket the dashboard signed, in a v2 heartbeat. */
-async function approveTheOnlyTicket(harness: AuthHarness, engine: TestEngine): Promise<void> {
+let v2Seq = 10;
+
+/** The engine answers the one request it holds, acking the ticket the dashboard signed, in a v2 heartbeat. */
+async function answerTheOnlyTicket(
+    harness: AuthHarness,
+    engine: TestEngine,
+    outcome: 'approved' | 'declined',
+): Promise<void> {
     const tickets = await harness.deps.teams.ticketsAwaitingNotice(engine.engineId, 0);
     expect(tickets).toHaveLength(1);
     const [ticket] = tickets;
     harness.clock.advance(60_000);
-    const beat = await signedHeartbeatV2(engine, 10, harness.clock.nowMs(), {
-        acks: [{ id: ticket?.ticketId ?? '', outcome: 'approved' }],
+    const beat = await signedHeartbeatV2(engine, ++v2Seq, harness.clock.nowMs(), {
+        acks: [{ id: ticket?.ticketId ?? '', outcome }],
     });
     expect((await harness.post(heartbeatPath(engine.engineId), beat.body, beat.headers)).status).toBe(200);
 }

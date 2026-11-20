@@ -59,6 +59,12 @@ describe('usage recorder', () => {
         expect(t.logger.entries.filter((entry) => entry.event === 'usage.event-refused')).toHaveLength(smuggled.length);
     });
 
+    it('writes nothing when every event is refused', async () => {
+        const t = setup({ insertEvents: () => Promise.reject(new Error('not expected')) });
+        await t.recorder.record([{ ...signedUp, props: { via: 'free text' } } as unknown as UsageEvent]);
+        expect(t.logger.entries.map((entry) => entry.event)).toEqual(['usage.event-refused']);
+    });
+
     it('never rejects: a failed write is one log line without content', async () => {
         const failures: (() => Promise<void>)[] = [
             () => Promise.reject(new TypeError('D1_ERROR: no such table')),
