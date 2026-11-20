@@ -82,6 +82,8 @@ function validBody(route: RouteDefinition): unknown {
             return { enabled: true };
         case 'answerOnboarding':
             return { promptId: 'matrix-prompt', action: 'back' };
+        case 'openBrowserSignIn':
+            return { browser: null, origin: 'https://accounts.example' };
         case 'testAgentDraft':
             return { book: 'Matrix', messages: [{ role: 'user', content: 'hello' }] };
         default:
