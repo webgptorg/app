@@ -88,7 +88,11 @@ function useForwardedInput(
             event.preventDefault();
             if (action === 'down') {
                 element.focus();
-                element.setPointerCapture(event.pointerId);
+                try {
+                    element.setPointerCapture(event.pointerId);
+                } catch {
+                    // The pointer is no longer active (or the browser has no capture); the press still counts.
+                }
                 pressCount = clicks(event.clientX, event.clientY);
             }
             session.input({ kind: 'pointer', action, button, clicks: pressCount, ...at }, true);
