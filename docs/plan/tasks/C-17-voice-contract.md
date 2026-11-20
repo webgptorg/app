@@ -2,7 +2,7 @@
 
 - **Lane:** C · **Module:** `packages/engine-api`, `packages/conformance` · **Milestone:** M5
 - **Depends on:** C-15
-- **Status:** in progress (feat/c-17-voice-contract)
+- **Status:** done (#349)
 - **Spec:** Access, transport and zero trust; ADRs: [0016](../../adr/0016-engine-capabilities.md), [0019](../../adr/0019-live-sessions-inside-the-tunnel.md)
 
 ## Goal
@@ -46,11 +46,11 @@ Decisions (Seb, 2026-11-20):
 
 ## Acceptance criteria
 
-- [ ] Strict in, tolerant out for every new schema; refusal tests for each media type, cap and problem.
-- [ ] The reference engine refuses oversize, overlong and wrongly typed clips without reading them into any state, keeps no audio, and creates no chat entry for a transcript.
-- [ ] Conformance checks above pass against the in-memory engine and fail against a fake that breaks each rule.
-- [ ] `engine-api` and `protocol` coverage thresholds hold; `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Strict in, tolerant out for every new schema; refusal tests for each media type, cap and problem.
+- [x] The reference engine refuses oversize, overlong and wrongly typed clips without reading them into any state, keeps no audio, and creates no chat entry for a transcript.
+- [x] Conformance checks above pass against the in-memory engine and fail against a fake that breaks each rule.
+- [x] `engine-api` and `protocol` coverage thresholds hold; `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
