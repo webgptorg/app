@@ -451,11 +451,11 @@ describe('the live browser', () => {
         const { user, router } = render(engine, { path: '/wallet' });
         const logins = await screen.findByRole('region', { name: 'Saved logins' });
         await user.click(await within(logins).findByRole('button', { name: /^More for github\.com/ }));
-        await user.click(await screen.findByRole('menuitem', { name: "Sign in in the engine's browser" }));
+        await user.click(await screen.findByRole('menuitem', { name: "Sign in in the project's browser" }));
         expect(await screen.findByRole('heading', { level: 1, name: 'Sign in on github.com' })).toBeDefined();
         expect(await screen.findByText(/Your clicks and keys go to the site/)).toBeDefined();
         await router.navigate({ to: '/wallet' });
-        expect(await screen.findByText("You're signing in on github.com in the engine's browser")).toBeDefined();
+        expect(await screen.findByText("You're signing in on github.com in the project's browser")).toBeDefined();
         router.history.back();
         await user.click(await screen.findByRole('button', { name: 'Done' }));
         expect(await screen.findByText('The session ended.')).toBeDefined();

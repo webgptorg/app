@@ -7,7 +7,7 @@ import { CONTROL_REQUIREMENT } from './browser-queries';
 import { signInOrigin, useOpenSignIn } from './use-browser-actions';
 
 /**
- * "Sign in in the engine's browser" for a site's menu: a fresh tab there for the owner alone, behind step-up. Absent
+ * "Sign in in the project's browser" for a site's menu: a fresh tab there for the owner alone, behind step-up. Absent
  * without `browser-tab@1` or `browser.control`, and for a site that is not https. The engine decides whether the
  * site is on its sign-in allowlist.
  */
