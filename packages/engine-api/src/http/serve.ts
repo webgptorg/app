@@ -154,7 +154,7 @@ async function readBody(route: RouteDefinition, request: Request): Promise<BodyR
 async function readCapped(request: Request, maxBytes: number): Promise<Uint8Array<ArrayBuffer> | null> {
     const declared = Number(request.headers.get('content-length'));
     if (Number.isFinite(declared) && declared > maxBytes) {
-        await request.body?.cancel();
+        release(request.body?.cancel());
         return null;
     }
     const chunks: Uint8Array[] = [];
@@ -166,7 +166,7 @@ async function readCapped(request: Request, maxBytes: number): Promise<Uint8Arra
             if (next.done) break;
             size += next.value.byteLength;
             if (size > maxBytes) {
-                await reader.cancel();
+                release(reader.cancel());
                 return null;
             }
             chunks.push(next.value);
@@ -179,6 +179,14 @@ async function readCapped(request: Request, maxBytes: number): Promise<Uint8Arra
         offset += chunk.byteLength;
     }
     return bytes;
+}
+
+/**
+ * Stops reading without waiting: a tee'd body (a cloned `Request`) settles its cancel only once every branch cancels,
+ * so awaiting it would hang the refusal.
+ */
+function release(cancelled: Promise<void> | undefined): void {
+    cancelled?.catch(() => undefined);
 }
 
 function writeResult(route: RouteDefinition, result: EngineApiResponse<unknown>): Response {

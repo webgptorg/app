@@ -198,6 +198,19 @@ describe('voice over HTTP', () => {
         );
         expect(chunked.status).toBe(413);
         expect(await chunked.json()).toMatchObject({ code: 'payload-too-large' });
+        // A gateway that keeps a copy of the request tees its body; the refusal must not wait for the copy.
+        for (const headers of [
+            { 'content-type': 'audio/wav' },
+            { 'content-type': 'audio/wav', 'content-length': '3000000' },
+        ]) {
+            const teed = new Request(url, {
+                method: 'POST',
+                headers,
+                body: new Blob([new Uint8Array(MAX_VOICE_CLIP_BYTES + 1)]),
+            });
+            teed.clone();
+            expect((await serve(teed)).status).toBe(413);
+        }
         const empty = await serve(new Request(url, { method: 'POST', headers: { 'content-type': 'audio/wav' } }));
         expect(await empty.json()).toMatchObject({ code: 'transcription-failed' });
     });
