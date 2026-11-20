@@ -809,7 +809,7 @@
   "engines_new_shell": "Počítač nebo server",
   "engines_new_tab_ai": "Instalace pomocí AI",
   "engines_new_ubuntu": "Ubuntu 24.04 x64 se systemd a přístupem root nebo sudo. Bootstrap doplní závislosti a spustí projekt pod běžným účtem promptbook.",
-  "engines_new_windows_handoff": "Dokončete instalátor, otevřete nové okno PowerShellu a tímto blokem připojte projekt. Pokud se otevře průvodce samostatným projektem, zavřete jej bez vytvoření projektu.",
+  "engines_new_windows_handoff": "Dokončete instalátor, otevřete nové okno PowerShellu a tímto blokem připojte projekt. Pokud instalátor otevře vlastního průvodce projektem, zavřete ho a nic v něm nevytvářejte.",
   "engines_new_install_intro": "Vyberte způsob instalace. Projekt se nejdřív připojí a potom na jeho stránce nastavíte agendu a AI nástroje.",
   "engines_new_open_terminal": "Na macOS otevřete Terminál z Aplikace / Utility; na Linuxu otevřete svůj terminál. Použijte počítač, na kterém mají agenti běžet.",
   "engines_new_open_powershell": "Otevřete PowerShell z nabídky Start ve Windows na počítači, na kterém mají agenti běžet.",

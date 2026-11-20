@@ -45,7 +45,7 @@ describe('custom domains (platform admin)', () => {
                 api.on(apiRoutes.adminGetEngine, ok({ engine: adminEngineView({ engineId: ENGINE_ID }) }));
             },
         });
-        const field = await screen.findByLabelText(/Engine ID/);
+        const field = await screen.findByLabelText(/Project ID/);
         await app.user.type(field, 'not-an-engine');
         await app.user.click(screen.getByRole('button', { name: 'Open' }));
         expect(await screen.findByText('Enter a 26-character project ID.')).toBeTruthy();

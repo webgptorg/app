@@ -136,7 +136,7 @@ export async function linkTeamEngine(
 
     await page.goto(`${DASHBOARD_ORIGIN}/engines`);
     await page.getByRole('button', { name: 'New project' }).click();
-    await page.getByLabel('Engine name').fill(team);
+    await page.getByLabel('Project name').fill(team);
     await page.getByRole('button', { name: 'Create and link a project' }).click();
     await expect(page).toHaveURL(/\/engines\/new\?.*link=[a-z2-7]{26}/);
     const linkCode = devInstallLinkCode((await page.getByRole('tabpanel').locator('code').textContent()) ?? '');

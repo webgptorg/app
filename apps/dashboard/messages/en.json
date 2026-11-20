@@ -803,7 +803,7 @@
   "engines_new_shell": "Computer or server",
   "engines_new_tab_ai": "Install with AI",
   "engines_new_ubuntu": "Ubuntu 24.04 x64 with systemd and root or sudo access. The bootstrap prepares dependencies and runs the project as the ordinary promptbook user.",
-  "engines_new_windows_handoff": "Finish the installer, then open a new PowerShell window and run this block to pair this project. If a standalone project wizard opens, close it without creating a project.",
+  "engines_new_windows_handoff": "Finish the installer, then open a new PowerShell window and run this block to pair this project. If the installer opens its own project wizard, close it without creating anything there.",
   "engines_new_install_intro": "Choose an installation method. The project connects first; then you set up the agenda and AI tools on its page.",
   "engines_new_open_terminal": "On macOS, open Terminal from Applications / Utilities; on Linux, open your terminal. Use the computer where your agents will run.",
   "engines_new_open_powershell": "Open PowerShell from the Windows Start menu on the computer where your agents will run.",
