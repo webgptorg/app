@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M5
 - **Depends on:** D-11
-- **Status:** in progress (fix/dashboard-current-install-release)
+- **Status:** done (#352)
 - **Spec:** [Engine-first installation](../../design/engine-first-installation.md)
 
 ## Goal
@@ -18,7 +18,7 @@ New installations follow the published npm `latest` release without redeploying 
 
 ## Acceptance criteria
 
-- [ ] A later complete published release replaces the configured version in every installation option.
-- [ ] Invalid, incomplete, older or unavailable releases preserve the configured version and matching digest.
-- [ ] Both issuance routes use the resolver; legacy installations make no metadata requests.
-- [ ] Scoped lint, typecheck and tests pass; docs explain selection and fallback.
+- [x] A later complete published release replaces the configured version in every installation option.
+- [x] Invalid, incomplete, older or unavailable releases preserve the configured version and matching digest.
+- [x] Both issuance routes use the resolver; legacy installations make no metadata requests.
+- [x] Scoped lint, typecheck and tests pass; docs explain selection and fallback.

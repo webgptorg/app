@@ -35,7 +35,7 @@ import { createInviteJoinFlow } from '../../domain/teams/join-invite';
 import { apiRoutes, type InviteView, type TeamView } from '../../shared/api/routes';
 import { clearInviteCookie, INVITE_COOKIE_TTL_MS, inviteCookie, inviteToken } from './cookies';
 import type { DashboardDeps } from '../deps';
-import { issuedLinkCodeView } from './link-code-view';
+import { resolveLinkCodeView } from './link-code-view';
 import type { RequestContext, RouteBinder } from './bind-route';
 
 const NO_CONTENT = { kind: 'ok', body: undefined, status: 204 } as const;
@@ -201,7 +201,7 @@ export function bindTeamRoutes(
         );
         return {
             kind: 'ok',
-            body: issuedLinkCodeView(deps.config, outcome),
+            body: await resolveLinkCodeView(deps, outcome, request.signal),
         };
     });
 

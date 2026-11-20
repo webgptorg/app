@@ -5,8 +5,21 @@ import { installationOptions } from '../../domain/registration/installation-opti
 import type { LinkCodeView } from '../../shared/api/routes';
 import type { DashboardConfig } from '../config';
 import { LINK_CODE_PLACEHOLDER, LINK_URL_PLACEHOLDER } from '../config';
+import type { DashboardDeps } from '../deps';
 
 type Issued = Extract<IssueLinkCodeOutcome, { readonly kind: 'issued' }>;
+
+/** Both personal and team issuance share the same release selection, before rendering any install option. */
+export async function resolveLinkCodeView(
+    deps: Pick<DashboardDeps, 'config' | 'installReleases'>,
+    issued: Issued,
+    signal: AbortSignal,
+): Promise<LinkCodeView> {
+    const configured = deps.config.engineInstallation;
+    if (configured === undefined) return issuedLinkCodeView(deps.config, issued);
+    const release = await deps.installReleases.current(configured, signal);
+    return issuedLinkCodeView({ ...deps.config, engineInstallation: release }, issued);
+}
 
 /** The view of a code just issued: the code, its link URL and each install tab with one of them filled in. */
 export function issuedLinkCodeView(

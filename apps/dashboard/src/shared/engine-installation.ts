@@ -1,15 +1,23 @@
+import { compareEngineVersions, EngineVersion } from '@ptbk/protocol';
 import { z } from 'zod';
 
-/** Reviewed, published 0.119 artifacts. URLs are derived, never supplied by a link-code requester. */
+const MINIMUM_VERSION = EngineVersion.parse('0.119.0-117');
+
+/** Published artifacts with a supported CLI. URLs are derived, never supplied by a link-code requester. */
 export const engineInstallReleaseSchema = z.strictObject({
     version: z
         .string()
         .max(32)
-        .regex(/^0\.119\.0(?:-[1-9]\d*)?$/)
         .refine((version) => {
-            const candidate = version.split('-')[1];
-            return version.trim() === version && (candidate === undefined || Number(candidate) >= 117);
-        }, 'requires 0.119.0-117 or a later release in the same line'),
+            const candidate = EngineVersion.safeParse(version);
+            return (
+                // The pinned Ubuntu installer accepts exact versions without SemVer build metadata.
+                !version.includes('+') &&
+                version.trim() === version &&
+                candidate.success &&
+                compareEngineVersions(candidate.data, MINIMUM_VERSION) >= 0
+            );
+        }, 'requires 0.119.0-117 or a later semantic version'),
     windowsSha256: z
         .string()
         .length(64)

@@ -5,6 +5,8 @@ import { createStripeApi, createStripeBillingProvider } from '../adapters/billin
 import { createStripeWebhookVerifier, rejectAllWebhooks } from '../adapters/billing/stripe-webhook-verifier';
 import { createConsoleLogger } from '../adapters/console-logger';
 import { cryptoRandom } from '../adapters/crypto-random';
+import { createConfiguredEngineInstallReleaseSource } from '../adapters/registration/configured-engine-install-release-source';
+import { createFetchEngineInstallReleaseSource } from '../adapters/registration/fetch-engine-install-release-source';
 import { createDohDnsResolver } from '../adapters/dns/doh-dns-resolver';
 import { createCloudflareEmailSender } from '../adapters/email/cloudflare-email-sender';
 import { createMeteredEmailSender } from '../adapters/email/metered-email-sender';
@@ -219,6 +221,16 @@ export function createDashboard(
         store: createD1AuthStore(db),
         ...billing,
         linkCodes: createD1LinkCodeStore(db),
+        installReleases:
+            config.environment === 'dev'
+                ? createConfiguredEngineInstallReleaseSource()
+                : createFetchEngineInstallReleaseSource({
+                      fetch: (url, init) =>
+                          fetch(url, {
+                              ...init,
+                              cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': 300, '400-599': 0 } },
+                          }),
+                  }),
         engines: createD1EngineStore(db),
         teams: createD1TeamStore(db),
         memberKey: memberKeySource(config.memberKeySeed),

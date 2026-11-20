@@ -8,6 +8,7 @@ import type { DashboardAction } from '../domain/authz/policy';
 import type { CustomHostnameStore } from '../domain/custom-hostnames/custom-hostname-store';
 import type { PlatformEngineStore } from '../domain/engines/platform-engine-store';
 import type { EngineStore } from '../domain/registration/engine-store';
+import type { EngineInstallReleaseSource } from '../domain/registration/engine-install-release-source';
 import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import type { MemberKeySource } from '../domain/teams/member-key';
 import type { TeamStore } from '../domain/teams/team-store';
@@ -51,6 +52,7 @@ export interface DashboardDeps {
     /** What every gated action asks (ADR 0017); nothing outside billing sees plans or the provider. */
     readonly entitlements: Entitlements;
     readonly linkCodes: LinkCodeStore;
+    readonly installReleases: EngineInstallReleaseSource;
     readonly engines: EngineStore;
     /** Teams, their people, invitations and the member revocations owed to engines (ADR 0018). */
     readonly teams: TeamStore;

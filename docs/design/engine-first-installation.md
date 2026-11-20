@@ -4,7 +4,11 @@ The existing Reborn engine owns durable onboarding, identity, private drafts, th
 
 ## Configuration and response
 
-`ENGINE_INSTALLATION` is optional reviewed metadata: `version`, `windowsSha256`, `bootstrapRevision` (an immutable commit) and `bootstrapSha256`. The supported line starts at `0.119.0-117`; malformed or older versions fail startup. URLs derive from official release naming and the immutable bootstrap path. HTTPS Dashboard origin is required. A requester cannot supply an installer URL or shell fragment.
+`ENGINE_INSTALLATION` is optional reviewed fallback metadata: `version`, `windowsSha256`, `bootstrapRevision` (an immutable commit) and `bootstrapSha256`. Supported semantic versions start at `0.119.0-117`, including later prereleases and release lines. The pinned Ubuntu installer accepts versions without build metadata. Invalid or older versions fail startup. URLs derive from official release naming and the immutable bootstrap path. HTTPS Dashboard origin is required. A requester cannot supply an installer URL or shell fragment.
+
+On each personal or team link-code issuance outside development, Dashboard reads `https://registry.npmjs.org/ptbk/latest`. A newer supported version is selected only when its exact `v<version>` GitHub release is published, is not a draft, and has exactly one uploaded `Promptbook-Setup-<version>-windows-x64.exe` with a GitHub SHA-256 digest. Commands, localized AI prompts, Ubuntu's `--version`, the Windows URL/checksum and its continuation all use that same exact version. Future releases need no Dashboard redeploy. Previously issued commands stay pinned to their issuance; creating a new link resolves again.
+
+Both metadata requests share a ten-second deadline and each response is capped at 512 KiB. The Worker requests a five-minute edge cache for successful public metadata to bound registry/GitHub traffic; error responses are not cached. URLs are fixed official endpoints, redirects are refused, and no pairing code, cookie, credential or project content is sent. Missing assets during publication, malformed metadata, upstream errors/timeouts, or a version no newer than the fallback preserve the complete configured version/checksum pair. This means an upstream outage can temporarily offer the reviewed fallback instead of the newest release. Caller cancellation propagates. Development and tests use an in-memory configured source; legacy command-only configuration makes no metadata requests.
 
 At link-code issuance, optional `installationOptions` separates these payloads:
 
@@ -24,9 +28,9 @@ Windows has no assumed pairing deep link: a fresh-terminal follow-up block is re
 
 ## Reviewed artifacts and limits
 
-Staging is prepared for npm `ptbk@0.119.0-117`, `Promptbook-Setup-0.119.0-117-windows-x64.exe`, and bootstrap commit `eda1a109787d164046d1f73732705e8a9afa76ec`. This is a prerelease. Matching macOS DMGs remain in the public catalogue. Production's remaining placeholders are not credentials or a deployment instruction.
+Staging's reviewed fallback is npm `ptbk@0.119.0-125` and `Promptbook-Setup-0.119.0-125-windows-x64.exe` (SHA-256 `74f3ea6b3b751c2803e256e9de075d581b4f25b0e9be7e7ad33ffac46faf9233`), published on 20 November 2026. Bootstrap commit `eda1a109787d164046d1f73732705e8a9afa76ec` and its checksum remain independently pinned; its verified script accepts the selected exact `--version`. This is a prerelease. Matching macOS DMGs remain in the public catalogue. Production's remaining placeholders are not credentials or a deployment instruction.
 
-The reviewed 117 package includes the native Codex/Claude fixes from 115. The source branch is already `0.119.0-118`; it is not selected until all its artifacts are published and checked. A verified command/asset is not proof that every provider flow succeeds. Update all reviewed metadata together after checking npm, assets, bootstrap bytes and the real flow.
+Source-checkout versions are never used for release selection. A verified command/asset is not proof that every provider flow succeeds. Update fallback version and Windows digest together after checking the published npm package and asset. Bootstrap bytes/revision remain a separate manual review; automatic version discovery does not replace the pinned script or weaken signed UI verification.
 
 ## Review and release gates
 
