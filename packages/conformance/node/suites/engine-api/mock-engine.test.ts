@@ -14,11 +14,16 @@ const SUITE_TIMEOUT_MS = 300_000;
 
 /**
  * What the mock cannot show: it advertises every known capability (the live browser through `MOCK_LIVE_BROWSER`, which
- * the mock's target factory turns on) but no reserved one, and its member sessions come without a passkey.
+ * the mock's target factory turns on) but no reserved one and not voice, which stays behind `MOCK_VOICE` (so its routes
+ * are the unadvertised ones `engine-api.capabilities.unadvertised-404` tries); its member sessions come without a
+ * passkey.
  */
 const MOCK_SKIPS = {
-    'engine-api.capabilities.unadvertised-404': 'skip: the engine advertises every capability this contract defines',
     'engine-api.live-audio.session': 'skip: capability-not-advertised',
+    'engine-api.voice.transcription-caps': 'skip: capability-not-advertised',
+    'engine-api.voice.transcription-draft': 'skip: capability-not-advertised',
+    'engine-api.voice.speech': 'skip: capability-not-advertised',
+    'engine-api.voice.permissions': 'skip: capability-not-advertised',
     'engine-api.me.own-passkeys': 'skip: the member has no passkey to revoke (listing passed)',
 };
 
