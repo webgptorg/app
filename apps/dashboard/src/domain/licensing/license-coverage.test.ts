@@ -55,4 +55,11 @@ describe('advisory license coverage', () => {
         expect(result.assignments).toEqual({ one: 'unlimited', two: 'unlimited' });
         expect(result.warnings).toEqual([{ engineId: 'one', reason: 'usage-unknown' }]);
     });
+    it('leaves an engine uncovered when every fitting grant is full and nothing can move', () => {
+        expect(licenseCoverage([engine('first', 2), engine('second', 2)], [grant('start', 3)], now)).toEqual({
+            assignments: { first: 'start' },
+            warnings: [{ engineId: 'second', reason: 'not-covered' }],
+            blocking: false,
+        });
+    });
 });
