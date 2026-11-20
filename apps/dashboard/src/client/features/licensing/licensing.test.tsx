@@ -174,7 +174,7 @@ describe('license page', () => {
         expect(screen.getByText('2 not covered')).toBeTruthy();
         expect(screen.getByText('Not covered')).toBeTruthy();
         expect(screen.getByText('2 · 0 covered')).toBeTruthy();
-        expect(screen.getByText('6 · up to 0 per engine')).toBeTruthy();
+        expect(screen.getByText('6 · up to 0 per project')).toBeTruthy();
     });
 
     it('does not exist without website licensing, or for a member', async () => {
@@ -192,9 +192,9 @@ describe('license page', () => {
 describe('engines notice', () => {
     it.each([
         ['exceeded', 'You use more than your licenses cover. Nothing is stopped.'],
-        ['expired', 'Your license has expired. Your engines keep running; renew it on ptbk.io.'],
-        ['missing', 'No active license covers your engines. They keep running.'],
-        ['unlinked', 'Link your ptbk.io account to see which engines your licenses cover.'],
+        ['expired', 'Your license has expired. Your projects keep running; renew it on ptbk.io.'],
+        ['missing', 'No active license covers your projects. They keep running.'],
+        ['unlinked', 'Link your ptbk.io account to see which projects your licenses cover.'],
     ] as const)('says %s quietly, with a way to the license page', async (notice, text) => {
         renderApp({ path: '/engines', session: MANAGER, script: withLicense(licenseView({ notice })) });
         expect(await screen.findByText(text)).toBeTruthy();
@@ -214,7 +214,7 @@ describe('engines notice', () => {
             session: MEMBER,
             script: withLicense(licenseView({ notice: 'exceeded' })),
         });
-        expect(await screen.findByRole('heading', { name: 'Engines', level: 1 })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Projects', level: 1 })).toBeTruthy();
         expect(member.api.callsTo(apiRoutes.getLicense)).toHaveLength(0);
     });
 });
