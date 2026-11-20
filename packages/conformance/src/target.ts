@@ -85,4 +85,9 @@ export interface LiveBrowserTarget {
     navigate(tabId: string, page: LiveBrowserPage): Promise<void>;
     /** The session behaves as if its `endsAt` (`expired`) or its controller's idle limit (`idle`) passed now. */
     elapse(sessionId: string, what: 'expired' | 'idle'): Promise<void>;
+    /**
+     * A new owner session whose passkey assertion is not fresh, so `stepUp` routes must answer 401
+     * `step-up-required`. Without it, the step-up check skips.
+     */
+    staleOwnerSession?(): Promise<SessionCredential>;
 }

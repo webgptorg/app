@@ -61,7 +61,6 @@ describe('the suite against an in-process engine', () => {
                 'skip: the engine advertises every capability this contract defines',
             // Reserved capabilities are design only, so no engine advertises them.
             'engine-api.live-audio.session': 'skip: capability-not-advertised',
-            'engine-api.browser-tab.session': 'skip: capability-not-advertised',
         });
         expect(report.engineVersion).not.toBeNull();
         expect(report.results.every(({ cleanupFailures }) => cleanupFailures === 0)).toBe(true);
