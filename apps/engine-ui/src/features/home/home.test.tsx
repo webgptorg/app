@@ -110,7 +110,7 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
 
         const box = await screen.findByRole('textbox', { name: 'Ask Chatter' });
         await user.type(box, 'Hello{Enter}');
-        expect(await screen.findByText(/Chatter isn’t set up on this engine yet/)).toBeDefined();
+        expect(await screen.findByText(/Chatter isn’t set up in this project yet/)).toBeDefined();
         expect((box as HTMLTextAreaElement).value).toBe('Hello');
 
         await user.type(box, '{Enter}');
@@ -573,7 +573,7 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
             'Triggers',
             'Integrations',
             'Members',
-            'Engine',
+            'Project',
         ]);
 
         await user.click(within(region).getByRole('button', { name: 'Members' }));

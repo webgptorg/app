@@ -137,7 +137,7 @@ describe('threads page', { timeout: TIMEOUT_MS }, () => {
         const app = renderWithProviders({ path: '/chats', engineApi: engine.client });
         const start = await screen.findByRole('button', { name: 'New chat' });
         await app.user.click(start);
-        expect(await screen.findByText(/Chatter isn’t set up on this engine yet/)).toBeDefined();
+        expect(await screen.findByText(/Chatter isn’t set up in this project yet/)).toBeDefined();
         await app.user.click(start);
         expect(await screen.findByText('Not allowed')).toBeDefined();
         await app.user.click(start);

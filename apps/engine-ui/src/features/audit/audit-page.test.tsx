@@ -490,7 +490,7 @@ describe('audit log: rows', { timeout: TIMEOUT_MS }, () => {
         const agent = within(table).getByText('Agent created').closest('tr');
         if (policy === null || agent === null) throw new Error('expected both rows');
         const targetColumn = screen.getByRole<HTMLTableCellElement>('columnheader', { name: 'Target' }).cellIndex;
-        expect(policy.cells[targetColumn]?.textContent).toBe('This engine');
+        expect(policy.cells[targetColumn]?.textContent).toBe('This project');
         expect(agent.cells[targetColumn]?.textContent).toBe('Not recorded');
     });
 

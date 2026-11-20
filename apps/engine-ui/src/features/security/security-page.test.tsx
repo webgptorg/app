@@ -158,7 +158,7 @@ describe('security panel: trust panel', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(trust.querySelector('svg')?.getAttribute('data-state')).toBe('verified');
         });
-        const mark = within(trust).getByRole('img', { name: /Engine fingerprint/ });
+        const mark = within(trust).getByRole('img', { name: /Project fingerprint/ });
         expect(mark.getAttribute('aria-label')).not.toMatch(/verified/i);
         expect(trust.textContent).toContain('Checks unavailable: your access does not include');
     });
@@ -204,7 +204,7 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
     it('sums up every claim in one line, with the reported values in its details, and passes axe', async () => {
         const { container } = renderSecurity();
         await screen.findByText('relay-a.ptbk.io');
-        expect(row('Engine').textContent).toContain('Version 1.4.0 · Update waiting to install');
+        expect(row('Project').textContent).toContain('Version 1.4.0 · Update waiting to install');
         expect(row('This app').textContent).toContain('Version 1.0.0, signed and verified by the project');
         expect(row('Secure connection').textContent).toContain(
             'Valid until Dec 1, 2026; no foreign certificates in CT logs',
@@ -214,7 +214,7 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
         expect(row('Where it connects').textContent).toContain('2 destinations reported');
         expect(row('Last report to the dashboard').textContent).toMatch(/Sent/);
 
-        const engine = row('Engine');
+        const engine = row('Project');
         expect(within(engine).getByText('123456')).toBeDefined();
         expect(
             within(engine)
@@ -316,7 +316,7 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
         });
         await screen.findByText('relay-a.ptbk.io');
         const certificate = row('Secure connection');
-        expect(certificate.textContent).toContain('Tell an owner of this engine.');
+        expect(certificate.textContent).toContain('Tell an owner of this project.');
         expect(certificate.textContent).not.toContain('revoke');
     });
 

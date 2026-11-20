@@ -322,10 +322,10 @@ describe('app shell', () => {
         });
         const { user, unmount } = renderWithProviders({ path: '/settings', engineApi: linked });
         await user.click(await screen.findByRole('button', { name: /Lab/ }));
-        expect(screen.getByRole('menuitem', { name: 'All engines' }).getAttribute('href')).toBe(
+        expect(screen.getByRole('menuitem', { name: 'All projects' }).getAttribute('href')).toBe(
             'https://app.ptbk.test/',
         );
-        expect(screen.getByRole('menuitem', { name: 'Add engine' }).getAttribute('href')).toBe(
+        expect(screen.getByRole('menuitem', { name: 'Add project' }).getAttribute('href')).toBe(
             'https://app.ptbk.test/engines/new',
         );
         unmount();
@@ -333,8 +333,8 @@ describe('app shell', () => {
         const second = renderWithProviders({ path: '/settings' });
         await second.user.click(await screen.findByRole('button', { name: /Test engine/ }));
         expect(screen.getByRole('menuitemradio', { name: /Test engine/ })).toBeDefined();
-        expect(screen.queryByRole('menuitem', { name: 'All engines' })).toBeNull();
-        expect(screen.queryByRole('menuitem', { name: 'Add engine' })).toBeNull();
+        expect(screen.queryByRole('menuitem', { name: 'All projects' })).toBeNull();
+        expect(screen.queryByRole('menuitem', { name: 'Add project' })).toBeNull();
     });
 
     it('verifies the engine from the switcher: the fingerprint code, then the trust panel', async () => {

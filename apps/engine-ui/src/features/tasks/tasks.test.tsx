@@ -53,7 +53,7 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         });
         expect(screen.getAllByText('2026-10-30 09:00').length).toBeGreaterThan(0);
         expect(screen.getByText('Dependency {Export invoices from the old system} was not found.')).toBeTruthy();
-        expect(screen.getByText('Engine')).toBeTruthy();
+        expect(screen.getByText('Built-in')).toBeTruthy();
         expect(screen.getAllByRole('link', { name: 'Ada' })[0]?.getAttribute('href')).toBe('/agents/agent-ada');
         expect(screen.getByRole('link', { name: 'Run history' }).getAttribute('href')).toBe('/runs');
         expect(screen.queryByRole('button', { name: /cancel|retry|delete/i })).toBeNull();
@@ -282,7 +282,7 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         await screen.findByRole('heading', { level: 1, name: 'Update Promptbook 0.119.0 → 0.120.0' });
         expect(screen.getByText('Promptbook engine (deterministic update, no agent)')).toBeTruthy();
         expect(screen.getByText('Built into the project')).toBeTruthy();
-        expect(screen.getByText('The engine')).toBeTruthy();
+        expect(screen.getByText('The project')).toBeTruthy();
         expect(
             within(screen.getByRole('region', { name: 'Before it can start' })).getByText('No task is running'),
         ).toBeTruthy();

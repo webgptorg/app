@@ -284,7 +284,7 @@ describe('setup page', () => {
         });
         await expectState('valid');
         expect(document.activeElement).toBe(elsewhere);
-        expect(document.querySelector('[data-announcer]')?.textContent).toBe('Nastavte svůj engine');
+        expect(document.querySelector('[data-announcer]')?.textContent).toBe('Nastavte svůj projekt');
     });
 });
 

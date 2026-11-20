@@ -205,7 +205,7 @@ describe('integrations list', { timeout: TIMEOUT_MS }, () => {
         ).toEqual([
             'MCP server',
             'Repository',
-            expect.stringMatching(/^Calendar.*sign-in flow this engine does not offer yet/) as string,
+            expect.stringMatching(/^Calendar.*sign-in flow this project does not offer yet/) as string,
         ]);
         const calendar = within(menu).getByRole('menuitem', { name: /Calendar/ });
         expect(calendar.getAttribute('aria-disabled')).toBe('true');

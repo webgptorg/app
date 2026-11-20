@@ -248,7 +248,7 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         // A new tab: in the setup tab, only the fragment would change, and the page would not load again.
         const reused = await context.newPage();
         await reused.goto(setupLink.url);
-        await expect(reused.getByRole('heading', { name: 'This engine already has an owner' })).toBeVisible();
+        await expect(reused.getByRole('heading', { name: 'This project already has an owner' })).toBeVisible();
         await reused.close();
         await enginePage.close();
     });

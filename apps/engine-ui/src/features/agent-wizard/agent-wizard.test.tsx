@@ -343,7 +343,7 @@ describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
         expect(await within(list).findByText('Upload failed')).toBeDefined();
 
         await app.user.upload(input, new File(['x'.repeat(1001)], 'big.md'));
-        expect(await within(list).findByText(/^Too large: the engine accepts up to/)).toBeDefined();
+        expect(await within(list).findByText(/^Too large: the project accepts up to/)).toBeDefined();
         expect(app.spies.upload).toHaveBeenCalledOnce();
 
         await app.user.upload(input, new File(['# Prices'], 'prices.md'));

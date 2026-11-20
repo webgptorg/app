@@ -176,16 +176,16 @@ describe('setup.html', () => {
         const text = parse('setup.html').body.textContent.replace(/\s+/g, ' ');
         for (const copy of [
             'Set up your project',
-            'You are about to become the owner of this engine. Your passkey stays with you; the engine keeps only its public half.',
+            'You are about to become the owner of this project. Your passkey stays with you; the project keeps only its public half.',
             'Confirm on your device: fingerprint, face, PIN or security key.',
             'The passkey prompt was closed or timed out. Try again when you are ready.',
-            'Sign in from any device with this passkey. To add a device without synced passkeys, use Security in the engine.',
-            'Setup is done. If you started on the Promptbook dashboard, its tab shows this engine as ready by itself; you can close it.',
+            'Sign in from any device with this passkey. To add a device without synced passkeys, use Security in the project.',
+            'Setup is done. If you started on the Promptbook dashboard, its tab shows this project as ready by itself; you can close it.',
             'This setup link has expired',
-            "Setup links work for 30 minutes. On the engine's server, run {{command}} setup-link for a new one.",
-            'This engine already has an owner',
+            "Setup links work for 30 minutes. On the project's server, run {{command}} setup-link for a new one.",
+            'This project already has an owner',
             'Sign in with your passkey. If you are the owner and lost every passkey, run {{command}} owner --reset on the server.',
-            "This page needs the setup link from the engine's terminal",
+            "This page needs the setup link from the project's terminal",
             'This browser cannot create passkeys',
             'Create passkey',
             'Open your project',
@@ -205,11 +205,11 @@ describe('sign-in.html', () => {
         );
         const text = ways?.textContent.replace(/\s+/g, ' ') ?? '';
         for (const copy of [
-            'No passkey for this engine on this device?',
+            'No passkey for this project on this device?',
             "Choose the phone option in the browser's prompt, then confirm on your phone.",
             'Otherwise, sign in on the device where you created it.',
-            'Open the engine from your Promptbook dashboard: choose Open next to it.',
-            'Nemáte na tomto zařízení klíč k tomuto enginu?',
+            'Open the project from your Promptbook dashboard: choose Open next to it.',
+            'Nemáte na tomto zařízení klíč k tomuto projektu?',
         ]) {
             expect(text).toContain(copy);
         }
@@ -221,11 +221,11 @@ describe('join.html', () => {
     it('explains the second passkey and asks for the code to be read out', () => {
         const text = parse('join.html').body.textContent.replace(/\s+/g, ' ');
         for (const copy of [
-            'This engine has its own secure address, so your browser asks for one more passkey here.',
+            'This project has its own secure address, so your browser asks for one more passkey here.',
             'Tell this code to the person approving you',
             'Keep this page open; it signs you in as soon as you are approved.',
             "You're in",
-            'Opening the engine…',
+            'Opening the project…',
         ]) {
             expect(text).toContain(copy);
         }
