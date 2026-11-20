@@ -26,6 +26,8 @@ Run the [conformance suite](testing-against-the-platform.md) first. Staging show
 
 ## Settings
 
+A [staging build](ui-loader.md#staging-builds) of `ptbk`, installed from the block on app.ptbk.io → Engines → New engine, needs none of this: it embeds the staging policy and defaults. The settings below are for any other build.
+
 Start the engine from your own shell, not from the release image or the installer's service: those set `NODE_ENV=production`, and production refuses the staging trust policy ([ui-loader.md](ui-loader.md#where-the-trust-policy-comes-from)). If your bundler inlines `NODE_ENV`, use a build that does not.
 
 ```sh
