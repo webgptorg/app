@@ -6,6 +6,7 @@ import {
     createFetchEngineApiClient,
     ENGINE_API_ROUTE_LIST,
     isReservedCapability,
+    KNOWN_CAPABILITIES,
     MemberId,
     OWNER_PERMISSIONS,
 } from '@ptbk/engine-api';
@@ -318,9 +319,12 @@ describe('every response of that run', () => {
     });
 
     it('came from every operation of the route table', () => {
-        // Reserved routes have no client method; capabilities.test.ts checks that they answer 404.
+        // Reserved routes have no client method; capabilities.test.ts checks that they answer 404. browser-tab@1 is off
+        // unless MOCK_LIVE_BROWSER turns it on (M-11).
         const missing = ENGINE_API_ROUTE_LIST.filter(
-            (route) => route.capability === undefined || !isReservedCapability(route.capability),
+            (route) =>
+                route.capability === undefined ||
+                (!isReservedCapability(route.capability) && route.capability !== KNOWN_CAPABILITIES.browserTab),
         )
             .map(({ id }) => id)
             .filter((id) => !recorder.answered.has(id));
