@@ -26,6 +26,7 @@ import type { RateLimiter } from '../domain/ports/rate-limiter';
 import type { RelyingParty } from '../domain/ports/relying-party';
 import type { Timer } from '../domain/ports/timer';
 import type { DashboardMetrics } from '../domain/monitoring/dashboard-metrics';
+import type { UsageRecorder } from '../domain/usage/usage-recorder';
 import type { DashboardConfig } from './config';
 
 /** Everything handlers may use. Later tasks add their ports here, built from the adapters `config.adapters` selects. */
@@ -71,6 +72,8 @@ export interface DashboardDeps {
     readonly engineStatus: EngineStatusDirectory;
     /** Which relays hold a ready tunnel for which engines, as the relays report it (R-07). */
     readonly relayPresence: RelayPresenceStore;
+    /** Funnel events (ADR 0022), best effort: handlers pass `record` to `waitUntil`. */
+    readonly usage: UsageRecorder;
     /** The fake outbox behind `email` when `config.adapters.email` is `fake` (dev only), else null. */
     readonly devOutbox: FakeEmailSender | null;
 }

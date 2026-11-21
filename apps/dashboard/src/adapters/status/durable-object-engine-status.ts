@@ -1,12 +1,14 @@
 import type { EngineId, HeartbeatVerification } from '@ptbk/protocol';
 
 import type { EngineStatusSnapshot } from '../../domain/status/engine-status';
+import type { EngineActivity } from '../../domain/usage/engine-activity';
 import type { EngineStatusDirectory, RecordHeartbeatInput } from '../../domain/status/engine-status-directory';
 
 /** The RPC surface of `EngineStatus`, so this adapter does not depend on `cloudflare:workers`. */
 export interface EngineStatusStub {
     recordHeartbeat(input: RecordHeartbeatInput): Promise<HeartbeatVerification>;
     getStatus(): Promise<EngineStatusSnapshot>;
+    getActivity(): Promise<EngineActivity | null>;
     reset(): Promise<void>;
 }
 
@@ -21,6 +23,7 @@ export function createDurableObjectEngineStatus(namespace: EngineStatusNamespace
     return {
         recordHeartbeat: (input) => stub(input.engineId).recordHeartbeat(input),
         getStatus: (engineId) => stub(engineId).getStatus(),
+        getActivity: (engineId) => stub(engineId).getActivity(),
         reset: (engineId) => stub(engineId).reset(),
     };
 }

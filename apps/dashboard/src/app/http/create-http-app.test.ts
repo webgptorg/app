@@ -89,9 +89,11 @@ function app(options: {
         engineStatus: {
             recordHeartbeat: () => Promise.reject(new Error('not reached')),
             getStatus: () => Promise.resolve({ state: 'never-seen' }),
+            getActivity: () => Promise.resolve(null),
             reset: () => Promise.resolve(),
         },
         relayPresence: createMemoryRelayPresenceStore(),
+        usage: { record: () => Promise.resolve() },
         assets: { fetch: assets } as unknown as Fetcher,
         viteDevServer: options.viteDevServer,
     });

@@ -104,6 +104,7 @@ export function createV1Router(
         | 'email'
         | 'heartbeatEngines'
         | 'engineStatus'
+        | 'usage'
     > & {
         readonly policy: EngineCreationPolicy;
         readonly routes: RouteBinder;
@@ -123,6 +124,17 @@ export function createV1Router(
         deps.metrics.record({ name: 'ptbk_dashboard_registrations_total', outcome: outcome.kind });
         switch (outcome.kind) {
             case 'registered':
+                request.waitUntil(
+                    deps.usage.record([
+                        {
+                            event: 'engine.linked',
+                            orgId: outcome.orgId,
+                            userId: null,
+                            engineId: outcome.response.engineId,
+                            props: { mode: input.body.mode, relinked: outcome.relinked },
+                        },
+                    ]),
+                );
                 return { kind: 'ok', body: outcome.response };
             case 'invalid-link-code':
             case 'bad-signature':
@@ -147,12 +159,13 @@ export function createV1Router(
                 if (outcome.heartbeat.v === 1) {
                     return { kind: 'ok', body: undefined, status: 204 };
                 }
-                const { reply, deliver } = await handleHeartbeatV2(
+                const { reply, deliver, usage } = await handleHeartbeatV2(
                     memberAccessDeps(deps),
                     input.params.engineId,
                     outcome.heartbeat,
                 );
                 request.waitUntil(sendAccessEmails(deps, deliver));
+                request.waitUntil(deps.usage.record(usage));
                 return { kind: 'ok', body: reply };
             }
             case 'unknown-engine':

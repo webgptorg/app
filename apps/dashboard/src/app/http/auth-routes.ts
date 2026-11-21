@@ -16,6 +16,7 @@ import { orgIdSchema } from '../../domain/ids';
 import { createInviteJoinFlow, type InviteJoinDeps, type InviteJoinOutcome } from '../../domain/teams/join-invite';
 import { apiRoutes, type SessionView } from '../../shared/api/routes';
 import { resolveRequestLocale } from '../i18n/resolve-request-locale';
+import type { UsageRecorder } from '../../domain/usage/usage-recorder';
 import type { RequestContext, RouteBinder } from './bind-route';
 import {
     CHALLENGE_COOKIE,
@@ -84,6 +85,7 @@ export function bindAuthRoutes(
         readonly routes: RouteBinder;
         readonly billingEnabled: boolean;
         readonly teams: InviteJoinDeps['teams'] & RecoveryDeps['teams'];
+        readonly usage: UsageRecorder;
     },
 ): void {
     const signup = createSignupFlow(deps);
@@ -160,7 +162,17 @@ export function bindAuthRoutes(
             response: input.body.response,
             locale: requestLocale(request),
         });
-        return outcome.kind === 'ok' ? signedIn(outcome.session) : failure(outcome.kind);
+        if (outcome.kind !== 'ok') {
+            return failure(outcome.kind);
+        }
+        const { userId, activeOrgId: orgId } = outcome.session.record;
+        request.waitUntil(
+            deps.usage.record([
+                { event: 'account.signed_up', orgId, userId, engineId: null, props: { via: 'signup' } },
+                { event: 'org.created', orgId, userId, engineId: null, props: { kind: 'personal' } },
+            ]),
+        );
+        return signedIn(outcome.session);
     });
 
     // Sign-in
@@ -221,7 +233,17 @@ export function bindAuthRoutes(
             response: input.body.response,
             locale: requestLocale(request),
         });
-        return outcome.kind === 'ok' ? joined(outcome) : failure(outcome.kind);
+        if (outcome.kind !== 'ok') {
+            return failure(outcome.kind);
+        }
+        const subject = { orgId: outcome.joined.orgId, userId: outcome.session.record.userId, engineId: null };
+        request.waitUntil(
+            deps.usage.record([
+                { event: 'account.signed_up', ...subject, props: { via: 'invite' } },
+                { event: 'invite.accepted', ...subject, props: { as: 'new-account' } },
+            ]),
+        );
+        return joined(outcome);
     });
 
     bind(router, mount, apiRoutes.inviteSigninVerify, async ({ input, request }) => {
@@ -235,7 +257,21 @@ export function bindAuthRoutes(
             response: input.body.response,
             previousSessionToken: request.secretCookie(SESSION_COOKIE),
         });
-        return outcome.kind === 'ok' ? joined(outcome) : failure(outcome.kind);
+        if (outcome.kind !== 'ok') {
+            return failure(outcome.kind);
+        }
+        request.waitUntil(
+            deps.usage.record([
+                {
+                    event: 'invite.accepted',
+                    orgId: outcome.joined.orgId,
+                    userId: outcome.session.record.userId,
+                    engineId: null,
+                    props: { as: 'existing-account' },
+                },
+            ]),
+        );
+        return joined(outcome);
     });
 
     // Recovery

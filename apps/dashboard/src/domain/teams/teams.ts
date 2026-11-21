@@ -69,17 +69,21 @@ export function renameTeam(deps: TeamDeps, actor: TeamActor, teamId: TeamId, nam
  * The team's engine is revoked first, as `engine.revoke` would, so relays stop routing it; then the team goes with its
  * people. The engine keeps running on its machine with its data.
  */
-export async function deleteTeam(deps: TeamDeps, actor: TeamActor, teamId: TeamId): Promise<'deleted' | 'not-found'> {
+export async function deleteTeam(
+    deps: TeamDeps,
+    actor: TeamActor,
+    teamId: TeamId,
+): Promise<{ readonly kind: 'deleted'; readonly engineId: EngineId | null } | { readonly kind: 'not-found' }> {
     const team = await deps.teams.find(actor.orgId, teamId);
     if (team === null) {
-        return 'not-found';
+        return { kind: 'not-found' };
     }
     if (team.engineId !== null) {
         await deps.engines.revoke(actor.orgId, team.engineId, teamAudit(deps, actor));
     }
     const outcome = await deps.teams.delete(actor.orgId, teamId, teamAudit(deps, actor));
     deps.logger.info('teams.deleted', { teamId });
-    return outcome;
+    return outcome === 'deleted' ? { kind: 'deleted', engineId: team.engineId } : { kind: 'not-found' };
 }
 
 export async function listTeamMembers(

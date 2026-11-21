@@ -25,6 +25,7 @@ async function setup(status: EngineStatus | null) {
         engineStatus: {
             recordHeartbeat: (input: RecordHeartbeatInput) => (recorded.push(input), service.recordHeartbeat(input)),
             getStatus: () => service.getStatus(),
+            getActivity: () => service.getActivity(),
             reset: () => service.reset(),
         },
     };

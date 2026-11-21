@@ -57,6 +57,7 @@ export function bindEngineRoutes(
         | 'engineHostnames'
         | 'relayPresence'
         | 'teams'
+        | 'usage'
     > & {
         readonly policy: EngineCreationPolicy;
         readonly routes: RouteBinder;
@@ -71,6 +72,17 @@ export function bindEngineRoutes(
             request.signal,
         );
         if (outcome.kind === 'issued') {
+            request.waitUntil(
+                deps.usage.record([
+                    {
+                        event: 'engine.created',
+                        orgId: session.actor.orgId,
+                        userId: session.actor.userId,
+                        engineId: null,
+                        props: { forTeam: false },
+                    },
+                ]),
+            );
             return {
                 kind: 'ok',
                 body: issuedLinkCodeView(deps.config, outcome),
@@ -180,9 +192,22 @@ export function bindEngineRoutes(
         return { kind: 'ok', body: { engine: engineView(await readEngineOverview(deps, engine)) } };
     });
 
-    bind(router, mount, apiRoutes.revokeEngine, async ({ input, session }) => {
+    bind(router, mount, apiRoutes.revokeEngine, async ({ input, request, session }) => {
         const { engineId } = input.params;
         const outcome = await revokeEngine(deps, session.actor, engineId);
+        if (outcome === 'revoked') {
+            request.waitUntil(
+                deps.usage.record([
+                    {
+                        event: 'engine.removed',
+                        orgId: session.actor.orgId,
+                        userId: session.actor.userId,
+                        engineId,
+                        props: { via: 'revoked' },
+                    },
+                ]),
+            );
+        }
         const engine = outcome === 'not-found' ? null : await deps.engines.findInOrg(session.actor.orgId, engineId);
         if (engine === null) {
             return { kind: 'problem', status: 404, code: 'not-found' };

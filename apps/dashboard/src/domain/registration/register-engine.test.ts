@@ -32,7 +32,12 @@ describe('registerEngine', () => {
         const engine = await createTestEngine();
         const code = await t.issue(org);
         const outcome = await t.register(await engine.register(code, { engineVersion: '1.2.3', mode: 'direct' }));
-        expect(outcome).toEqual({ kind: 'registered', response: await expectedResponse(engine) });
+        expect(outcome).toEqual({
+            kind: 'registered',
+            response: await expectedResponse(engine),
+            orgId: org,
+            relinked: false,
+        });
         expect(RegisterEngineResponse.parse(outcome.kind === 'registered' ? outcome.response : null)).toBeTruthy();
         expect(t.stores.state.engines.get(engine.engineId)).toMatchObject({
             orgId: org,
@@ -147,7 +152,8 @@ describe('registerEngine', () => {
         t.clock.advance(1000);
         const code = await t.issue(org);
         const second = await t.register(await engine.register(code, { engineVersion: '2.0.0', mode: 'direct' }));
-        expect(second).toEqual(first);
+        expect(second).toEqual({ ...first, relinked: true });
+        expect(first).toMatchObject({ relinked: false });
         expect(t.stores.state.engines.size).toBe(1);
         expect(t.stores.state.engines.get(engine.engineId)).toMatchObject({
             orgId: org,
@@ -221,10 +227,13 @@ describe('registerEngine', () => {
             }),
         });
         const engine = await createTestEngine();
-        const code = await t.issue(testOrgId());
+        const org = testOrgId();
+        const code = await t.issue(org);
         expect(await t.register(await engine.register(code))).toEqual({
             kind: 'registered',
             response: await expectedResponse(engine),
+            orgId: org,
+            relinked: true,
         });
         expect(await t.unused(code)).toBe(false);
     });

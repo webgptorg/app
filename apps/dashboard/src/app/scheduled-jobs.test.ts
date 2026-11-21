@@ -8,6 +8,7 @@ import { createFakeAbuseFeed } from '../testing/fake-abuse-feed';
 import { createFakePublicFaceFetcher } from '../testing/fake-public-face-fetcher';
 import { createMemoryCtStore } from '../testing/memory-ct-store';
 import { createMemoryPublicFaceStore } from '../testing/memory-public-face-store';
+import { createMemoryUsageStore } from '../testing/memory-usage-store';
 import { createMemoryMonitor } from '../testing/test-monitoring';
 import { readWranglerConfig } from '../testing/wrangler-config';
 import { EVERY_15_MINUTES, EVERY_MINUTE, scheduledJobs, type AbuseJobDeps } from './scheduled-jobs';
@@ -51,6 +52,13 @@ function abuse(withFeeds: boolean): AbuseJobDeps {
     };
 }
 
+const usage = {
+    store: createMemoryUsageStore(),
+    engineStatus: { getActivity: () => Promise.resolve(null) },
+    concurrency: 1,
+    logger,
+};
+
 const workerConfig = z.object({
     triggers: z.object({ crons: z.array(z.string()) }),
     analytics_engine_datasets: z.array(z.object({ binding: z.string(), dataset: z.string() })),
@@ -75,20 +83,26 @@ describe('Cron Triggers and scheduled jobs (I-04, I-05)', () => {
                 probeTimeoutMs: 1000,
             },
             abuse: abuse(true),
+            usage,
         });
         expect(jobs.map((job) => `${job.name} ${job.cron}`)).toEqual([
             `relay-monitor ${EVERY_MINUTE}`,
             `ct-watch ${EVERY_15_MINUTES}`,
             `public-face ${EVERY_15_MINUTES}`,
             `abuse-feeds ${EVERY_15_MINUTES}`,
+            `usage-rollup ${EVERY_15_MINUTES}`,
         ]);
         const crons = [...new Set(jobs.map((job) => job.cron))].sort();
         expect(crons).toEqual([EVERY_MINUTE, EVERY_15_MINUTES]);
-        expect(scheduledJobs({ monitoring: null, abuse: null })).toEqual([]);
+        // The usage rollup needs no monitoring, so it runs wherever cron runs.
+        expect(scheduledJobs({ monitoring: null, abuse: null, usage }).map((job) => job.name)).toEqual([
+            'usage-rollup',
+        ]);
         // Without a feed provider the 15-minute cron still has its jobs, so a run never finds none registered.
-        expect(scheduledJobs({ monitoring: null, abuse: abuse(false) }).map((job) => job.name)).toEqual([
+        expect(scheduledJobs({ monitoring: null, abuse: abuse(false), usage }).map((job) => job.name)).toEqual([
             'ct-watch',
             'public-face',
+            'usage-rollup',
         ]);
         for (const job of jobs.slice(1)) await job.run({ scheduledTime: 0, signal: new AbortController().signal });
         for (const [name, config] of [['dev', wrangler] as const, ...Object.entries(wrangler.env)]) {

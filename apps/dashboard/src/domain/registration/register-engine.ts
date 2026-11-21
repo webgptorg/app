@@ -15,7 +15,7 @@ import type { Logger } from '../ports/logger';
 import type { EngineCreationPolicy } from './engine-creation-policy';
 import type { EngineStore } from './engine-store';
 import type { LinkCodeStore } from './link-code-store';
-import { newTeamId } from '../ids';
+import { newTeamId, type OrgId } from '../ids';
 import type { Random } from '../ports/random';
 import type { MemberKeySource } from '../teams/member-key';
 import type { TeamStore } from '../teams/team-store';
@@ -38,7 +38,13 @@ export interface RegisterEngineDeps {
 }
 
 export type RegisterOutcome =
-    | { readonly kind: 'registered'; readonly response: RegisterEngineResponse }
+    | {
+          readonly kind: 'registered';
+          readonly response: RegisterEngineResponse;
+          readonly orgId: OrgId;
+          /** The key was registered before: an engine that lost its local registration linked again. */
+          readonly relinked: boolean;
+      }
     /** One outcome for an unknown, expired and used code, so registration is no oracle for codes. */
     | { readonly kind: 'invalid-link-code' }
     | { readonly kind: 'bad-signature' }
@@ -53,9 +59,19 @@ export type RegisterOutcome =
 const ATTEMPTS = 2;
 
 /** Without a member key the engine pins none, and refuses every ticket and revocation until it re-registers. */
-async function registered(deps: RegisterEngineDeps, engineId: EngineId, hostname: Hostname): Promise<RegisterOutcome> {
+async function registered(
+    deps: RegisterEngineDeps,
+    engine: { readonly engineId: EngineId; readonly hostname: Hostname; readonly orgId: OrgId },
+    relinked: boolean,
+): Promise<RegisterOutcome> {
+    const { engineId, hostname, orgId } = engine;
     const memberKey = (await deps.memberKey())?.publicKey ?? null;
-    return { kind: 'registered', response: { engineId, hostname, relays: [...deps.relays], memberKey } };
+    return {
+        kind: 'registered',
+        response: { engineId, hostname, relays: [...deps.relays], memberKey },
+        orgId,
+        relinked,
+    };
 }
 
 async function attempt(
@@ -92,7 +108,7 @@ async function attempt(
         }
         // An engine registered before teams, or whose binding was cut short, gets its team now.
         await bindTeam(deps, engineId, existing.hostname, now);
-        return registered(deps, engineId, existing.hostname);
+        return registered(deps, { engineId, hostname: existing.hostname, orgId }, true);
     }
     const decision = await deps.policy.checkRegistration(orgId, signal);
     if (decision.kind === 'denied') {
@@ -116,7 +132,7 @@ async function attempt(
         return 'conflict';
     }
     await bindTeam(deps, engineId, hostname, now);
-    return registered(deps, engineId, hostname);
+    return registered(deps, { engineId, hostname, orgId }, false);
 }
 
 /** A team named after the engine's hostname, for an engine whose link code named none. */

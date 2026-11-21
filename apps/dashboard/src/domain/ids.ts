@@ -81,3 +81,8 @@ export function newTeamId(random: Random): TeamId {
 export function newInviteId(random: Random): InviteId {
     return inviteIdSchema.parse(randomId(random));
 }
+
+/** A `usage_events` row. */
+export function newUsageEventId(random: Random): string {
+    return randomId(random);
+}

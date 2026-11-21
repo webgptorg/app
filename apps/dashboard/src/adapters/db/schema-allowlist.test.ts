@@ -154,6 +154,28 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'created_at',
         'webauthn_user_id',
     ],
+    // Usage data (ADR 0022, migration 0014_usage_data): funnel events and daily activity for improving the product.
+    // Only IDs the dashboard already holds, the event's name and props of numbers, booleans and closed enums validated
+    // per event; no names, emails, IP addresses, user agents, tokens or free text. Events kept 13 months.
+    usage_events: ['id', 'occurred_at', 'event', 'org_id', 'user_id', 'engine_id', 'props'],
+    // An engine's day: how many heartbeats arrived, first and last, and the last one's numbers and closed enums, all of
+    // which the heartbeat already carries (C-03). Kept 25 months.
+    usage_daily_engines: [
+        'day',
+        'engine_id',
+        'org_id',
+        'beats',
+        'first_beat_at',
+        'last_beat_at',
+        'engine_version',
+        'agents',
+        'members',
+        'setup',
+        'update_state',
+        'cpu_load',
+    ],
+    // Who used the dashboard on which day, in which organization, from `sessions.last_seen_at`. Kept 25 months.
+    usage_daily_people: ['day', 'org_id', 'user_id'],
     // Live WebAuthn ceremonies, at most 5 minutes each.
     webauthn_challenges: ['id', 'challenge', 'purpose', 'user_id', 'token_hash', 'webauthn_user_id', 'expires_at'],
 };
