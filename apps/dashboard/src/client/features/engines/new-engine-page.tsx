@@ -26,6 +26,7 @@ import { useAppMutation } from '../../core/mutations';
 import { useSession } from '../session/use-session';
 import { Crumb, Page } from '../shell/page';
 import { TrustLink } from '../trust/trust-link';
+import { troubleshootingLink } from './engine-guide';
 import { LINK_POLL_MS, LinkProgress, useObservedLink } from './link-progress';
 import type { ObservedLink } from './link-progress';
 import { linkCodeQuery, linkEligibilityQuery } from './link-queries';
@@ -47,7 +48,6 @@ const LINK_PERMISSION = 'engine.link';
 const BILLING_PERMISSION = 'billing.manage';
 const SECOND_MS = 1000;
 const MOVING_ANCHOR = 'moving-an-existing-deployment';
-const TROUBLESHOOTING_ANCHOR = 'troubleshooting';
 
 const INSTALL_PATH_LABELS: Record<InstallPathLabelKey, () => string> = {
     'docker-server': () => m.engines_new_tab_docker_server(),
@@ -461,7 +461,7 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
                     key={linkCodeId}
                     linkCodeId={linkCodeId}
                     commandShown={issued !== null}
-                    troubleshootingUrl={guideUrl === undefined ? null : guideLink(guideUrl, TROUBLESHOOTING_ANCHOR)}
+                    troubleshootingUrl={guideUrl === undefined ? null : troubleshootingLink(guideUrl)}
                     onRenew={renew}
                     renewing={create.isPending}
                 />

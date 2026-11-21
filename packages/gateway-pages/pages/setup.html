@@ -328,10 +328,10 @@
                 </h1>
                 <p data-lang="en">
                     Setup links work for 30 minutes. On the project's server, run
-                    <code>{{command}} setup-link</code> for a new one.
+                    <code>{{setupLinkCommand}}</code> for a new one.
                 </p>
                 <p data-lang="cs">
-                    Odkaz pro nastavení platí 30 minut. Nový získáte příkazem <code>{{command}} setup-link</code> na
+                    Odkaz pro nastavení platí 30 minut. Nový získáte příkazem <code>{{setupLinkCommand}}</code> na
                     serveru projektu.
                 </p>
             </section>
@@ -343,11 +343,11 @@
                 </h1>
                 <p data-lang="en">
                     Sign in with your passkey. If you are the owner and lost every passkey, run
-                    <code>{{command}} owner --reset</code> on the server.
+                    <code>{{resetOwnerCommand}}</code> on the server.
                 </p>
                 <p data-lang="cs">
                     Přihlaste se přístupovým klíčem. Pokud projekt patří Vám a přišli jste o všechny klíče, spusťte na
-                    serveru <code>{{command}} owner --reset</code>.
+                    serveru <code>{{resetOwnerCommand}}</code>.
                 </p>
                 <div class="actions">
                     <a class="button" href="/auth/sign-in"
@@ -363,11 +363,11 @@
                 </h1>
                 <p data-lang="en">
                     Open the link exactly as the terminal printed it. For a new one, run
-                    <code>{{command}} setup-link</code> on the project's server.
+                    <code>{{setupLinkCommand}}</code> on the project's server.
                 </p>
                 <p data-lang="cs">
                     Otevřete odkaz přesně tak, jak ho terminál vypsal. Nový získáte příkazem
-                    <code>{{command}} setup-link</code> na serveru projektu.
+                    <code>{{setupLinkCommand}}</code> na serveru projektu.
                 </p>
             </section>
 
@@ -390,12 +390,11 @@
                     ><span data-lang="cs">Projekt tento přístupový klíč nepřijal</span>
                 </h1>
                 <p data-lang="en">
-                    Try again; if it keeps failing, run <code>{{command}} setup-link</code> on the server for a new
-                    link.
+                    Try again; if it keeps failing, run <code>{{setupLinkCommand}}</code> on the server for a new link.
                 </p>
                 <p data-lang="cs">
                     Zkuste to znovu. Pokud to stále nejde, získejte nový odkaz příkazem
-                    <code>{{command}} setup-link</code> na serveru.
+                    <code>{{setupLinkCommand}}</code> na serveru.
                 </p>
                 <div class="actions">
                     <button type="button" class="button" data-action="retry">
@@ -444,11 +443,11 @@
                 </h1>
                 <p data-lang="en">
                     It returned an error. Try again in a moment; if it keeps failing, run
-                    <code>{{command}} status</code> on the server.
+                    <code>{{statusCommand}}</code> on the server.
                 </p>
                 <p data-lang="cs">
                     Vrátil chybu. Zkuste to za chvíli znovu. Pokud to stále nejde, spusťte na serveru
-                    <code>{{command}} status</code>.
+                    <code>{{statusCommand}}</code>.
                 </p>
                 <div class="actions">
                     <button type="button" class="button" data-action="retry">

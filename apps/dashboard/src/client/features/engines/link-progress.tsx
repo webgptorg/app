@@ -249,8 +249,14 @@ function setupPending(engine: EngineView | undefined): boolean {
     return engine?.heartbeat?.setup === 'pending';
 }
 
+function ownerSetupCommand(engine: EngineView | undefined, engineId: string): string {
+    return engine?.heartbeat?.setup === 'pending'
+        ? `ptbk connect --onboarding ${engineId} --setup-link`
+        : 'ptbk connect --setup-link';
+}
+
 /** The one sentence the live region speaks, so a screen reader hears each change once and nothing else. */
-function announcement(state: LinkState, engine: EngineView | undefined): string {
+function announcement(state: LinkState, engine: EngineView | undefined, engineId: string): string {
     switch (state) {
         case 'waiting':
             return m.link_progress_waiting();
@@ -259,7 +265,7 @@ function announcement(state: LinkState, engine: EngineView | undefined): string 
         case 'linked':
             return m.link_progress_linked();
         case 'owner-pending':
-            return m.link_progress_owner_announcement();
+            return m.link_progress_owner_announcement({ command: ownerSetupCommand(engine, engineId) });
         case 'ready':
             return setupPending(engine) ? m.link_progress_setup_pending() : m.link_progress_ready();
     }
@@ -333,7 +339,11 @@ function Checklist(props: {
                         step="owner"
                         state={state === 'ready' ? 'done' : state === 'owner-pending' ? 'current' : 'waiting'}
                     >
-                        {state === 'ready' ? <p>{m.link_progress_owner_done()}</p> : <p>{m.link_progress_owner()}</p>}
+                        {state === 'ready' ? (
+                            <p>{m.link_progress_owner_done()}</p>
+                        ) : (
+                            <p>{m.link_progress_owner({ command: ownerSetupCommand(engine, linked.engineId) })}</p>
+                        )}
                     </Row>
                 </>
             )}
@@ -410,7 +420,7 @@ export function LinkProgress(props: {
             className="flex flex-col gap-4 border-t border-hairline pt-5"
         >
             <p className="sr-only" aria-live="polite">
-                {announcement(state, engine.data)}
+                {announcement(state, engine.data, linked?.engineId ?? '')}
             </p>
             {ready === null ? (
                 <>

@@ -123,7 +123,7 @@ describe('engines in Czech', () => {
             },
         });
         expect(await screen.findByText('Projekt se neozývá')).toBeTruthy();
-        expect(screen.getByText('Pokud jeho server běží, spusťte na něm:')).toBeTruthy();
+        expect(screen.getByText('Pokud jeho server běží, spusťte na něm ve složce projektu:')).toBeTruthy();
         expect(await screen.findByRole('link', { name: /Řešení potíží v návodu k instalaci/ })).toBeTruthy();
     });
 });

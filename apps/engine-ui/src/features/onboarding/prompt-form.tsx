@@ -8,11 +8,14 @@ import type {
     UnsupportedOnboardingPrompt,
 } from '@ptbk/engine-api';
 import { Banner, Button, buttonClassName, CopyButton, ExternalLink, IconButton, Spinner } from '@ptbk/ui';
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { ArrowUp, ExternalLink as ExternalLinkIcon } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode, SubmitEvent } from 'react';
 
 import { cx } from '../../app/cx';
+import { useEngineApi } from '../../app/engine-api-context';
+import { engineInfoQueryOptions } from '../engine/engine-queries';
 
 import { m } from '../../paraglide/messages';
 import { OneTimeValue } from '../wallet/one-time-value';
@@ -658,14 +661,13 @@ function HarnessLogin({ prompt, busy, onAnswer, onBack, onAlternative }: PromptF
     );
 }
 
-/** The host's own command for a step this UI cannot render yet. */
-const HOST_ONBOARDING_COMMAND = 'ptbk onboarding';
-
 /**
  * A step of a kind this UI does not know yet: the engine's heading and question survive, and the step is answered on
  * the engine's computer meanwhile. The page keeps polling, so it moves on once that is done.
  */
 function UnsupportedPrompt({ prompt }: { readonly prompt: UnsupportedOnboardingPrompt }) {
+    const engine = useSuspenseQuery(engineInfoQueryOptions(useEngineApi())).data;
+    const command = engine.engineId === null ? 'ptbk onboarding' : `ptbk onboarding --id ${engine.engineId}`;
     return (
         <div className="flex flex-col gap-4">
             <p className="text-base [overflow-wrap:anywhere]">{prompt.question}</p>
@@ -673,10 +675,8 @@ function UnsupportedPrompt({ prompt }: { readonly prompt: UnsupportedOnboardingP
                 <p className="text-sm font-medium">{m.onboarding_unsupported_title()}</p>
                 <p className="text-sm text-text-muted">{m.onboarding_unsupported_body()}</p>
                 <div className="flex items-center gap-2">
-                    <code className="rounded-control bg-neutral-soft px-2.5 py-1.5 font-mono text-sm">
-                        {HOST_ONBOARDING_COMMAND}
-                    </code>
-                    <CopyButton value={HOST_ONBOARDING_COMMAND} size="sm" variant="ghost" />
+                    <code className="rounded-control bg-neutral-soft px-2.5 py-1.5 font-mono text-sm">{command}</code>
+                    <CopyButton value={command} size="sm" variant="ghost" />
                 </div>
                 <p className="flex items-center gap-2 text-xs text-text-muted" role="status">
                     <Spinner size="sm" announce={false} />

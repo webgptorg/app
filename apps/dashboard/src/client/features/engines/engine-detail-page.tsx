@@ -25,7 +25,7 @@ import { AbuseContactLink } from '../abuse/abuse-contact';
 import { Crumb, Page } from '../shell/page';
 import { useSession } from '../session/use-session';
 import { OpenTeamButton } from '../teams/open-team-button';
-import { ENGINE_STATUS_COMMAND, TROUBLESHOOTING_ANCHOR } from './engine-guide';
+import { ENGINE_STATUS_COMMAND, troubleshootingLink } from './engine-guide';
 import { EngineMark } from './engine-identity';
 import { cpuLoadLabel, modeLabel, setupStateLabel, updateStateLabel } from './engine-labels';
 import { canRename, RenameEngineButton } from './engine-name';
@@ -93,15 +93,17 @@ function HeartbeatFields(props: { readonly heartbeat: HeartbeatView }) {
  * guide link appears once its configured URL has loaded; the hint stands without it. When it was last seen is in the
  * page's summary, once.
  */
-function OfflineHint() {
+function OfflineHint({ engine }: { readonly engine: EngineView }) {
+    const pending = engine.heartbeat?.setup === 'pending';
+    const command = pending ? `ptbk onboarding --id ${engine.engineId} --json` : ENGINE_STATUS_COMMAND;
     const guide = useQuery(installGuideQuery(useApiClient()));
     return (
         <Banner tone="warning" title={m.engine_offline_title()}>
             <span className="flex flex-col items-start gap-2">
-                <span>{m.engine_offline_hint()}</span>
-                <CodeText value={ENGINE_STATUS_COMMAND} copyable copyLabel={m.engine_offline_copy()} />
+                <span>{pending ? m.engine_offline_setup_hint() : m.engine_offline_hint()}</span>
+                <CodeText value={command} copyable copyLabel={m.engine_offline_copy()} />
                 {guide.data === undefined ? null : (
-                    <ExternalLink href={`${guide.data}#${TROUBLESHOOTING_ANCHOR}`}>
+                    <ExternalLink href={troubleshootingLink(guide.data)}>
                         {m.engine_offline_troubleshooting()}
                     </ExternalLink>
                 )}
@@ -135,7 +137,7 @@ function StatusNotice(props: { readonly engine: EngineView }) {
         // A line, not a banner: nothing is wrong, the owner only has a step left, and the action is right above.
         return <p className="text-sm text-text-muted">{m.engine_setup_pending_body()}</p>;
     }
-    return engine.status === 'offline' ? <OfflineHint /> : null;
+    return engine.status === 'offline' ? <OfflineHint engine={engine} /> : null;
 }
 
 /** When it was last heard from, what it runs and how browsers reach it: the line under the title. */

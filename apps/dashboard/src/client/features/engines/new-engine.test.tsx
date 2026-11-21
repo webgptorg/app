@@ -31,7 +31,7 @@ const CHECKOUT_URL = 'https://checkout.stripe.com/c/pay/cs_test_example';
 
 const WAITING_TEXT = 'Waiting for your project to link. Run the command above; this page updates by itself.';
 const OWNER_TEXT =
-    "Finish in the browser window that opened on the project's computer: create your passkey there. Nothing opened? Open the setup link the project's terminal shows, or run setup-link there for a new one. This page updates when you're done.";
+    "Finish in the browser window that opened on the project's computer: create your passkey there. Nothing opened? Open the setup link the project's terminal shows, or run ptbk connect --setup-link on that computer for a new one (in the project folder if it already exists). This page updates when you're done.";
 const COMMAND_NOTE = `Copy it now: it is shown only once and works until ${createFormatters('en').formatDateTime(new Date(NOW + LINK_CODE_LIFETIME_MS))}.`;
 
 const PENDING: LinkCodeStatusView = { status: 'pending', expiresAt: NOW + LINK_CODE_LIFETIME_MS };
@@ -315,7 +315,7 @@ describe('new engine page', () => {
 
             await app.user.click(within(list).getByRole('tab', { name: 'Already running Promptbook' }));
             const connect = screen.getByRole('tabpanel', { name: 'Already running Promptbook' });
-            expect(within(connect).getByText(`promptbook-engine connect --link ${CODE}`)).toBeTruthy();
+            expect(within(connect).getByText(`ptbk connect --link ${CODE}`)).toBeTruthy();
             expect(within(connect).getByText(/Moving from an existing Promptbook server\?/)).toBeTruthy();
             expect(
                 within(connect)
@@ -568,7 +568,14 @@ describe('new engine page', () => {
                 fakeTimers: fake,
                 script: linking([LINKED], [SETUP_OWNER_PENDING, SETUP_PENDING, READY]),
             });
-            expect(await screen.findByText(OWNER_TEXT)).toBeTruthy();
+            expect(
+                await screen.findByText(
+                    OWNER_TEXT.replace(
+                        'ptbk connect --setup-link',
+                        `ptbk connect --onboarding ${ENGINE_ID} --setup-link`,
+                    ),
+                ),
+            ).toBeTruthy();
             expect(screen.queryByRole('link', { name: /^Continue setup/ })).toBeNull();
 
             await elapse(LINK_POLL_MS);
@@ -682,7 +689,7 @@ describe('new engine page', () => {
             const live = progress().querySelectorAll('[aria-live="polite"]');
             expect(live).toHaveLength(1);
             expect(live[0]?.textContent).toBe(
-                "Project online. Finish in the browser window that opened on the project's computer, or run setup-link there.",
+                "Project online. Finish in the browser window that opened on the project's computer, or run ptbk connect --setup-link on that computer.",
             );
             expect(document.querySelectorAll('[aria-live="polite"] [data-step]')).toHaveLength(0);
         });

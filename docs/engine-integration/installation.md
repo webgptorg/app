@@ -6,7 +6,11 @@ Two readers: **operators**, who follow the install paths and the troubleshooting
 
 Spec: [Pairing and identity](../spec/zero-trust-spec.md#pairing-and-identity), [Moving existing deployments](../spec/zero-trust-spec.md#moving-existing-deployments), [Interfaces (draft)](../spec/zero-trust-spec.md#interfaces-draft) 1 and 6, [Operations](../spec/zero-trust-spec.md#operations), [Build plan](../spec/zero-trust-spec.md#build-plan) (Distribution). Related: [identity-and-registration.md](identity-and-registration.md), [tunnel-client.md](tunnel-client.md), [ui-loader.md](ui-loader.md), [gateway.md](gateway.md).
 
-This guide writes the engine's command line as `promptbook-engine`. The spec writes `engine`; the real name is the engine team's choice.
+The published CLI is `ptbk`. Run project commands in the project's folder, or select it with `--path '/project/folder'`. `ptbk dashboard --global` helps locate existing projects. A saved initialization has no project folder yet: use `ptbk onboarding --id <engine-id>` to continue it, or `ptbk onboarding --id <engine-id> --json` to inspect it.
+
+For owner access, use `ptbk connect --setup-link` or `ptbk connect --reset-owner`. Before a project exists, add `--onboarding <engine-id>` to either command. Reset still requires host confirmation and revokes every passkey and session.
+
+The requirements below also describe future engine features. `doctor`, `login --local`, `reset --identity`, `custom-domain` and `import <archive>` are **not implemented in the current ptbk CLI**; their examples are proposals, not commands to paste. `disconnect` preserves identity and `migrate` is not an archive import.
 
 ## The flow
 
@@ -85,6 +89,8 @@ A working relay alone is not a usable signed UI. Configure the approved release 
 
 ### Historical Docker installer (advanced configured deployments)
 
+This section records the proposed container installer; it is not a verified current ptbk install path.
+
 The dashboard shows a command shaped like this, with the link URL and the installer's hash filled in:
 
 ```sh
@@ -100,14 +106,16 @@ Never `curl … | sh`: the script is checked against the hash in the command bef
 1. **Preflight**, each line with ✓ or ✗ and the fix: architecture, Docker and Compose present and recent enough, free disk and memory, outbound HTTPS to the dashboard API, the relays and the release store (naming whichever fails), proxy settings in use, a TLS-inspecting proxy (detected when the relays' certificate does not chain to a public root), clock offset. It must stop on a failure that would make a later step fail, rather than continue and fail obscurely.
 2. **Verify before running anything:** the engine image by digest, its signature against the exact release workflow identity, and its entry in the public release log, as for any engine release ([ui-loader.md](ui-loader.md) describes the same checks for the UI). An image that fails a check is not started. The image reference is always a digest, never a moving tag such as `latest`.
 3. Create the data volume, write the Compose file (for example `/opt/promptbook-engine/compose.yaml`), and pass the operator's proxy settings and any extra CA into it.
-4. Run `promptbook-engine connect --link '<link URL>'` once in a one-off container. The link URL and its code must not end up in the Compose file, the container's environment (`docker inspect` shows it forever) or a log.
+4. Run `ptbk connect --link '<link URL>'` once in a one-off container. The link URL and its code must not end up in the Compose file, the container's environment (`docker inspect` shows it forever) or a log.
 5. Start the engine and its updater, and follow the engine's progress (the [first-start output](#first-start-output)) until it is ready or fails.
-6. When the address works, run `promptbook-engine setup-link` in the foreground, which prints the setup link and its QR code and opens it on a local desktop ([The setup link](#the-setup-link)).
+6. When the address works, run `ptbk connect --setup-link` in the foreground, which prints the setup link and its QR code and opens it on a local desktop ([The setup link](#the-setup-link)).
 7. Be idempotent: run again on a host that already has an engine, it checks, repairs what it can and says "This host already runs engine `<short ID>`", without creating a second identity.
 
 Flags (proposal): `--link <link URL>`, `--data-dir <path>` (a host directory instead of a named volume), `--extra-ca <file>`, `--proxy <url>`, `--version <x.y.z>`, `--no-open` (print the setup link, do not open it), `--non-interactive` (no prompts; prints the setup link as the last line and exits non-zero on any ✗), `--json` (one JSON object per step, for automation).
 
 ### 2. Docker Compose
+
+This is a historical deployment design, not a supported installation of the current `ptbk` package. No verified production image is configured here; use [engine-first setup](#engine-first-setup). Do not paste the proposed container commands below.
 
 The same engine, configured by hand. An example of what the installer writes:
 
@@ -135,9 +143,9 @@ volumes:
 Then:
 
 ```sh
-docker compose run --rm engine promptbook-engine connect --link '<link URL>'
+docker compose run --rm engine ptbk connect --link '<link URL>'
 docker compose up -d
-docker compose exec engine promptbook-engine setup-link
+docker compose exec engine ptbk connect --setup-link
 ```
 
 The hardening lines are the spec's (Security hardening 9): non-root, read-only root filesystem, all capabilities dropped, no new privileges, no Docker socket in the engine container. Only the updater may restart containers.
@@ -147,14 +155,14 @@ The hardening lines are the spec's (Security hardening 9): non-root, read-only r
 An engine started in `local` mode, or one installed before the account existed, joins with:
 
 ```sh
-promptbook-engine connect --link '<link URL>'
+ptbk connect --link '<link URL>'
 ```
 
 It must print the dashboard origin from the link URL before it registers, create the engine key if there is none, register, switch to `tunnel` mode, bind its app server to localhost and print the same progress as a fresh install. When the engine runs and has no owner, `connect` then waits for the address and shows the setup link as [The setup link](#the-setup-link) says, so the one command ends at the passkey prompt. Data, agents and members stay. Passkeys are bound to the hostname, so passkeys made for a previous address do not work on the new one: when an owner already exists, `connect` must print a link that adds a passkey to that owner (same rules as the setup link) instead of a link that creates a new owner.
 
 In v0, connecting is a command on the host only, not a form in the engine UI: shell access is the trust level that changing the engine's address needs. The dashboard shows this exact command with the link URL filled in, and the link URL on its own beside it.
 
-**Installing before you have an account** works too: without a link code the engine starts in `local` mode, listens on 127.0.0.1 only, and should print that it is not linked and how to link it ("create an account at app.ptbk.io and run `promptbook-engine connect --link <code>`"). Until then the owner reaches it through `ssh -L`.
+**Installing before you have an account** works too: without a link code the engine starts in `local` mode, listens on 127.0.0.1 only, and should print that it is not linked and how to link it ("create an account at app.ptbk.io and run `ptbk connect --link <code>`"). Until then the owner reaches it through `ssh -L`.
 
 ## Configuration
 
@@ -223,15 +231,15 @@ The platform's onboarding depends on what the engine says, so this part is norma
 
 In this order, as each step completes or fails, in the log stream and on the terminal:
 
-| Step         | On success                                                                                                                                                                                        | On failure                                                                                     |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Identity     | Engine ID, default hostname, fingerprint code (the same code the dashboard shows)                                                                                                                 | Path and mode of a data directory or key file it refuses                                       |
-| Registration | "Linked to your Promptbook account", or "already linked"                                                                                                                                          | The problem code mapped to a sentence and a next step (table below)                            |
-| Relays       | Each relay's state; "Connected to n of m relays"                                                                                                                                                  | Per relay: dial failure kind (network, TLS, proxy, upgrade refused), reject reason, retry time |
-| Certificate  | Issued or loaded, hostnames, expiry                                                                                                                                                               | The stage that failed and the retry time; keeps serving a valid certificate it has             |
-| UI bundle    | Version verified and serving                                                                                                                                                                      | The `verifyRelease` failure kind; keeps the previous bundle                                    |
-| Owner        | "No owner yet." On a foreground terminal the setup link follows ([The setup link](#the-setup-link)); elsewhere "Run `promptbook-engine setup-link` on this host to get the setup link." (no link) | none                                                                                           |
-| Ready        | "Ready: https://<hostname>/"                                                                                                                                                                      | none                                                                                           |
+| Step         | On success                                                                                                                                                                                     | On failure                                                                                     |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Identity     | Engine ID, default hostname, fingerprint code (the same code the dashboard shows)                                                                                                              | Path and mode of a data directory or key file it refuses                                       |
+| Registration | "Linked to your Promptbook account", or "already linked"                                                                                                                                       | The problem code mapped to a sentence and a next step (table below)                            |
+| Relays       | Each relay's state; "Connected to n of m relays"                                                                                                                                               | Per relay: dial failure kind (network, TLS, proxy, upgrade refused), reject reason, retry time |
+| Certificate  | Issued or loaded, hostnames, expiry                                                                                                                                                            | The stage that failed and the retry time; keeps serving a valid certificate it has             |
+| UI bundle    | Version verified and serving                                                                                                                                                                   | The `verifyRelease` failure kind; keeps the previous bundle                                    |
+| Owner        | "No owner yet." On a foreground terminal the setup link follows ([The setup link](#the-setup-link)); elsewhere "Run `ptbk connect --setup-link` on this host to get the setup link." (no link) | none                                                                                           |
+| Ready        | "Ready: https://<hostname>/"                                                                                                                                                                   | none                                                                                           |
 
 The fingerprint is `deriveEngineFingerprint(engineId).formatted` from `@ptbk/protocol`, five groups of four characters, the same code the dashboard and the engine UI show ([identity-and-registration.md](identity-and-registration.md#engine-fingerprint)).
 
@@ -239,7 +247,7 @@ Registration problems, by `code` ([identity-and-registration.md](identity-and-re
 
 | `code`                                                     | Terminal says                                                                                                                                                              | Then                                               |
 | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `invalid-link-code`                                        | "The link code was not accepted. Codes work once and expire after 30 days. Create a new one at app.ptbk.io, then run `promptbook-engine connect --link <new code>`."       | Exit, no retry                                     |
+| `invalid-link-code`                                        | "The link code was not accepted. Codes work once and expire after 30 days. Create a new one at app.ptbk.io, then run `ptbk connect --link <new code>`."                    | Exit, no retry                                     |
 | `engine-exists`                                            | "This engine is already linked to another Promptbook organisation. Sign in to that account, or give this engine a new identity with `promptbook-engine reset --identity`." | Exit                                               |
 | `engine-suspended`                                         | "This engine identity was revoked or suspended and cannot be linked again. Give it a new identity with `promptbook-engine reset --identity`."                              | Exit                                               |
 | `engine-limit`, `not-entitled`                             | "Your Promptbook plan does not allow another engine. Check Billing at app.ptbk.io."                                                                                        | Exit                                               |
@@ -276,7 +284,7 @@ The owner's first passkey is registered with a one-time setup secret (spec, Pair
 
 1. Create the secret only while the engine has no owner: 128 bits from a CSPRNG, base64url without padding, valid once and for 30 minutes, stored only as a hash.
 2. Put it in the URL fragment: `https://<hostname>/setup#<secret>`. The fragment never leaves the browser; the setup page reads it, removes it from the address bar and sends it only inside the passkey registration request, over TLS that ends on the engine.
-3. Show the link without being asked: when the engine first becomes reachable (item 4) while it has no owner, the foreground process on an interactive terminal prints it, with a QR code of the same URL and its expiry time. Where the terminal renders OSC 8 hyperlinks (iTerm2, WezTerm, kitty, Ghostty, VS Code, VTE terminals such as GNOME Terminal, Windows Terminal; not through tmux or screen), the URL is printed as one, with the URL itself as the visible text, so it is clickable and still copies as plain text; elsewhere it is plain text. A URL with a control character is never wrapped. That process is the installer, the engine started in the foreground (`start`), or `connect --link` against a running engine. `promptbook-engine setup-link` does the same on demand and stays the fallback. Without a terminal (stdout not a TTY), nothing prints the link, and never into the log stream: logs get shipped, and whoever reads the link first becomes the owner.
+3. Show the link without being asked: when the engine first becomes reachable (item 4) while it has no owner, the foreground process on an interactive terminal prints it, with a QR code of the same URL and its expiry time. Where the terminal renders OSC 8 hyperlinks (iTerm2, WezTerm, kitty, Ghostty, VS Code, VTE terminals such as GNOME Terminal, Windows Terminal; not through tmux or screen), the URL is printed as one, with the URL itself as the visible text, so it is clickable and still copies as plain text; elsewhere it is plain text. A URL with a control character is never wrapped. That process is the installer, the engine started in the foreground (`start`), or `connect --link` against a running engine. `ptbk connect --setup-link` does the same on demand and stays the fallback. Without a terminal (stdout not a TTY), nothing prints the link, and never into the log stream: logs get shipped, and whoever reads the link first becomes the owner.
 4. Print it only when the address works: the hostname resolves, a relay routes it, a valid certificate is in place and `/setup` is served. Before that, `setup-link` waits with progress, or with `--no-wait` says what is missing.
 5. Open it in the default browser as well when the session is a local desktop: on macOS unless `SSH_CONNECTION` or `SSH_TTY` is set, on Linux only with `DISPLAY` or `WAYLAND_DISPLAY` set and not over SSH, nowhere else. Run `open` (macOS) or `xdg-open` (Linux) directly, with the URL as one argument and no shell. `--no-open` or `PTBK_NO_OPEN=1` turns this off; a browser that fails to open is not an error, since the printed link stays. The person then only confirms the passkey, and the link still never leaves the engine's computer.
 6. Make each new link replace the previous secret, so an old copy stops working.
@@ -296,21 +304,17 @@ The setup page is open engine code served by the gateway ([gateway.md](gateway.m
 
 ## Operator commands
 
-Behaviour is normative where the spec or this guide depends on it; names and flags are suggestions.
+Run these `ptbk` commands in the project's folder, or pass `--path`. For a saved initialization, owner commands use `--onboarding <engine-id>` instead.
 
-| Command                     | Does                                                                                                                                                                                                                                                                       |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `connect --link <link URL>` | Create the key if needed, register with the dashboard the URL names (a bare code: `PTBK_DASHBOARD_URL`), switch to `tunnel` mode, print progress; on a running engine without an owner, then show the setup link. Must ([link URL](identity-and-registration.md#link-url)) |
-| `setup-link`                | Print a fresh setup link while there is no owner (or a passkey link for the owner after a move) and open it on a local desktop; `--no-open` only prints. Must                                                                                                              |
-| `status`                    | One screen: engine ID, address, fingerprint, mode, registration, each relay's state, certificate expiry, UI bundle version, update policy and state, owner set up yes or no, last heartbeat answer. Should                                                                 |
-| `doctor`                    | Re-run the installer's preflight from inside the engine: clock, proxy, each destination, data directory permissions, disk. Each ✗ with its fix. Should                                                                                                                     |
-| `owner --reset`             | Revoke every passkey and session after a typed confirmation, keep all data, print a setup link. Must (spec)                                                                                                                                                                |
-| `login --local`             | A one-time link for `http://localhost:4440` through `ssh -L`. Must (spec, Operations)                                                                                                                                                                                      |
-| `reset --identity`          | After a key compromise or a refused identity: a new key and engine ID, keeping data, then `connect` with a new link code. Must warn that the address changes                                                                                                               |
-| `custom-domain <hostname>`  | Print the CNAME to create and the hostname claim to send to Promptbook ([tunnel-client.md](tunnel-client.md#custom-hostnames)). Must refuse an apex                                                                                                                        |
-| `import <archive>`          | Load an export from a predecessor deployment ([below](#moving-an-existing-deployment)). Should                                                                                                                                                                             |
+| Current ptbk command               | Purpose                                                                                             |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `ptbk connect --link '<link URL>'` | Link an existing project to the dashboard named by the URL.                                         |
+| `ptbk connect --setup-link`        | Print a new owner setup link.                                                                       |
+| `ptbk connect --reset-owner`       | Confirm on the host, revoke all passkeys and sessions, preserve data, then print a new setup link.  |
+| `ptbk status`                      | Inspect the selected project's local process status. For App connection details use `ptbk connect`. |
+| `ptbk onboarding --id <engine-id>` | Continue the selected saved initialization; `--json` inspects its current state.                    |
 
-Commands that change who can sign in (`owner --reset`, `reset --identity`, `login --local`) run on the host only. There is no API or UI route to them: shell access to the server is the trust level they need.
+The mock's separate `setup-link` and `owner --reset` verbs remain valid **only for the mock**. `doctor`, `login --local`, `reset --identity`, `custom-domain <hostname>` and `import <archive>` are unimplemented integration requirements. There is no equivalent ready-made CLI for them; do not substitute `disconnect` (which keeps identity) or `migrate` (which is not an archive import).
 
 ## The first UI bundle
 
@@ -344,20 +348,20 @@ Things the new engine does differently, so operators are not surprised: no admin
 
 ## Troubleshooting
 
-| Symptom                                                     | Likely cause                                                               | Fix                                                                                                              |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| "The link code was not accepted"                            | Code older than 30 days, already used, cancelled, or mistyped              | Create a new code in the dashboard; `connect --link <new code>`. The key and data are kept                       |
-| "Cannot reach the Promptbook platform"                      | No outbound HTTPS, proxy not set, DNS                                      | `doctor`; set `HTTPS_PROXY`; allow outbound 443                                                                  |
-| Relays: "certificate not trusted"                           | A TLS-inspecting proxy                                                     | `NODE_EXTRA_CA_CERTS` with the proxy's CA (installer: `--extra-ca`)                                              |
-| Relays: "upgrade refused"                                   | The proxy blocks WebSockets                                                | Allow WebSocket upgrades to the relay hostnames that `status` lists                                              |
-| "Replaced by another connection with this engine's key"     | Two engines run from copies of one data directory                          | Stop one. If both must exist, give one a new identity                                                            |
-| Certificate not issued, retrying                            | The CA cannot reach the engine through the relay yet, or a CA rate limit   | Wait for the retry; `status` shows the stage. Persistent: check that `status` shows at least one relay connected |
-| Dashboard: "Waiting for first heartbeat" for minutes        | The engine is still starting, or heartbeats fail                           | `status` shows the last heartbeat answer; a clock offset shows there too                                         |
-| Heartbeat: "clock skew"                                     | System clock off by more than 2 minutes                                    | Enable NTP                                                                                                       |
-| Setup page: "This setup link has expired"                   | Older than 30 minutes, or a newer link replaced it                         | `setup-link`                                                                                                     |
-| Setup page: "This engine already has an owner", but not you | Someone used the link first                                                | `owner --reset` on the server, then check the audit log                                                          |
-| The address shows a certificate warning                     | Opened before the certificate was issued, or a proxy on the browser's side | Wait for "Ready"; never click through: passkeys refuse such pages anyway                                         |
-| Dashboard: "Revoked" or "Suspended"                         | The owner revoked it, or the platform suspended it                         | `reset --identity` and link again; for a suspension, contact Promptbook                                          |
+| Symptom                                                     | Likely cause                                                               | Fix                                                                                                                          |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| "The link code was not accepted"                            | Code older than 30 days, already used, cancelled, or mistyped              | Create a new code in the dashboard; `ptbk connect --link '<new link URL>'`. The key and data are kept                        |
+| "Cannot reach the Promptbook platform"                      | No outbound HTTPS, proxy not set, DNS                                      | Check DNS and outbound 443; set `HTTPS_PROXY` if required (no `ptbk doctor` command)                                         |
+| Relays: "certificate not trusted"                           | A TLS-inspecting proxy                                                     | `NODE_EXTRA_CA_CERTS` with the proxy's CA (installer: `--extra-ca`)                                                          |
+| Relays: "upgrade refused"                                   | The proxy blocks WebSockets                                                | Allow WebSocket upgrades to the relay hostnames that `ptbk connect` lists                                                    |
+| "Replaced by another connection with this engine's key"     | Two engines run from copies of one data directory                          | Stop one. If both must exist, give one a new identity                                                                        |
+| Certificate not issued, retrying                            | The CA cannot reach the engine through the relay yet, or a CA rate limit   | Wait for the retry; `ptbk connect` shows the stage. Persistent: check that `ptbk connect` shows at least one relay connected |
+| Dashboard: "Waiting for first heartbeat" for minutes        | The engine is still starting, or heartbeats fail                           | `ptbk connect` shows the last heartbeat answer; a clock offset shows there too                                               |
+| Heartbeat: "clock skew"                                     | System clock off by more than 2 minutes                                    | Enable NTP                                                                                                                   |
+| Setup page: "This setup link has expired"                   | Older than 30 minutes, or a newer link replaced it                         | `ptbk connect --setup-link`                                                                                                  |
+| Setup page: "This engine already has an owner", but not you | Someone used the link first                                                | `ptbk connect --reset-owner` on the server, then check the audit log                                                         |
+| The address shows a certificate warning                     | Opened before the certificate was issued, or a proxy on the browser's side | Wait for "Ready"; never click through: passkeys refuse such pages anyway                                                     |
+| Dashboard: "Revoked" or "Suspended"                         | The owner revoked it, or the platform suspended it                         | Contact Promptbook; current ptbk has no identity-reset command                                                               |
 
 ## Open points
 

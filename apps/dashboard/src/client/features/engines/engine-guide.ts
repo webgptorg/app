@@ -1,5 +1,12 @@
-/** The guide writes the engine's command line as `promptbook-engine`; the real name is the engine team's choice. */
-export const ENGINE_STATUS_COMMAND = 'promptbook-engine status';
+/** Run on the engine host, in the selected project's folder. */
+export const ENGINE_STATUS_COMMAND = 'ptbk status';
 
-/** The install guide's heading for symptoms and fixes (docs/engine-integration/installation.md). */
-export const TROUBLESHOOTING_ANCHOR = 'troubleshooting';
+/** The public connection guide describes heartbeat, relay and TLS failures under this heading. */
+export function troubleshootingLink(guideUrl: string): string {
+    const url = new URL(guideUrl);
+    url.hash =
+        url.hostname === 'github.com' && url.pathname.endsWith('/specs/app/connection.md')
+            ? 'the-running-connection'
+            : 'troubleshooting';
+    return url.href;
+}

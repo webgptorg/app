@@ -1969,7 +1969,7 @@
   "onboarding_activity_failed": "Nepovedlo se",
   "onboarding_activity_skipped": "Přeskočeno",
   "onboarding_unsupported_title": "Tento krok potřebuje novější verzi aplikace",
-  "onboarding_unsupported_body": "Než dorazí, odpovězte na něj na počítači, kde projekt běží:",
+  "onboarding_unsupported_body": "Spusťte na počítači, kde projekt běží. Pokud vypíše nastavení, zopakujte s --id a příslušným ID:",
   "onboarding_unsupported_waiting": "Jakmile bude krok zodpovězený, stránka bude pokračovat sama.",
   "nav_chats": "Chaty",
   "chat_intro": "Vaše konverzace s Chatterem a dalšími agenty a to, co agenti řeší mezi sebou.",

@@ -34,10 +34,14 @@ The server renders a page with `renderGatewayPage(template, values)`, which HTML
 | `{{hostname}}`         | The engine's hostname, without scheme                                                         |
 | `{{fingerprint}}`      | `deriveEngineFingerprint(engineId).formatted`, `XXXX-XXXX-XXXX-XXXX-XXXX`                     |
 | `{{fingerprintCells}}` | Its 5×5 cells row by row as 25 characters, `1` filled                                         |
-| `{{command}}`          | The engine's CLI name in recovery hints, such as `promptbook-engine`                          |
+| `{{command}}`          | The engine's CLI name in recovery hints, such as `ptbk` or `mock-engine`                      |
 | `{{owner}}`            | `none` or `set`: whether the engine has an owner (public; sign-in shows it anyway)            |
 
 Both languages are in every page; `<html lang>` selects one through the stylesheet.
+
+`{{setupLinkCommand}}`, `{{resetOwnerCommand}}` and `{{statusCommand}}` render complete commands. Status defaults to `<command> status`. For `command: 'ptbk'` they default to `ptbk connect --setup-link` and `ptbk connect --reset-owner`; other CLIs keep their existing verbs. Engines with a pending initialization must pass `setupLinkCommand: 'ptbk connect --onboarding <engine-id> --setup-link'` `resetOwnerCommand: 'ptbk connect --onboarding <engine-id> --reset-owner'` and `statusCommand: 'ptbk onboarding --id <engine-id> --json'`. Project commands run in the project's folder. Overrides are escaped like every other value.
+
+The real engine vendors these pages: copy the updated HTML **and renderer**, and pass the pending commands from its gateway before releasing them. Dashboard deployment alone does not update installed engines.
 
 ## Endpoints
 

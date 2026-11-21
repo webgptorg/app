@@ -1908,7 +1908,7 @@
   "onboarding_activity_failed": "Failed",
   "onboarding_activity_skipped": "Skipped",
   "onboarding_unsupported_title": "This step needs a newer version of the app",
-  "onboarding_unsupported_body": "Until it arrives, answer this step on the computer your project runs on:",
+  "onboarding_unsupported_body": "Run this on the computer your project runs on. If it lists setups, repeat with --id and the matching ID:",
   "onboarding_unsupported_waiting": "This page continues by itself once the step is answered.",
   "nav_chats": "Chats",
   "chat_intro": "Your conversations with Chatter and the other agents, and what agents discuss among themselves.",

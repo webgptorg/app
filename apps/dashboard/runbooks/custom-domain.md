@@ -7,7 +7,7 @@ Apex domains (`customer.com` itself) are not supported in v0: an apex cannot car
 ## What the customer does
 
 1. **Pick a subdomain** they control, e.g. `agents.customer.com`.
-2. **Set `PTBK_CUSTOM_DOMAIN`** on the engine to that hostname and restart it. The engine accepts it with the protocol's `Hostname` rules (ASCII, internationalized names as A-labels, lowercase) and produces the **claim**: an Ed25519 signature by the engine key over `"ptbk-hostname-v1" | hostname | engineId`. It shows the hostname and the claim as base64url (86 characters). How the claim reaches us (CLI output the customer sends, or a later API field) is up to the engine team (E-01); today the customer sends us the engine ID, the hostname and the claim.
+2. **Verify engine support first.** Current ptbk does not implement `PTBK_CUSTOM_DOMAIN` or a custom-domain CLI. This workflow requires an engine version that can obtain a certificate and produce a signed claim for the hostname; setting the variable alone does not enable it. The integration requires: The engine accepts it with the protocol's `Hostname` rules (ASCII, internationalized names as A-labels, lowercase) and produces the **claim**: an Ed25519 signature by the engine key over `"ptbk-hostname-v1" | hostname | engineId`. It shows the hostname and the claim as base64url (86 characters). How the claim reaches us (CLI output the customer sends, or a later API field) is up to the engine team (E-01); today the customer sends us the engine ID, the hostname and the claim.
 3. **Create exactly one DNS record**, once you have confirmed the target (below):
 
    ```text
@@ -28,7 +28,7 @@ You need the platform admin role ([scripts/make-admin.md](../scripts/make-admin.
    - `invalid-hostname`: not a routable name (an IP address, a wildcard, over 253 characters, a single label);
    - `reserved-domain`: under `ptbk.io`, the engine domain or a relay hostname;
    - `taken`: another engine (or this one) already has it; remove it there first;
-   - `bad-claim`: not signed by this engine's key for exactly this hostname and engine ID. Ask the customer to check `PTBK_CUSTOM_DOMAIN` and send the claim again;
+   - `bad-claim`: not signed by this engine's key for exactly this hostname and engine ID. Ask the customer to verify engine support and send the claim for the exact hostname again;
    - `limit-reached`: the engine has the 31 custom hostnames a registry entry can carry.
 
    The hostname is stored as **Waiting for DNS** (`pending-dns`). Relays do not see it yet.
@@ -54,6 +54,6 @@ The dashboard does not re-check DNS after that; relays do, at every registry ref
 ## Remove
 
 1. On the engine's page, **Remove** the hostname and confirm. Relays stop routing it within one registry cache TTL (5 minutes).
-2. Ask the customer to delete the CNAME and unset `PTBK_CUSTOM_DOMAIN`.
+2. Ask the customer to delete the CNAME and remove the hostname from the engine configuration.
 
 A customer who points the CNAME elsewhere stops routing at the relays' next DNS check (5 minutes), whatever the dashboard shows; remove the row too, so the registry stays accurate.
