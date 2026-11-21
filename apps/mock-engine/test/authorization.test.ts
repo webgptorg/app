@@ -146,9 +146,7 @@ function expectDecision(
 
 // Reserved capabilities are never advertised, so their routes answer 404 before any permission check.
 const SERVED_ROUTES = ENGINE_API_ROUTE_LIST.filter(
-    (route) =>
-        route.capability === undefined ||
-        (!isReservedCapability(route.capability) && route.capability !== KNOWN_CAPABILITIES.browserTab),
+    (route) => route.capability === undefined || !isReservedCapability(route.capability),
 );
 
 let harness: ApiHarness;
