@@ -289,7 +289,7 @@ While you build the gateway, `--no-gateway` skips the gateway check. To iterate 
 
 - Your engine against live staging ([staging.md](staging.md)): linked on `app.ptbk.io`, a Let's Encrypt certificate through the relay, our signed UI installed with the staging trust policy, and `ptbk-conformance staging` with no failure.
 
-- The local stack with your engine in place of the mock: link with a link code, online in the dashboard, open through the relay, sign in with a passkey, no CSP violation in the browser console. Serving the UI there, and chatting with an agent in it, waits for E-03, which re-signs the stack's UI releases for a conformance build.
+- The local stack with your engine in place of the mock: link with a link code, online in the dashboard, open through the relay, sign in with a passkey, no CSP violation in the browser console. With `bun run dev:stack up --no-system --engine real` the stack builds and runs your conformance build itself and signs its UI release for it, so your loader serves our UI there; agents cannot chat in it, because that mode has no internet and so no model provider ([testing-against-the-platform.md](testing-against-the-platform.md#b-the-local-dev-stack)).
 - _Pending E-03:_ the full e2e suite with `ENGINE_IMPL=real`: spike network tests (NAT, 443 only, `CONNECT` and TLS-inspecting proxies, relay restart and failover, packet capture), ACME through the relay, the UI flows under the strict CSP, and the dashboard flow.
 - Every row in [checklist.md](checklist.md) is done or listed in your report with its reason.
 

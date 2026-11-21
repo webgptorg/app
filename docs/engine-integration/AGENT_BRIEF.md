@@ -349,7 +349,7 @@ The engine is done when all of these hold. Run them on a **conformance build** o
 
    Run it without any heartbeat interval override, so `heartbeat.cadence.interval` proves the production 60 s. It exits 0 only when no check failed.
 
-2. **The local dev stack works** with your engine in place of the mock (`testing-against-the-platform.md`, section "(b) The local dev stack"). Link it with a link code, see it online in the dashboard, open it through the relay and sign in with a passkey, with no CSP violation in the browser console. The UI part of this check waits for the platform's task E-03, which re-signs the stack's UI releases for a conformance build.
+2. **The local dev stack works** with your engine in place of the mock (`testing-against-the-platform.md`, section "(b) The local dev stack"). Link it with a link code, see it online in the dashboard, open it through the relay and sign in with a passkey, with no CSP violation in the browser console. For the UI part, `bun run dev:stack up --no-system --engine real` runs your conformance build with a UI release signed for it.
 3. **Your engine works on live staging** (`staging.md`): linked on `app.ptbk.io`, a Let's Encrypt certificate through the relay, our signed UI installed with the staging trust policy, and `ptbk-conformance staging --engine https://<engineId>.engines.ptbk.link` with no failure.
 4. **No skips except these:** `capability-not-advertised` for capabilities you chose not to ship, and `engine-api.cross-member.private-resources`, which needs a target module (`testing-against-the-platform.md`, section "Against a running engine").
 5. **Every `ENG-xx` row** in `checklist.md` is implemented, or is marked in the plan as not required yet.

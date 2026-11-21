@@ -196,15 +196,15 @@ bun run dev:link <code>  # registers the stack's mock engine with that code and 
 
 The engine turns online after its first heartbeat (the mock engine sends one every 15 s; the list refreshes every minute, or reload). The dashboard keeps its production timing (an engine is offline after 3 missed 60 s heartbeats plus 15 s), so an engine on the production 60 s cadence, such as the real one, stays online without a dev setting; stopping the engine shows it offline after about 3 minutes. "Open" goes to `https://<engineId>.engine.test/` through relay-a; sign in there by picking a member (the mock engine's dev login, `MOCK_DEV_LOGIN`), with the `small-team` data seeded. The engine is paired before setup (`MOCK_ONBOARDING=no-project`), as a Reborn engine installed from the dashboard is, so the engine UI opens on its setup, which cannot be skipped; every heartbeat says `setup: pending` until it is done. That data includes the owner, so `dev:link` prints no setup link and the page's "Open the setup link your terminal shows" step completes on its own; a real install prints the link, and the `onboarding` e2e scenario covers that path. The engine UI runs under the engine's own CSP with Trusted Types, as everywhere.
 
-| Command                               | What it does                                                                                                    |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `bun run dev:stack up [--no-system]`  | Builds, creates or reuses the dev CA, starts the stack (project `ptbk-dev`), starts the engine if it is linked  |
-| `bun run dev:stack down`              | Stops it; the account, passkeys, linked engine and engine data stay in the project's volumes                    |
-| `bun run dev:stack reset`             | Stops it and drops every volume: a new dashboard database and a new engine key. The dev CA stays                |
-| `bun run dev:stack logs [service...]` | Service logs with timestamps                                                                                    |
-| `bun run dev:link <code>`             | Registers the stack's engine with a link code (or the stack's link URL) from the dashboard and (re)starts it    |
-| `bun run dev:trust [--dry-run]`       | Trusts the dev CA and adds the resolver entries; prints each command before it runs it, `--dry-run` only prints |
-| `bun run dev:untrust [--dry-run]`     | Removes both again and checks that nothing is left; `--check` only checks                                       |
+| Command                               | What it does                                                                                                                                                                            |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run dev:stack up [--no-system]`  | Builds, creates or reuses the dev CA, starts the stack (project `ptbk-dev`), starts the engine if it is linked; `--engine real` runs the [real engine](#real-engine-in-the-local-stack) |
+| `bun run dev:stack down`              | Stops it; the account, passkeys, linked engine and engine data stay in the project's volumes                                                                                            |
+| `bun run dev:stack reset`             | Stops it and drops every volume: a new dashboard database and a new engine key. The dev CA stays                                                                                        |
+| `bun run dev:stack logs [service...]` | Service logs with timestamps                                                                                                                                                            |
+| `bun run dev:link <code>`             | Registers the stack's engine with a link code (or the stack's link URL) from the dashboard and (re)starts it                                                                            |
+| `bun run dev:trust [--dry-run]`       | Trusts the dev CA and adds the resolver entries; prints each command before it runs it, `--dry-run` only prints                                                                         |
+| `bun run dev:untrust [--dry-run]`     | Removes both again and checks that nothing is left; `--check` only checks                                                                                                               |
 
 The fake billing state is in memory, so after `down` and `up` the account is unsubscribed again: repeat the Checkout before linking another engine. Nothing else is lost.
 
@@ -234,6 +234,34 @@ bun run --filter @ptbk/e2e dev:smoke                      # E2E_DEV_BROWSER_CHAN
 ```
 
 `e2e/tests/dev-stack/click-through.spec.ts` signs up with a virtual authenticator through a link on `/__dev/mailbox`, completes the fake Checkout, runs the install command the page shows (`bun run dev:link <code>`), waits for the engine to be online, opens it (the engine's own certificate from the dev CA, the engine CSP with Trusted Types), signs in with the dev login and chats with an agent; then it signs out, runs `dev:stack down` and `up --no-system`, signs back in with the same passkey and sees the same engine online. No CSP violation may occur anywhere.
+
+### Real engine in the local stack
+
+`--engine real` (E-03) runs the real engine from a checkout of [webgptorg/promptbook](https://github.com/webgptorg/promptbook) (branch `reborn/2026-10`) in place of the mock: the same dashboard, relays, release store and Chrome line, and the dashboard's New engine page links it the same way. It builds and runs the engine's code, so run it only on a machine where that is allowed (for us: a throwaway VM, never a laptop that must not run engine code). The default `up`, every e2e scenario and CI keep the mock.
+
+```sh
+git clone --branch reborn/2026-10 https://github.com/webgptorg/promptbook.git ../promptbook   # or PTBK_ENGINE_DIR=<checkout>
+bun run dev:stack up --no-system --engine real   # builds the engine, checks its isolation, starts it, prints the Chrome line
+bun run dev:link <code>                          # the command the New engine page shows; prints the owner's setup link
+bun run dev:stack logs real-engine               # the engine's service logs
+bun run --filter @ptbk/e2e dev:smoke             # the real engine's smoke test (tests/dev-stack/real-engine.spec.ts)
+```
+
+**What runs.** `e2e/real-engine/Dockerfile` builds ptbk's conformance build (`npm ci`, `npm run build:conformance`) from `PTBK_ENGINE_DIR` (default `../promptbook`, next to this checkout), with Node 24, git and a git identity, and installs it as the package's `dist/`. The conformance build is the one that works offline: it serves its certificate from a development CA it creates in its data directory, and it takes test trust for UI releases from `PTBK_CONFORMANCE_TRUST_FILE`, which release builds refuse. The service `real-engine` (`e2e/compose.real-engine.yaml`) runs it with `PTBK_MODE=tunnel`, `PTBK_DASHBOARD_URL=https://app.ptbk.test:8444`, `PTBK_ENGINE_DOMAIN=engine.test`, the dev CA in `NODE_EXTRA_CA_CERTS`, `NODE_ENV=development` and the engine's switches for outbound checks off. Its home directory (identity, registration, projects) is the volume `real-engine-home`, kept across `down` and dropped by `reset`. Its entrypoint (`e2e/real-engine/entrypoint.ts`) restarts the engine's background services when the container starts and copies their logs to the container's output.
+
+**Linking.** `dev:link <code>` runs `ptbk init --prepare-only --link-stdin --setup-link --json --no-persist` in the engine's container, the dashboard's own install command, with the link URL on stdin so it appears in no process list. The engine pairs before setup and the dashboard lists it as "Owner not set up", reachable through both relays; `dev:link` prints the owner's one-time setup link. Open it in the stack's Chrome profile to register your passkey as the engine's owner: the dashboard then says "Setup not finished", and the engine opens on its setup in our UI (`/onboarding`). One engine per stack: `dev:link` refuses a second code until `bun run dev:stack reset`.
+
+**The UI.** One-shot `real-engine-release` signs the engine-ui bundle init installs for the mock (`0.0.0-dryrun.1`) the way C-10's suite does: fresh release and maintainer keys and a test Sigstore (certificate, log entry, timestamps) on every `up`, published under `https://releases.ptbk.test/conformance/` with the matching conformance trust file. The engine verifies it with its own Sigstore verifier, pinned (`PTBK_UPDATE_POLICY=pinned`), and serves our signed UI under its CSP. The mock's releases next to it are unchanged.
+
+**No data leaves the machine.** In this mode the stack network is `internal`: no default route, so nothing on it can send a packet past the Docker host, and the engine sits on that network alone. Its resolver is the stack's CoreDNS, which refuses every name outside `ptbk.test` and `engine.test`. The dashboard, relay-a and the host resolver also join `host-access`, an ordinary bridge, only because Docker publishes their 127.0.0.1 ports through a network with a gateway. Before it starts the engine, `up` runs `e2e/real-engine/no-egress.ts` in a one-off copy of the engine's container: it requires TCP to `1.1.1.1:443`, `8.8.8.8:53` and `[2606:4700:4700::1111]:443`, lookups of `api.openai.com`, `registry.npmjs.org` and `example.com` through the stack's resolver and of `example.com` from `1.1.1.1` to fail, and the dashboard, both relays and the release store to answer; otherwise the engine does not start. Run it again in the running engine's container with `docker exec ptbk-dev-real-engine-1 node /e2e/real-engine/no-egress.ts`. With Docker 29 the container cannot reach the Docker host either, neither its address on the stack bridge nor its public one. The engine's build is the only step with network access: `npm ci` fetches its dependencies.
+
+What does not work, because of that:
+
+- **No model providers.** Nothing can call OpenAI, Anthropic or any other provider, install a harness CLI or sign in to one, so setup steps and agent work that need them fail. That is the price of running safely; there is no egress opt-in.
+- **Certificates need `--no-system`.** The engine's certificate comes from its own development CA, which only the `--no-system` profile accepts (it ignores certificate errors). `--engine real` without `--no-system` is refused, and `dev:trust` never trusts that CA: it carries no name constraints.
+- **The Wallet's unlock key** is a plain file in the engine's volume (`PTBK_HOST_UNLOCK=insecure-test-file`): the container has no keyring.
+
+Switching between the mock and the real engine needs `bun run dev:stack down` first, because the stack network's `internal` setting cannot change in place; `up` says so. Account and passkeys stay; `.dev/engine` records the engine the last `up` started, for `dev:link`, `logs` and `down`.
 
 ### Troubleshooting
 

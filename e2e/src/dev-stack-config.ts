@@ -1,7 +1,7 @@
 // The local dev stack for humans (X-06): what `dev:stack`, `dev:link`, `dev:trust` and the smoke test share. Ports
 // are repeated in compose.dev.yaml and coredns/Corefile.host; dev-stack.test.ts fails if they drift apart. Only node:
 // imports, so it runs before (and without) an install.
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import type { ComposeTarget } from './docker.ts';
 import { STACK_NET } from './stack.ts';
@@ -12,6 +12,17 @@ export const DEV_OVERLAYS: readonly string[] = ['dashboard', 'dev'];
 /** Not started by `up`; `dev:stack up` starts it once it holds a registration, `dev:link` registers it. */
 export const DEV_ENGINE_SERVICE = 'mock-engine';
 export const DEV_ON_DEMAND_PROFILE = 'on-demand';
+
+/**
+ * Which engine the stack runs: the mock (the default, as every e2e scenario and CI) or the real engine built from a
+ * checkout of webgptorg/promptbook (E-03, compose.real-engine.yaml), on a stack network with no way out.
+ */
+export type DevEngine = 'mock' | 'real';
+export const DEV_REAL_ENGINE_OVERLAY = 'real-engine';
+export const DEV_REAL_ENGINE_SERVICE = 'real-engine';
+/** The engine checkout, relative to this checkout when `PTBK_ENGINE_DIR` is unset. */
+export const DEFAULT_ENGINE_DIR = join('..', 'promptbook');
+export const ENGINE_DIR_VARIABLE = 'PTBK_ENGINE_DIR';
 
 /** Every published port, on 127.0.0.1 only. */
 export const DEV_PORTS = {
@@ -36,6 +47,8 @@ export const DEV_PKI_DIR = join(DEV_DIR, 'pki');
 /** Where the mock engine's `dev-ca`, run with `PTBK_DATA_DIR` = DEV_PKI_DIR, keeps the CA. */
 export const DEV_CA_CERT_FILE = join(DEV_PKI_DIR, 'dev-ca', 'ca-cert.pem');
 export const DEV_CHROMIUM_PROFILE = join(DEV_DIR, 'chromium');
+/** `dev:stack up` records the engine it started, so `dev:link`, `logs` and `down` address the same services. */
+export const DEV_ENGINE_FILE = join(DEV_DIR, 'engine');
 
 /** The compose variable holding the stack network's first three octets (compose.yaml). */
 export const STACK_NET_VARIABLE = 'PTBK_STACK_NET';
@@ -69,24 +82,106 @@ export function staleNetwork(inspectedSubnets: string, subnet: string): string |
     return `the dev stack's network is still on ${subnets.join(', ')}, not ${subnet}; run \`bun run dev:stack down\`, then \`up\` again (your account, passkeys and linked engine stay)`;
 }
 
-export function devTarget(e2eDir: string): ComposeTarget {
-    return { project: DEV_PROJECT, e2eDir, overlays: DEV_OVERLAYS, scenario: 'dev', onDemand: [DEV_ENGINE_SERVICE] };
+export function devTarget(e2eDir: string, engine: DevEngine = 'mock'): ComposeTarget {
+    return engine === 'mock'
+        ? { project: DEV_PROJECT, e2eDir, overlays: DEV_OVERLAYS, scenario: 'dev', onDemand: [DEV_ENGINE_SERVICE] }
+        : {
+              project: DEV_PROJECT,
+              e2eDir,
+              overlays: [...DEV_OVERLAYS, DEV_REAL_ENGINE_OVERLAY],
+              scenario: 'dev',
+              onDemand: [DEV_REAL_ENGINE_SERVICE],
+          };
+}
+
+/** What `.dev/engine` says; anything but `real` (no file, an older checkout) is the mock. */
+export function parseDevEngine(text: string | null): DevEngine {
+    return text?.trim() === 'real' ? 'real' : 'mock';
+}
+
+/**
+ * Why `up` must not reuse the project's stack network for `engine`, from `docker network inspect --format
+ * '{{.Internal}}'`; null when it fits. The real engine's stack network is internal (compose.real-engine.yaml), and
+ * compose cannot change that on an existing network.
+ */
+export function engineNetworkMismatch(inspectedInternal: string, engine: DevEngine): string | null {
+    const internal = inspectedInternal.trim();
+    if (internal === '') return null;
+    if ((internal === 'true') === (engine === 'real')) return null;
+    const running = engine === 'real' ? 'the mock engine' : 'the real engine';
+    return `the dev stack is still set up for ${running}; run \`bun run dev:stack down\`, then \`up\` again (your account and passkeys stay)`;
+}
+
+/** `PTBK_ENGINE_DIR` against this checkout's root, or the sibling `../promptbook`. */
+export function engineDir(env: Readonly<Record<string, string | undefined>>, repoRoot: string): string {
+    const configured = env[ENGINE_DIR_VARIABLE];
+    return resolve(repoRoot, configured === undefined || configured === '' ? DEFAULT_ENGINE_DIR : configured);
+}
+
+/** Why `dir` cannot be built as the engine, from its package.json (null when there is none); null when it can. */
+export function engineCheckoutProblem(dir: string, packageJson: string | null): string | null {
+    const advice = `set ${ENGINE_DIR_VARIABLE} to a checkout of webgptorg/promptbook (branch reborn/2026-10)`;
+    if (packageJson === null) return `${dir} has no package.json; ${advice}`;
+    try {
+        const manifest = JSON.parse(packageJson) as { name?: unknown; scripts?: Record<string, unknown> } | null;
+        if (manifest?.name !== 'ptbk') return `${dir} is not the ptbk package; ${advice}`;
+        if (typeof manifest.scripts?.['build:conformance'] !== 'string') {
+            return `${dir} has no build:conformance script, which the local stack needs; ${advice}`;
+        }
+        return null;
+    } catch {
+        return `${dir}/package.json is not JSON; ${advice}`;
+    }
 }
 
 export type DevStackCommand =
-    | { readonly kind: 'up'; readonly noSystem: boolean }
+    | { readonly kind: 'up'; readonly noSystem: boolean; readonly engine: DevEngine }
     | { readonly kind: 'down' }
     | { readonly kind: 'reset' }
-    | { readonly kind: 'logs'; readonly services: readonly string[] };
+    | { readonly kind: 'logs'; readonly services: readonly string[] }
+    | { readonly kind: 'refused'; readonly reason: string };
 
-export const DEV_STACK_USAGE = 'usage: bun run dev:stack up [--no-system] | down | reset | logs [service...]';
+export const DEV_STACK_USAGE =
+    'usage: bun run dev:stack up [--no-system] [--engine mock|real] | down | reset | logs [service...]';
+
+function parseUp(args: readonly string[]): DevStackCommand | null {
+    let noSystem = false;
+    let engine: DevEngine | null = null;
+    for (let index = 0; index < args.length; index += 1) {
+        const arg = args[index] ?? '';
+        if (arg === '--no-system' && !noSystem) {
+            noSystem = true;
+            continue;
+        }
+        let value: string | undefined;
+        if (arg === '--engine') {
+            index += 1;
+            value = args[index];
+        } else if (arg.startsWith('--engine=')) {
+            value = arg.slice('--engine='.length);
+        } else {
+            return null;
+        }
+        if (engine !== null || (value !== 'mock' && value !== 'real')) return null;
+        engine = value;
+    }
+    if (engine === 'real' && !noSystem) {
+        return {
+            kind: 'refused',
+            reason:
+                '--engine real needs --no-system: the real engine serves a certificate from its own development CA, ' +
+                'which only the --no-system Chrome profile accepts (it ignores certificate errors; trusting that CA ' +
+                'system-wide would trust it for every site)',
+        };
+    }
+    return { kind: 'up', noSystem, engine: engine ?? 'mock' };
+}
 
 export function parseDevStackArgs(args: readonly string[]): DevStackCommand | null {
     const [verb, ...rest] = args;
     switch (verb) {
         case 'up':
-            if (rest.some((arg) => arg !== '--no-system')) return null;
-            return { kind: 'up', noSystem: rest.includes('--no-system') };
+            return parseUp(rest);
         case 'down':
         case 'reset':
             return rest.length === 0 ? { kind: verb } : null;
@@ -109,6 +204,49 @@ const DEV_LINK = new RegExp(`^(?:${DEV_DASHBOARD_ORIGIN.replaceAll('.', '\\.')}/
 export function parseLinkCode(args: readonly string[]): string | null {
     const [value, ...rest] = args;
     return value !== undefined && rest.length === 0 && DEV_LINK.test(value) ? value : null;
+}
+
+/**
+ * A command's JSON report on stdout: all of it (ptbk's `--json` is pretty-printed), else its last line (the mock's
+ * `register` logs before its report). Null when neither is JSON.
+ */
+export function parseReport(stdout: string): unknown {
+    for (const candidate of [stdout.trim(), stdout.trim().split('\n').at(-1) ?? '']) {
+        try {
+            return JSON.parse(candidate) as unknown;
+        } catch {
+            // Try the next reading.
+        }
+    }
+    return null;
+}
+
+export interface RealEngine {
+    readonly engineId: string;
+    /** Whether the engine's own setup finished (it then runs a project); until then the dashboard says so. */
+    readonly setUp: boolean;
+}
+
+/** The real engine container's `entrypoint.ts status` (e2e/real-engine/); anything malformed counts as no engine. */
+export function parseRealEngineStatus(stdout: string): readonly RealEngine[] {
+    try {
+        const parsed = JSON.parse(stdout.trim().split('\n').at(-1) ?? '') as { engines?: unknown } | null;
+        if (!Array.isArray(parsed?.engines)) return [];
+        return (parsed.engines as readonly unknown[]).flatMap((entry) => {
+            const { engineId, step } = (entry ?? {}) as { engineId?: unknown; step?: unknown };
+            if (typeof engineId !== 'string' || !/^[a-z0-9]{1,64}$/.test(engineId) || typeof step !== 'string') {
+                return [];
+            }
+            return [{ engineId, setUp: step === 'done' }];
+        });
+    } catch {
+        return [];
+    }
+}
+
+/** The dev stack's link URL for a code or link URL `parseLinkCode` accepted: ptbk pairs only from a whole URL. */
+export function devLinkUrl(codeOrUrl: string): string {
+    return codeOrUrl.startsWith('https://') ? codeOrUrl : `${DEV_DASHBOARD_ORIGIN}/link#${codeOrUrl}`;
 }
 
 /**

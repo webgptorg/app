@@ -113,6 +113,28 @@ FROM ${NODE_IMAGE} AS release-store
 COPY e2e/src/release-store.ts /e2e/release-store.ts
 USER node
 
+# The real-engine dev stack's one-shot (compose.real-engine.yaml): signs the installed bundle the way C-10's suite
+# does, with @ptbk/conformance bundled into one file, so the image needs no install.
+FROM ${NODE_IMAGE} AS real-engine-release-build
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+WORKDIR /repo
+COPY --from=manifests /src/ ./
+RUN bun install --frozen-lockfile --filter @ptbk/e2e
+COPY tsconfig.base.json ./
+COPY packages/protocol packages/protocol
+COPY packages/engine-api packages/engine-api
+COPY packages/conformance packages/conformance
+COPY e2e/real-engine/sign-release.ts e2e/real-engine/sign-release.ts
+RUN bun build e2e/real-engine/sign-release.ts --target=node --outfile /out/sign-release.mjs
+
+FROM ${NODE_IMAGE} AS real-engine-release
+COPY --from=real-engine-release-build /out/sign-release.mjs /app/sign-release.mjs
+COPY --from=ui-bundle /ui-bundles/0.0.0-dryrun.1 /ui-bundle
+# Seeds the trust volume with an owner that may write to it.
+RUN install -d -o node -g node /trust
+USER node
+CMD ["node", "/app/sign-release.mjs", "--bundle", "/ui-bundle", "--store", "/releases/conformance", "--trust", "/trust/conformance-trust.json"]
+
 # The official image already holds the browsers for this exact @playwright/test version; nothing is downloaded at
 # install time (no install scripts) or at run time.
 FROM ${PLAYWRIGHT_IMAGE} AS playwright
