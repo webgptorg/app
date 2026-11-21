@@ -224,7 +224,7 @@ function Viewer({ session }: { readonly session: LiveSession }) {
                         }
                     />
                     <p id={hintId} className="text-sm text-text-muted">
-                        {ended
+                        {ended || view.blocked !== null
                             ? null
                             : view.mode === 'controlling'
                               ? m.browser_hint_controlling()
