@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M5
 - **Depends on:** C-16 (M-11 for the browser check against the mock engine)
-- **Status:** in progress (feat/u-21-live-browser-ui)
+- **Status:** done (#347)
 - **Spec:** Security hardening; ADRs: [0015](../../adr/0015-ui-architecture-and-design-system.md), [0016](../../adr/0016-engine-capabilities.md), [0019](../../adr/0019-live-sessions-inside-the-tunnel.md)
 - **Design:** [ui.md](../../design/ui.md), [live-sessions.md](../../engine-integration/live-sessions.md)
 
@@ -33,7 +33,7 @@ Decisions (Seb, 2026-11-20): prepare it, don't roll it out; show it only when th
 
 ## Acceptance criteria
 
-- [ ] Tests: watch sends no input; control after step-up; hand back; a blocked origin shows its state and sends no input; `frame-ack` per frame; each end reason; no capability renders nothing; no typed text in the query or mutation caches.
-- [ ] `bun run check` and `test:csp` pass with no CSP or Trusted Types violation.
-- [ ] Screenshots of the main states (en) are in the PR.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Tests: watch sends no input; control after step-up; hand back; a blocked origin shows its state and sends no input; `frame-ack` per frame; each end reason; no capability renders nothing; no typed text in the query or mutation caches.
+- [x] `bun run check` and `test:csp` pass with no CSP or Trusted Types violation.
+- [x] Screenshots of the main states (en) are in the PR.
+- [x] **Status** line above set to `done (#<PR>)`.
