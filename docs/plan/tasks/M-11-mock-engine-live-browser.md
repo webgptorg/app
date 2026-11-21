@@ -2,7 +2,7 @@
 
 - **Lane:** M · **Module:** `apps/mock-engine` · **Milestone:** M5
 - **Depends on:** C-16
-- **Status:** in progress (feat/m-11-mock-live-browser)
+- **Status:** done (#348)
 - **Spec:** Access, transport and zero trust; ADR [0019](../../adr/0019-live-sessions-inside-the-tunnel.md)
 
 ## Goal
@@ -24,6 +24,6 @@ The UI lane and e2e can try the live browser end to end against the mock engine,
 ## Acceptance criteria
 
 - [x] Without the flag, `GET /engine` does not advertise `browser-tab@1` and the routes answer 404 `capability-not-supported`.
-- [ ] With it, the engine-api conformance suite's browser-tab checks pass against the mock engine.
+- [x] With it, the engine-api conformance suite's browser-tab checks pass against the mock engine.
 - [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] **Status** line above set to `done (#<PR>)`.
