@@ -32,8 +32,8 @@ import type {
 } from '@ptbk/engine-api';
 import { DEFAULT_CAPABILITIES, createInMemoryEngine } from '@ptbk/engine-api/in-memory';
 import type {
-    InMemoryEngine,
     InMemoryEngineController,
+    InMemoryLiveEngine,
     InMemoryMember,
     InMemorySeed,
 } from '@ptbk/engine-api/in-memory';
@@ -1174,7 +1174,7 @@ const FRAME_INTERVAL_MS = 100;
  * The live channel as the engine's gateway binds it: Playwright answers the page's WebSocket at `LIVE_CHANNEL_PATH`
  * from the in-memory engine, so the bundle draws real PNG frames under the engine CSP.
  */
-async function routeLiveChannels(page: Page, engine: InMemoryEngine): Promise<void> {
+async function routeLiveChannels(page: Page, engine: InMemoryLiveEngine): Promise<void> {
     const path = new RegExp(`${ENGINE_API_PREFIX}${LIVE_CHANNEL_PATH.replace('{sessionId}', '([\\w-]+)')}$`);
     await page.routeWebSocket(path, (socket: WebSocketRoute) => {
         const sessionId = path.exec(new URL(socket.url()).pathname)?.[1] ?? '';

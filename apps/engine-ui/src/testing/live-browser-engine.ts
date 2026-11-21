@@ -1,12 +1,12 @@
 import { KNOWN_CAPABILITIES, LiveClientMessage } from '@ptbk/engine-api';
 import { createInMemoryEngine, DEFAULT_CAPABILITIES } from '@ptbk/engine-api/in-memory';
-import type { InMemoryEngine, InMemoryEngineApiOptions } from '@ptbk/engine-api/in-memory';
+import type { InMemoryEngineApiOptions, InMemoryLiveEngine } from '@ptbk/engine-api/in-memory';
 
 import type { OpenLiveChannel } from '../features/browser/live-channel';
 import type { FrameDrawer } from '../features/browser/live-session';
 import { TEST_NOW } from './test-engine-api';
 
-export interface LiveBrowserTestEngine extends InMemoryEngine {
+export interface LiveBrowserTestEngine extends InMemoryLiveEngine {
     readonly openLiveChannel: OpenLiveChannel;
     /** What the browser sent over every channel, parsed, oldest first. */
     readonly sent: LiveClientMessage[];

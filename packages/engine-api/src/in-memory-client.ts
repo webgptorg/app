@@ -591,6 +591,10 @@ export interface InMemoryAuditInput {
 export interface InMemoryEngine {
     readonly client: EngineApiClient;
     readonly controller: InMemoryEngineController;
+}
+
+/** What `createInMemoryEngine` makes: the engine, and its live channel for the client's own gateway session. */
+export interface InMemoryLiveEngine extends InMemoryEngine {
     /** Binds a live channel as the client's own member and gateway session, as the gateway would after its checks. */
     attachLiveChannel(sessionId: string, sink: LiveChannelSink): LiveChannelAttach;
 }
@@ -617,7 +621,7 @@ export function createInMemoryEngineApiClient(options: InMemoryEngineApiOptions 
 }
 
 /** The in-memory client, acting as one member, together with the core's controller. */
-export function createInMemoryEngine(options: InMemoryEngineApiOptions = {}): InMemoryEngine {
+export function createInMemoryEngine(options: InMemoryEngineApiOptions = {}): InMemoryLiveEngine {
     const core = createInMemoryEngineCore(options);
     const actor = actorFromOptions(options);
     const client = createEngineApiClient(withUploadProgress(withClientReading(core.transport(actor))));
