@@ -6,6 +6,7 @@ import type { UsageEvent } from '../../domain/usage/usage-event';
 import { resolveRequestLocale } from '../i18n/resolve-request-locale';
 import { issueLinkCode } from '../../domain/registration/issue-link-code';
 import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
+import type { LicenseGate } from '../../domain/licensing/license-service';
 import {
     acceptInvite,
     acceptOfferedInvite,
@@ -87,7 +88,11 @@ async function teamView(deps: Pick<DashboardDeps, 'teams'>, actor: TeamActor, te
 export function bindTeamRoutes(
     router: Hono,
     mount: string,
-    deps: DashboardDeps & { readonly policy: EngineCreationPolicy; readonly routes: RouteBinder },
+    deps: DashboardDeps & {
+        readonly policy: EngineCreationPolicy;
+        readonly routes: RouteBinder;
+        readonly licenseGate: LicenseGate;
+    },
 ): void {
     const bind = deps.routes.bind.bind(deps.routes);
     const inviteDeps: InviteDeps = {
@@ -352,6 +357,16 @@ export function bindTeamRoutes(
                 return { kind: 'problem', status: 400, code: 'invalid-email' };
             }
             emails.push(email.data);
+        }
+        // Counts every address, also those already in the organization: enforcement may refuse a little early, never late.
+        const license = await deps.licenseGate.check(
+            'member.invite',
+            session.actor.orgId,
+            request.signal,
+            emails.length,
+        );
+        if (license.outcome === 'deny') {
+            return { kind: 'problem', status: 403, code: 'license-limit' };
         }
         const outcome = await createInvites(inviteDeps, inviter(session), {
             emails,

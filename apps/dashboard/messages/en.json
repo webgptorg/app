@@ -880,5 +880,36 @@
   "website_access_done_title": "Linked",
   "website_access_done_body": "{org} now shows the licenses of the ptbk.io account {email}.",
   "website_access_done_action": "See license",
-  "license_engines_uncovered": "{count} not covered"
+  "license_engines_uncovered": "{count} not covered",
+  "license_status_title": "Your license",
+  "license_status_active": "Active",
+  "license_status_trial": "Trial",
+  "license_status_scheduled": "Starts later",
+  "license_status_expired": "Expired",
+  "license_status_unreachable": "Not checked",
+  "license_plan_generic": "ptbk.io license",
+  "license_plan_many": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} license",
+        "countPlural=other": "{count} licenses"
+      }
+    }
+  ],
+  "license_plan_none": "No license",
+  "license_term_open": "No end date",
+  "license_term_ends": "Valid until {date}",
+  "license_term_trial_ends": "Trial ends {date}",
+  "license_term_ended": "Ended {date}",
+  "license_term_starts": "Starts {date}",
+  "license_limits_label": "Limits and usage",
+  "license_buy_action": "Buy on ptbk.io",
+  "license_check_engine_link": "Your license doesn’t cover another project. It links and runs as usual.",
+  "license_check_member_invite": "Your license doesn’t cover more people. They can still join.",
+  "engines_new_license_missing_title": "No license covers a new project",
+  "engines_new_license_limit_title": "Your license covers no more projects",
+  "engines_new_license_body": "Add one on ptbk.io. The projects you have keep running.",
+  "invite_license_limit": "Your license doesn’t cover more people. Everyone already here keeps access."
 }

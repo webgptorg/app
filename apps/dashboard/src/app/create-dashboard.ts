@@ -24,6 +24,8 @@ import { createD1UsageStore } from '../adapters/db/d1-usage-store';
 import { createD1RelayPresenceStore } from '../adapters/db/d1-relay-presence-store';
 import { createD1TeamStore } from '../adapters/db/d1-team-store';
 import { createD1WebsiteLicensingStore } from '../adapters/db/d1-website-licensing-store';
+import { createWebsiteIdentityExchange } from '../adapters/licensing/website-handoff-client';
+import { createWebsiteLicenseHttpApi } from '../adapters/licensing/website-license-api';
 import { memberKeySource } from '../domain/teams/member-key';
 import { createD1RegistryReader, createD1RelayTokenStore } from '../adapters/db/d1-registry-store';
 import { createD1HeartbeatEngineReader } from '../adapters/db/d1-status-store';
@@ -44,7 +46,7 @@ import { DASHBOARD_POLICY } from '../domain/authz/policy';
 import { createAdvisoryEntitlements } from '../domain/licensing/advisory-entitlements';
 import type { Logger } from '../domain/ports/logger';
 import type { DashboardMetrics } from '../domain/monitoring/dashboard-metrics';
-import { ConfigError, parseConfig, type DashboardConfig } from './config';
+import { ConfigError, parseConfig, type BillingConfig, type DashboardConfig } from './config';
 import { createUsageRecorder } from '../domain/usage/usage-recorder';
 import { authLinks, type DashboardDeps } from './deps';
 import { createDevAdapters, type DevAdapters } from './dev-adapters';
@@ -148,6 +150,15 @@ function rateLimiter(env: Env, config: DashboardConfig, dev: DevAdapters) {
  * With billing `off` there is no provider and no billing service, so no Stripe route is mounted; entitlements are the
  * fixed grant. Null when the configured provider cannot be built.
  */
+/** The website's App APIs, server to server with the shared secret (ADR 0021). */
+function websiteApi(billing: Extract<BillingConfig, { readonly adapter: 'website' }>) {
+    return {
+        websiteOrigin: billing.websiteOrigin,
+        secret: billing.licenseSecret,
+        fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
+    };
+}
+
 function billingWiring(
     config: DashboardConfig,
     dev: DevAdapters,
@@ -207,7 +218,8 @@ export function createDashboard(
                       websiteOrigin: config.billing.websiteOrigin,
                       clock: systemClock,
                   }),
-                  fetch: (input, init) => fetch(input, init),
+                  licenses: createWebsiteLicenseHttpApi(websiteApi(config.billing)),
+                  identities: createWebsiteIdentityExchange(websiteApi(config.billing)),
               }
             : null;
     const deps: DashboardDeps = {

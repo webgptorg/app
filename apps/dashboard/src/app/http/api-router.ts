@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 
 import { apiRoutes } from '../../shared/api/routes';
 import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
+import type { LicenseGate, LicenseService } from '../../domain/licensing/license-service';
 import type { DashboardDeps } from '../deps';
 import { renderEmail } from '../i18n/render-email';
 import { bindAdminEngineRoutes } from './admin-engine-routes';
@@ -18,7 +19,13 @@ export const API_MOUNT = '/api';
 
 /** The SPA's own API: every state change must come from the dashboard's own pages. */
 export function createApiRouter(
-    deps: DashboardDeps & { readonly policy: EngineCreationPolicy; readonly routes: RouteBinder },
+    deps: DashboardDeps & {
+        readonly policy: EngineCreationPolicy;
+        readonly routes: RouteBinder;
+        /** With billing `website` only. */
+        readonly licenses: LicenseService | null;
+        readonly licenseGate: LicenseGate;
+    },
 ): Hono {
     const router = new Hono();
     router.use('*', crossSiteRequestGuard(deps.config.dashboardOrigin));
@@ -36,9 +43,9 @@ export function createApiRouter(
         bindBillingRoutes(router, API_MOUNT, { ...deps, billing });
     }
     // Only with billing website: the website sells, and the App reads licences and links accounts (ADR 0021).
-    const { licensing } = deps;
-    if (website !== null && licensing !== null) {
-        bindLicensingRoutes(router, API_MOUNT, { ...deps, website, licensing });
+    const { licensing, licenses } = deps;
+    if (website !== null && licensing !== null && licenses !== null) {
+        bindLicensingRoutes(router, API_MOUNT, { ...deps, website, licensing, licenses });
     }
     bindEngineRoutes(router, API_MOUNT, deps);
     bindTeamRoutes(router, API_MOUNT, deps);

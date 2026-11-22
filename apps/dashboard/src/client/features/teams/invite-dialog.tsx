@@ -1,6 +1,6 @@
 import { Button, Checkbox, Dialog, Field, Select, Textarea } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import { apiRoutes, MAX_INVITE_EMAILS } from '../../../shared/api/routes';
@@ -15,6 +15,11 @@ import { teamKeys, teamsQuery } from './team-queries';
 export function splitEmails(typed: string): readonly string[] {
     return [...new Set(typed.split(/[\s,;]+/u).filter((part) => part !== ''))];
 }
+
+/** Only with website licences, so dashboards without them never load it. */
+const LicenseCheckNotice = lazy(async () => ({
+    default: (await import('../licensing/license-check-notice')).LicenseCheckNotice,
+}));
 
 const LOOKS_LIKE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 
@@ -61,7 +66,13 @@ function InviteForm(props: Parameters<typeof InviteDialog>[0]) {
                 await api.call(apiRoutes.createInvites, { body: { emails: [...emails], role, teamIds: [...chosen] } }),
             ).results,
         invalidates: [teamKeys.all, teamKeys.people, ...[...chosen].map((teamId) => teamKeys.team(teamId))],
-        errorMessage: (error) => (problemCode(error) === 'invalid-email' ? m.invite_emails_invalid() : undefined),
+        errorMessage: (error) => {
+            const code = problemCode(error);
+            if (code === 'invalid-email') {
+                return m.invite_emails_invalid();
+            }
+            return code === 'license-limit' ? m.invite_license_limit() : undefined;
+        },
         successMessage: (results) =>
             results.every((result) => result.outcome === 'added')
                 ? m.invite_added({ count: results.length })
@@ -82,6 +93,11 @@ function InviteForm(props: Parameters<typeof InviteDialog>[0]) {
                 invite.mutate();
             }}
         >
+            {session.licensing ? (
+                <Suspense fallback={null}>
+                    <LicenseCheckNotice point="memberInvite" withLink={false} />
+                </Suspense>
+            ) : null}
             <Field
                 label={m.invite_emails_label()}
                 hint={m.invite_emails_hint({ max: MAX_INVITE_EMAILS })}

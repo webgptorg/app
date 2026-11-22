@@ -1,7 +1,7 @@
 import { and, eq, gt, lte, sql } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 
-import { licenseSnapshotSchema } from '../../domain/licensing/license-contract';
+import { websiteLicenseSchema } from '../../domain/licensing/license-contract';
 import type { Clock } from '../../domain/ports/clock';
 import type { WebsiteLicensingStore } from '../../domain/licensing/website-licensing-store';
 import type { Database } from './client';
@@ -16,12 +16,12 @@ import {
 
 const dialect = new SQLiteSyncDialect();
 
-/** `websiteOrigin` re-validates stored snapshots, so a changed origin never shows an old manage link. */
+/** `websiteOrigin` re-validates stored licences, so a changed origin never shows an old manage link. */
 export function createD1WebsiteLicensingStore(
     db: Database,
     deps: { readonly websiteOrigin: string; readonly clock: Clock },
 ): WebsiteLicensingStore {
-    const snapshotSchema = licenseSnapshotSchema(deps.websiteOrigin);
+    const licenseSchema = websiteLicenseSchema(deps.websiteOrigin);
 
     return {
         async createState(state) {
@@ -102,7 +102,7 @@ export function createD1WebsiteLicensingStore(
             return row?.subject ?? null;
         },
 
-        async readSnapshot(orgId) {
+        async readLicense(orgId) {
             const row = await db
                 .select({ snapshot: websiteLicenseSnapshots.snapshot })
                 .from(websiteLicenseSnapshots)
@@ -112,17 +112,17 @@ export function createD1WebsiteLicensingStore(
                 return null;
             }
             try {
-                const parsed = snapshotSchema.safeParse(JSON.parse(row.snapshot));
+                const parsed = licenseSchema.safeParse(JSON.parse(row.snapshot));
                 return parsed.success ? parsed.data : null;
             } catch {
                 return null;
             }
         },
 
-        async saveSnapshot(orgId, snapshot) {
+        async saveLicense(orgId, license) {
             const values = {
-                subject: snapshot.subject,
-                snapshot: JSON.stringify(snapshot),
+                subject: license.snapshot.subject,
+                snapshot: JSON.stringify(license),
                 fetchedAt: deps.clock.nowMs(),
             };
             await db

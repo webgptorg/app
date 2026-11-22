@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { cryptoRandom } from '../adapters/crypto-random';
 import { newOrgAuditEntryId, type OrgId, type UserId } from '../domain/ids';
-import type { LicenseSnapshot } from '../domain/licensing/license-contract';
+import type { WebsiteLicense } from '../domain/licensing/license-contract';
 import type { WebsiteLicensingStore } from '../domain/licensing/website-licensing-store';
 
 const NOW = 1_800_000_000_000;
@@ -20,15 +20,19 @@ function subject(): string {
     return crypto.randomUUID();
 }
 
-function snapshotFor(forSubject: string): LicenseSnapshot {
+function licenseFor(forSubject: string): WebsiteLicense {
     return {
-        version: 1,
-        subject: forSubject,
-        generatedAt: '2026-11-13T00:00:00.000Z',
-        refreshAfterSeconds: 900,
-        enforcement: 'advisory',
-        manageUrl: `${CONTRACT_WEBSITE_ORIGIN}/cs/pricing/predplatne`,
-        grants: [],
+        snapshot: {
+            version: 1,
+            subject: forSubject,
+            generatedAt: '2026-11-13T00:00:00.000Z',
+            refreshAfterSeconds: 900,
+            enforcement: 'advisory',
+            manageUrl: `${CONTRACT_WEBSITE_ORIGIN}/cs/pricing/predplatne`,
+            grants: [],
+        },
+        status: 'none',
+        label: 'Bez aktivní licence',
     };
 }
 
@@ -122,15 +126,19 @@ export function describeWebsiteLicensingStoreContract(
             expect(await fixture.linkAudit(first.orgId)).toEqual([linked]);
         });
 
-        it('keeps the last snapshot per organization, replacing the previous one', async () => {
+        it('keeps the last licence read per organization, replacing the previous one', async () => {
             const { orgId } = await fixture.addOrg();
-            expect(await fixture.store.readSnapshot(orgId)).toBeNull();
-            const first = snapshotFor(subject());
-            await fixture.store.saveSnapshot(orgId, first);
-            expect(await fixture.store.readSnapshot(orgId)).toEqual(first);
-            const second = { ...snapshotFor(first.subject), refreshAfterSeconds: 60 };
-            await fixture.store.saveSnapshot(orgId, second);
-            expect(await fixture.store.readSnapshot(orgId)).toEqual(second);
+            expect(await fixture.store.readLicense(orgId)).toBeNull();
+            const first = licenseFor(subject());
+            await fixture.store.saveLicense(orgId, first);
+            expect(await fixture.store.readLicense(orgId)).toEqual(first);
+            const second: WebsiteLicense = {
+                snapshot: { ...first.snapshot, refreshAfterSeconds: 60 },
+                status: null,
+                label: null,
+            };
+            await fixture.store.saveLicense(orgId, second);
+            expect(await fixture.store.readLicense(orgId)).toEqual(second);
         });
     });
 }

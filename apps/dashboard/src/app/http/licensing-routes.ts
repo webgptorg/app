@@ -1,9 +1,7 @@
 import type { Hono } from 'hono';
 
-import { createWebsiteIdentityExchange } from '../../adapters/licensing/website-handoff-client';
-import { createWebsiteLicenseClient } from '../../adapters/licensing/website-license-client';
-import type { LicenseRead } from '../../domain/licensing/license-contract';
-import { summarizeLicense } from '../../domain/licensing/license-summary';
+import type { LicenseCheck } from '../../domain/licensing/license-checks';
+import type { LicenseService } from '../../domain/licensing/license-service';
 import {
     createWebsiteAccessFlows,
     HANDOFF_STATE_TTL_MS,
@@ -25,15 +23,22 @@ import {
 type WebsiteBilling = Extract<BillingConfig, { readonly adapter: 'website' }>;
 
 /**
+ * Where "Buy on ptbk.io" goes without a licence to read a manage link from: the page the website's own manage links
+ * point at today.
+ */
+const WEBSITE_PRICING_PATH = '/cs/pricing/predplatne';
+
+/**
  * D-30's routes (ADR 0021): the website handoff and the advisory licence view. The website only ever proves a mailbox;
  * an App account is still made by the App's own email link and passkey, and only its owner or admin links it.
  */
 export function bindLicensingRoutes(
     router: Hono,
     mount: string,
-    deps: Pick<DashboardDeps, 'clock' | 'random' | 'logger' | 'store' | 'engines' | 'teams' | 'config'> & {
+    deps: Pick<DashboardDeps, 'clock' | 'random' | 'logger' | 'store' | 'config'> & {
         readonly website: WebsiteBilling;
         readonly licensing: NonNullable<DashboardDeps['licensing']>;
+        readonly licenses: LicenseService;
         readonly routes: RouteBinder;
     },
 ): void {
@@ -44,20 +49,10 @@ export function bindLicensingRoutes(
         random: deps.random,
         handoffs: licensing.store,
         websiteLinks: licensing.store,
-        exchange: createWebsiteIdentityExchange({
-            websiteOrigin: website.websiteOrigin,
-            secret: website.licenseSecret,
-            fetch: licensing.fetch,
-        }),
+        exchange: licensing.identities,
         accounts: deps.store.accounts,
     });
-    const licenses = createWebsiteLicenseClient({
-        websiteOrigin: website.websiteOrigin,
-        secret: website.licenseSecret,
-        store: licensing.store,
-        fetch: licensing.fetch,
-        nowMs: () => clock.nowMs(),
-    });
+    const pricingUrl = `${website.websiteOrigin}${WEBSITE_PRICING_PATH}`;
     const accessPage = (error?: WebsiteAccessError) =>
         `${deps.config.dashboardOrigin}/website-access${error === undefined ? '' : `?error=${error}`}`;
 
@@ -127,27 +122,16 @@ export function bindLicensingRoutes(
         }
     });
 
-    // Read on demand when the License and Engines screens load; the client refreshes past `refreshAfterSeconds` and
+    // Read on demand when the License and Engines screens load; the reader refreshes past `refreshAfterSeconds` and
     // keeps the last snapshot when the website does not answer within 5 seconds.
     bind(router, mount, apiRoutes.getLicense, async ({ request, session }) => {
-        const orgId = session.actor.orgId;
-        const [link, engines, people] = await Promise.all([
-            licensing.store.linkForOrg(orgId),
-            deps.engines.countActive(orgId),
-            deps.teams.listOrgMembers(orgId),
-        ]);
-        const read: LicenseRead = link === null ? { kind: 'unknown' } : await licenses.read(orgId, request.signal);
-        const summary = summarizeLicense({
-            linked: link !== null,
-            read,
-            usage: { engines, people: people.length },
-            now: clock.nowMs(),
-        });
+        const { link, summary, checks } = await deps.licenses.overview(session.actor.orgId, request.signal);
         return {
             kind: 'ok',
             body: {
                 link: link === null ? null : { linkedAt: link.linkedAt, linkedByEmail: link.linkedByEmail },
                 ...summary,
+                manageUrl: summary.manageUrl ?? pricingUrl,
                 grants: summary.grants.map((grant) => ({
                     id: grant.id,
                     validFrom: grant.validFrom,
@@ -155,7 +139,16 @@ export function bindLicensingRoutes(
                     active: grant.active,
                     capabilities: { ...grant.capabilities },
                 })),
+                enforcement: website.enforcement,
+                checks: {
+                    engineLink: checkView(checks['engine.link']),
+                    memberInvite: checkView(checks['member.invite']),
+                },
             },
         };
     });
+}
+
+function checkView(check: LicenseCheck) {
+    return check.outcome === 'ok' ? { outcome: check.outcome, reason: null } : check;
 }

@@ -1,5 +1,6 @@
 import type { Entitlements } from '../billing/entitlements';
 import type { OrgId } from '../ids';
+import { OPEN_LICENSE_GATE, type LicenseGate } from '../licensing/license-service';
 import type { Clock } from '../ports/clock';
 import type { EngineStore } from './engine-store';
 import type { LinkCodeStore } from './link-code-store';
@@ -44,7 +45,11 @@ export function createEngineCreationPolicy(deps: {
     readonly linkCodes: Pick<LinkCodeStore, 'countActive' | 'countIssuedSince'>;
     readonly engines: Pick<EngineStore, 'countActive'>;
     readonly clock: Clock;
+    /** The `engine.link` check point; it denies only with `LICENSE_ENFORCEMENT` `enforce`. */
+    readonly licenseGate?: LicenseGate;
 }): EngineCreationPolicy {
+    const licenseGate = deps.licenseGate ?? OPEN_LICENSE_GATE;
+
     async function checkEntitlements(
         orgId: OrgId,
         signal: AbortSignal,
@@ -59,9 +64,22 @@ export function createEngineCreationPolicy(deps: {
         return ALLOWED;
     }
 
+    // Asked when someone links, never when an engine redeems a code it already holds: an install under way finishes.
+    async function checkLinking(orgId: OrgId, signal: AbortSignal): Promise<EngineCreationDecision<EntitlementDenial>> {
+        const entitled = await checkEntitlements(orgId, signal);
+        if (entitled.kind === 'denied') {
+            return entitled;
+        }
+        const license = await licenseGate.check('engine.link', orgId, signal);
+        if (license.outcome !== 'deny') {
+            return ALLOWED;
+        }
+        return { kind: 'denied', reason: license.reason === 'over-limit' ? 'engine-limit' : 'not-entitled' };
+    }
+
     return {
         async checkLinkCode(orgId, signal) {
-            const entitled = await checkEntitlements(orgId, signal);
+            const entitled = await checkLinking(orgId, signal);
             if (entitled.kind === 'denied') {
                 return entitled;
             }
@@ -74,7 +92,7 @@ export function createEngineCreationPolicy(deps: {
             }
             return ALLOWED;
         },
-        checkEligibility: checkEntitlements,
+        checkEligibility: checkLinking,
         checkRegistration: checkEntitlements,
     };
 }

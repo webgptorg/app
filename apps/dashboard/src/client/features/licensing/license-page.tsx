@@ -77,71 +77,71 @@ function GrantItem(props: { readonly grant: Grant }) {
     );
 }
 
-function AccountSection(props: { readonly license: LicenseView }) {
-    const { navigate } = useBrowser();
-    const formatters = useFormatters();
-    const { link, manageUrl, checkedAt } = props.license;
-    if (link === null) {
-        return (
-            <Section title={m.license_account_title()} divided={false} description={m.license_account_unlinked()}>
-                <div>
-                    <Button
-                        variant="primary"
-                        onClick={() => {
-                            navigate(WEBSITE_ACCESS_START);
-                        }}
-                    >
-                        {m.license_link_action()}
-                    </Button>
-                </div>
-            </Section>
-        );
-    }
-    const date = formatters.formatDate(new Date(link.linkedAt));
-    return (
-        <Section
-            title={m.license_account_title()}
-            divided={false}
-            description={
-                link.linkedByEmail === null
-                    ? m.license_account_linked_unknown({ date })
-                    : m.license_account_linked({ email: link.linkedByEmail, date })
-            }
-            actions={
-                manageUrl === null ? null : <ExternalLink href={manageUrl}>{m.license_manage_action()}</ExternalLink>
-            }
-        >
-            {checkedAt === null ? null : (
-                <p className="text-sm text-text-muted">
-                    {m.license_checked()} <RelativeTime value={new Date(checkedAt)} />
-                </p>
-            )}
-        </Section>
-    );
+type Status = NonNullable<LicenseView['status']>;
+
+/** No licence needs no pill: "No license" already says it. */
+const STATUS: Readonly<
+    Record<Exclude<Status, 'none'> | 'unreachable', { readonly tone: StatusTone; readonly label: () => string }>
+> = {
+    active: { tone: 'success', label: () => m.license_status_active() },
+    trial: { tone: 'info', label: () => m.license_status_trial() },
+    scheduled: { tone: 'waiting', label: () => m.license_status_scheduled() },
+    expired: { tone: 'neutral', label: () => m.license_status_expired() },
+    unreachable: { tone: 'neutral', label: () => m.license_status_unreachable() },
+};
+
+function statusKey(license: LicenseView): keyof typeof STATUS | 'none' {
+    if (license.link === null) return 'none';
+    return license.status ?? 'unreachable';
 }
 
-function Usage(props: { readonly label: string; readonly value: string; readonly shortfall: string | null }) {
+/** The website's plan name; without one, a plain name for what is active. */
+function planName(license: LicenseView): string {
+    if (license.label !== null) return license.label;
+    const active = license.grants.filter((grant) => grant.active).length;
+    if (active > 1) return m.license_plan_many({ count: active });
+    return active === 1 ? m.license_plan_generic() : m.license_plan_none();
+}
+
+function termLine(license: LicenseView, formatDate: (date: Date) => string): string | null {
+    const { term, status } = license;
+    if (term === null) {
+        return status === 'active' || status === 'trial' ? m.license_term_open() : null;
+    }
+    const date = formatDate(new Date(term.at));
+    switch (term.kind) {
+        case 'ends':
+            return status === 'trial' ? m.license_term_trial_ends({ date }) : m.license_term_ends({ date });
+        case 'ended':
+            return m.license_term_ended({ date });
+        case 'starts':
+            return m.license_term_starts({ date });
+    }
+}
+
+function Limit(props: { readonly label: string; readonly value: string; readonly shortfall: string | null }) {
     return (
-        <div className="soft-surface flex flex-wrap items-center justify-between gap-2 p-4">
-            <div className="flex flex-col gap-0.5">
-                <span className="text-sm text-text-muted">{props.label}</span>
-                <span className="text-lg font-medium tabular-nums">{props.value}</span>
-            </div>
-            <StatusPill tone={props.shortfall === null ? 'success' : 'warning'}>
-                {props.shortfall ?? m.license_covered()}
-            </StatusPill>
+        <div className="contents">
+            <dt className="text-text-muted">{props.label}</dt>
+            <dd className="flex flex-wrap items-center gap-2 tabular-nums">
+                {props.value}
+                {props.shortfall === null ? null : <StatusPill tone="warning">{props.shortfall}</StatusPill>}
+            </dd>
         </div>
     );
 }
 
-function CoverageSection(props: { readonly coverage: NonNullable<LicenseView['coverage']> }) {
+function Limits(props: { readonly coverage: NonNullable<LicenseView['coverage']> }) {
     const formatters = useFormatters();
     const { engines, people } = props.coverage;
     const used = formatters.formatNumber(engines.used);
     return (
-        <Section title={m.license_coverage_title()}>
-            <div className="grid gap-3 sm:grid-cols-2">
-                <Usage
+        <>
+            <dl
+                aria-label={m.license_limits_label()}
+                className="grid grid-cols-[auto_1fr] items-center gap-x-6 gap-y-2 text-sm"
+            >
+                <Limit
                     label={m.license_coverage_engines()}
                     value={
                         engines.capacity === null
@@ -156,7 +156,7 @@ function CoverageSection(props: { readonly coverage: NonNullable<LicenseView['co
                               })
                     }
                 />
-                <Usage
+                <Limit
                     label={m.license_coverage_people()}
                     value={
                         people.limit === null
@@ -168,8 +168,82 @@ function CoverageSection(props: { readonly coverage: NonNullable<LicenseView['co
                     }
                     shortfall={people.limit === null || people.used <= people.limit ? null : m.license_not_covered()}
                 />
+            </dl>
+            <p className="meta">{m.license_unknown_usage()}</p>
+        </>
+    );
+}
+
+/**
+ * Plan, state, term, limits against what the App counts, and the way to ptbk.io. Quiet in every state: a missing or
+ * ended licence is information, never an alarm, and nothing here blocks anything.
+ */
+function StatusSection(props: { readonly license: LicenseView }) {
+    const { navigate } = useBrowser();
+    const formatters = useFormatters();
+    const { license } = props;
+    const key = statusKey(license);
+    const status = key === 'none' ? null : STATUS[key];
+    const term = termLine(license, (date) => formatters.formatDate(date));
+    const unlinked = license.link === null;
+    const title =
+        key === 'none' ? m.license_plan_none() : key === 'unreachable' ? m.license_plan_generic() : planName(license);
+    return (
+        <Section
+            title={m.license_status_title()}
+            divided={false}
+            actions={
+                <ExternalLink href={license.manageUrl}>
+                    {key === 'none' ? m.license_buy_action() : m.license_manage_action()}
+                </ExternalLink>
+            }
+        >
+            <div className="flex flex-col gap-1">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="text-lg font-medium">{title}</span>
+                    {status === null ? null : <StatusPill tone={status.tone}>{status.label()}</StatusPill>}
+                </div>
+                {term === null ? null : <p className="text-sm text-text-muted">{term}</p>}
             </div>
-            <p className="text-sm text-text-muted">{m.license_unknown_usage()}</p>
+            {unlinked ? (
+                <>
+                    <p className="text-sm text-text-muted">{m.license_account_unlinked()}</p>
+                    <div>
+                        <Button
+                            variant="primary"
+                            onClick={() => {
+                                navigate(WEBSITE_ACCESS_START);
+                            }}
+                        >
+                            {m.license_link_action()}
+                        </Button>
+                    </div>
+                </>
+            ) : null}
+            {key === 'unreachable' ? <p className="text-sm text-text-muted">{m.license_unknown_body()}</p> : null}
+            {license.coverage === null ? null : <Limits coverage={license.coverage} />}
+        </Section>
+    );
+}
+
+function AccountSection(props: { readonly link: NonNullable<LicenseView['link']>; readonly checkedAt: string | null }) {
+    const formatters = useFormatters();
+    const { link, checkedAt } = props;
+    const date = formatters.formatDate(new Date(link.linkedAt));
+    return (
+        <Section
+            title={m.license_account_title()}
+            description={
+                link.linkedByEmail === null
+                    ? m.license_account_linked_unknown({ date })
+                    : m.license_account_linked({ email: link.linkedByEmail, date })
+            }
+        >
+            {checkedAt === null ? null : (
+                <p className="meta">
+                    {m.license_checked()} <RelativeTime value={new Date(checkedAt)} />
+                </p>
+            )}
         </Section>
     );
 }
@@ -206,22 +280,15 @@ export function LicensePage() {
                         {m.license_stale_body()}
                     </Banner>
                 ) : null}
-                {view.state === 'unknown' && view.link !== null ? (
-                    <Banner tone="info">{m.license_unknown_body()}</Banner>
-                ) : null}
-                <AccountSection license={view} />
-                {view.coverage === null ? null : <CoverageSection coverage={view.coverage} />}
-                {view.state === 'unknown' ? null : (
+                <StatusSection license={view} />
+                {view.link === null ? null : <AccountSection link={view.link} checkedAt={view.checkedAt} />}
+                {view.state === 'unknown' || view.grants.length === 0 ? null : (
                     <Section title={m.license_grants_title()} count={active}>
-                        {view.grants.length === 0 ? (
-                            <p className="text-sm text-text-muted">{m.license_grants_empty()}</p>
-                        ) : (
-                            <ul className="flex flex-col gap-3">
-                                {view.grants.map((grant) => (
-                                    <GrantItem key={grant.id} grant={grant} />
-                                ))}
-                            </ul>
-                        )}
+                        <ul className="flex flex-col gap-3">
+                            {view.grants.map((grant) => (
+                                <GrantItem key={grant.id} grant={grant} />
+                            ))}
+                        </ul>
                     </Section>
                 )}
             </>

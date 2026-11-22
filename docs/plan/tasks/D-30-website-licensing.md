@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-07
-- **Status:** in progress (feat/website-licensing)
+- **Status:** in progress (#345; the website's organization-linking endpoint plugs in next)
 
 ## Goal
 
@@ -16,6 +16,8 @@ Implement the owner-approved 13 November split: the website owns trials, purchas
 - Existing passkeys and engine identity remain separate; handoff grants no engine access or step-up by itself.
 - Website remains the only production checkout; English enquiries are contact-only.
 - Provider errors preserve last known coverage and show uncertainty.
+
+Update of 20 November 2026 (Seb): License shows the organization's licence (plan, state, term, engines and people against it). Enforcement is prepared, not on: the `engine.link` and `member.invite` check points warn, and deny only with `LICENSE_ENFORCEMENT` `enforce`, which no environment sets. Turning it on overrides the second line above for new engines and invitations only, and needs Seb's decision ([website licensing](../../design/website-licensing.md#enforcement)).
 
 ## Apply
 

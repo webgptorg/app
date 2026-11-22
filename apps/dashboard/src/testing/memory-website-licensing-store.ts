@@ -1,11 +1,11 @@
 import type { OrgAuditEntryId, OrgId, UserId } from '../domain/ids';
-import type { LicenseSnapshot } from '../domain/licensing/license-contract';
+import type { WebsiteLicense } from '../domain/licensing/license-contract';
 import type { PendingLinkRecord } from '../domain/licensing/website-access';
 import type { WebsiteLicensingStore } from '../domain/licensing/website-licensing-store';
 
 export interface MemoryWebsiteLicensingStore extends WebsiteLicensingStore {
     readonly links: Map<OrgId, { subject: string; linkedByUserId: UserId; linkedAt: number }>;
-    readonly snapshots: Map<string, LicenseSnapshot>;
+    readonly licenses: Map<string, WebsiteLicense>;
     readonly states: Map<string, number>;
     readonly pending: Map<string, PendingLinkRecord>;
     readonly audit: { id: OrgAuditEntryId; orgId: OrgId; actorUserId: UserId; action: string; targetId: string }[];
@@ -16,13 +16,13 @@ export function createMemoryWebsiteLicensingStore(
     emailOf: (userId: UserId) => string | null = () => null,
 ): MemoryWebsiteLicensingStore {
     const links: MemoryWebsiteLicensingStore['links'] = new Map();
-    const snapshots = new Map<string, LicenseSnapshot>();
+    const licenses = new Map<string, WebsiteLicense>();
     const states = new Map<string, number>();
     const pending = new Map<string, PendingLinkRecord>();
     const audit: MemoryWebsiteLicensingStore['audit'] = [];
     return {
         links,
-        snapshots,
+        licenses,
         states,
         pending,
         audit,
@@ -75,11 +75,11 @@ export function createMemoryWebsiteLicensingStore(
         subjectForOrg(orgId) {
             return Promise.resolve(links.get(orgId as OrgId)?.subject ?? null);
         },
-        readSnapshot(orgId) {
-            return Promise.resolve(snapshots.get(orgId) ?? null);
+        readLicense(orgId) {
+            return Promise.resolve(licenses.get(orgId) ?? null);
         },
-        saveSnapshot(orgId, snapshot) {
-            snapshots.set(orgId, snapshot);
+        saveLicense(orgId, license) {
+            licenses.set(orgId, license);
             return Promise.resolve();
         },
     };

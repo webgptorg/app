@@ -886,5 +886,38 @@
   "website_access_done_title": "Propojeno",
   "website_access_done_body": "{org} teď ukazuje licence účtu ptbk.io {email}.",
   "website_access_done_action": "Zobrazit licenci",
-  "license_engines_uncovered": "Nepokryto: {count}"
+  "license_engines_uncovered": "Nepokryto: {count}",
+  "license_status_title": "Vaše licence",
+  "license_status_active": "Aktivní",
+  "license_status_trial": "Zkušební období",
+  "license_status_scheduled": "Začne později",
+  "license_status_expired": "Vypršela",
+  "license_status_unreachable": "Neověřeno",
+  "license_plan_generic": "Licence ptbk.io",
+  "license_plan_many": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} licence",
+        "countPlural=few": "{count} licence",
+        "countPlural=many": "{count} licence",
+        "countPlural=other": "{count} licencí"
+      }
+    }
+  ],
+  "license_plan_none": "Bez licence",
+  "license_term_open": "Bez data konce",
+  "license_term_ends": "Platí do {date}",
+  "license_term_trial_ends": "Zkušební období končí {date}",
+  "license_term_ended": "Skončila {date}",
+  "license_term_starts": "Začne platit {date}",
+  "license_limits_label": "Limity a využití",
+  "license_buy_action": "Koupit na ptbk.io",
+  "license_check_engine_link": "Vaše licence další projekt nepokrývá. Propojí se a poběží jako obvykle.",
+  "license_check_member_invite": "Vaše licence další lidi nepokrývá. Přidat se přesto mohou.",
+  "engines_new_license_missing_title": "Nový projekt nepokrývá žádná licence",
+  "engines_new_license_limit_title": "Vaše licence další projekt nepokrývá",
+  "engines_new_license_body": "Doplňte ji na ptbk.io. Stávající projekty běží dál.",
+  "invite_license_limit": "Vaše licence další lidi nepokrývá. Kdo už tu je, přístup neztrácí."
 }

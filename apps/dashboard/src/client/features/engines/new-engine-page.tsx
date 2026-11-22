@@ -38,6 +38,11 @@ const NewEnginePlanStep = lazy(async () => {
     return { default: module.NewEnginePlanStep };
 });
 
+/** Only with website licences, so dashboards without them never load it. */
+const LicenseCheckNotice = lazy(async () => ({
+    default: (await import('../licensing/license-check-notice')).LicenseCheckNotice,
+}));
+
 const LINK_PERMISSION = 'engine.link';
 const BILLING_PERMISSION = 'billing.manage';
 const SECOND_MS = 1000;
@@ -90,8 +95,14 @@ function upgradeReason(error: unknown): UpgradeReason | null {
     return code === 'not-entitled' || code === 'engine-limit' ? code : null;
 }
 
-/** With billing off there is no plan to upgrade, so the copy names the account and points nowhere. */
-const UPGRADE_COPY: Record<'on' | 'off', Record<UpgradeReason, { title: () => string; body: () => string }>> = {
+/**
+ * With billing off there is no plan to upgrade, so the copy names the account and points nowhere. With website licences
+ * these appear only under `LICENSE_ENFORCEMENT` `enforce`, and point to the licence instead.
+ */
+const UPGRADE_COPY: Record<
+    'on' | 'off' | 'license',
+    Record<UpgradeReason, { title: () => string; body: () => string }>
+> = {
     on: {
         'not-entitled': {
             title: () => m.engines_new_not_entitled_title(),
@@ -112,10 +123,23 @@ const UPGRADE_COPY: Record<'on' | 'off', Record<UpgradeReason, { title: () => st
             body: () => m.engines_new_engine_limit_off_body(),
         },
     },
+    license: {
+        'not-entitled': {
+            title: () => m.engines_new_license_missing_title(),
+            body: () => m.engines_new_license_body(),
+        },
+        'engine-limit': {
+            title: () => m.engines_new_license_limit_title(),
+            body: () => m.engines_new_license_body(),
+        },
+    },
 };
 
-function upgradeCopy(billingEnabled: boolean, reason: UpgradeReason) {
-    return UPGRADE_COPY[billingEnabled ? 'on' : 'off'][reason];
+function upgradeCopy(
+    session: { readonly billingEnabled: boolean; readonly licensing: boolean },
+    reason: UpgradeReason,
+) {
+    return UPGRADE_COPY[session.licensing ? 'license' : session.billingEnabled ? 'on' : 'off'][reason];
 }
 
 /** Ticks every second from the injected clock, so the expiry banner shows when the code runs out on an open page. */
@@ -134,12 +158,13 @@ function useRemainingMs(until: number): number {
 }
 
 function UpgradeBanner(props: { readonly reason: UpgradeReason }) {
-    const { billingEnabled } = useSession();
-    const copy = upgradeCopy(billingEnabled, props.reason);
+    const session = useSession();
+    const copy = upgradeCopy(session, props.reason);
     return (
         <Banner tone="warning" title={copy.title()}>
             <p>{copy.body()}</p>
-            {billingEnabled ? <Link to="/billing">{m.engines_new_upgrade()}</Link> : null}
+            {session.billingEnabled ? <Link to="/billing">{m.engines_new_upgrade()}</Link> : null}
+            {session.licensing ? <Link to="/license">{m.license_notice_action()}</Link> : null}
         </Banner>
     );
 }
@@ -361,7 +386,7 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
                 return m.engines_new_code_limit_title();
             }
             const reason = upgradeReason(error);
-            return reason === null ? undefined : upgradeCopy(session.billingEnabled, reason).title();
+            return reason === null ? undefined : upgradeCopy(session, reason).title();
         },
         onSuccess: async (view) => {
             setIssued(view);
@@ -520,6 +545,11 @@ function NewEngineContent(props: { readonly search: NewEngineSearch }) {
                 </Crumb>,
             ]}
         >
+            {canLink && session.licensing ? (
+                <Suspense fallback={null}>
+                    <LicenseCheckNotice point="engineLink" />
+                </Suspense>
+            ) : null}
             {canLink ? <LinkFlow search={props.search} /> : <Banner tone="info">{m.engines_new_not_allowed()}</Banner>}
             <TrustLink />
         </Page>

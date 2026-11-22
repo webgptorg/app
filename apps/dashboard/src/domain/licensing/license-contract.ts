@@ -42,6 +42,49 @@ export function licenseSnapshotSchema(websiteOrigin: string) {
 }
 export type LicenseGrant = z.infer<typeof licenseGrantSchema>;
 export type LicenseSnapshot = z.infer<ReturnType<typeof licenseSnapshotSchema>>;
+
+/** The website's own reading of an account's licences, as its lookup API words it. */
+export const WEBSITE_LICENSE_STATUSES = ['active', 'trial', 'scheduled', 'expired', 'none'] as const;
+export type WebsiteLicenseStatus = (typeof WEBSITE_LICENSE_STATUSES)[number];
+
+/** Plain text the website shows as the plan's name ("Business"); rendered as text, never decides anything. */
+export const licenseLabelSchema = z
+    .string()
+    .min(1)
+    .max(160)
+    .regex(/^[^<>\p{Cc}]+$/u);
+
+/**
+ * One account's licence as the website states it: the numeric snapshot, and, where its API sends them, its status and
+ * plan name. Null where the API does not say; the App then derives the status from the grants and shows no plan name.
+ */
+export interface WebsiteLicense {
+    readonly snapshot: LicenseSnapshot;
+    readonly status: WebsiteLicenseStatus | null;
+    readonly label: string | null;
+}
+
+export function websiteLicenseSchema(websiteOrigin: string) {
+    return z.object({
+        snapshot: licenseSnapshotSchema(websiteOrigin),
+        status: z.enum(WEBSITE_LICENSE_STATUSES).nullable(),
+        label: licenseLabelSchema.nullable(),
+    });
+}
+
+/** The linked website account, as the licence API addresses it. */
+export interface WebsiteAccountRef {
+    readonly subject: string;
+}
+
+/**
+ * The website's licence API (ADR 0021), server to server. Rejects on any failure, an unknown account included: an
+ * outage must never read as "no licence". The HTTP adapter is `adapters/licensing/website-license-api.ts`.
+ */
+export interface WebsiteLicenseApi {
+    lookup(account: WebsiteAccountRef, signal: AbortSignal): Promise<WebsiteLicense>;
+}
+
 export type LicenseDimension = 'specialists' | 'controllingUsers' | 'harnessInstances' | 'browserProfiles';
 export interface EngineLicenseUsage {
     readonly id: string;
@@ -50,10 +93,11 @@ export interface EngineLicenseUsage {
 }
 export interface WebsiteLicenseStore {
     subjectForOrg(orgId: string): Promise<string | null>;
-    readSnapshot(orgId: string): Promise<LicenseSnapshot | null>;
-    saveSnapshot(orgId: string, snapshot: LicenseSnapshot): Promise<void>;
+    /** The last license read for the organization, validated again on read; null when none or no longer valid. */
+    readLicense(orgId: string): Promise<WebsiteLicense | null>;
+    saveLicense(orgId: string, license: WebsiteLicense): Promise<void>;
 }
 export type LicenseRead =
-    | { readonly kind: 'current'; readonly snapshot: LicenseSnapshot }
-    | { readonly kind: 'stale'; readonly snapshot: LicenseSnapshot }
+    | { readonly kind: 'current'; readonly license: WebsiteLicense }
+    | { readonly kind: 'stale'; readonly license: WebsiteLicense }
     | { readonly kind: 'unknown' };
