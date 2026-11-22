@@ -39,8 +39,8 @@ Decisions (Seb, 2026-11-20):
 - [x] Strict in, tolerant out for every new schema; refusal tests for every message and input kind.
 - [x] The reference engine enforces: session bound to the gateway session (others get 404), one attachment per participant, exclusive control, frames stop and input drops on blocked pages, no typed text in the audit log, expiry, idle end, revocation ends the session.
 - [x] Conformance checks pass against the in-memory engine and fail against a fake that breaks each rule.
-- [ ] `engine-api` and `protocol` coverage thresholds hold; `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] `engine-api` and `protocol` coverage thresholds hold; `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
