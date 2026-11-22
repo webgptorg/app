@@ -46,6 +46,22 @@ describe('live input', () => {
         expect(key('c', { ctrlKey: true })).toBeNull();
         expect(key('v', { metaKey: true })).toBeNull();
         expect(key('p', { altKey: true })).toBeNull();
+        expect(key('Backspace', { altKey: true })).toBeNull();
+        expect(key('@', { altKey: true })).toEqual({ key: '@', shift: false });
+        const altGraph = (value: string) =>
+            liveKey({
+                key: value,
+                shiftKey: false,
+                ctrlKey: true,
+                metaKey: false,
+                altKey: true,
+                getModifierState: (name) => name === 'AltGraph',
+            });
+        expect(altGraph('@')).toEqual({ key: '@', shift: false });
+        expect(altGraph('ą')).toEqual({ key: 'ą', shift: false });
+        expect(altGraph('c')).toBeNull();
+        expect(key('@', { ctrlKey: true, altKey: true })).toBeNull();
+        expect(key('@', { metaKey: true, altKey: true })).toBeNull();
         expect(
             liveKey({ key: 'a', shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, isComposing: true }),
         ).toBeNull();

@@ -66,6 +66,7 @@ describe('live browser labels', () => {
         expect(viewState({ ...VIEW, endReason: 'idle' }).label).toBe('Ended');
         expect(viewState({ ...VIEW, connection: 'connecting' }).label).toBe('Connecting');
         expect(viewState({ ...VIEW, connection: 'reconnecting' }).label).toBe('Reconnecting');
+        expect(viewState({ ...VIEW, connection: 'closed' }).label).toBe('Disconnected');
         expect(viewState({ ...VIEW, blocked: { reason: 'secret-page', origin: null } }).label).toBe('Page hidden');
         expect(viewState({ ...VIEW, mode: 'controlling', agent: 'paused' }).label).toBe("You're in control");
         expect(viewState({ ...VIEW, agent: 'paused' }).label).toBe('Agent paused, someone else is in control');

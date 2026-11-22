@@ -243,6 +243,36 @@ describe('a live session over the in-memory engine', () => {
         expect(retries).toHaveLength(1);
     });
 
+    it('stops reconnecting to an open session whose channel another window holds', async () => {
+        const engine = createLiveBrowserTestEngine();
+        const tab = engine.controller.openAgentTab({ origin: SITE });
+        const opened = ok(await engine.client.browser.watch(tab.id, signal()));
+        const retries: (() => void)[] = [];
+        const session = createLiveSession(
+            {
+                engineApi: engine.client,
+                openChannel: (_id, handlers) => {
+                    queueMicrotask(handlers.onClose);
+                    return { send: () => undefined, close: () => undefined };
+                },
+                schedule: (callback) => {
+                    retries.push(callback);
+                    return () => undefined;
+                },
+            },
+            opened,
+        );
+        await flushLive();
+        for (let attempt = 0; attempt < 6; attempt++) {
+            expect(session.getView().connection).toBe('reconnecting');
+            retries[attempt]?.();
+            await flushLive();
+        }
+        expect(retries).toHaveLength(6);
+        expect(session.getView()).toMatchObject({ connection: 'closed', endReason: null });
+        session.dispose();
+    });
+
     it('keeps moves under the input rate limit', async () => {
         const { session } = await open('control');
         const move: LiveInputEvent = { kind: 'pointer', action: 'move', x: 1, y: 1, button: 'none', clicks: 0 };

@@ -57,6 +57,7 @@ export function viewState(view: LiveView): ViewState {
     if (view.endReason !== null) return { label: m.browser_state_ended(), tone: 'neutral' };
     if (view.connection === 'connecting') return { label: m.browser_state_connecting(), tone: 'neutral' };
     if (view.connection === 'reconnecting') return { label: m.browser_state_reconnecting(), tone: 'warning' };
+    if (view.connection === 'closed') return { label: m.browser_state_disconnected(), tone: 'warning' };
     if (view.blocked !== null) return { label: m.browser_state_blocked(), tone: 'warning' };
     if (view.mode === 'controlling') return { label: m.browser_state_controlling(), tone: 'live' };
     if (view.agent === 'paused') return { label: m.browser_state_someone_controls(), tone: 'warning' };

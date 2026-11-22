@@ -11,8 +11,12 @@ import type { LiveSession } from './live-session';
 export interface LiveSessions {
     readonly current: () => LiveSession | null;
     readonly subscribe: (listener: () => void) => () => void;
-    /** Makes `session` the current one; a different previous one is ended, since the UI runs one at a time. */
-    readonly show: (session: LiveSession) => void;
+    /**
+     * Makes `session` the current one, since the UI runs one at a time. A member's click (`end: true`) ends a different
+     * previous one; a page load only closes its channel, so the engine ends it after its attach window and no load ever
+     * writes. The same session shown again (StrictMode, a second read) keeps the one already running.
+     */
+    readonly show: (session: LiveSession, options?: { readonly end: boolean }) => void;
 }
 
 export function createLiveSessions(): LiveSessions & { readonly dispose: () => void } {
@@ -26,11 +30,18 @@ export function createLiveSessions(): LiveSessions & { readonly dispose: () => v
                 listeners.delete(listener);
             };
         },
-        show: (session) => {
+        show: (session, options = { end: true }) => {
             if (session === current) return;
+            if (current?.id === session.id) {
+                session.dispose();
+                return;
+            }
             const previous = current;
             current = session;
-            if (previous !== null) void previous.end().finally(previous.dispose);
+            if (previous !== null) {
+                if (options.end) void previous.end().finally(previous.dispose);
+                else previous.dispose();
+            }
             for (const listener of [...listeners]) listener();
         },
         dispose: () => {

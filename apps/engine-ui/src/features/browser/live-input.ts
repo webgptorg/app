@@ -75,6 +75,7 @@ export interface KeyLike {
     readonly metaKey: boolean;
     readonly altKey: boolean;
     readonly isComposing?: boolean;
+    readonly getModifierState?: (key: string) => boolean;
 }
 
 const NAMED_KEYS: ReadonlySet<string> = new Set(LIVE_NAMED_KEYS);
@@ -82,10 +83,22 @@ const NAMED_KEYS: ReadonlySet<string> = new Set(LIVE_NAMED_KEYS);
 /**
  * The key as the contract takes it, or `null` for one that stays with this page: anything with Ctrl, Cmd or Alt (so
  * no shortcut reaches the clipboard, print, save or devtools of the engine's browser), function keys, modifiers alone
- * and IME composition. Shift is the only modifier sent.
+ * and IME composition. Shift is the only modifier sent. AltGr (Ctrl+Alt on Windows) and Option on a Mac type `@`,
+ * brackets and the like on many layouts, so their printable character goes through, without the modifier.
  */
 export function liveKey(event: KeyLike): { readonly key: string; readonly shift: boolean } | null {
-    if (event.ctrlKey || event.metaKey || event.altKey || event.isComposing === true) return null;
+    if (event.isComposing === true) return null;
+    const typesCharacter =
+        event.getModifierState?.('AltGraph') === true || (event.altKey && !event.ctrlKey && !event.metaKey);
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+        // A plain letter or digit under Alt is a menu or app shortcut (Windows reports Alt+F as `f`), never a character.
+        return typesCharacter &&
+            !NAMED_KEYS.has(event.key) &&
+            !/^[a-z0-9]$/i.test(event.key) &&
+            LiveKey.safeParse(event.key).success
+            ? { key: event.key, shift: event.shiftKey }
+            : null;
+    }
     if (NAMED_KEYS.has(event.key) || LiveKey.safeParse(event.key).success) {
         return { key: event.key, shift: event.shiftKey };
     }

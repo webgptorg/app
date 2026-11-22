@@ -62,7 +62,7 @@ function useViewerSession(sessionId: LiveSessionId | undefined): LiveSession | n
         [found, deps],
     );
     useEffect(() => {
-        if (shown === null && found?.status === 'open') sessions.show(createLiveSession(deps, found));
+        if (shown === null && found?.status === 'open') sessions.show(createLiveSession(deps, found), { end: false });
     }, [shown, found, sessions, deps]);
     if (shown !== null) return shown;
     if (ended !== null) return ended;

@@ -91,6 +91,11 @@ export interface LiveSession {
 
 /** After a dropped channel the same gateway session may attach again until the session ends. */
 const RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000] as const;
+/**
+ * An open session that keeps refusing the channel is attached in another window: stop rather than have the engine
+ * audit a refusal every few seconds until it ends. A real drop ends the session after its attach window anyway.
+ */
+const MAX_RECONNECT_ATTEMPTS = RECONNECT_DELAYS_MS.length + 1;
 const API_TIMEOUT_MS = 15_000;
 
 function clampSize(value: number): number {
@@ -252,6 +257,10 @@ export function createLiveSession(deps: LiveSessionDeps, opened: ReadBrowserSess
     const retryLater = () => {
         // No local deadline: the engine ends the session at `endsAt` and says so on the next read.
         if (disposed || view.endReason !== null) return;
+        if (attempts >= MAX_RECONNECT_ATTEMPTS) {
+            set({ connection: 'closed' });
+            return;
+        }
         const delay = RECONNECT_DELAYS_MS[Math.min(attempts, RECONNECT_DELAYS_MS.length - 1)] ?? 1_000;
         attempts += 1;
         cancelRetry = schedule(() => {

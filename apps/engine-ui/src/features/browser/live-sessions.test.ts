@@ -33,4 +33,27 @@ describe('the member’s live sessions', () => {
         expect(sessions.current()).toBeNull();
         expect(listener).toHaveBeenCalledTimes(2);
     });
+
+    it('keeps the running one when the same session is shown again', () => {
+        const sessions = createLiveSessions();
+        const running = fakeSession('live-1');
+        const again = fakeSession('live-1');
+        sessions.show(running);
+        sessions.show(again, { end: false });
+        expect(sessions.current()).toBe(running);
+        expect(again.dispose).toHaveBeenCalledOnce();
+        expect(running.end).not.toHaveBeenCalled();
+        expect(running.dispose).not.toHaveBeenCalled();
+    });
+
+    it('never ends the previous one from a page load, only closes it', () => {
+        const sessions = createLiveSessions();
+        const previous = fakeSession('live-1');
+        const loaded = fakeSession('live-2');
+        sessions.show(previous);
+        sessions.show(loaded, { end: false });
+        expect(sessions.current()).toBe(loaded);
+        expect(previous.end).not.toHaveBeenCalled();
+        expect(previous.dispose).toHaveBeenCalledOnce();
+    });
 });

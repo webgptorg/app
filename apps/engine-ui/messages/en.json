@@ -2185,6 +2185,7 @@
   "browser_on_site": "on {site}",
   "browser_hidden_site": "a hidden page",
   "browser_state_connecting": "Connecting",
+  "browser_state_disconnected": "Disconnected",
   "browser_state_reconnecting": "Reconnecting",
   "browser_state_watching": "Watching",
   "browser_state_controlling": "You're in control",

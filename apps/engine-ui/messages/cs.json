@@ -2250,6 +2250,7 @@
   "browser_on_site": "na {site}",
   "browser_hidden_site": "skryté stránce",
   "browser_state_connecting": "Připojování",
+  "browser_state_disconnected": "Odpojeno",
   "browser_state_reconnecting": "Obnovuje se spojení",
   "browser_state_watching": "Sledujete",
   "browser_state_controlling": "Ovládáte vy",
