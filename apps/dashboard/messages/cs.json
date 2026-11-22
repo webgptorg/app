@@ -814,5 +814,6 @@
   "engines_new_open_terminal": "Na macOS otevřete Terminál z Aplikace / Utility; na Linuxu otevřete svůj terminál. Použijte počítač, na kterém mají agenti běžet.",
   "engines_new_open_powershell": "Otevřete PowerShell z nabídky Start ve Windows na počítači, na kterém mají agenti běžet.",
   "engines_new_open_ssh": "Připojte se přes SSH k serveru, na kterém mají agenti běžet. Příkaz spusťte v jeho Bash terminálu.",
-  "engines_new_run_block": "Zkopírujte celý blok tlačítkem Kopírovat příkaz, vložte jej do terminálu a potvrďte Enterem. Složku nemusíte vytvářet ani vybírat; Promptbook ji připraví sám."
+  "engines_new_run_block": "Zkopírujte celý blok tlačítkem Kopírovat příkaz, vložte jej do terminálu a potvrďte Enterem. Složku nemusíte vytvářet ani vybírat; Promptbook ji připraví sám.",
+  "website_licenses": "Licence a členství na webu"
 }

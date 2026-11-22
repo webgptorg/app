@@ -808,5 +808,6 @@
   "engines_new_open_terminal": "On macOS, open Terminal from Applications / Utilities; on Linux, open your terminal. Use the computer where your agents will run.",
   "engines_new_open_powershell": "Open PowerShell from the Windows Start menu on the computer where your agents will run.",
   "engines_new_open_ssh": "Connect over SSH to the server where your agents will run. Run the command in its Bash terminal.",
-  "engines_new_run_block": "Paste the entire copied block into the terminal and press Enter. Use Copy command to copy it; you do not need to create or choose a folder. Promptbook prepares it for you."
+  "engines_new_run_block": "Paste the entire copied block into the terminal and press Enter. Use Copy command to copy it; you do not need to create or choose a folder. Promptbook prepares it for you.",
+  "website_licenses": "Licenses and membership"
 }

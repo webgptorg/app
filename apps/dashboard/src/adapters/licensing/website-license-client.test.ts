@@ -1,0 +1,174 @@
+import { expect, it } from 'vitest';
+import { createWebsiteLicenseClient } from './website-license-client';
+import type { LicenseSnapshot, WebsiteLicenseStore } from '../../domain/licensing/license-contract';
+const subject = '4408b4d6-6005-4b77-97eb-fdd67847ee92';
+const snapshot: LicenseSnapshot = {
+    version: 1,
+    subject,
+    generatedAt: '2026-11-13T00:00:00.000Z',
+    refreshAfterSeconds: 900,
+    enforcement: 'advisory',
+    manageUrl: 'https://www.ptbk.io/cs/pricing/predplatne',
+    grants: [],
+};
+it('keeps a previous snapshot on outage and refuses another account response', async () => {
+    let writes = 0;
+    const store: WebsiteLicenseStore = {
+        subjectForOrg: () => Promise.resolve(subject),
+        readSnapshot: () => Promise.resolve(snapshot),
+        saveSnapshot: () => {
+            writes++;
+            return Promise.resolve();
+        },
+    };
+    const client = createWebsiteLicenseClient({
+        store,
+        websiteOrigin: 'https://www.ptbk.io',
+        secret: 'server-only',
+        nowMs: () => Date.parse(snapshot.generatedAt) + 900_001,
+        fetch: () =>
+            Promise.resolve(
+                Response.json({
+                    ...snapshot,
+                    subject: '4408b4d6-6005-4b77-97eb-fdd67847ee93',
+                }),
+            ),
+    });
+    expect(await client.read('org', new AbortController().signal)).toEqual({
+        kind: 'stale',
+        snapshot,
+    });
+    expect(writes).toBe(0);
+});
+it('fetches and stores known fields without depending on plan names', async () => {
+    let saved: LicenseSnapshot | null = null;
+    const store: WebsiteLicenseStore = {
+        subjectForOrg: () => Promise.resolve(subject),
+        readSnapshot: () => Promise.resolve(null),
+        saveSnapshot: (_org, value) => {
+            saved = value;
+            return Promise.resolve();
+        },
+    };
+    const client = createWebsiteLicenseClient({
+        store,
+        websiteOrigin: 'https://www.ptbk.io',
+        secret: 'server-only',
+        nowMs: () => Date.parse(snapshot.generatedAt),
+        fetch: (_url, options) => {
+            expect(new Headers(options?.headers).get('authorization')).toBe('Bearer server-only');
+            return Promise.resolve(Response.json({ ...snapshot, futureField: true }));
+        },
+    });
+    expect(await client.read('org', new AbortController().signal)).toEqual({
+        kind: 'current',
+        snapshot,
+    });
+    expect(saved).toEqual(snapshot);
+});
+it('uses a fresh cache, leaves unlinked organizations unknown and tolerates an unavailable service', async () => {
+    const readSnapshot = () => Promise.resolve(snapshot);
+    const saveSnapshot = () => Promise.resolve();
+    let fetches = 0;
+    const store: WebsiteLicenseStore = { subjectForOrg: () => Promise.resolve(null), readSnapshot, saveSnapshot };
+    const make = () =>
+        createWebsiteLicenseClient({
+            store,
+            websiteOrigin: 'https://www.ptbk.io',
+            secret: 'server-only',
+            nowMs: () => Date.parse(snapshot.generatedAt),
+            fetch: () => {
+                fetches++;
+                return Promise.resolve(new Response(null, { status: 503 }));
+            },
+        });
+    expect(await make().read('org', new AbortController().signal)).toEqual({ kind: 'unknown' });
+    store.subjectForOrg = () => Promise.resolve(subject);
+    expect(await make().read('org', new AbortController().signal)).toEqual({ kind: 'current', snapshot });
+    expect(fetches).toBe(0);
+    store.readSnapshot = () => Promise.resolve(null);
+    expect(await make().read('org', new AbortController().signal)).toEqual({ kind: 'unknown' });
+});
+it('rejects future-dated snapshots and drops unrelated cached identities during an outage', async () => {
+    const store: WebsiteLicenseStore = {
+        subjectForOrg: () => Promise.resolve(subject),
+        readSnapshot: () => Promise.resolve({ ...snapshot, subject: '4408b4d6-6005-4b77-97eb-fdd67847ee93' }),
+        saveSnapshot: () => Promise.resolve(),
+    };
+    const client = createWebsiteLicenseClient({
+        store,
+        websiteOrigin: 'https://www.ptbk.io',
+        secret: 'server-only',
+        nowMs: () => Date.parse(snapshot.generatedAt) - 120_001,
+        fetch: () => Promise.resolve(Response.json(snapshot)),
+    });
+    expect(await client.read('org', new AbortController().signal)).toEqual({ kind: 'unknown' });
+});
+it('accepts a manage link anywhere on the configured website and nothing off it', async () => {
+    const read = async (manageUrl: string, websiteOrigin = 'https://www.ptbk.io') => {
+        let requested = '';
+        const client = createWebsiteLicenseClient({
+            store: {
+                subjectForOrg: () => Promise.resolve(subject),
+                readSnapshot: () => Promise.resolve(null),
+                saveSnapshot: () => Promise.resolve(),
+            },
+            websiteOrigin,
+            secret: 'server-only',
+            nowMs: () => Date.parse(snapshot.generatedAt),
+            fetch: (url) => {
+                requested = url instanceof Request ? url.url : url.toString();
+                return Promise.resolve(Response.json({ ...snapshot, manageUrl }));
+            },
+        });
+        return { result: (await client.read('org', new AbortController().signal)).kind, requested };
+    };
+    expect((await read('https://www.ptbk.io/en/pricing/subscription?tab=team')).result).toBe('current');
+    expect(await read('https://staging.ptbk.io/cs/predplatne', 'https://staging.ptbk.io')).toEqual({
+        result: 'current',
+        requested: `https://staging.ptbk.io/api/promptbook-billing/app/licenses?subject=${subject}`,
+    });
+    for (const offSite of [
+        'https://evil.example/cs/pricing/predplatne',
+        'http://www.ptbk.io/cs/pricing/predplatne',
+        'https://user:pass@www.ptbk.io/cs',
+        'https://www.ptbk.io.evil.example/cs',
+        'javascript:alert(1)',
+    ]) {
+        expect((await read(offSite)).result).toBe('unknown');
+    }
+});
+it('reads the website timestamps as it writes them, with offsets and microseconds', async () => {
+    const client = createWebsiteLicenseClient({
+        store: {
+            subjectForOrg: () => Promise.resolve(subject),
+            readSnapshot: () => Promise.resolve(null),
+            saveSnapshot: () => Promise.resolve(),
+        },
+        websiteOrigin: 'https://www.ptbk.io',
+        secret: 'server-only',
+        nowMs: () => Date.parse(snapshot.generatedAt),
+        fetch: () =>
+            Promise.resolve(
+                Response.json({
+                    ...snapshot,
+                    grants: [
+                        {
+                            id: '4408b4d6-6005-4b77-97eb-fdd67847ee94',
+                            validFrom: '2026-11-13T17:13:19.123456+00:00',
+                            validUntil: '2026-11-27T17:13:19.123456+01:00',
+                            capabilities: {
+                                engineProjects: 1,
+                                specialists: 10,
+                                controllingUsers: 5,
+                                harnessInstances: null,
+                                browserProfiles: 5,
+                                remoteControl: true,
+                            },
+                        },
+                    ],
+                }),
+            ),
+    });
+    expect((await client.read('org', new AbortController().signal)).kind).toBe('current');
+});

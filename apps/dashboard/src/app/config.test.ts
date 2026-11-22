@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_OFF_PLAN, TEST_PLANS } from '../testing/billing-fixtures';
 import { TEST_ENGINE_INSTALLATION, TEST_INSTALL_VARS } from '../testing/install-fixtures';
+import { syntheticLicenseSecret } from '../testing/licensing-fixtures';
 import { readWranglerConfig } from '../testing/wrangler-config';
 import { DEFAULT_THRESHOLDS } from '../domain/monitoring/alert-rules';
 import {
@@ -276,6 +277,55 @@ describe('parseConfig', () => {
 
         it('requires BILLING_PLANS with billing on', () => {
             expect(failedPaths({ ...bindings, ...without(stagingVars, 'BILLING_PLANS') })).toEqual(['BILLING_PLANS']);
+        });
+    });
+
+    describe('billing website', () => {
+        const secret = syntheticLicenseSecret();
+        const stagingWebsite = {
+            ...without(stagingVars, 'BILLING_PLANS', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'),
+            ADAPTERS: { ...stagingVars.ADAPTERS, billing: 'website' },
+            PROMPTBOOK_APP_LICENSE_SECRET: secret,
+        };
+
+        it('runs without a plan catalogue or Stripe, against the production website by default', () => {
+            const config = parseConfig({ ...bindings, ...stagingWebsite, ENVIRONMENT: 'production' });
+            expect(config.billing).toEqual({
+                adapter: 'website',
+                websiteOrigin: 'https://www.ptbk.io',
+                licenseSecret: secret,
+            });
+            expect(Object.isFrozen(config.billing)).toBe(true);
+        });
+
+        it('takes another https website origin, for staging', () => {
+            const config = parseConfig({ ...bindings, ...stagingWebsite, WEBSITE_ORIGIN: 'https://staging.ptbk.io/' });
+            expect(config.billing.adapter === 'website' ? config.billing.websiteOrigin : null).toBe(
+                'https://staging.ptbk.io',
+            );
+        });
+
+        it.each([
+            ['plain http', 'http://www.ptbk.io'],
+            ['a path', 'https://www.ptbk.io/cs'],
+            ['not a URL', 'www.ptbk.io'],
+        ])('refuses a website origin with %s', (_, origin) => {
+            expect(failedPaths({ ...bindings, ...stagingWebsite, WEBSITE_ORIGIN: origin })).toEqual(['WEBSITE_ORIGIN']);
+        });
+
+        it('refuses to start without the website credential, or with a weak one', () => {
+            expect(failedPaths({ ...bindings, ...without(stagingWebsite, 'PROMPTBOOK_APP_LICENSE_SECRET') })).toEqual([
+                'PROMPTBOOK_APP_LICENSE_SECRET',
+            ]);
+            expect(
+                failedPaths({ ...bindings, ...stagingWebsite, PROMPTBOOK_APP_LICENSE_SECRET: 'short-and-guessable' }),
+            ).toEqual(['PROMPTBOOK_APP_LICENSE_SECRET']);
+        });
+
+        it('lets the credential be staged, validated and unused, under another adapter', () => {
+            expect(
+                parseConfig({ ...bindings, ...stagingVars, PROMPTBOOK_APP_LICENSE_SECRET: secret }).billing.adapter,
+            ).toBe('stripe');
         });
     });
 
