@@ -12,8 +12,7 @@ export const TEST_INSTALL_VARS = {
         {
             id: 'compose',
             labelKey: 'docker-compose',
-            template:
-                'docker compose run --rm engine promptbook-engine connect --link {linkCode}\ndocker compose up -d\ndocker compose exec engine promptbook-engine setup-link',
+            template: 'bun run dev:stack up --no-system\nbun run dev:link {linkCode}',
             docsAnchor: '2-docker-compose',
         },
         {

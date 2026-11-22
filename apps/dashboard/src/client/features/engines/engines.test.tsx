@@ -388,13 +388,27 @@ describe('engine page', () => {
         const banner = await screen.findByText('This project is not reporting');
         // A warning, not a tip: announced as an alert.
         expect(banner.closest('[role="alert"]')).not.toBeNull();
-        expect(screen.getByText('If its server is up, run this on it:')).toBeTruthy();
+        expect(screen.getByText('If its server is up, run this in the project folder:')).toBeTruthy();
         expect(screen.getAllByText('2 hours ago')).toHaveLength(1);
-        expect(screen.getByText('promptbook-engine status')).toBeTruthy();
+        expect(screen.getByText('ptbk status')).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Copy command' })).toBeTruthy();
         const guide = await screen.findByRole('link', { name: /Troubleshooting in the install guide/ });
         expect(guide.getAttribute('href')).toBe(`${INSTALL_GUIDE_URL}#troubleshooting`);
         expect(guide.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
+    it('inspects the saved initialization by ID when the offline engine has no project yet', async () => {
+        const view = engineView({ status: 'offline' });
+        renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: OWNER,
+            script: engine({
+                ...view,
+                heartbeat: view.heartbeat === null ? null : { ...view.heartbeat, setup: 'pending' },
+            }),
+        });
+        expect(await screen.findByText(`ptbk onboarding --id ${ENGINE_ID} --json`)).toBeTruthy();
+        expect(screen.queryByText('ptbk status')).toBeNull();
     });
 
     it('keeps the offline hint without the guide link while the guide cannot be loaded', async () => {
@@ -406,7 +420,7 @@ describe('engine page', () => {
                 api.on(apiRoutes.getInstallGuide, problem(500, 'internal'));
             },
         });
-        expect(await screen.findByText('promptbook-engine status')).toBeTruthy();
+        expect(await screen.findByText('ptbk status')).toBeTruthy();
         expect(screen.queryByRole('link', { name: /Troubleshooting/ })).toBeNull();
     });
 

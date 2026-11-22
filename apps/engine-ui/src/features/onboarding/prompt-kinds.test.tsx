@@ -515,7 +515,9 @@ describe('onboarding input kinds after pairing', { timeout: TIMEOUT_MS }, () => 
         expect(await screen.findByRole('heading', { level: 1, name: 'Browser profile' })).toBeDefined();
         expect(screen.getByText('Which profile?')).toBeDefined();
         expect(screen.getByText('This step needs a newer version of the app')).toBeDefined();
-        expect(screen.getByText('ptbk onboarding')).toBeDefined();
+        const info = await client.engine.get(AbortSignal.timeout(5_000));
+        if (info.kind !== 'ok' || info.data.engineId === null) throw new Error('engine identity unavailable');
+        expect(screen.getByText(`ptbk onboarding --id ${info.data.engineId}`)).toBeDefined();
         const calls = get.mock.calls.length;
         await waitFor(
             () => {
@@ -523,5 +525,25 @@ describe('onboarding input kinds after pairing', { timeout: TIMEOUT_MS }, () => 
             },
             { timeout: 5_000 },
         );
+    });
+    it('explains how to select a saved setup when a local engine reports no ID', async () => {
+        const unknown = OnboardingStateReader.parse({
+            status: 'pending',
+            deferred: false,
+            canDefer: false,
+            progress: null,
+            activity: [],
+            prompt: { id: 'x1', kind: 'browser-profile', title: 'Browser profile', question: 'Which profile?' },
+        });
+        const { client } = scripted([unknown]);
+        const original = client.engine.get.bind(client.engine);
+        vi.spyOn(client.engine, 'get').mockImplementation(async (signal) => {
+            const result = await original(signal);
+            return result.kind === 'ok' ? { ...result, data: { ...result.data, engineId: null } } : result;
+        });
+        renderWithProviders({ path: '/onboarding', engineApi: client });
+        expect(await screen.findByText('ptbk onboarding')).toBeDefined();
+        expect(screen.getByText(/If it lists setups, repeat with --id/)).toBeDefined();
+        expect(screen.queryByText(/ptbk onboarding --id null/)).toBeNull();
     });
 });

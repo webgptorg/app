@@ -29,7 +29,7 @@
         "RELAYS": [{ "relayId": "relay.ptbk.test", "region": "local" }],
         // The tabs of /engines/new, each with {linkCode} or {linkUrl} once; {linkUrl} needs an https origin, so dev's
         // plain-http default keeps the code. X-06's `dev:link` starts the local mock engine; the last tab runs M-08's
-        // `connect` in the stack's engine container; Compose is installation.md's three commands.
+        // `connect` in the stack's mock container. Compose also uses the local mock, not a production image.
         "INSTALL_COMMANDS": [
             {
                 "id": "installer",
@@ -40,7 +40,7 @@
             {
                 "id": "compose",
                 "labelKey": "docker-compose",
-                "template": "docker compose run --rm engine promptbook-engine connect --link {linkCode}\ndocker compose up -d\ndocker compose exec engine promptbook-engine setup-link",
+                "template": "bun run dev:stack up --no-system\nbun run dev:link {linkCode}",
                 "docsAnchor": "2-docker-compose",
             },
             {
@@ -150,7 +150,7 @@
                         "id": "connect",
                         "labelKey": "already-running",
                         "template": "ptbk connect --link '{linkUrl}'",
-                        "docsAnchor": "networking",
+                        "docsAnchor": "pairing-with-app",
                     },
                 ],
                 "INSTALL_GUIDE_URL": "https://github.com/webgptorg/promptbook/blob/reborn/2026-10/specs/app/connection.md",
@@ -244,15 +244,9 @@
                         "docsAnchor": "1-the-installer-recommended",
                     },
                     {
-                        "id": "compose",
-                        "labelKey": "docker-compose",
-                        "template": "docker compose run --rm engine promptbook-engine connect --link '{linkUrl}'\ndocker compose up -d\ndocker compose exec engine promptbook-engine setup-link",
-                        "docsAnchor": "2-docker-compose",
-                    },
-                    {
                         "id": "connect",
                         "labelKey": "already-running",
-                        "template": "promptbook-engine connect --link '{linkUrl}'",
+                        "template": "ptbk connect --link '{linkUrl}'",
                         "docsAnchor": "3-link-an-engine-that-already-runs",
                     },
                 ],

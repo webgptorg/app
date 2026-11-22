@@ -13,8 +13,12 @@ export interface GatewayPageValues {
     readonly fingerprint: string;
     /** The fingerprint's 5×5 cells, row by row, `1` filled and `0` empty. */
     readonly fingerprintCells: string;
-    /** The engine's CLI name in the recovery hints, such as `promptbook-engine`. */
+    /** The engine's CLI name in the recovery hints, such as `ptbk` or `mock-engine`. */
     readonly command: string;
+    /** Complete host commands; pending ptbk engines include `--onboarding <engine-id>`. */
+    readonly setupLinkCommand?: string;
+    readonly resetOwnerCommand?: string;
+    readonly statusCommand?: string;
     /** Whether the engine has an owner. Public: the sign-in page shows it to anyone anyway. */
     readonly owner: 'none' | 'set';
 }
@@ -57,6 +61,20 @@ function escapedValues(values: GatewayPageValues): ReadonlyMap<string, string> {
     if (!FINGERPRINT_CELLS.test(values.fingerprintCells)) {
         throw new Error('Gateway page value "fingerprintCells" is not 25 cells of 0 and 1');
     }
+    const connect = values.command === 'ptbk' ? 'ptbk connect' : values.command;
+    escaped.set(
+        'setupLinkCommand',
+        escapeHtml(
+            values.setupLinkCommand ?? `${connect} ${values.command === 'ptbk' ? '--setup-link' : 'setup-link'}`,
+        ),
+    );
+    escaped.set(
+        'resetOwnerCommand',
+        escapeHtml(
+            values.resetOwnerCommand ?? `${connect} ${values.command === 'ptbk' ? '--reset-owner' : 'owner --reset'}`,
+        ),
+    );
+    escaped.set('statusCommand', escapeHtml(values.statusCommand ?? `${values.command} status`));
     return escaped;
 }
 
