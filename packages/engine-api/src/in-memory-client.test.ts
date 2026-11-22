@@ -6,7 +6,14 @@ import { Timestamp } from './common';
 import { verifyAuditChain } from './in-memory/audit-chain';
 import { checkBook } from './in-memory/book';
 import { paginate } from './in-memory/paging';
-import { createInMemoryEngineApiClient, IN_MEMORY_CLIENT_MARKER } from './in-memory-client';
+import { KNOWN_CAPABILITIES } from './capabilities/capability';
+import { readLiveEngineMessage } from './capabilities/live-channel';
+import {
+    createInMemoryEngine,
+    createInMemoryEngineApiClient,
+    DEFAULT_CAPABILITIES,
+    IN_MEMORY_CLIENT_MARKER,
+} from './in-memory-client';
 
 import { MessageId } from './common';
 /** The in-memory engine numbers messages `<chat>#<position>`, and a reply follows its User message directly. */
@@ -153,6 +160,27 @@ describe('paginate', () => {
         expect(paginate(items, { ...spec, name: 'other' }, { limit: 1, cursor: first.page.nextCursor }).kind).toBe(
             'invalid-cursor',
         );
+    });
+});
+
+describe('createInMemoryEngine', () => {
+    it('attaches a live channel as the client’s own gateway session', async () => {
+        const engine = createInMemoryEngine({
+            capabilities: [...DEFAULT_CAPABILITIES, KNOWN_CAPABILITIES.browserTab],
+        });
+        const tab = engine.controller.openAgentTab({ origin: 'https://shop.example' });
+        const session = ok(await engine.client.browser.watch(tab.id, signal()));
+        const sent: unknown[] = [];
+        const attached = engine.attachLiveChannel(session.id, {
+            send: (data) => sent.push(typeof data === 'string' ? readLiveEngineMessage(data)?.type : 'media'),
+            close: () => undefined,
+        });
+        expect(attached.kind).toBe('attached');
+        if (attached.kind === 'attached') attached.peer.receive(JSON.stringify({ type: 'hello', versions: [1] }));
+        expect(sent).toEqual(['hello', 'state', 'navigated', 'media']);
+        expect(
+            engine.attachLiveChannel('live-unknown', { send: () => undefined, close: () => undefined }),
+        ).toMatchObject({ kind: 'refused', problem: { code: 'not-found' } });
     });
 });
 

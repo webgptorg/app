@@ -5,6 +5,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { useMemo } from 'react';
 
+import { LiveSessionsProvider } from '../features/browser/live-sessions';
 import { StepUpProvider } from '../features/step-up/step-up';
 import { BrowserProvider } from './browser-context';
 import type { AppBrowser } from './browser-context';
@@ -46,7 +47,9 @@ export function AppProviders({ engineApi, queryClient, router, browser, engineEv
                                         storage={browser.storage}
                                         popups={browser.popups}
                                     >
-                                        <RouterProvider router={router} />
+                                        <LiveSessionsProvider>
+                                            <RouterProvider router={router} />
+                                        </LiveSessionsProvider>
                                     </StepUpProvider>
                                 </QueryClientProvider>
                             </TickerProvider>

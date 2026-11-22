@@ -21,6 +21,7 @@ export type {
     InMemoryEngineCore,
     InMemoryEngineCoreOptions,
     InMemoryEngineSnapshot,
+    InMemoryLiveEngine,
     InMemoryMember,
     InMemorySeed,
     InMemorySeedAccessRequest,

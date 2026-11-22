@@ -12,6 +12,7 @@ import { m } from '../../paraglide/messages';
 import { EntityChip } from '../entities/entity-chip';
 import { useDocumentTitle } from '../shell/document-title';
 import { Breadcrumbs, Crumb } from '../shell/page';
+import { BrowserTabsSlot } from '../browser/browser-slots';
 import { usePermissions } from '../session/use-permissions';
 import { ChatPanel } from './chat-panel';
 import { chatName } from './chat-name';
@@ -162,6 +163,7 @@ export function ThreadPage() {
                     <ThreadMenu main={agents[0]} />
                 </div>
             </header>
+            <BrowserTabsSlot filter={{ chatId: chat.id }} className="pt-3" />
             {/* Keyed: the stream, the draft and the scroll position belong to one thread, not to the route. */}
             <ChatPanel key={chat.id} chat={chat} canWrite={can('chats.write')} fill />
         </section>

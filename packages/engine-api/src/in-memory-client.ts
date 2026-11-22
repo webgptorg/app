@@ -593,6 +593,12 @@ export interface InMemoryEngine {
     readonly controller: InMemoryEngineController;
 }
 
+/** What `createInMemoryEngine` makes: the engine, and its live channel for the client's own gateway session. */
+export interface InMemoryLiveEngine extends InMemoryEngine {
+    /** Binds a live channel as the client's own member and gateway session, as the gateway would after its checks. */
+    attachLiveChannel(sessionId: string, sink: LiveChannelSink): LiveChannelAttach;
+}
+
 /** One engine, many members: each request runs as the actor its transport was made for. */
 export interface InMemoryEngineCore {
     /** Resolves with exactly what an engine would send (strictly checked), so it can be served over HTTP. */
@@ -615,14 +621,14 @@ export function createInMemoryEngineApiClient(options: InMemoryEngineApiOptions 
 }
 
 /** The in-memory client, acting as one member, together with the core's controller. */
-export function createInMemoryEngine(options: InMemoryEngineApiOptions = {}): InMemoryEngine {
+export function createInMemoryEngine(options: InMemoryEngineApiOptions = {}): InMemoryLiveEngine {
     const core = createInMemoryEngineCore(options);
-    const client = createEngineApiClient(
-        withUploadProgress(withClientReading(core.transport(actorFromOptions(options)))),
-    );
+    const actor = actorFromOptions(options);
+    const client = createEngineApiClient(withUploadProgress(withClientReading(core.transport(actor))));
     return {
         client: Object.defineProperty(client, Symbol.toStringTag, { value: IN_MEMORY_CLIENT_MARKER }),
         controller: core.controller,
+        attachLiveChannel: (sessionId, sink) => core.attachLiveChannel(actor, sessionId, sink),
     };
 }
 
