@@ -269,16 +269,18 @@ describe('agent tabs', () => {
         expect(world.events).toContainEqual({ type: 'browser-tab.changed', tabId: tab.id });
     });
 
-    it('cap their participants', async () => {
+    it('cap their watchers one place short, so watching never locks an owner out of control', async () => {
         const world = setup();
         const tab = world.agentTab();
-        for (let index = 0; index < MAX_BROWSER_PARTICIPANTS; index++) await watch(world, world.watcher, tab.id);
+        for (let index = 0; index < MAX_BROWSER_PARTICIPANTS - 1; index++) await watch(world, world.watcher, tab.id);
         expect(code(await world.call(world.watcher, R.watchBrowserTab, { params: { tabId: tab.id } }))).toBe(
             'browser-tab-full',
         );
-        expect(code(await world.call(world.owner, R.controlBrowserTab, { params: { tabId: tab.id } }))).toBe(
-            'browser-tab-full',
-        );
+        await control(world, tab.id);
+        expect(world.core.controller.getBrowserTab(tab.id)).toMatchObject({
+            participants: MAX_BROWSER_PARTICIPANTS,
+            agentState: 'paused',
+        });
     });
 });
 
@@ -659,6 +661,25 @@ describe('time and revocation', () => {
         });
     });
 
+    it('ends a session whose channel dropped and did not attach again, handing a controlled tab back', async () => {
+        const world = setup();
+        const tab = world.agentTab();
+        const watching = await watch(world, world.watcher, tab.id);
+        world.join(world.watcher, watching.id).peer.closed();
+        world.advance(LIVE_SESSION_ATTACH_MS - 1_000);
+        world.core.controller.browserTick();
+        const reloaded = world.join(world.watcher, watching.id);
+        expect(reloaded.types()).toEqual(['hello', 'state', 'navigated']);
+        const controlling = await control(world, tab.id);
+        world.join(world.owner, controlling.id).peer.closed();
+        world.advance(LIVE_SESSION_ATTACH_MS + 1);
+        world.core.controller.browserTick();
+        expect(
+            ok(await world.call(world.owner, R.getBrowserSession, { params: { sessionId: controlling.id } })),
+        ).toMatchObject({ status: 'ended', endReason: 'not-attached' });
+        expect(world.core.controller.getBrowserTab(tab.id)).toMatchObject({ agentState: 'working', participants: 1 });
+    });
+
     it('ends at endsAt, and a controller after the idle limit with the outcome idle', async () => {
         const world = setup();
         const tab = world.agentTab();
@@ -756,5 +777,19 @@ describe('the audit log', () => {
         });
         const text = JSON.stringify(entries);
         expect(text).not.toMatch(/hunter|"key"|tab-frame|\/login/);
+    });
+
+    it('records an end sent over the channel as the member’s', async () => {
+        const world = setup();
+        const session = await watch(world);
+        world.advance(3_000);
+        world.join(world.watcher, session.id).send({ type: 'end' });
+        const entries = ok(await world.call(world.owner, R.listAuditEntries, { query: {} })) as unknown as {
+            items: { action: string; actor: unknown; details: unknown }[];
+        };
+        expect(entries.items.find((entry) => entry.action === 'browser.session.end')).toMatchObject({
+            actor: { kind: 'member', memberId: 'member-watcher' },
+            details: { reason: 'ended', seconds: 3 },
+        });
     });
 });

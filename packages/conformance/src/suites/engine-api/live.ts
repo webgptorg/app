@@ -515,7 +515,8 @@ export const LIVE_CHECKS: readonly ConformanceCheck[] = [
                 [
                     'text over 4 KiB',
                     true,
-                    JSON.stringify({ type: 'end', pad: 'x'.repeat(MAX_LIVE_CONTROL_MESSAGE_BYTES) }),
+                    // Valid apart from its size, so only a size limit refuses it.
+                    `{"type":"frame-ack",${' '.repeat(MAX_LIVE_CONTROL_MESSAGE_BYTES)}"seq":0}`,
                 ],
                 ['binary media from the browser', true, new Uint8Array(32)],
             ];

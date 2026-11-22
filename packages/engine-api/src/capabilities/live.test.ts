@@ -78,6 +78,7 @@ describe('BrowserOrigin', () => {
         'https://Example.com',
         'https://example.com:443',
         'https://user@example.com',
+        'https://example.com.',
         'chrome://settings',
         'about:blank',
         'example.com',

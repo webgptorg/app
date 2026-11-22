@@ -41,7 +41,7 @@ export const PROBLEM_STATUS = {
     'onboarding-not-deferrable': 409,
     /** Someone else controls this browser tab; one controller at a time. */
     'browser-tab-controlled': 409,
-    /** `MAX_BROWSER_PARTICIPANTS` sessions are open on this tab. */
+    /** `MAX_BROWSER_PARTICIPANTS` − 1 watchers are open on this tab; the last place is kept for a controller. */
     'browser-tab-full': 409,
     /** Another sign-in session is open on the engine; one at a time. */
     'browser-busy': 409,

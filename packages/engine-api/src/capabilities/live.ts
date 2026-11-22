@@ -82,7 +82,8 @@ export const BrowserToolName = z.string().min(1).max(64);
 function isCanonicalHttpsOrigin(value: string): boolean {
     if (!URL.canParse(value)) return false;
     const url = new URL(value);
-    return url.protocol === 'https:' && url.origin === value;
+    // A trailing dot names the same site as its bare host, so it could slip past an exact allowlist or own-origin match.
+    return url.protocol === 'https:' && url.origin === value && !url.hostname.endsWith('.');
 }
 
 /**
@@ -325,7 +326,9 @@ export const LIVE_ROUTES = {
         method: 'POST',
         path: '/browser-tabs/{tabId}/watch',
         summary: 'Open a session that watches an agent’s tab without controlling it',
-        description: '409 `browser-tab-full` when `MAX_BROWSER_PARTICIPANTS` sessions are open on the tab.',
+        description:
+            '409 `browser-tab-full` when `MAX_BROWSER_PARTICIPANTS` − 1 watchers are open on the tab: the last place ' +
+            'is kept for a controller.',
         permission: 'browser.watch',
         capability,
         params: BrowserTabParams,
@@ -340,12 +343,12 @@ export const LIVE_ROUTES = {
         summary: 'Open a session that takes over an agent’s tab; the agent pauses until it gets the tab back',
         description:
             'Answers the tab’s open help request, if any. 409 `browser-tab-controlled` while someone else controls ' +
-            'the tab, `browser-tab-full` at `MAX_BROWSER_PARTICIPANTS`.',
+            'the tab; never full, since watchers leave a place for the controller.',
         permission: 'browser.control',
         capability,
         params: BrowserTabParams,
         responses: created,
-        problems: ['browser-tab-controlled', 'browser-tab-full'],
+        problems: ['browser-tab-controlled'],
         stepUp: true,
         draft: true,
     }),

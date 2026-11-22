@@ -14230,7 +14230,7 @@
       "post": {
         "operationId": "watchBrowserTab",
         "summary": "Open a session that watches an agent’s tab without controlling it",
-        "description": "409 `browser-tab-full` when `MAX_BROWSER_PARTICIPANTS` sessions are open on the tab.",
+        "description": "409 `browser-tab-full` when `MAX_BROWSER_PARTICIPANTS` − 1 watchers are open on the tab: the last place is kept for a controller.",
         "tags": ["browser-tabs"],
         "x-required-permission": "browser.watch",
         "x-capability": {
@@ -14449,7 +14449,7 @@
       "post": {
         "operationId": "controlBrowserTab",
         "summary": "Open a session that takes over an agent’s tab; the agent pauses until it gets the tab back",
-        "description": "Answers the tab’s open help request, if any. 409 `browser-tab-controlled` while someone else controls the tab, `browser-tab-full` at `MAX_BROWSER_PARTICIPANTS`.",
+        "description": "Answers the tab’s open help request, if any. 409 `browser-tab-controlled` while someone else controls the tab; never full, since watchers leave a place for the controller.",
         "tags": ["browser-tabs"],
         "x-required-permission": "browser.control",
         "x-capability": {
@@ -14619,8 +14619,8 @@
             }
           },
           "409": {
-            "description": "Problem: `browser-tab-controlled`, `browser-tab-full`.",
-            "x-problem-codes": ["browser-tab-controlled", "browser-tab-full"],
+            "description": "Problem: `browser-tab-controlled`.",
+            "x-problem-codes": ["browser-tab-controlled"],
             "content": {
               "application/problem+json": {
                 "schema": {

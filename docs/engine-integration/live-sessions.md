@@ -84,12 +84,12 @@ Strict in, tolerant out, as everywhere: the engine refuses unknown request field
 ### A session belongs to its gateway session
 
 - A `BrowserSession` is one member's participation in one tab, bound to the gateway session that opened it. Any other gateway session, the same member's included, gets **404** for it on every route and on the channel.
-- One channel per session at a time: a second upgrade while one is attached is 409 `live-channel-attached`. After a drop, the same gateway session may attach again until the session ends.
+- One channel per session at a time: a second upgrade while one is attached is 409 `live-channel-attached`. After a drop, the same gateway session may attach again within a fresh `LIVE_SESSION_ATTACH_MS` (30 s); otherwise the session ends with `not-attached`. A reload reattaches, and a closed page frees its place and hands a controlled tab back to the agent instead of pausing it until the idle limit.
 - Revoking the gateway session or the member (or the member losing the permission) ends their sessions with `revoked`, within one message or one sweep of the engine's timer.
 
 ### Control
 
-- **Exclusive.** One controller per tab; anyone else asking gets 409 `browser-tab-controlled`. Watchers keep watching. At most `MAX_BROWSER_PARTICIPANTS` (5) open sessions per tab, the controller included.
+- **Exclusive.** One controller per tab; anyone else asking gets 409 `browser-tab-controlled`. Watchers keep watching. At most `MAX_BROWSER_PARTICIPANTS` (5) open sessions per tab, the controller included: watchers fill at most one fewer (409 `browser-tab-full`), so watching can never lock an owner out of taking control.
 - **The agent pauses.** Taking control sets the tab's `agentState` to `paused`, and the engine stops the agent's browser actions on that tab at its next step boundary (it does not cancel the run). Handing back, ending, expiry, idle, revocation and a protocol error all return control and resume the agent, which is told the outcome (below).
 - **Where the controller may go.** While a human controls a tab, frames are shown only on the tab's origin when control started, plus the sign-in allowlist. A link that leaves them stops frames and drops input (`blocked`, `origin-not-allowed`) until the tab is back. Watching an agent shows any web origin the agent visits (the member can see that work anyway), never browser or secret pages.
 
@@ -117,7 +117,7 @@ An agent stuck on a page only a human can get past raises a `BrowserHelpRequest`
 ### Bounded and visible
 
 - `endsAt` is at most `MAX_BROWSER_TAB_SESSION_MS` (10 minutes) after opening, for watchers and controllers alike; the UI opens a new session to keep watching.
-- `attachBy` is `LIVE_SESSION_ATTACH_MS` (30 s) after opening: a session whose channel has not attached by then ends with `not-attached`.
+- `attachBy` is `LIVE_SESSION_ATTACH_MS` (30 s) after opening, and again after the channel drops: a session whose channel has not attached by then ends with `not-attached`.
 - A controller who sends no input for `BROWSER_IDLE_MS` (2 minutes) ends their session with `idle`. Watchers are not idle-checked.
 - One sign-in session per engine at a time.
 - The engine UI shows a persistent indicator while a session is live (which tab, which origin, watching or controlling, "you are controlling the agent's browser") with an end control. The engine marks remote sessions in its own status and terminal surfaces.
@@ -196,7 +196,7 @@ A message never exceeds `MAX_LIVE_MEDIA_BYTES` (64 KiB) with its header, so it n
 ### Backpressure
 
 - The screencast's credit: no new frame while `MAX_UNACKED_FRAMES` (2) are unacknowledged. With CDP that maps onto `Page.screencastFrameAck`, driven by the browser's `frame-ack`.
-- The engine drops frames rather than queue them when the WebSocket's send buffer grows, and stops frames while the view is hidden or the tab is blocked.
+- The engine never queues past `MAX_LIVE_SEND_BUFFER_BYTES` (1 MiB) unsent on the WebSocket: above it, the channel closes with 1008 (`protocol-error`). Dropping frames instead would stall the viewer on credit it never gets back. It stops frames while the view is hidden or the tab is blocked.
 - Each live session is its own tunnel stream with its own flow-control window (`INITIAL_WINDOW_BYTES`, 256 KiB), so a download on another stream cannot stall it at the window level. The relay's per-engine budgets apply unchanged (`RELAY_TUNNEL_FRAMES_PER_S`, `RELAY_ENGINE_BANDWIDTH_BYTES_PER_S`).
 - The spec's estimate for a screencast is 2–5 GB per hour at several frames per second ([zero-trust spec](../spec/zero-trust-spec.md), bandwidth and cost); keep it down with a frame-rate cap, adaptive quality, sizing to `view`, and pausing while hidden.
 

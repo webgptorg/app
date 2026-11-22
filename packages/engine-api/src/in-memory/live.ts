@@ -115,7 +115,7 @@ interface SessionRecord {
     endReason: LiveEndReason | null;
     helpRequestId: BrowserHelpRequestId | null;
     readonly openedAt: Timestamp;
-    readonly attachBy: Timestamp;
+    attachBy: Timestamp;
     endsAt: Timestamp;
     lastInputAt: number;
     attached: boolean;
@@ -514,14 +514,15 @@ export const LIVE_HANDLERS: Pick<Handlers, LiveRoute> = {
     watchBrowserTab: swept(({ params }, ctx) => {
         const tab = agentTab(ctx, params.tabId);
         if (!tab) return notFound('browser tab');
-        if (openSessionsOn(ctx.state.browser, tab.id).length >= MAX_BROWSER_PARTICIPANTS) return full();
+        // Watchers fill one place fewer than the cap, so watching can never lock an owner out of taking control.
+        const watchers = openSessionsOn(ctx.state.browser, tab.id).filter((session) => session.mode === 'watching');
+        if (watchers.length >= MAX_BROWSER_PARTICIPANTS - 1) return full();
         return openSession(ctx, tab, 'watching');
     }),
     controlBrowserTab: swept(({ params }, ctx) => {
         const tab = agentTab(ctx, params.tabId);
         if (!tab) return notFound('browser tab');
         if (tab.controller !== null) return controlled();
-        if (openSessionsOn(ctx.state.browser, tab.id).length >= MAX_BROWSER_PARTICIPANTS) return full();
         return openSession(ctx, tab, 'controlling');
     }),
     getBrowserSession: swept(({ params }, ctx) => {
@@ -669,9 +670,20 @@ function receive(ctx: EngineContext, session: SessionRecord, data: string | Uint
         case 'frame-ack':
             if (channel.unacked.delete(message.seq)) sendFrame(ctx, session, tab);
             return;
-        case 'end':
+        case 'end': {
+            const seconds = Math.round((time(ctx.now()) - time(session.openedAt)) / 1000);
             endSession(ctx, session, 'ended', session.memberId);
+            // No route saw this end, so it is audited here, as the member's.
+            ctx.state.browser.audit({
+                actor: { kind: 'member', memberId: session.memberId },
+                action: 'browser.session.end',
+                target: { kind: 'browser-session', id: session.id, name: null },
+                outcome: 'success',
+                client: null,
+                details: { reason: 'ended', seconds },
+            });
             return;
+        }
         case 'input':
             receiveInput(ctx, session, tab, message.event);
             return;
@@ -728,8 +740,12 @@ export function attachLiveChannel(
                 if (session.channel === channel) receive(ctx, session, data);
             },
             closed: () => {
-                // A dropped channel leaves the session open: the same gateway session may attach again until it ends.
-                if (session.channel === channel) session.channel = null;
+                if (session.channel !== channel) return;
+                // A reload attaches again within the attach window; a closed page frees its place and, if it was
+                // controlling, hands the tab back to the agent instead of pausing it until the idle limit.
+                session.channel = null;
+                session.attached = false;
+                session.attachBy = at(time(ctx.now()) + LIVE_SESSION_ATTACH_MS);
             },
         },
     };

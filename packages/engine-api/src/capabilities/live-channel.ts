@@ -17,6 +17,11 @@ export const LIVE_CHANNEL_VERSIONS = [1] as const;
 export const MAX_LIVE_CONTROL_MESSAGE_BYTES = 4096;
 /** A binary message, header included, never exceeds this: one tunnel `DATA` frame's worth of credit. */
 export const MAX_LIVE_MEDIA_BYTES = 64 * 1024;
+/**
+ * An engine whose WebSocket holds more than this unsent closes the channel with 1008 (`protocol-error`): a viewer that
+ * stopped reading must not grow the engine's memory, and dropping frames instead would stall it on unacknowledged credit.
+ */
+export const MAX_LIVE_SEND_BUFFER_BYTES = 16 * MAX_LIVE_MEDIA_BYTES;
 /** Kind (u8), sequence (u32, big-endian), timestamp (float64 ms since the epoch, big-endian). */
 export const LIVE_MEDIA_HEADER_BYTES = 13;
 /** The engine sends no new frame while this many are unacknowledged: the screencast's credit. */
@@ -32,7 +37,7 @@ const Coordinate = z.number().min(0).max(MAX_LIVE_COORDINATE);
 
 /**
  * Why a session ended, sent in `end` and kept on the session. `ended`: a participant ended it. `expired`: `endsAt`
- * passed. `idle`: the controller sent no input for `BROWSER_IDLE_MS`. `not-attached`: no channel by `attachBy`.
+ * passed. `idle`: the controller sent no input for `BROWSER_IDLE_MS`. `not-attached`: no channel by `attachBy`, after opening or after the channel dropped.
  * `revoked`: the gateway session or the member was revoked, or lost the permission. `tab-closed`: the agent's work
  * closed the tab or ended. `engine-stopped`: the engine or its browser stopped. `protocol-error`: the client broke this
  * protocol.

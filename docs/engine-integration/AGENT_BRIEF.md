@@ -99,7 +99,7 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
   - LB-10 Every `LiveInputEvent` maps to one `Input.dispatchMouseEvent` or `Input.dispatchKeyEvent` with Shift as the only modifier; file choosers and downloads are refused while controlled.
   - LB-11 An unknown message, a message over 4 KiB, a binary message from the browser, or anything before `hello` ends the channel with `end { reason: 'protocol-error' }` and close 1008.
   - LB-12 Every media message decodes with `decodeLiveMedia`, is at most 64 KiB, and no third frame is sent before an ack.
-  - LB-13 With a fake clock: no attach in 30 s ends with `not-attached`, `endsAt` with `expired`, 2 minutes without a controller's input with `idle`; watchers are not idle-ended.
+  - LB-13 With a fake clock: no attach in 30 s, after opening or after a drop, ends with `not-attached` (a controlled tab goes back to the agent), `endsAt` with `expired`, 2 minutes without a controller's input with `idle`; watchers are not idle-ended.
   - LB-14 Revoking the gateway session or removing the member ends their sessions with `revoked`.
   - LB-15 A help request goes `pending` (tab `waiting`), `in-progress` on control, `resolved` with `handed-back`, `dismissed`, `blocked-origin` or `cancelled` (the agent's work closed the tab); its `message` is stored as plain text.
   - LB-16 After a session in which `hunter2` was typed, the audit log holds the `browser.*` entries and neither the typed text nor a URL path.
