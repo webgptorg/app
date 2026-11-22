@@ -18,6 +18,7 @@ import { createSimulation } from '../simulation/simulation';
 import type { SimulationClock, SimulationMode } from '../simulation/simulation-clock';
 import { createSimulationClock } from '../simulation/simulation-clock';
 import { MOCK_UPLOAD_POLICIES } from './capabilities';
+import { setUpLiveBrowser, withLiveBrowser } from './live-browser';
 import type { Scenario } from './scenarios';
 import { HOSTILE_AGENT_NAME, ownerOf, seedEngine } from './seed';
 import { createSeededSequence, hashSeed } from './seed-random';
@@ -77,6 +78,11 @@ export interface EngineRuntimeOptions {
      * scenarios `completed`.
      */
     readonly onboarding?: OnboardingSeed;
+    /**
+     * `MOCK_LIVE_BROWSER=enabled`: every core advertises `browser-tab@1` whatever the capability list says, and starts
+     * with the fake agent tab and sign-in allowlist.
+     */
+    readonly liveBrowser?: boolean;
 }
 
 export interface ResetInput {
@@ -107,6 +113,8 @@ export interface EngineRuntime {
     reset(input: ResetInput): Promise<void>;
     /** Runs after every reset, e.g. to drop the gateway's sessions, which the new core does not list. */
     onReset(listener: () => void): void;
+    /** The fake agent tab the current core started with; `null` without `liveBrowser`. */
+    liveBrowserTab(): string | null;
     setDashboardUrl(url: string | null): void;
     /** `local` while the engine waits for `connect`, then `tunnel`; kept across resets like the dashboard URL. */
     setMode(mode: EngineIdentityInfo['mode']): void;
@@ -168,14 +176,20 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
     // Each core's own placeholder, so it comes back when a revocation leaves no bundle active.
     const placeholderUi = new WeakMap<InMemoryEngineCore, SecurityOverview['ui']>();
     const listeners: (() => void)[] = [];
-    let current = { seed: options.seed, scenario: options.scenario, capabilities: options.capabilities };
+    const effective = (capabilities: readonly CapabilityRef[]): readonly CapabilityRef[] =>
+        options.liveBrowser === true ? withLiveBrowser(capabilities) : capabilities;
+    let current = { seed: options.seed, scenario: options.scenario, capabilities: effective(options.capabilities) };
     const now = (): string => new Date(clock.nowMs()).toISOString().replace(/\.\d{3}Z$/, 'Z');
 
     async function build(
         seedValue: number,
         scenario: Scenario,
         capabilities: readonly CapabilityRef[],
-    ): Promise<{ readonly core: InMemoryEngineCore; readonly simulation: Simulation }> {
+    ): Promise<{
+        readonly core: InMemoryEngineCore;
+        readonly simulation: Simulation;
+        readonly liveBrowserTab: string | null;
+    }> {
         const seeded = await seedEngine({
             seed: seedValue,
             scenario,
@@ -231,6 +245,8 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
             },
         });
         applySecurity(core);
+        const liveBrowserTab =
+            options.liveBrowser === true ? setUpLiveBrowser(core.controller, seed.chats?.[0]?.id).id : null;
         const simulation = createSimulation({
             controller: core.controller,
             clock: simulationClock,
@@ -239,7 +255,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
             faults: options.faults,
             onError: options.onSimulationError,
         });
-        return { core, simulation };
+        return { core, simulation, liveBrowserTab };
     }
 
     /** Only the default hostname's certificate is tracked (`setTlsCertificate`); custom ones stay unreported. */
@@ -279,7 +295,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         reset(input) {
             // One at a time: two overlapping resets would each build a core, and the loser's simulation would run on.
             const next = resetting.then(async () => {
-                const capabilities = input.capabilities ?? current.capabilities;
+                const capabilities = effective(input.capabilities ?? current.capabilities);
                 engine.simulation.stop();
                 simulationClock.reset(startMs(simulationClock.mode()));
                 engine = await build(input.seed, input.scenario, capabilities);
@@ -292,6 +308,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         onReset(listener) {
             listeners.push(listener);
         },
+        liveBrowserTab: () => engine.liveBrowserTab,
         setDashboardUrl(url) {
             sticky.dashboardUrl = url;
             engine.core.controller.updateEngine({ dashboardUrl: url });

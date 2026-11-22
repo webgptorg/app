@@ -1,4 +1,4 @@
-import type { Permission } from '@ptbk/engine-api';
+import type { Permission, ProblemDetails } from '@ptbk/engine-api';
 import type { Actor } from '@ptbk/engine-api/in-memory';
 import type { WebSocket } from 'ws';
 import type { z } from 'zod';
@@ -8,8 +8,9 @@ import type { SecureConnection } from '../tls-stream-server';
 
 /**
  * How a route authenticates; there is no default. `public` routes are on the allowlist the route-table test checks;
- * `session` routes run behind the gateway and receive its {@link Actor}; `control` routes exist only on the dev-only
- * control listener, which the in-tunnel app refuses to mount.
+ * `session` routes run behind the gateway and receive its {@link Actor} (a `session` WebSocket also only from the
+ * engine's own origin); `control` routes exist only on the dev-only control listener, which the in-tunnel app refuses
+ * to mount.
  */
 export type AuthMode = 'public' | 'session' | 'control';
 
@@ -91,18 +92,43 @@ export interface HttpRoute<
     handle(request: RouteRequest<P, Q, H, B, A>): Response | Promise<Response>;
 }
 
+export type WebSocketAuthMode = Exclude<AuthMode, 'control'>;
+
+export type WebSocketRequest<
+    P extends Params,
+    Q extends z.ZodObject,
+    H extends StringFields | null,
+    A extends AuthMode,
+> = Pick<RouteRequest<P, Q, H, null, A>, 'params' | 'query' | 'headers' | 'connection' | 'actor' | 'clientIp'>;
+
+/**
+ * Decided before the handshake completes, so a refusal is an HTTP answer with a problem body, as for any request.
+ * `open` runs once the handshake completed; `abandoned` instead, if it failed after an accept.
+ */
+export type WebSocketAdmission =
+    | {
+          readonly kind: 'accept';
+          open(socket: WebSocket): void;
+          abandoned?(): void;
+      }
+    | { readonly kind: 'refuse'; readonly problem: ProblemDetails };
+
 export interface WebSocketRoute<
+    P extends Params = Params,
     Q extends z.ZodObject = z.ZodObject,
     H extends StringFields | null = StringFields | null,
-> extends RouteContract<null, Q, H, 'public'> {
+    A extends WebSocketAuthMode = WebSocketAuthMode,
+> extends RouteContract<P, Q, H, A> {
     readonly transport: 'websocket';
     readonly method: 'GET';
     /** Larger messages close the socket with 1009. */
     readonly maxPayloadBytes: number;
-    handle(
-        socket: WebSocket,
-        request: Pick<RouteRequest<null, Q, H, null, 'public'>, 'query' | 'headers' | 'connection'>,
-    ): void;
+    /**
+     * The subprotocol the client must offer (400 otherwise); the handshake answers with it. `null`: none is agreed,
+     * whatever the client offers.
+     */
+    readonly subprotocol: string | null;
+    handle(request: WebSocketRequest<P, Q, H, A>): WebSocketAdmission;
 }
 
 export type Route = HttpRoute | WebSocketRoute;
@@ -117,8 +143,11 @@ export function defineHttpRoute<
     return route;
 }
 
-export function defineWebSocketRoute<const Q extends z.ZodObject, const H extends StringFields | null>(
-    route: WebSocketRoute<Q, H>,
-): WebSocketRoute<Q, H> {
+export function defineWebSocketRoute<
+    const P extends Params,
+    const Q extends z.ZodObject,
+    const H extends StringFields | null,
+    const A extends WebSocketAuthMode,
+>(route: WebSocketRoute<P, Q, H, A>): WebSocketRoute<P, Q, H, A> {
     return route;
 }

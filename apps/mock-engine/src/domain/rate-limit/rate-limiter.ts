@@ -10,6 +10,8 @@ export const RATE_LIMITS = {
     'engine-api-ip': { limit: 1_200, windowMs: 60_000 },
     /** Draft test replies (`test-chat@1`): each one is a model call, and a person types far slower than this. */
     'engine-api-test-chat-ip': { limit: 60, windowMs: 60_000 },
+    /** Live channel attaches (`browser-tab@1`): one per opened session, plus reconnects after a dropped network. */
+    'live-channel-ip': { limit: 120, windowMs: 60_000 },
     /** UI bundle files: a cold page load fetches a few dozen, cached ones none. */
     'ui-ip': { limit: 1_200, windowMs: 60_000 },
     /** Gateway pages and forms: sign-in, sign-out, step-up. */

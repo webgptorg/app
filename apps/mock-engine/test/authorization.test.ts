@@ -82,6 +82,8 @@ function validBody(route: RouteDefinition): unknown {
             return { enabled: true };
         case 'answerOnboarding':
             return { promptId: 'matrix-prompt', action: 'back' };
+        case 'openBrowserSignIn':
+            return { browser: null, origin: 'https://accounts.example' };
         case 'testAgentDraft':
             return { book: 'Matrix', messages: [{ role: 'user', content: 'hello' }] };
         default:
@@ -144,9 +146,7 @@ function expectDecision(
 
 // Reserved capabilities are never advertised, so their routes answer 404 before any permission check.
 const SERVED_ROUTES = ENGINE_API_ROUTE_LIST.filter(
-    (route) =>
-        route.capability === undefined ||
-        (!isReservedCapability(route.capability) && route.capability !== KNOWN_CAPABILITIES.browserTab),
+    (route) => route.capability === undefined || !isReservedCapability(route.capability),
 );
 
 let harness: ApiHarness;
@@ -160,7 +160,8 @@ const memberOf = (role: (typeof ROLES)[number]): string => {
 };
 
 beforeAll(async () => {
-    harness = await createApiHarness({ rateLimiter: { consume: () => ({ kind: 'allowed' }) } });
+    // With the live browser too, so its watch and control routes are in the matrix.
+    harness = await createApiHarness({ rateLimiter: { consume: () => ({ kind: 'allowed' }) }, liveBrowser: true });
 });
 
 afterAll(async () => {

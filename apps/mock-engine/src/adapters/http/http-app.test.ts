@@ -5,6 +5,7 @@ import {
     ENGINE_API_ROUTE_LIST,
     ENGINE_RESERVED_PATHS,
     ENGINE_UI_CSP,
+    LIVE_CHANNEL_PATH,
     SIGN_IN_PATH,
     SIGN_OUT_PATH,
     STEP_UP_PATH,
@@ -244,8 +245,8 @@ describe.each([
         expect(stepUp.sort()).toEqual(devLogin ? ['GET', 'POST'] : ['GET']);
     });
 
-    it('serves exactly the engine API route table under the API prefix', () => {
-        const api = routes.filter((route) => route.path.startsWith('/api/'));
+    it('serves exactly the engine API route table under the API prefix, and the live channel', () => {
+        const api = routes.filter((route) => route.transport === 'http' && route.path.startsWith('/api/'));
         expect(api.map((route) => [route.method, route.path, route.permission, route.auth])).toEqual(
             ENGINE_API_ROUTE_LIST.map((route) => [
                 route.method,
@@ -254,12 +255,15 @@ describe.each([
                 'session',
             ]),
         );
+        expect(
+            routes.filter((route) => route.transport === 'websocket' && route.path.startsWith('/api/')).map(key),
+        ).toEqual([`websocket GET ${ENGINE_API_PREFIX}${LIVE_CHANNEL_PATH}`]);
     });
 
     it('lets only the engine API routes delegate input validation to the engine API binding', () => {
         for (const route of routes) {
             const delegated = route.transport === 'http' && route.validation === 'engine-api';
-            expect(delegated, key(route)).toBe(route.path.startsWith('/api/'));
+            expect(delegated, key(route)).toBe(route.transport === 'http' && route.path.startsWith('/api/'));
         }
     });
 
@@ -297,6 +301,10 @@ describe('control listener route table', () => {
                 'http POST /__mock/step-up/expire',
                 'http POST /__mock/runs',
                 'http POST /__mock/inbound-email',
+                'http POST /__mock/live-browser/elapse',
+                'http POST /__mock/live-browser/help-requests',
+                'http POST /__mock/live-browser/navigate',
+                'http POST /__mock/live-browser/tabs',
                 'http POST /__mock/onboarding/harness-check',
                 'http POST /__mock/onboarding/harness-login',
                 'http PUT /__mock/faults',
@@ -492,9 +500,13 @@ describe('WebSocket upgrades', () => {
                     query: z.strictObject({}),
                     headers: z.strictObject({ 'x-mode': z.literal('test') }),
                     maxPayloadBytes: 1024,
-                    handle: (socket) => {
-                        socket.close();
-                    },
+                    subprotocol: null,
+                    handle: () => ({
+                        kind: 'accept',
+                        open: (socket) => {
+                            socket.close();
+                        },
+                    }),
                 }),
             ],
         });

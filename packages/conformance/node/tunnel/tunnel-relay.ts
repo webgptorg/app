@@ -6,7 +6,7 @@ import type { LaunchEnv } from '../harness/launch-env';
 import type { Closable, EngineApiEndpoint, PlatformCheckContext } from '../harness/platform';
 import type { FakeRelay } from '../fake-relay/fake-relay';
 import { startFakeRelay } from '../fake-relay/fake-relay';
-import { createTunnelFetch } from './engine-fetch';
+import { connectToEngine, createTunnelFetch } from './engine-fetch';
 import type { TunnelEngine, TunnelTiming } from './runtime';
 import { CONTRACT_TIMING, TunnelRuntime } from './runtime';
 
@@ -80,14 +80,16 @@ export async function startTunnelRelay(
                 return ready;
             };
             await firstReady();
+            const engine = {
+                hostname,
+                tunnel: firstReady,
+                certificateAuthority: () => ctx.engineCertificateAuthority(registered.engine),
+                handshakeMs: timing.requestMs,
+            };
             return {
                 baseUrl: new URL(`https://${hostname}`),
-                fetch: createTunnelFetch({
-                    hostname,
-                    tunnel: firstReady,
-                    certificateAuthority: () => ctx.engineCertificateAuthority(registered.engine),
-                    handshakeMs: timing.requestMs,
-                }),
+                fetch: createTunnelFetch(engine),
+                connect: () => connectToEngine(engine),
             };
         },
         close: () => relay.close(),

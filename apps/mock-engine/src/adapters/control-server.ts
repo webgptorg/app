@@ -1,4 +1,17 @@
-import { AgentId, Permission, Role, TriggerId, WALLET_REQUEST_PROBLEMS, WalletOrigin } from '@ptbk/engine-api';
+import {
+    AgentId,
+    BrowserHelpReason,
+    BrowserOrigin,
+    BrowserTabId,
+    ChatId,
+    LiveSessionId,
+    MAX_BROWSER_HELP_MESSAGE_LENGTH,
+    Permission,
+    Role,
+    TriggerId,
+    WALLET_REQUEST_PROBLEMS,
+    WalletOrigin,
+} from '@ptbk/engine-api';
 import { EngineVersion } from '@ptbk/protocol';
 import { z } from 'zod';
 
@@ -67,6 +80,26 @@ const FailingHarnessCheck = z.strictObject({
     harness: z.enum(['codex', 'claude']),
     reason: z.string().min(1).max(2048),
 });
+
+const LiveBrowserTabRequest = z.strictObject({ origin: BrowserOrigin, chatId: ChatId.optional() });
+
+/** What the agent in the tab says it is stuck on; without `tabId`, the fake agent tab the engine started with. */
+const LiveBrowserHelpRequest = z.strictObject({
+    tabId: BrowserTabId.optional(),
+    reason: BrowserHelpReason,
+    message: z.string().max(MAX_BROWSER_HELP_MESSAGE_LENGTH),
+});
+
+const LiveBrowserNavigation = z.strictObject({
+    tabId: BrowserTabId,
+    page: z.discriminatedUnion('kind', [
+        z.strictObject({ kind: z.literal('web'), origin: BrowserOrigin }),
+        z.strictObject({ kind: z.literal('browser-page') }),
+        z.strictObject({ kind: z.literal('secret-page') }),
+    ]),
+});
+
+const LiveBrowserElapse = z.strictObject({ sessionId: LiveSessionId, what: z.enum(['expired', 'idle']) });
 
 function invalidBody(path: string, message: string): Response {
     return problemResponse({ code: 'validation-failed', extras: { errors: [{ path, message }] } });
@@ -155,6 +188,14 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
         }
         return { memberId: addMember('member', 'Synthetic member'), permissions: subject.permissions };
     }
+
+    /** The levers answer as the engine's own routes do while `MOCK_LIVE_BROWSER` is off. */
+    const liveBrowser = (act: (tab: string) => Response): Response => {
+        const tab = runtime.liveBrowserTab();
+        return tab === null ? problemResponse({ code: 'capability-not-supported' }) : act(tab);
+    };
+    const knownTab = (tabId: string, act: () => Response): Response =>
+        runtime.controller().getBrowserTab(tabId) === undefined ? problemResponse({ code: 'not-found' }) : act();
 
     const state = () => {
         const { seed, scenario, capabilities } = runtime.current();
@@ -253,6 +294,59 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
                 });
                 return Response.json({ request }, { status: 201 });
             },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/live-browser/tabs',
+            body: { kind: 'json', schema: LiveBrowserTabRequest, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                liveBrowser(() => {
+                    const tab = runtime.controller().openAgentTab({ origin: body.origin, chatId: body.chatId ?? null });
+                    return Response.json({ tab }, { status: 201 });
+                }),
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/live-browser/help-requests',
+            body: { kind: 'json', schema: LiveBrowserHelpRequest, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                liveBrowser((startupTab) => {
+                    const tabId = body.tabId ?? startupTab;
+                    return knownTab(tabId, () => {
+                        try {
+                            const request = runtime
+                                .controller()
+                                .requestBrowserHelp(tabId, { reason: body.reason, message: body.message });
+                            return Response.json({ request }, { status: 201 });
+                        } catch {
+                            // The core refuses only a sign-in tab here: no agent works in one to ask.
+                            return invalidBody('body.tabId', 'Not an agent’s tab.');
+                        }
+                    });
+                }),
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/live-browser/navigate',
+            body: { kind: 'json', schema: LiveBrowserNavigation, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                liveBrowser(() =>
+                    knownTab(body.tabId, () => {
+                        runtime.controller().navigateBrowserTab(body.tabId, body.page);
+                        return new Response(null, { status: 204 });
+                    }),
+                ),
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/live-browser/elapse',
+            body: { kind: 'json', schema: LiveBrowserElapse, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                liveBrowser(() =>
+                    runtime.controller().elapseBrowserSession(body.sessionId, body.what)
+                        ? new Response(null, { status: 204 })
+                        : problemResponse({ code: 'not-found' }),
+                ),
         }),
         control({
             method: 'POST',
@@ -376,12 +470,21 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
         control({
             method: 'POST',
             path: '/__mock/sessions',
-            body: { kind: 'json', schema: z.strictObject({ subject: SessionSubject }), maxBytes: BODY_MAX_BYTES },
+            body: {
+                kind: 'json',
+                schema: z.strictObject({
+                    subject: SessionSubject,
+                    // `stale`: signed in, but its passkey assertion too old for any step-up route.
+                    stepUp: z.enum(['fresh', 'stale']).default('fresh'),
+                }),
+                maxBytes: BODY_MAX_BYTES,
+            },
             handle: ({ body, clientIp }) => {
                 const { memberId, permissions } = memberFor(body.subject);
                 const signedIn = sessions.signIn({
                     memberId,
                     permissions,
+                    stepUp: body.stepUp === 'stale' ? 'none' : 'fresh',
                     client: { ip: clientIp, userAgent: 'mock control listener' },
                 });
                 return Response.json(

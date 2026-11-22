@@ -371,6 +371,61 @@ describe('startMockEngine', () => {
         await engine.close();
     });
 
+    describe('live browser', () => {
+        it('paces the screencast on the clock while enabled, and stops on close', async () => {
+            const dialer = createFakeDialer();
+            const clock = createFakeClock();
+            const engine = await startMockEngine(
+                { ...CONFIG, liveBrowser: true },
+                {
+                    logger: createMemoryLogger(),
+                    clock,
+                    random: createSeededRandom(1),
+                    identityStore: createMemoryIdentityStore(),
+                    dialer,
+                },
+            );
+            const owner = engine.runtime
+                .controller()
+                .inspect()
+                .members.find(({ role }) => role === 'owner');
+            if (owner === undefined) throw new Error('no owner');
+            const actor = {
+                memberId: MemberId.parse(owner.id),
+                sessionId: SessionId.parse('session-live'),
+                client: { ip: '192.0.2.1', userAgent: 'test' },
+                permissions: new Set(OWNER_PERMISSIONS),
+                stepUpFresh: true,
+            };
+            const core = engine.runtime.core();
+            const tabId = engine.runtime.liveBrowserTab() ?? '';
+            const watched = await core.transport(actor)(
+                ENGINE_API_ROUTES.watchBrowserTab,
+                { params: { tabId } },
+                AbortSignal.timeout(5_000),
+            );
+            if (watched.kind !== 'ok') throw new Error(watched.problem.code);
+            let frames = 0;
+            const attached = core.attachLiveChannel(actor, (watched.data as { id: string }).id, {
+                send: (data) => {
+                    if (typeof data !== 'string') frames++;
+                },
+                close: () => undefined,
+            });
+            if (attached.kind !== 'attached') throw new Error(attached.problem.code);
+            attached.peer.receive(JSON.stringify({ type: 'hello', versions: [1] }));
+            const first = frames;
+            clock.advance(500);
+            expect(frames).toBe(first + 1);
+            for (const dial of dialer.dials) dial.fail({ reason: 'network' });
+            const pending = clock.pendingTimers();
+            await engine.close();
+            expect(clock.pendingTimers()).toBeLessThan(pending);
+            clock.advance(5_000);
+            expect(frames).toBe(first + 1);
+        });
+    });
+
     describe('control listener', () => {
         it('starts only when enabled, on loopback, and stops on close', async () => {
             expect((await start()).engine.control).toBeNull();

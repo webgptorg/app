@@ -1,5 +1,6 @@
 import * as http from 'node:http';
 import { Readable } from 'node:stream';
+import type { TLSSocket } from 'node:tls';
 
 import type { RelayTunnel } from '../fake-relay/relay-tunnel';
 import { certificateProblem, connectThroughTunnel } from './through-stream';
@@ -17,6 +18,24 @@ export interface TunnelFetchOptions {
 
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
 
+/** A TLS connection to the engine through a new tunnel stream, its certificate checked: one browser connection. */
+export async function connectToEngine(options: TunnelFetchOptions): Promise<TLSSocket> {
+    const ca = await options.certificateAuthority();
+    const connected = await connectThroughTunnel(await options.tunnel(), {
+        servername: options.hostname,
+        certificateAuthorityPem: ca,
+        timeoutMs: options.handshakeMs,
+    });
+    if (connected.kind === 'failed') throw new TypeError(`fetch through the tunnel failed: ${connected.reason}`);
+    const { socket } = connected;
+    const problem = certificateProblem(connected.certificate, options.hostname);
+    if (problem !== null) {
+        socket.destroy();
+        throw new TypeError(`fetch through the tunnel failed: ${problem}`);
+    }
+    return socket;
+}
+
 /**
  * A `fetch` for `https://<hostname>/…` whose requests travel as a browser's would: a new tunnel stream per request,
  * a TLS client inside it ending at the engine, HTTP/1.1 over that. Response bodies stream (SSE works), and the
@@ -30,19 +49,7 @@ export function createTunnelFetch(options: TunnelFetchOptions): typeof fetch {
             throw new TypeError(`this fetch reaches only https://${options.hostname}`);
         }
         request.signal.throwIfAborted();
-        const ca = await options.certificateAuthority();
-        const connected = await connectThroughTunnel(await options.tunnel(), {
-            servername: options.hostname,
-            certificateAuthorityPem: ca,
-            timeoutMs: options.handshakeMs,
-        });
-        if (connected.kind === 'failed') throw new TypeError(`fetch through the tunnel failed: ${connected.reason}`);
-        const { socket } = connected;
-        const problem = certificateProblem(connected.certificate, options.hostname);
-        if (problem !== null) {
-            socket.destroy();
-            throw new TypeError(`fetch through the tunnel failed: ${problem}`);
-        }
+        const socket = await connectToEngine(options);
         const body = request.body === null ? undefined : Buffer.from(await request.arrayBuffer());
         const headers: Record<string, string> = { ...Object.fromEntries(request.headers), host: options.hostname };
         headers['connection'] = 'close';
