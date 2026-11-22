@@ -5,6 +5,7 @@ import { useState } from 'react';
 
 import { useBrowser } from '../../app/browser-context';
 import { cx } from '../../app/cx';
+import { Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
 import { useSetupOnly } from '../onboarding/setup-only';
 import { FeatureEventSync } from './feature-event-sync';
@@ -130,7 +131,9 @@ function WideSidebar({
             )}
         >
             <div className={cx('flex', collapsed && 'justify-center')}>
-                {collapsed ? <BrandMark /> : <BrandLockup />}
+                <Link to="/" variant="standalone" aria-label="Promptbook">
+                    {collapsed ? <BrandMark decorative /> : <BrandLockup decorative />}
+                </Link>
             </div>
             <div className={cx('flex gap-1', collapsed ? 'flex-col items-center' : 'items-center')}>
                 <div className={cx(!collapsed && 'min-w-0 flex-1')}>
@@ -194,7 +197,17 @@ function NarrowShell({ onOpenPalette }: { readonly onOpenPalette: () => void }) 
                 side="start"
             >
                 <div className="flex flex-col gap-4">
-                    <BrandLockup />
+                    <Link
+                        to="/"
+                        variant="standalone"
+                        aria-label="Promptbook"
+                        className="self-start"
+                        onClick={() => {
+                            setOpen(false);
+                        }}
+                    >
+                        <BrandLockup decorative />
+                    </Link>
                     <SidebarNav
                         onNavigate={() => {
                             setOpen(false);
