@@ -217,7 +217,7 @@ async function expectRefused(
     t: Live,
     sessionId: string,
     credential: EngineApi['credential'],
-    origin: string,
+    origin: string | null,
     status: number,
     what: string,
 ): Promise<void> {
@@ -328,6 +328,7 @@ export const LIVE_CHECKS: readonly ConformanceCheck[] = [
                 403,
                 'with a foreign Origin',
             );
+            await expectRefused(t, session.id, t.owner.credential, null, 403, 'without an Origin');
             const first = await open(t, session);
             await expectRefused(t, session.id, t.owner.credential, own, 409, 'a second time while one is open');
             first.close();

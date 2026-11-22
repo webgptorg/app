@@ -26,7 +26,7 @@ export function createLiveChannelOpener(
     connect: () => Promise<Duplex>,
     timeoutMs: number,
 ): LiveBrowserTarget['openChannel'] {
-    return async (sessionId: string, credential: SessionCredential | null, origin: string) => {
+    return async (sessionId: string, credential: SessionCredential | null, origin: string | null) => {
         const socket = await connect();
         const headers: Record<string, string> = {};
         if (credential !== null && 'cookie' in credential) headers['Cookie'] = credential.cookie;
@@ -38,8 +38,8 @@ export function createLiveChannelOpener(
             perMessageDeflate: false,
             maxPayload: MAX_MESSAGE_BYTES,
             handshakeTimeout: timeoutMs,
-            // The origin is the test's to choose, so a foreign one can be tried; `ws` would otherwise send none.
-            origin,
+            // The origin is the test's to choose, so a foreign or missing one can be tried.
+            ...(origin === null ? {} : { origin }),
         });
         const queue = new LiveChannelQueue(
             (data) => {

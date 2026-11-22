@@ -92,6 +92,8 @@ describe('createLiveChannelOpener', () => {
             status: 401,
         });
         expect(seen[1]?.headers.authorization).toBe('Bearer token');
+        await open('session-1', null, null);
+        expect(seen[2]?.headers.origin).toBeUndefined();
     });
 
     it('fails when the connection drops before the engine answers', async () => {

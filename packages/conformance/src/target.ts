@@ -71,11 +71,15 @@ export type LiveBrowserPage =
 
 /**
  * `browser-tab@1` from the outside. `openChannel` is a WebSocket upgrade at `LIVE_CHANNEL_PATH` with subprotocol
- * `LIVE_CHANNEL_SUBPROTOCOL`, the credential's `Cookie` (none when `null`) and this `Origin`. The levers are test-mode
+ * `LIVE_CHANNEL_SUBPROTOCOL`, the credential's `Cookie` (none when `null`) and this `Origin` (none when `null`). The levers are test-mode
  * hooks into the engine's browser, as `walletRequest` is into its Wallet; a real engine offers them only in test mode.
  */
 export interface LiveBrowserTarget {
-    openChannel(sessionId: string, credential: SessionCredential | null, origin: string): Promise<LiveChannelOpen>;
+    openChannel(
+        sessionId: string,
+        credential: SessionCredential | null,
+        origin: string | null,
+    ): Promise<LiveChannelOpen>;
     /** An origin on the engine's remote sign-in allowlist. */
     readonly signInOrigin: string;
     /** Agent work opens a tab at `origin`, linked to no chat, task or run; answers the tab's ID. */

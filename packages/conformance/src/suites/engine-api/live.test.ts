@@ -76,6 +76,7 @@ describe('the browser-tab checks', () => {
     it.each<[string, LiveDefect]>([
         ['engine-api.browser-tab.channel-auth', 'channel-without-cookie'],
         ['engine-api.browser-tab.channel-auth', 'channel-any-origin'],
+        ['engine-api.browser-tab.channel-auth', 'channel-without-origin'],
         ['engine-api.browser-tab.channel-auth', 'channel-twice'],
         ['engine-api.browser-tab.session-binding', 'channel-any-session'],
         ['engine-api.browser-tab.step-up', 'step-up-ignored'],

@@ -42,6 +42,7 @@ export type Defect = (typeof DEFECTS)[number];
 export const LIVE_DEFECTS = [
     'channel-without-cookie',
     'channel-any-origin',
+    'channel-without-origin',
     'channel-any-session',
     'channel-twice',
     'step-up-ignored',
@@ -609,7 +610,8 @@ function createFakeLiveBrowser(deps: FakeLiveDeps): LiveBrowserTarget {
         signInOrigin: FAKE_SIGN_IN_ORIGIN,
         openChannel(sessionId, credential, origin) {
             if (defect === 'channel-refused') return Promise.resolve({ kind: 'refused', status: 503 });
-            if (origin !== deps.origin && defect !== 'channel-any-origin') {
+            const lax = defect === 'channel-any-origin' || (defect === 'channel-without-origin' && origin === null);
+            if (origin !== deps.origin && !lax) {
                 return Promise.resolve({ kind: 'refused', status: 403 });
             }
             const cookie = credential !== null && 'cookie' in credential ? credential.cookie : null;

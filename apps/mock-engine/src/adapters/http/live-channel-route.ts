@@ -4,7 +4,7 @@ import {
     LIVE_CHANNEL_PATH,
     LIVE_CHANNEL_SUBPROTOCOL,
     MAX_LIVE_CONTROL_MESSAGE_BYTES,
-    MAX_LIVE_MEDIA_BYTES,
+    MAX_LIVE_SEND_BUFFER_BYTES,
 } from '@ptbk/engine-api';
 import type { InMemoryEngineCore, LiveChannelSink } from '@ptbk/engine-api/in-memory';
 import type { RawData, WebSocket } from 'ws';
@@ -15,13 +15,6 @@ import { defineWebSocketRoute } from './route';
 
 /** The browser sends only control messages; a little headroom lets the core answer an oversized one itself. */
 export const LIVE_CHANNEL_MAX_PAYLOAD_BYTES = MAX_LIVE_CONTROL_MESSAGE_BYTES + 1024;
-
-/**
- * The ack credit keeps an honest viewer at a couple of frames in flight, far below this. A client that acks frames it
- * never read (sequence numbers are predictable) would make the socket queue without bound, so above it the channel
- * closes. Dropping the frame instead would leave its sequence unacked and stall an honest viewer for good.
- */
-export const LIVE_CHANNEL_HIGH_WATER_BYTES = 16 * MAX_LIVE_MEDIA_BYTES;
 
 const decoder = new TextDecoder();
 
@@ -56,15 +49,13 @@ export function createLiveChannelRoute(deps: { readonly core: () => InMemoryEngi
             const sink: LiveChannelSink = {
                 send(data) {
                     if (socket === null || socket.readyState !== socket.OPEN) return;
-                    if (typeof data === 'string') {
-                        socket.send(data);
-                        return;
-                    }
-                    if (socket.bufferedAmount > LIVE_CHANNEL_HIGH_WATER_BYTES) {
+                    // The ack credit keeps an honest viewer far below this; a client that acks frames it never read
+                    // (sequence numbers are predictable) would make the socket queue without bound.
+                    if (socket.bufferedAmount > MAX_LIVE_SEND_BUFFER_BYTES) {
                         socket.close(1008);
                         return;
                     }
-                    socket.send(data, { binary: true });
+                    socket.send(data, { binary: typeof data !== 'string' });
                 },
                 close(code) {
                     socket?.close(code);
