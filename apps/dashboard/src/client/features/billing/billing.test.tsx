@@ -49,7 +49,7 @@ describe('billing page', () => {
         expect(screen.queryByText('standard')).toBeNull();
         expect(screen.getByText(/^Renews on /)).toBeTruthy();
         const list = within(screen.getByLabelText('Included in your plan'));
-        expect(list.getByText('Link new engines')).toBeTruthy();
+        expect(list.getByText('Link new projects')).toBeTruthy();
         expect(list.getByText('Included')).toBeTruthy();
         expect(list.getByText('2 of 5')).toBeTruthy();
         expect(list.getByText('Unlimited')).toBeTruthy();
@@ -61,7 +61,7 @@ describe('billing page', () => {
 
     it('leads with the plan offers when the org has no plan, and no empty subscription', async () => {
         const app = renderApp({ path: '/billing', session: OWNER, script: withBilling() });
-        expect(await screen.findByRole('heading', { name: 'Choose a plan to link engines', level: 2 })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Choose a plan to link projects', level: 2 })).toBeTruthy();
         expect(screen.queryByText('No subscription')).toBeNull();
         expect(screen.queryByText('No plan')).toBeNull();
         expect(screen.queryByRole('heading', { name: 'Subscription' })).toBeNull();
@@ -259,7 +259,7 @@ describe('billing page', () => {
         expect(
             await screen.findByText('This organization has no plan yet. An owner can choose one here.'),
         ).toBeTruthy();
-        expect(screen.queryByRole('heading', { name: 'Choose a plan to link engines' })).toBeNull();
+        expect(screen.queryByRole('heading', { name: 'Choose a plan to link projects' })).toBeNull();
         expect(screen.queryByRole('button', { name: /^Subscribe/ })).toBeNull();
         unmount();
         renderApp({ path: '/billing', session: READER, script: withBilling(ACTIVE) });
@@ -339,7 +339,7 @@ describe('billing page', () => {
         const app = renderApp({ path: '/billing?checkout=success', session: OWNER, script: withBilling() });
         expect(await screen.findByText('Thank you, your subscription is starting')).toBeTruthy();
         expect(screen.getByText('It can take a moment until the new plan shows here.')).toBeTruthy();
-        expect(screen.queryByRole('link', { name: 'Next: add an engine' })).toBeNull();
+        expect(screen.queryByRole('link', { name: 'Next: add a project' })).toBeNull();
         await waitFor(() => {
             expect(app.history.location.search).toBe('');
         });
@@ -361,7 +361,7 @@ describe('billing page', () => {
         expect(await screen.findByText('Active')).toBeTruthy();
         expect(screen.getByText('Thank you, your subscription is starting')).toBeTruthy();
         expect(screen.queryByText('It can take a moment until the new plan shows here.')).toBeNull();
-        expect(screen.getByRole('link', { name: 'Next: add an engine' }).getAttribute('href')).toBe('/engines');
+        expect(screen.getByRole('link', { name: 'Next: add a project' }).getAttribute('href')).toBe('/engines');
         unmount();
         renderApp({ path: '/billing', session: OWNER, script: withBilling(ACTIVE) });
         expect(await screen.findByText('Active')).toBeTruthy();
@@ -377,7 +377,7 @@ describe('billing page', () => {
         expect(screen.getByText('Checkout was cancelled. Nothing was charged.')).toBeTruthy();
         cancelled.unmount();
         renderApp({ path: '/billing?checkout=evil', session: OWNER, script: withBilling() });
-        expect(await screen.findByRole('heading', { name: 'Choose a plan to link engines' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Choose a plan to link projects' })).toBeTruthy();
         expect(screen.queryByRole('status', { name: /Checkout/ })).toBeNull();
         expect(screen.queryByText(/Checkout was cancelled|Thank you/)).toBeNull();
     });

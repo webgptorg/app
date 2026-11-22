@@ -48,12 +48,12 @@ describe('the link page in Czech', () => {
                 api.on(apiRoutes.getEngine, ok({ engine: ready }));
             },
         });
-        expect(await screen.findByText('Váš engine je připravený', { selector: 'h2' })).toBeTruthy();
-        expect(screen.getByText('Dokončení na enginu')).toBeTruthy();
-        expect(screen.getByText('Engine je online, verze 1.4.2.')).toBeTruthy();
+        expect(await screen.findByText('Váš projekt je připravený', { selector: 'h2' })).toBeTruthy();
+        expect(screen.getByText('Dokončení na projektu')).toBeTruthy();
+        expect(screen.getByText('Projekt je online, verze 1.4.2.')).toBeTruthy();
         expect(screen.getByText('Dostupný přes 2 relaye')).toBeTruthy();
         expect(
-            screen.getByRole('link', { name: `Otevřít engine ${ENGINE_ID.slice(0, 8)}… v nové kartě` }),
+            screen.getByRole('link', { name: `Otevřít projekt ${ENGINE_ID.slice(0, 8)}… v nové kartě` }),
         ).toBeTruthy();
         expect(document.body.textContent).not.toMatch(/engines_|link_progress_|billing_/);
     });
@@ -91,10 +91,12 @@ describe('the link page in Czech', () => {
                 );
             },
         });
-        expect(await screen.findByText('Váš engine je připojený', { selector: 'h2' })).toBeTruthy();
-        expect(screen.getByText(/Dokončete jeho nastavení na enginu/)).toBeTruthy();
+        expect(await screen.findByText('Váš projekt je připojený', { selector: 'h2' })).toBeTruthy();
+        expect(screen.getByText(/Dokončete jeho nastavení na projektu/)).toBeTruthy();
         expect(
-            screen.getByRole('link', { name: `Pokračovat v nastavení enginu ${ENGINE_ID.slice(0, 8)}… v nové kartě` }),
+            screen.getByRole('link', {
+                name: `Pokračovat v nastavení projektu ${ENGINE_ID.slice(0, 8)}… v nové kartě`,
+            }),
         ).toBeTruthy();
         expect(document.body.textContent).not.toMatch(/engines_|link_progress_|billing_/);
     });
@@ -117,7 +119,7 @@ describe('the link page in Czech', () => {
                 api.on(apiRoutes.getBilling, ok(billingView({ plans: [{ ...standard, trialDays: 14 }] })));
             },
         });
-        expect(await screen.findByRole('heading', { name: 'Vyberte si tarif a připojte engine' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Vyberte si tarif a připojte projekt' })).toBeTruthy();
         expect(
             await screen.findByRole('button', { name: 'Začít 14denní zkušební období tarifu Standard' }),
         ).toBeTruthy();

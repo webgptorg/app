@@ -149,7 +149,7 @@ test('sign up with a passkey, link the engine, see it online, open it through a 
         )
         .toBe(1);
 
-    const open = row.getByRole('link', { name: /^Open engine/ });
+    const open = row.getByRole('link', { name: /^Open project/ });
     await expect(open).toHaveAttribute('href', `https://${engineHost}/`);
     const [enginePage] = await Promise.all([page.context().waitForEvent('page'), open.click()]);
     await enginePage.waitForLoadState('load');

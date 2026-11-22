@@ -37,15 +37,15 @@ describe('engine page (platform admin)', () => {
         expect(screen.getByText('bbbbbbbbbbbbbbbbbbbbbbbbbb')).toBeTruthy();
         await expectNoAxeViolations(app.container);
 
-        await app.user.click(screen.getByRole('button', { name: 'Suspend engine' }));
+        await app.user.click(screen.getByRole('button', { name: 'Suspend project' }));
         expect(await screen.findByText('Give a reason.')).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.adminSuspendEngine)).toHaveLength(0);
 
         await app.user.type(screen.getByRole('textbox', { name: /Reason/ }), '  Phishing report #42  ');
-        await app.user.click(screen.getByRole('button', { name: 'Suspend engine' }));
+        await app.user.click(screen.getByRole('button', { name: 'Suspend project' }));
         const dialog = await screen.findByRole('dialog', { name: 'Confirm it is you' });
         await app.user.click(within(dialog).getByRole('button', { name: 'Use passkey' }));
-        expect(await screen.findByText('Engine suspended.')).toBeTruthy();
+        expect(await screen.findByText('Project suspended.')).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.adminSuspendEngine)).toEqual([
             { params: { engineId: ENGINE_ID }, body: { reason: 'Phishing report #42' } },
             { params: { engineId: ENGINE_ID }, body: { reason: 'Phishing report #42' } },
@@ -73,7 +73,7 @@ describe('engine page (platform admin)', () => {
         expect(app.api.callsTo(apiRoutes.adminUnsuspendEngine)).toEqual([
             { params: { engineId: ENGINE_ID }, body: { reason: 'Appeal accepted' } },
         ]);
-        expect(await screen.findByRole('button', { name: 'Suspend engine' })).toBeTruthy();
+        expect(await screen.findByRole('button', { name: 'Suspend project' })).toBeTruthy();
     });
 
     it('offers nothing to lift for an engine its owner revoked', async () => {
@@ -85,7 +85,7 @@ describe('engine page (platform admin)', () => {
         expect(await screen.findByText('Revoked by its owner')).toBeTruthy();
         expect(screen.getByText(/A revocation is permanent and cannot be lifted here/)).toBeTruthy();
         expect(screen.queryByRole('button', { name: 'Lift suspension' })).toBeNull();
-        expect(screen.queryByRole('button', { name: 'Suspend engine' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Suspend project' })).toBeNull();
     });
 
     it('explains an owner revocation that raced the form', async () => {
@@ -99,7 +99,7 @@ describe('engine page (platform admin)', () => {
         });
         await app.user.type(await screen.findByRole('textbox', { name: /Reason/ }), 'Appeal accepted');
         await app.user.click(screen.getByRole('button', { name: 'Lift suspension' }));
-        expect(await screen.findByText(/Its owner revoked this engine/)).toBeTruthy();
+        expect(await screen.findByText(/Its owner revoked this project/)).toBeTruthy();
     });
 
     it('says when no engine has the ID', async () => {
@@ -108,7 +108,7 @@ describe('engine page (platform admin)', () => {
             session: ADMIN,
             script: (api) => api.on(apiRoutes.adminGetEngine, problem(404, 'not-found')),
         });
-        expect(await screen.findByText('No engine has this ID.')).toBeTruthy();
+        expect(await screen.findByText('No project has this ID.')).toBeTruthy();
     });
 
     it('offers a retry when the engine cannot be loaded', async () => {
@@ -117,7 +117,7 @@ describe('engine page (platform admin)', () => {
             session: ADMIN,
             script: (api) => api.on(apiRoutes.adminGetEngine, { kind: 'invalid-response', status: 200 }),
         });
-        expect(await screen.findByText('The engine could not be loaded.')).toBeTruthy();
+        expect(await screen.findByText('The project could not be loaded.')).toBeTruthy();
         app.api.on(apiRoutes.adminGetEngine, ok({ engine: adminEngineView() }));
         await app.user.click(screen.getByRole('button', { name: 'Try again' }));
         expect(await screen.findByText('Active')).toBeTruthy();

@@ -29,9 +29,9 @@ const HOSTNAME = `${ENGINE_ID}.${ENGINE_DOMAIN}`;
 const TAB_NAMES = ['Linux server with Docker', 'Docker Compose', 'Already running Promptbook'];
 const CHECKOUT_URL = 'https://checkout.stripe.com/c/pay/cs_test_example';
 
-const WAITING_TEXT = 'Waiting for your engine to link. Run the command above; this page updates by itself.';
+const WAITING_TEXT = 'Waiting for your project to link. Run the command above; this page updates by itself.';
 const OWNER_TEXT =
-    "Finish in the browser window that opened on the engine's computer: create your passkey there. Nothing opened? Open the setup link the engine's terminal shows, or run setup-link there for a new one. This page updates when you're done.";
+    "Finish in the browser window that opened on the project's computer: create your passkey there. Nothing opened? Open the setup link the project's terminal shows, or run setup-link there for a new one. This page updates when you're done.";
 const COMMAND_NOTE = `Copy it now: it is shown only once and works until ${createFormatters('en').formatDateTime(new Date(NOW + LINK_CODE_LIFETIME_MS))}.`;
 
 const PENDING: LinkCodeStatusView = { status: 'pending', expiresAt: NOW + LINK_CODE_LIFETIME_MS };
@@ -133,8 +133,8 @@ describe('new engine page', () => {
 
     it('is reachable from the empty engine list', async () => {
         const app = renderApp({ path: '/engines/all', session: OWNER, script: eligible('engine-limit') });
-        await app.user.click(await screen.findByRole('link', { name: 'Link an engine' }));
-        expect(await screen.findByRole('heading', { name: 'Link an engine', level: 1 })).toBeTruthy();
+        await app.user.click(await screen.findByRole('link', { name: 'Link a project' }));
+        expect(await screen.findByRole('heading', { name: 'Link a project', level: 1 })).toBeTruthy();
         expect(app.history.location.pathname).toBe('/engines/new');
     });
 
@@ -151,7 +151,7 @@ describe('new engine page', () => {
                     api.on(apiRoutes.billingCheckout, ok({ url: CHECKOUT_URL }));
                 },
             });
-            expect(await screen.findByRole('heading', { name: 'Choose a plan to link your engine' })).toBeTruthy();
+            expect(await screen.findByRole('heading', { name: 'Choose a plan to link your project' })).toBeTruthy();
             const start = await screen.findByRole('button', { name: 'Start your 14-day trial of Standard' });
             expect(start.textContent).toBe('Start your 14-day trial');
             expect(screen.queryByText(/bun run dev:link/)).toBeNull();
@@ -185,13 +185,13 @@ describe('new engine page', () => {
                 session: session({ permissions: ['org.read', 'engine.link', 'engine.read'] }),
                 script: eligible('not-entitled'),
             });
-            expect(await screen.findByText('Your plan does not include engines')).toBeTruthy();
+            expect(await screen.findByText('Your plan does not include projects')).toBeTruthy();
             expect(screen.getByRole('link', { name: 'Go to billing' })).toBeTruthy();
         });
 
         it('shows the engine limit instead of a command', async () => {
             const app = renderApp({ path: '/engines/new', session: OWNER, script: eligible('engine-limit') });
-            expect(await screen.findByText("Your plan's engine limit is reached")).toBeTruthy();
+            expect(await screen.findByText("Your plan's project limit is reached")).toBeTruthy();
             expect(screen.getByRole('link', { name: 'Go to billing' })).toBeTruthy();
             expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
         });
@@ -219,7 +219,7 @@ describe('new engine page', () => {
             });
             expect(await screen.findByText('Thank you. Your plan is starting; this takes a moment.')).toBeTruthy();
             expect(screen.queryByText('Thank you, your trial has started.')).toBeNull();
-            expect(screen.queryByRole('heading', { name: 'Choose a plan to link your engine' })).toBeNull();
+            expect(screen.queryByRole('heading', { name: 'Choose a plan to link your project' })).toBeNull();
             expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
             await elapse(LINK_POLL_MS);
             expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
@@ -241,13 +241,13 @@ describe('new engine page', () => {
             const app = renderApp({ path: '/engines/new', session: OFF_OWNER, script: linking([PENDING]) });
             expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
             expect(steps()).toEqual(['install:current', 'connect:ahead', 'finish:ahead']);
-            expect(screen.queryByRole('heading', { name: 'Choose a plan to link your engine' })).toBeNull();
+            expect(screen.queryByRole('heading', { name: 'Choose a plan to link your project' })).toBeNull();
             expect(app.api.callsTo(apiRoutes.getBilling)).toEqual([]);
         });
 
         it.each([
-            ['engine-limit', "Your account's engine limit is reached", 'Remove an engine to link another one.'],
-            ['not-entitled', 'Linking engines is not open yet', 'This account cannot link an engine at the moment.'],
+            ['engine-limit', "Your account's project limit is reached", 'Remove a project to link another one.'],
+            ['not-entitled', 'Linking projects is not open yet', 'This account cannot link a project at the moment.'],
         ] as const)('says %s without a plan or a way to billing', async (eligibility, title, body) => {
             const app = renderApp({ path: '/engines/new', session: OFF_OWNER, script: eligible(eligibility) });
             expect(await screen.findByText(title)).toBeTruthy();
@@ -278,10 +278,10 @@ describe('new engine page', () => {
             expect(screen.getByRole('button', { name: 'Copy command' }).textContent).toBe('Copy command');
             expect(screen.getByText(COMMAND_NOTE)).toBeTruthy();
             expect(screen.getByText('Run this on the server that will host Promptbook.')).toBeTruthy();
-            expect(screen.queryByText(/grants nothing inside the engine/)).toBeNull();
+            expect(screen.queryByText(/grants nothing inside the project/)).toBeNull();
             const trail = screen.getByRole('navigation', { name: 'Breadcrumb' });
-            expect(within(trail).getByRole('link', { name: 'Engines' }).getAttribute('href')).toBe('/engines');
-            expect(within(trail).getByRole('link', { name: 'Engines' }).getAttribute('aria-current')).toBeNull();
+            expect(within(trail).getByRole('link', { name: 'Projects' }).getAttribute('href')).toBe('/engines');
+            expect(within(trail).getByRole('link', { name: 'Projects' }).getAttribute('aria-current')).toBeNull();
             expect(steps()).toEqual(['install:current', 'connect:ahead', 'finish:ahead']);
             await waitFor(() => {
                 expect(app.history.location.search).toBe(`?link=${LINK_ID}`);
@@ -329,7 +329,7 @@ describe('new engine page', () => {
         it('shows the link URL with its own copy button, outside the tabs', async () => {
             renderApp({ path: '/engines/new', session: OWNER, script: linking([PENDING]) });
             expect(await screen.findByText(LINK_URL)).toBeTruthy();
-            expect(screen.getByText("Or give this address to your engine's connect command.")).toBeTruthy();
+            expect(screen.getByText("Or give this address to your project's connect command.")).toBeTruthy();
             expect(screen.getByRole('button', { name: 'Copy address' })).toBeTruthy();
             expect(within(screen.getByRole('tabpanel')).queryByText(LINK_URL)).toBeNull();
         });
@@ -422,7 +422,7 @@ describe('new engine page', () => {
             expect(trust.getAttribute('href')).toBe('/trust');
             expect(trust.getAttribute('target')).toBe('_blank');
             expect(trust.getAttribute('rel')).toBe('noopener');
-            expect(screen.queryByText(/grants nothing inside the engine/)).toBeNull();
+            expect(screen.queryByText(/grants nothing inside the project/)).toBeNull();
         });
 
         it('reports the link-code rate limit and offers to try again', async () => {
@@ -466,9 +466,9 @@ describe('new engine page', () => {
             });
             expect(await screen.findByText('Too many unused link codes')).toBeTruthy();
             expect(
-                screen.getByText('Revoke one you no longer need on Engines, then come back for a new one.'),
+                screen.getByText('Revoke one you no longer need on Projects, then come back for a new one.'),
             ).toBeTruthy();
-            expect(screen.getByRole('link', { name: 'Go to Engines' }).getAttribute('href')).toBe('/engines');
+            expect(screen.getByRole('link', { name: 'Go to Projects' }).getAttribute('href')).toBe('/engines');
             expect(screen.queryByRole('button', { name: 'Create link code' })).toBeNull();
             expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(1);
         });
@@ -498,7 +498,7 @@ describe('new engine page', () => {
 
         it('explains that only owners link engines', async () => {
             const app = renderApp({ path: '/engines/new', session: session({ permissions: ['org.read'] }) });
-            expect(await screen.findByText('Only owners of this organization can link engines.')).toBeTruthy();
+            expect(await screen.findByText('Only owners of this organization can link projects.')).toBeTruthy();
             expect(app.api.callsTo(apiRoutes.linkEligibility)).toEqual([]);
             expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
         });
@@ -517,41 +517,41 @@ describe('new engine page', () => {
             expect(progress().dataset['linkState']).toBe('waiting');
 
             await elapse(LINK_POLL_MS);
-            expect(await screen.findByText('Engine linked.', { selector: 'p.font-medium' })).toBeTruthy();
+            expect(await screen.findByText('Project linked.', { selector: 'p.font-medium' })).toBeTruthy();
             expect(progress().dataset['linkState']).toBe('linked');
             expect(screen.queryByText(`bun run dev:link ${CODE}`)).toBeNull();
             expect(screen.queryByText(/shown only once/)).toBeNull();
             expect(steps()).toEqual(['install:done', 'connect:current', 'finish:ahead']);
             expect(screen.getByText(ENGINE_ID.slice(0, 8))).toBeTruthy();
-            expect(screen.getByRole('button', { name: `Copy engine ID ${ENGINE_ID.slice(0, 8)}` })).toBeTruthy();
+            expect(screen.getByRole('button', { name: `Copy project ID ${ENGINE_ID.slice(0, 8)}` })).toBeTruthy();
             expect(screen.getByText(HOSTNAME)).toBeTruthy();
             expect(
                 screen.getByText(
-                    'Your terminal shows the same fingerprint. If they differ, this is not your engine: revoke it from its page and link yours with a new code.',
+                    'Your terminal shows the same fingerprint. If they differ, this is not your project: revoke it from its page and link yours with a new code.',
                 ),
             ).toBeTruthy();
-            expect(await screen.findByText("Waiting for the engine's first heartbeat.")).toBeTruthy();
+            expect(await screen.findByText("Waiting for the project's first heartbeat.")).toBeTruthy();
             await expectNoAxeViolations(app.container);
 
             await elapse(LINK_POLL_MS);
-            expect(await screen.findByText('Engine online, version 1.4.2.', { selector: 'li p' })).toBeTruthy();
+            expect(await screen.findByText('Project online, version 1.4.2.', { selector: 'li p' })).toBeTruthy();
             expect(progress().dataset['linkState']).toBe('owner-pending');
             expect(screen.getByText(OWNER_TEXT)).toBeTruthy();
             expect(steps()).toEqual(['install:done', 'connect:done', 'finish:current']);
-            expect(screen.queryByRole('link', { name: /^Open engine/ })).toBeNull();
+            expect(screen.queryByRole('link', { name: /^Open project/ })).toBeNull();
 
             await elapse(LINK_POLL_MS);
-            expect(await screen.findByRole('heading', { name: 'Your engine is ready', level: 2 })).toBeTruthy();
+            expect(await screen.findByRole('heading', { name: 'Your project is ready', level: 2 })).toBeTruthy();
             expect(steps()).toEqual(['install:done', 'connect:done', 'finish:done']);
             expect(screen.getByText('Setup details').closest('details')?.open).toBe(false);
             expect(progress().dataset['linkState']).toBe('ready');
             expect(screen.getByText('Owner set up.')).toBeTruthy();
-            const open = screen.getByRole('link', { name: `Open engine ${ENGINE_ID.slice(0, 8)}…, in a new tab` });
+            const open = screen.getByRole('link', { name: `Open project ${ENGINE_ID.slice(0, 8)}…, in a new tab` });
             expect(open.getAttribute('href')).toBe(`https://${HOSTNAME}/`);
             expect(open.getAttribute('target')).toBe('_blank');
             expect(open.getAttribute('rel')).toBe('noopener noreferrer');
             expect(open.getAttribute('referrerpolicy')).toBe('no-referrer');
-            expect(screen.getByRole('link', { name: 'Back to engines' }).getAttribute('href')).toBe('/engines');
+            expect(screen.getByRole('link', { name: 'Back to projects' }).getAttribute('href')).toBe('/engines');
             await expectNoAxeViolations(app.container);
 
             const calls = app.api.calls.length;
@@ -572,28 +572,28 @@ describe('new engine page', () => {
             expect(screen.queryByRole('link', { name: /^Continue setup/ })).toBeNull();
 
             await elapse(LINK_POLL_MS);
-            expect(await screen.findByRole('heading', { name: 'Your engine is connected', level: 2 })).toBeTruthy();
+            expect(await screen.findByRole('heading', { name: 'Your project is connected', level: 2 })).toBeTruthy();
             expect(progress().dataset['linkState']).toBe('ready');
             expect(
                 screen.getByText(
-                    "Finish setting it up on the engine. It keeps what you've done so far, so you can also come back to it later.",
+                    "Finish setting it up on the project. It keeps what you've done so far, so you can also come back to it later.",
                 ),
             ).toBeTruthy();
-            expect(progress().querySelector('[aria-live="polite"]')?.textContent).toBe('Your engine is connected');
+            expect(progress().querySelector('[aria-live="polite"]')?.textContent).toBe('Your project is connected');
             const link = screen.getByRole('link', {
-                name: `Continue setup on engine ${ENGINE_ID.slice(0, 8)}…, in a new tab`,
+                name: `Continue setup on project ${ENGINE_ID.slice(0, 8)}…, in a new tab`,
             });
             expect(link.getAttribute('href')).toBe(`https://${HOSTNAME}/`);
             expect(link.getAttribute('rel')).toBe('noopener noreferrer');
-            expect(screen.queryByRole('link', { name: /^Open engine/ })).toBeNull();
-            expect(screen.queryByText('Your engine is ready')).toBeNull();
+            expect(screen.queryByRole('link', { name: /^Open project/ })).toBeNull();
+            expect(screen.queryByText('Your project is ready')).toBeNull();
             expect(steps()).toEqual(['install:done', 'connect:done', 'finish:current']);
             await expectNoAxeViolations(app.container);
 
             await elapse(LINK_POLL_MS);
-            expect(await screen.findByRole('heading', { name: 'Your engine is ready', level: 2 })).toBeTruthy();
+            expect(await screen.findByRole('heading', { name: 'Your project is ready', level: 2 })).toBeTruthy();
             expect(steps()).toEqual(['install:done', 'connect:done', 'finish:done']);
-            expect(screen.getByRole('link', { name: /^Open engine/ })).toBeTruthy();
+            expect(screen.getByRole('link', { name: /^Open project/ })).toBeTruthy();
         });
 
         it('ticks the rows in their order, whichever arrives first, and says how many relays reach it', async () => {
@@ -629,7 +629,7 @@ describe('new engine page', () => {
                 session: OWNER,
                 script: linking([LINKED], [{ ...NO_HEARTBEAT, reachableRelays: 0 }]),
             });
-            expect(await screen.findByText("Waiting for the engine's first heartbeat.")).toBeTruthy();
+            expect(await screen.findByText("Waiting for the project's first heartbeat.")).toBeTruthy();
             expect(document.querySelector('[data-step="reachable"]')).toBeNull();
             expect(screen.queryByText('Not reachable: no relay connection')).toBeNull();
         });
@@ -648,7 +648,7 @@ describe('new engine page', () => {
             expect(screen.queryByText(/^Nothing yet\?/)).toBeNull();
             await elapse(2000);
             expect(
-                await screen.findByText('Nothing yet? The engine reports problems in the terminal. Common causes:'),
+                await screen.findByText('Nothing yet? The project reports problems in the terminal. Common causes:'),
             ).toBeTruthy();
             for (const name of ['No outbound HTTPS', 'A proxy in the way', 'An expired code']) {
                 expect(screen.getByRole('link', { name: new RegExp(name) }).getAttribute('href')).toMatch(
@@ -665,13 +665,13 @@ describe('new engine page', () => {
                 fakeTimers: fake,
                 script: linking([LINKED], [NO_HEARTBEAT]),
             });
-            expect(await screen.findByText("Waiting for the engine's first heartbeat.")).toBeTruthy();
+            expect(await screen.findByText("Waiting for the project's first heartbeat.")).toBeTruthy();
             await elapse(NO_HEARTBEAT_HINT_MS - 2000);
             expect(screen.queryByText(/^Linked, but no heartbeat yet/)).toBeNull();
             await elapse(2000);
             expect(
                 await screen.findByText(
-                    'Linked, but no heartbeat yet. The engine may still be downloading or starting. If the terminal shows an error, it says what to do.',
+                    'Linked, but no heartbeat yet. The project may still be downloading or starting. If the terminal shows an error, it says what to do.',
                 ),
             ).toBeTruthy();
         });
@@ -682,7 +682,7 @@ describe('new engine page', () => {
             const live = progress().querySelectorAll('[aria-live="polite"]');
             expect(live).toHaveLength(1);
             expect(live[0]?.textContent).toBe(
-                "Engine online. Finish in the browser window that opened on the engine's computer, or run setup-link there.",
+                "Project online. Finish in the browser window that opened on the project's computer, or run setup-link there.",
             );
             expect(document.querySelectorAll('[aria-live="polite"] [data-step]')).toHaveLength(0);
         });
@@ -699,7 +699,7 @@ describe('new engine page', () => {
                 },
             });
             expect(
-                await screen.findByText(/^Waiting for your engine to link\. This page updates by itself\./),
+                await screen.findByText(/^Waiting for your project to link\. This page updates by itself\./),
             ).toBeTruthy();
             await elapse(LINK_POLL_MS);
             expect(await screen.findByText('The link code expired', { selector: 'p.font-semibold' })).toBeTruthy();
@@ -742,7 +742,7 @@ describe('new engine page', () => {
                 },
             });
             expect(await screen.findByText(OWNER_TEXT)).toBeTruthy();
-            expect(screen.getByText('Engine linked.', { selector: 'p.font-medium' })).toBeTruthy();
+            expect(screen.getByText('Project linked.', { selector: 'p.font-medium' })).toBeTruthy();
             expect(screen.queryByRole('heading', { name: 'Install command' })).toBeNull();
             expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
             expect(app.api.callsTo(apiRoutes.getLinkCode)).toEqual([{ params: { linkCodeId: LINK_ID } }]);
@@ -762,7 +762,7 @@ describe('new engine page', () => {
                     api.on(apiRoutes.renameEngine, ok({ engine: { ...READY, label } }));
                 },
             });
-            expect(await screen.findByText(/so you can tell your engines apart/)).toBeTruthy();
+            expect(await screen.findByText(/so you can tell your projects apart/)).toBeTruthy();
             // Ready: the panel asks for the name; the collapsed setup details do not ask again.
             expect(screen.getAllByRole('textbox', { name: 'Name' })).toHaveLength(1);
             await app.user.type(screen.getByRole('textbox', { name: 'Name' }), 'Staging');
@@ -771,7 +771,7 @@ describe('new engine page', () => {
             expect(app.api.callsTo(apiRoutes.renameEngine)).toEqual([
                 { params: { engineId: ENGINE_ID }, body: { label } },
             ]);
-            expect(await screen.findByRole('link', { name: 'Open engine Staging, in a new tab' })).toBeTruthy();
+            expect(await screen.findByRole('link', { name: 'Open project Staging, in a new tab' })).toBeTruthy();
             await expectNoAxeViolations(app.container);
         });
 
@@ -799,9 +799,9 @@ describe('new engine page', () => {
                     );
                 },
             });
-            expect(await screen.findByRole('link', { name: 'Open engine Northwind, in a new tab' })).toBeTruthy();
+            expect(await screen.findByRole('link', { name: 'Open project Northwind, in a new tab' })).toBeTruthy();
             expect(screen.queryByRole('textbox', { name: 'Name' })).toBeNull();
-            expect(screen.queryByText(/so you can tell your engines apart/)).toBeNull();
+            expect(screen.queryByText(/so you can tell your projects apart/)).toBeNull();
             await expectNoAxeViolations(app.container);
         });
 
@@ -814,7 +814,7 @@ describe('new engine page', () => {
                     scriptProgress(api, [LINKED], [READY]);
                 },
             });
-            expect(await screen.findByText('Your engine is ready', { selector: 'h2' })).toBeTruthy();
+            expect(await screen.findByText('Your project is ready', { selector: 'h2' })).toBeTruthy();
             expect(screen.queryByRole('textbox', { name: 'Name' })).toBeNull();
         });
 

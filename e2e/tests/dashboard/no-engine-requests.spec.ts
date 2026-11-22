@@ -18,13 +18,13 @@ test('while on the dashboard, the browser makes no request to any engine hostnam
     if (report.outcome !== 'registered') throw new Error(`registration: ${report.outcome}`);
 
     const rows = await dashboard.reloadEngineRows();
-    await expect(rows.getByRole('link', { name: /^Open engine/ })).toHaveAttribute(
+    await expect(rows.getByRole('link', { name: /^Open project/ })).toHaveAttribute(
         'href',
         `https://${report.hostname}/`,
     );
     await page.waitForLoadState('networkidle');
     await rows.getByRole('link', { name: `${report.engineId.slice(0, 8)}…`, exact: true }).click();
-    await expect(page.getByRole('button', { name: /^Actions for engine/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Actions for project/ })).toBeVisible();
     await page.waitForLoadState('networkidle');
     for (const path of ['/engines/new', '/billing', '/account', '/engines']) {
         await page.goto(`${DASHBOARD_ORIGIN}${path}`);

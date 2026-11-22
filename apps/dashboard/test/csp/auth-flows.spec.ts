@@ -31,7 +31,7 @@ async function signUp(page: Page, email: string): Promise<void> {
     await requestLink(page, '/continue', email, 'Continue');
     await openEmailLink(page, await outboxLink(page.request, email, 'signup-link'), '/signup');
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
 }
 
 /** Signs out, with the authenticator holding back, so the signed-out screen stays until someone continues. */
@@ -78,13 +78,13 @@ test('sign up, sign out, sign in, add a passkey, remove the first, recover', asy
     await openEmailLink(page, await outboxLink(page.request, email, 'signup-link'), '/signup');
     await checkScreen('/signup passkey step');
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
     await checkScreen('/');
 
     await signOut(page, authenticators, first);
     await checkScreen('/continue signed out');
     await signIn(page, authenticators, first, email);
-    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
 
     await page.getByRole('link', { name: 'Account' }).click();
     await expect(page.getByRole('heading', { name: 'Account', level: 1 })).toBeVisible();
@@ -106,7 +106,7 @@ test('sign up, sign out, sign in, add a passkey, remove the first, recover', asy
 
     await signOut(page, authenticators, second);
     await signIn(page, authenticators, second, email);
-    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
     await signOut(page, authenticators, second);
 
     await authenticators.remove(second);
@@ -182,7 +182,7 @@ test('keyboard only: sign up, sign out and sign in', async ({ page, authenticato
     await openEmailLink(page, await outboxLink(page.request, email, 'signup-link'), '/signup');
     await tabTo(page, focused(page, 'button', 'Create passkey'));
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
 
     await authenticators.answer(id, false);
     await tabTo(page, focused(page, 'button', /^Account menu for /));
@@ -196,7 +196,7 @@ test('keyboard only: sign up, sign out and sign in', async ({ page, authenticato
     // Once it answers again, the authenticator may complete the field's passkey autofill first; otherwise "Use a
     // passkey" opens the picker.
     await authenticators.answer(id, true);
-    const engines = page.getByRole('heading', { name: 'Engines', level: 1 });
+    const engines = page.getByRole('heading', { name: 'Projects', level: 1 });
     await engines.waitFor({ timeout: 5_000 }).catch(() => undefined);
     if (!(await engines.isVisible())) {
         await tabTo(page, focused(page, 'button', 'Use a passkey'));
@@ -262,7 +262,7 @@ test('sign up by following the link on the dev mailbox page (X-06)', async ({
     await message.getByRole('link', { name: /\/signup#/ }).click();
     await expect(page).toHaveURL((url) => url.pathname === '/signup' && url.hash === '');
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
 
     expectNoBrowserErrors(browserReport());
 });

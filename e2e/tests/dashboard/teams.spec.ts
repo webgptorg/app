@@ -78,8 +78,8 @@ async function removeFromTeam(page: Page, email: string): Promise<void> {
     await page.goto(`${DASHBOARD_ORIGIN}/engines`);
     await page.getByRole('link', { name: TEAM, exact: true }).click();
     await page.getByRole('button', { name: `Actions for ${email}` }).click();
-    await page.getByRole('menuitem', { name: 'Remove from engine' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Remove from engine' }).click();
+    await page.getByRole('menuitem', { name: 'Remove from project' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Remove from project' }).click();
 }
 
 async function reloadedRow(page: Page, email: string) {
@@ -128,7 +128,7 @@ test('invite, approve, use the engine, and a dashboard removal ends the session 
     await person.context().close();
 });
 
-test('with dashboard removals switched off, the person stays and the team page says to remove them on the engine', async ({
+test('with dashboard removals switched off, the person stays and the team page says to remove them on the project', async ({
     browser,
     page,
     dashboard,
@@ -154,12 +154,12 @@ test('with dashboard removals switched off, the person stays and the team page s
 
     await test.step('the team page shows the refusal', async () => {
         await expect
-            .poll(async () => (await reloadedRow(page, email)).getByText('remove them on the engine').count(), {
+            .poll(async () => (await reloadedRow(page, email)).getByText('remove them on the project').count(), {
                 timeout: ACKED_WITHIN_MS,
                 intervals: [2_000],
             })
             .toBe(1);
-        await expect((await reloadedRow(page, email)).getByText('Still on the engine')).toBeVisible();
+        await expect((await reloadedRow(page, email)).getByText('Still on the project')).toBeVisible();
     });
 
     expect(await meStatus(person)).toBe(200);

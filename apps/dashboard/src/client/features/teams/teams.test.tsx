@@ -111,9 +111,9 @@ describe('teams list', () => {
                 );
             },
         });
-        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Projects' })).toBeTruthy();
         expect(app.history.location.pathname).toBe('/engines');
-        const list = await screen.findByRole('list', { name: 'Engines' });
+        const list = await screen.findByRole('list', { name: 'Projects' });
         const [first, second] = within(list).getAllByRole('listitem');
         if (first === undefined || second === undefined) throw new Error('two teams');
         expect(within(first).getByText('Online')).toBeTruthy();
@@ -140,10 +140,10 @@ describe('teams list', () => {
                 api.on(apiRoutes.listTeams, ok({ teams: [team()] }));
             },
         });
-        const list = await screen.findByRole('list', { name: 'Engines' });
+        const list = await screen.findByRole('list', { name: 'Projects' });
         const row = within(list).getByRole('listitem');
         expect(await within(row).findByText('Setup not finished')).toBeTruthy();
-        const link = within(row).getByRole('link', { name: 'Continue setup on engine Northwind, in a new tab' });
+        const link = within(row).getByRole('link', { name: 'Continue setup on project Northwind, in a new tab' });
         expect(link.getAttribute('href')).toBe(`https://${ENGINE_ID}.engines.ptbk.test/`);
         expect(within(row).queryByRole('button', { name: 'Open Northwind' })).toBeNull();
         await expectNoAxeViolations(app.container);
@@ -190,7 +190,7 @@ describe('teams list', () => {
                 api.on(apiRoutes.listTeams, ok({ teams: [team()] }));
             },
         });
-        expect(await screen.findByRole('list', { name: 'Engines' })).toBeTruthy();
+        expect(await screen.findByRole('list', { name: 'Projects' })).toBeTruthy();
         expect(screen.queryByText('Unused link codes')).toBeNull();
         expect(app.api.callsTo(apiRoutes.listLinkCodes)).toEqual([]);
     });
@@ -205,7 +205,7 @@ describe('teams list', () => {
             },
         });
         await app.user.click(await screen.findByRole('button', { name: 'Open Northwind' }));
-        expect(await screen.findByText("Opening engines isn't available right now. Try again later.")).toBeTruthy();
+        expect(await screen.findByText("Opening projects isn't available right now. Try again later.")).toBeTruthy();
         expect(app.navigations).toEqual([]);
     });
 
@@ -225,24 +225,24 @@ describe('teams list', () => {
                 );
             },
         });
-        expect(await screen.findByRole('heading', { name: 'No engines yet' })).toBeTruthy();
-        await app.user.click(screen.getByRole('button', { name: 'New engine' }));
-        await app.user.click(screen.getByRole('button', { name: 'Create and link an engine' }));
+        expect(await screen.findByRole('heading', { name: 'No projects yet' })).toBeTruthy();
+        await app.user.click(screen.getByRole('button', { name: 'New project' }));
+        await app.user.click(screen.getByRole('button', { name: 'Create and link a project' }));
         expect(await screen.findByText(/Use letters, digits/)).toBeTruthy();
-        await app.user.type(screen.getByLabelText('Engine name'), 'Northwind');
-        await app.user.click(screen.getByRole('button', { name: 'Create and link an engine' }));
+        await app.user.type(screen.getByLabelText('Project name'), 'Northwind');
+        await app.user.click(screen.getByRole('button', { name: 'Create and link a project' }));
         await waitFor(() => {
             expect(app.history.location.pathname).toBe('/engines/new');
         });
         expect(app.history.location.search).toContain(`team=${TEAM_ID}`);
         expect(app.api.callsTo(apiRoutes.createTeam)).toEqual([{ body: { name: 'Northwind' } }]);
-        expect(await screen.findByRole('heading', { name: 'Link an engine', level: 1 })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Link a project', level: 1 })).toBeTruthy();
     });
 
     it('tells a member in no team whom to ask', async () => {
         renderApp({ path: '/teams', session: MEMBER });
-        expect(await screen.findByRole('heading', { name: "You're not on an engine yet" })).toBeTruthy();
-        expect(screen.queryByRole('button', { name: 'New engine' })).toBeNull();
+        expect(await screen.findByRole('heading', { name: "You're not on a project yet" })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'New project' })).toBeNull();
         expect(screen.queryByRole('link', { name: 'People' })).toBeNull();
     });
 });
@@ -269,7 +269,7 @@ describe('team page', () => {
             },
         });
         expect(await screen.findByText('Setup not finished')).toBeTruthy();
-        expect(screen.getByRole('link', { name: 'Continue setup on engine Northwind, in a new tab' })).toBeTruthy();
+        expect(screen.getByRole('link', { name: 'Continue setup on project Northwind, in a new tab' })).toBeTruthy();
         expect(screen.queryByRole('button', { name: 'Open Northwind' })).toBeNull();
     });
 
@@ -293,14 +293,14 @@ describe('team page', () => {
             ['ada@example.test', 'Not opened yet'],
             ['dana@example.test', 'Invited'],
             ['cy@example.test', 'Removing…'],
-            ['dee@example.test', 'Still on the engine'],
+            ['dee@example.test', 'Still on the project'],
         ] as const) {
             const row = within(people).getByText(email).closest('li');
             expect(row === null ? null : within(row).getByText(state)).toBeTruthy();
         }
         await expectNoAxeViolations(app.container);
 
-        await app.user.click(within(people).getByRole('button', { name: 'Invite to this engine' }));
+        await app.user.click(within(people).getByRole('button', { name: 'Invite to this project' }));
         const dialog = await screen.findByRole('dialog', { name: 'Invite people to Northwind' });
         expect(within(dialog).getByRole('checkbox', { name: 'Northwind' })).toHaveProperty('checked', true);
         await app.user.click(within(dialog).getByRole('button', { name: 'Send invitations' }));
@@ -309,7 +309,7 @@ describe('team page', () => {
         await app.user.selectOptions(within(dialog).getByLabelText('Role in the organization'), 'admin');
         await app.user.click(within(dialog).getByRole('button', { name: 'Send invitations' }));
         expect(await screen.findByText('Invitations sent: 1')).toBeTruthy();
-        expect(screen.getByText(/what the engine has told the dashboard/)).toBeTruthy();
+        expect(screen.getByText(/what the project has told the dashboard/)).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.createInvites)).toEqual([
             { body: { emails: ['eve@example.test'], role: 'admin', teamIds: [TEAM_ID] } },
         ]);
@@ -326,18 +326,18 @@ describe('team page', () => {
             },
         });
         await app.user.click(await screen.findByRole('button', { name: 'Actions for bob@example.test' }));
-        await app.user.click(screen.getByRole('menuitem', { name: 'Remove from engine' }));
-        const confirm = await screen.findByRole('dialog', { name: 'Remove bob@example.test from the engine?' });
-        await app.user.click(within(confirm).getByRole('button', { name: 'Remove from engine' }));
-        expect(await screen.findByText('bob@example.test removed from the engine')).toBeTruthy();
+        await app.user.click(screen.getByRole('menuitem', { name: 'Remove from project' }));
+        const confirm = await screen.findByRole('dialog', { name: 'Remove bob@example.test from the project?' });
+        await app.user.click(within(confirm).getByRole('button', { name: 'Remove from project' }));
+        expect(await screen.findByText('bob@example.test removed from the project')).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.removeTeamMember)).toEqual([
             { params: { teamId: TEAM_ID, userId: 'b1bbbbbbbbbbbbbbbbbbbbbbbb' } },
         ]);
         await app.user.click(screen.getByRole('button', { name: 'Actions for ada@example.test' }));
-        await app.user.click(screen.getByRole('menuitem', { name: 'Leave engine' }));
-        const leave = await screen.findByRole('dialog', { name: 'Leave this engine?' });
-        await app.user.click(within(leave).getByRole('button', { name: 'Leave engine' }));
-        expect(await screen.findByText('You left the engine')).toBeTruthy();
+        await app.user.click(screen.getByRole('menuitem', { name: 'Leave project' }));
+        const leave = await screen.findByRole('dialog', { name: 'Leave this project?' });
+        await app.user.click(within(leave).getByRole('button', { name: 'Leave project' }));
+        expect(await screen.findByText('You left the project')).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.leaveTeam)).toEqual([{ params: { teamId: TEAM_ID } }]);
         // Nobody can be removed from an invitation or a removal in progress here.
         expect(screen.queryByRole('button', { name: 'Actions for dana@example.test' })).toBeNull();
@@ -387,8 +387,8 @@ describe('team page', () => {
         });
         await app.user.click(await screen.findByRole('button', { name: 'Actions for Northwind' }));
         await app.user.click(screen.getByRole('menuitem', { name: 'Rename' }));
-        const rename = await screen.findByRole('dialog', { name: 'Rename engine' });
-        await app.user.type(within(rename).getByLabelText('Engine name'), ' EU');
+        const rename = await screen.findByRole('dialog', { name: 'Rename project' });
+        await app.user.type(within(rename).getByLabelText('Project name'), ' EU');
         await app.user.click(within(rename).getByRole('button', { name: 'Save' }));
         await waitFor(() => {
             expect(app.api.callsTo(apiRoutes.renameTeam)).toEqual([
@@ -396,10 +396,10 @@ describe('team page', () => {
             ]);
         });
         await app.user.click(screen.getByRole('button', { name: 'Actions for Northwind' }));
-        await app.user.click(screen.getByRole('menuitem', { name: 'Delete engine' }));
+        await app.user.click(screen.getByRole('menuitem', { name: 'Delete project' }));
         const remove = await screen.findByRole('dialog', { name: 'Delete Northwind?' });
         await app.user.type(within(remove).getByRole('textbox'), 'Northwind');
-        await app.user.click(within(remove).getByRole('button', { name: 'Delete engine' }));
+        await app.user.click(within(remove).getByRole('button', { name: 'Delete project' }));
         await waitFor(() => {
             expect(app.history.location.pathname).toBe('/engines');
         });
@@ -417,13 +417,13 @@ describe('team page', () => {
                 );
             },
         });
-        const link = await screen.findByRole('link', { name: 'Link an engine' });
+        const link = await screen.findByRole('link', { name: 'Link a project' });
         expect(link.getAttribute('href')).toBe(`/engines/new?team=${TEAM_ID}`);
-        expect(screen.queryByText(/what the engine has told the dashboard/)).toBeNull();
+        expect(screen.queryByText(/what the project has told the dashboard/)).toBeNull();
         expect(screen.queryByRole('button', { name: /^Open/ })).toBeNull();
         // No engine to name yet: the invitation is to the team.
         expect(screen.getByRole('button', { name: 'Invite people' })).toBeTruthy();
-        expect(screen.queryByRole('button', { name: 'Invite to this engine' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Invite to this project' })).toBeNull();
         app.unmount();
 
         renderApp({
@@ -431,7 +431,7 @@ describe('team page', () => {
             session: MEMBER,
             script: (api) => api.on(apiRoutes.getTeam, problem(404, 'not-found')),
         });
-        expect(await screen.findByRole('heading', { name: 'Engine not found' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Project not found' })).toBeTruthy();
     });
 });
 
@@ -469,7 +469,7 @@ describe('people page', () => {
             },
         });
         expect(await screen.findByText('Northwind')).toBeTruthy();
-        expect(screen.getByText('No engines')).toBeTruthy();
+        expect(screen.getByText('No projects')).toBeTruthy();
         await expectNoAxeViolations(app.container);
         await app.user.click(screen.getByRole('button', { name: 'Actions for bob@example.test' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Admin' }));
@@ -552,7 +552,7 @@ describe('invitation page', () => {
         await app.user.click(screen.getByRole('button', { name: 'Join Acme' }));
         expect(await screen.findByRole('heading', { name: "You're in" })).toBeTruthy();
         expect(
-            screen.getByText('Next, confirm a passkey for the engine itself: it has its own secure address.'),
+            screen.getByText('Next, confirm a passkey for the project itself: it has its own secure address.'),
         ).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.inviteJoinOptions)).toEqual([{ body: { token: TOKEN } }]);
         expect(app.passkeys.register).toHaveBeenCalledWith(REGISTRATION_OPTIONS);
@@ -671,7 +671,7 @@ describe('invitation page', () => {
             },
         });
         await app.user.click(await screen.findByRole('button', { name: 'Join Acme' }));
-        expect(await screen.findByText(/No engine is set up for you yet/)).toBeTruthy();
+        expect(await screen.findByText(/No project is set up for you yet/)).toBeTruthy();
         expect(screen.getByRole('link', { name: 'Go to the dashboard' })).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.setActiveOrg)).toEqual([{ body: { orgId: ORG_ID } }]);
         // The token is spent: asking again would flash "no longer valid".
@@ -712,7 +712,7 @@ describe('invitation page', () => {
             },
         });
         await app.user.click(await screen.findByRole('link', { name: 'Stay signed in as ada@example.test' }));
-        expect(await screen.findByRole('heading', { name: 'Engines', level: 1 })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Projects', level: 1 })).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.signout)).toEqual([]);
     });
 
@@ -767,8 +767,8 @@ describe('invitations offered after sign-in', () => {
         });
         const offers = await screen.findByRole('list', { name: 'Invitations' });
         expect(within(offers).getByText("You're invited to Acme by boss@example.test")).toBeTruthy();
-        expect(within(offers).getByText('Engines: Northwind')).toBeTruthy();
-        expect(await screen.findByRole('heading', { name: "You're not on an engine yet" })).toBeTruthy();
+        expect(within(offers).getByText('Projects: Northwind')).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: "You're not on a project yet" })).toBeTruthy();
         await expectNoAxeViolations(app.container);
 
         await app.user.click(within(offers).getByRole('button', { name: 'Join' }));

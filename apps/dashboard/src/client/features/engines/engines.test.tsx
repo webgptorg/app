@@ -33,12 +33,12 @@ const OWNER_PERMISSIONS = {
 };
 const OWNER = session(OWNER_PERMISSIONS);
 const OTHER_ID = 'q4ndy7ejw3zkp6ftr2hcm5sxlg';
-const OPEN_NAME = /^Open engine/;
-const ENGINE_ACTIONS = /^Actions for engine/;
+const OPEN_NAME = /^Open project/;
+const ENGINE_ACTIONS = /^Actions for project/;
 
 async function openRevoke(app: ReturnType<typeof renderApp>): Promise<void> {
     await app.user.click(await screen.findByRole('button', { name: ENGINE_ACTIONS }));
-    await app.user.click(screen.getByRole('menuitem', { name: 'Revoke engine' }));
+    await app.user.click(screen.getByRole('menuitem', { name: 'Revoke project' }));
 }
 
 function engines(...list: EngineView[]) {
@@ -88,23 +88,23 @@ describe('engine list', () => {
 
     it('is still reachable by its address, without a navigation entry of its own (teams replace it)', async () => {
         renderApp({ path: '/engines/all', session: OWNER, script: engines(engineView()) });
-        expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Your projects' })).toBeTruthy();
         // The only way to the engines is the breadcrumb back to the list that replaced this page.
-        const [crumb, ...others] = screen.getAllByRole('link', { name: 'Engines' });
+        const [crumb, ...others] = screen.getAllByRole('link', { name: 'Projects' });
         expect(others).toEqual([]);
         expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('link')).toBe(crumb);
     });
 
     it('shows an empty state instead of an empty table, with linking an engine as the next step', async () => {
         const app = renderApp({ path: '/engines/all', session: OWNER });
-        expect(await screen.findByRole('heading', { name: 'No engines yet', level: 2 })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'No projects yet', level: 2 })).toBeTruthy();
         expect(screen.queryByRole('table')).toBeNull();
         expect(screen.queryByRole('columnheader')).toBeNull();
         expect(screen.queryByRole('button', { name: 'Columns' })).toBeNull();
-        expect(screen.getAllByRole('link', { name: 'Link an engine' })).toHaveLength(1);
+        expect(screen.getAllByRole('link', { name: 'Link a project' })).toHaveLength(1);
         await expectNoAxeViolations(app.container);
-        await app.user.click(screen.getByRole('link', { name: 'Link an engine' }));
-        expect(await screen.findByRole('heading', { name: 'Link an engine', level: 1 })).toBeTruthy();
+        await app.user.click(screen.getByRole('link', { name: 'Link a project' }));
+        expect(await screen.findByRole('heading', { name: 'Link a project', level: 1 })).toBeTruthy();
         expect(app.history.location.pathname).toBe('/engines/new');
     });
 
@@ -123,7 +123,7 @@ describe('engine list', () => {
             ),
         });
         await screen.findAllByText('Online');
-        const table = screen.getByRole('table', { name: 'Engines of this organization' });
+        const table = screen.getByRole('table', { name: 'Projects of this organization' });
         const [, first, second] = within(table).getAllByRole('row');
         if (first === undefined || second === undefined) throw new Error('two rows');
         const row = within(first);
@@ -145,7 +145,7 @@ describe('engine list', () => {
             within(table)
                 .getAllByRole('columnheader')
                 .map((header) => header.textContent),
-        ).toEqual(['Engine', 'Status', 'Address', 'Version']);
+        ).toEqual(['Project', 'Status', 'Address', 'Version']);
         expect(within(second).getByText('Waiting for first heartbeat')).toBeTruthy();
         expect(within(second).getByText('Never')).toBeTruthy();
         expect(within(second).queryByText('Update available')).toBeNull();
@@ -181,7 +181,7 @@ describe('engine list', () => {
         });
         expect(await screen.findByText('Status unknown')).toBeTruthy();
         expect(screen.getByText('Online')).toBeTruthy();
-        expect(screen.queryByText('The engines could not be loaded.')).toBeNull();
+        expect(screen.queryByText('The projects could not be loaded.')).toBeNull();
         expect(screen.queryByText('Something went wrong')).toBeNull();
     });
 
@@ -199,7 +199,7 @@ describe('engine list', () => {
             ),
         });
         expect(await screen.findByText('Suspended')).toBeTruthy();
-        await app.user.click(screen.getByRole('button', { name: 'Show revoked engines (1)' }));
+        await app.user.click(screen.getByRole('button', { name: 'Show revoked projects (1)' }));
         expect(screen.getByText('Revoked')).toBeTruthy();
         expect(screen.queryByRole('link', { name: OPEN_NAME })).toBeNull();
     });
@@ -219,13 +219,13 @@ describe('engine list', () => {
             ),
         });
         await screen.findByText('Offline');
-        const table = screen.getByRole('table', { name: 'Engines of this organization' });
+        const table = screen.getByRole('table', { name: 'Projects of this organization' });
         const names = () =>
             within(table)
                 .getAllByRole('link', { name: /…$/ })
                 .map((link) => link.textContent);
         expect(names()).toEqual(['ffffffff…', 'nnnnnnnn…']);
-        const toggle = screen.getByRole('button', { name: 'Show revoked engines (1)' });
+        const toggle = screen.getByRole('button', { name: 'Show revoked projects (1)' });
         expect(toggle.getAttribute('aria-pressed')).toBe('false');
         await app.user.click(toggle);
         expect(toggle.getAttribute('aria-pressed')).toBe('true');
@@ -239,7 +239,7 @@ describe('engine list', () => {
             script: engines(engineView({ status: 'suspended', suspendedBy: 'owner' })),
         });
         expect(await screen.findByText('Revoked')).toBeTruthy();
-        expect(screen.queryByRole('button', { name: /Show revoked engines/ })).toBeNull();
+        expect(screen.queryByRole('button', { name: /Show revoked projects/ })).toBeNull();
     });
 
     it('mutes what an offline engine last reported and drops its stale update notice', async () => {
@@ -252,7 +252,7 @@ describe('engine list', () => {
     it('opens an engine at its exact address in a new tab, without opener or referrer', async () => {
         renderApp({ path: '/engines/all', session: OWNER, script: engines(engineView()) });
         await screen.findByText('Online');
-        const open = screen.getByRole('link', { name: `Open engine ${ENGINE_ID.slice(0, 8)}…, in a new tab` });
+        const open = screen.getByRole('link', { name: `Open project ${ENGINE_ID.slice(0, 8)}…, in a new tab` });
         expect(open.getAttribute('href')).toBe(`https://${ENGINE_ID}.${ENGINE_DOMAIN}/`);
         expect(open.getAttribute('target')).toBe('_blank');
         expect(open.getAttribute('rel')).toBe('noopener noreferrer');
@@ -266,7 +266,7 @@ describe('engine list', () => {
             // A contract breach is not retried, so the error shows at once.
             script: (api) => api.on(apiRoutes.listEngines, { kind: 'invalid-response', status: 200 }),
         });
-        expect(await screen.findByText('The engines could not be loaded.')).toBeTruthy();
+        expect(await screen.findByText('The projects could not be loaded.')).toBeTruthy();
         app.api.on(apiRoutes.listEngines, ok({ engines: [engineView()] }));
         await app.user.click(screen.getByRole('button', { name: 'Try again' }));
         expect(await screen.findByText('Online')).toBeTruthy();
@@ -274,13 +274,13 @@ describe('engine list', () => {
 
     it('offers no way to link an engine on the empty list without engine.link', async () => {
         renderApp({ path: '/engines/all', session: session({ permissions: ['org.read', 'engine.read'] }) });
-        expect(await screen.findByRole('heading', { name: 'No engines yet', level: 2 })).toBeTruthy();
-        expect(screen.queryByRole('link', { name: 'Link an engine' })).toBeNull();
+        expect(await screen.findByRole('heading', { name: 'No projects yet', level: 2 })).toBeTruthy();
+        expect(screen.queryByRole('link', { name: 'Link a project' })).toBeNull();
     });
 
     it('tells a role without engine.read that it cannot see engines, without asking the API', async () => {
         const app = renderApp({ path: '/engines/all', session: session({ permissions: ['org.read'] }) });
-        expect(await screen.findByText('Your role in this organization cannot see its engines.')).toBeTruthy();
+        expect(await screen.findByText('Your role in this organization cannot see its projects.')).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.listEngines)).toHaveLength(0);
     });
 
@@ -305,7 +305,7 @@ describe('engine page', () => {
         expect(await screen.findByRole('heading', { name: `${ENGINE_ID.slice(0, 8)}…`, level: 1 })).toBeTruthy();
         expect(
             screen.getByText(
-                "The engine's sign-in page and its Security page show the same pattern and code. If they differ, you are not on this engine, so enter nothing there.",
+                "The project's sign-in page and its Security page show the same pattern and code. If they differ, you are not on this project, so enter nothing there.",
             ),
         ).toBeTruthy();
         expect(screen.getByText(ENGINE_ID)).toBeTruthy();
@@ -340,13 +340,13 @@ describe('engine page', () => {
             session: OWNER,
             script: (api) => api.on(apiRoutes.getEngine, problem(404, 'not-found')),
         });
-        expect(await screen.findByRole('heading', { name: 'Engine not found', level: 1 })).toBeTruthy();
-        expect(screen.getByText('This engine does not exist in this organization.')).toBeTruthy();
-        await app.user.click(screen.getByRole('link', { name: 'Go to your engines' }));
+        expect(await screen.findByRole('heading', { name: 'Project not found', level: 1 })).toBeTruthy();
+        expect(screen.getByText('This project does not exist in this organization.')).toBeTruthy();
+        await app.user.click(screen.getByRole('link', { name: 'Go to your projects' }));
         expect(app.history.location.pathname).toBe('/engines');
         app.unmount();
         const invalid = renderApp({ path: '/engines/not-an-engine', session: OWNER });
-        expect(await screen.findByRole('heading', { name: 'Engine not found', level: 1 })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Project not found', level: 1 })).toBeTruthy();
         expect(invalid.api.callsTo(apiRoutes.getEngine)).toHaveLength(0);
     });
 
@@ -371,7 +371,7 @@ describe('engine page', () => {
             session: OWNER,
             script: engine(engineView({ status: 'suspended', suspendedBy: 'owner' })),
         });
-        expect(await screen.findByText(/You revoked this engine/)).toBeTruthy();
+        expect(await screen.findByText(/You revoked this project/)).toBeTruthy();
         expect(screen.queryByRole('link', { name: OPEN_NAME })).toBeNull();
         expect(screen.queryByRole('button', { name: ENGINE_ACTIONS })).toBeNull();
     });
@@ -385,7 +385,7 @@ describe('engine page', () => {
                 api.on(apiRoutes.getInstallGuide, ok({ url: INSTALL_GUIDE_URL }));
             },
         });
-        const banner = await screen.findByText('This engine is not reporting');
+        const banner = await screen.findByText('This project is not reporting');
         // A warning, not a tip: announced as an alert.
         expect(banner.closest('[role="alert"]')).not.toBeNull();
         expect(screen.getByText('If its server is up, run this on it:')).toBeTruthy();
@@ -427,12 +427,12 @@ describe('engine page', () => {
     it("keeps revocation in the engine's overflow menu, never as a button on the page", async () => {
         const app = renderApp({ path: `/engines/${ENGINE_ID}`, session: OWNER, script: engine(engineView()) });
         expect(await screen.findByRole('heading', { name: 'Last heartbeat' })).toBeTruthy();
-        expect(screen.queryByRole('button', { name: 'Revoke engine' })).toBeNull();
-        await app.user.click(screen.getByRole('button', { name: `Actions for engine ${ENGINE_ID.slice(0, 8)}…` }));
-        const item = screen.getByRole('menuitem', { name: 'Revoke engine' });
+        expect(screen.queryByRole('button', { name: 'Revoke project' })).toBeNull();
+        await app.user.click(screen.getByRole('button', { name: `Actions for project ${ENGINE_ID.slice(0, 8)}…` }));
+        const item = screen.getByRole('menuitem', { name: 'Revoke project' });
         expect(item.className).toContain('menu-danger');
         await app.user.click(item);
-        expect(await screen.findByRole('dialog', { name: `Revoke engine ${ENGINE_ID.slice(0, 8)}…?` })).toBeTruthy();
+        expect(await screen.findByRole('dialog', { name: `Revoke project ${ENGINE_ID.slice(0, 8)}…?` })).toBeTruthy();
     });
 
     it('offers revocation only with engine.revoke', async () => {
@@ -464,9 +464,9 @@ describe('engine name', () => {
         expect(await screen.findByRole('link', { name: `${OTHER_ID.slice(0, 8)}…` })).toBeTruthy();
         await app.user.click(screen.getByRole('link', { name: LABEL }));
         expect(await screen.findByRole('heading', { name: LABEL, level: 1 })).toBeTruthy();
-        expect(screen.getByRole('link', { name: `Open engine ${LABEL}, in a new tab` })).toBeTruthy();
+        expect(screen.getByRole('link', { name: `Open project ${LABEL}, in a new tab` })).toBeTruthy();
         await openRevoke(app);
-        const dialog = await screen.findByRole('dialog', { name: `Revoke engine ${LABEL}?` });
+        const dialog = await screen.findByRole('dialog', { name: `Revoke project ${LABEL}?` });
         expect(within(dialog).getByText(`Type ${ENGINE_ID.slice(0, 8)} to confirm`)).toBeTruthy();
     });
 
@@ -506,7 +506,7 @@ describe('engine name', () => {
                 );
             },
         });
-        await app.user.click(await screen.findByRole('button', { name: 'Invite to this engine' }));
+        await app.user.click(await screen.findByRole('button', { name: 'Invite to this project' }));
         const dialog = await screen.findByRole('dialog', { name: 'Invite people to Northwind' });
         expect(within(dialog).getByRole('checkbox', { name: 'Northwind' })).toHaveProperty('checked', true);
         expect(within(dialog).getByRole('checkbox', { name: 'Contoso' })).toHaveProperty('checked', false);
@@ -529,7 +529,7 @@ describe('engine name', () => {
             },
         });
         expect(await screen.findByRole('heading', { name: 'Northwind', level: 1 })).toBeTruthy();
-        expect(screen.queryByRole('button', { name: 'Invite to this engine' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Invite to this project' })).toBeNull();
         app.unmount();
 
         renderApp({
@@ -541,7 +541,7 @@ describe('engine name', () => {
             },
         });
         expect(await screen.findByRole('heading', { name: 'Northwind', level: 1 })).toBeTruthy();
-        expect(screen.queryByRole('button', { name: 'Invite to this engine' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Invite to this project' })).toBeNull();
     });
 
     it('opens through an access ticket for someone in the engine’s team, as the list does', async () => {
@@ -559,7 +559,7 @@ describe('engine name', () => {
         await waitFor(() => {
             expect(app.navigations).toEqual([ticket]);
         });
-        expect(screen.queryByRole('link', { name: /^Open engine/ })).toBeNull();
+        expect(screen.queryByRole('link', { name: /^Open project/ })).toBeNull();
     });
 
     it('keeps the plain link for someone outside the engine’s team', async () => {
@@ -571,7 +571,7 @@ describe('engine name', () => {
                 api.on(apiRoutes.listTeams, ok({ teams: [{ ...teamWith('Northwind'), isMember: false }] }));
             },
         });
-        expect(await screen.findByRole('link', { name: 'Open engine Northwind, in a new tab' })).toBeTruthy();
+        expect(await screen.findByRole('link', { name: 'Open project Northwind, in a new tab' })).toBeTruthy();
     });
 
     it('keeps the engine label for a team only named after the engine’s hostname', async () => {
@@ -605,7 +605,7 @@ describe('engine name', () => {
             },
         });
         await app.user.click(await screen.findByRole('button', { name: 'Name it' }));
-        let dialog = await screen.findByRole('dialog', { name: 'Name this engine' });
+        let dialog = await screen.findByRole('dialog', { name: 'Name this project' });
         const field = within(dialog).getByRole('textbox', { name: 'Name' });
         await app.user.type(field, '<b>Prod</b>');
         await app.user.click(within(dialog).getByRole('button', { name: 'Save name' }));
@@ -622,10 +622,10 @@ describe('engine name', () => {
             { params: { engineId: ENGINE_ID }, body: { label: LABEL } },
         ]);
         expect(await screen.findByRole('heading', { name: LABEL, level: 1 })).toBeTruthy();
-        expect(screen.queryByRole('dialog', { name: 'Name this engine' })).toBeNull();
+        expect(screen.queryByRole('dialog', { name: 'Name this project' })).toBeNull();
 
         await app.user.click(screen.getByRole('button', { name: 'Rename' }));
-        dialog = await screen.findByRole('dialog', { name: 'Rename engine' });
+        dialog = await screen.findByRole('dialog', { name: 'Rename project' });
         await app.user.clear(within(dialog).getByRole('textbox', { name: 'Name' }));
         await app.user.click(within(dialog).getByRole('button', { name: 'Save name' }));
         expect(await screen.findByText('Name removed')).toBeTruthy();
@@ -643,17 +643,17 @@ describe('engine name', () => {
             script: engine(engineView({ label: LABEL })),
         });
         await app.user.click(await screen.findByRole('button', { name: 'Rename' }));
-        let dialog = await screen.findByRole('dialog', { name: 'Rename engine' });
+        let dialog = await screen.findByRole('dialog', { name: 'Rename project' });
         expect(within(dialog).getByRole<HTMLInputElement>('textbox', { name: 'Name' }).value).toBe(LABEL);
         await app.user.click(within(dialog).getByRole('button', { name: 'Save name' }));
         await waitFor(() => {
-            expect(screen.queryByRole('dialog', { name: 'Rename engine' })).toBeNull();
+            expect(screen.queryByRole('dialog', { name: 'Rename project' })).toBeNull();
         });
         await app.user.click(screen.getByRole('button', { name: 'Rename' }));
-        dialog = await screen.findByRole('dialog', { name: 'Rename engine' });
+        dialog = await screen.findByRole('dialog', { name: 'Rename project' });
         await app.user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
         await waitFor(() => {
-            expect(screen.queryByRole('dialog', { name: 'Rename engine' })).toBeNull();
+            expect(screen.queryByRole('dialog', { name: 'Rename project' })).toBeNull();
         });
         expect(app.api.callsTo(apiRoutes.renameEngine)).toEqual([]);
     });
@@ -828,7 +828,7 @@ describe('revoke', () => {
 
     async function confirmIn(app: ReturnType<typeof revokable>, button: string | RegExp) {
         await openRevoke(app);
-        const dialog = await screen.findByRole('dialog', { name: /^Revoke engine/ });
+        const dialog = await screen.findByRole('dialog', { name: /^Revoke project/ });
         await app.user.type(within(dialog).getByRole('textbox'), ENGINE_ID.slice(0, 8));
         await app.user.click(within(dialog).getByRole('button', { name: button }));
         return dialog;
@@ -837,7 +837,7 @@ describe('revoke', () => {
     it('states the consequence and sends the request only after the engine ID’s first characters are typed', async () => {
         const app = revokable();
         await openRevoke(app);
-        const dialog = await screen.findByRole('dialog', { name: `Revoke engine ${ENGINE_ID.slice(0, 8)}…?` });
+        const dialog = await screen.findByRole('dialog', { name: `Revoke project ${ENGINE_ID.slice(0, 8)}…?` });
         expect(within(dialog).getByText(/within minutes. This cannot be undone/)).toBeTruthy();
         expect(
             within(dialog)
@@ -853,19 +853,19 @@ describe('revoke', () => {
         await expectNoAxeViolations(dialog);
         await app.user.type(within(dialog).getByRole('textbox'), ENGINE_ID.charAt(7));
         await app.user.click(confirm);
-        expect(await screen.findByText('Engine revoked')).toBeTruthy();
+        expect(await screen.findByText('Project revoked')).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.revokeEngine)).toEqual([{ params: { engineId: ENGINE_ID } }]);
         await waitFor(() => {
-            expect(screen.queryByRole('dialog', { name: /Revoke engine/ })).toBeNull();
+            expect(screen.queryByRole('dialog', { name: /Revoke project/ })).toBeNull();
         });
-        expect(await screen.findByText(/You revoked this engine/)).toBeTruthy();
+        expect(await screen.findByText(/You revoked this project/)).toBeTruthy();
         expect(screen.queryByRole('button', { name: ENGINE_ACTIONS })).toBeNull();
     });
 
     it('runs the passkey check from the confirm button, without a second dialog on top', async () => {
         const app = revokable();
         await confirmIn(app, 'Revoke with passkey');
-        expect(await screen.findByText('Engine revoked')).toBeTruthy();
+        expect(await screen.findByText('Project revoked')).toBeTruthy();
         expect(screen.queryByRole('dialog', { name: 'Confirm it is you' })).toBeNull();
         expect(app.passkeys.authenticate).toHaveBeenCalledOnce();
         expect(app.api.callsTo(apiRoutes.stepUpVerify)).toHaveLength(1);
@@ -875,7 +875,7 @@ describe('revoke', () => {
     it('asks for no passkey within the step-up window', async () => {
         const app = revokable({ steppedUpUntil: NOW + 120_000 });
         await confirmIn(app, 'Revoke permanently');
-        expect(await screen.findByText('Engine revoked')).toBeTruthy();
+        expect(await screen.findByText('Project revoked')).toBeTruthy();
         expect(app.passkeys.authenticate).not.toHaveBeenCalled();
         expect(app.api.callsTo(apiRoutes.stepUpOptions)).toEqual([]);
     });
@@ -884,7 +884,7 @@ describe('revoke', () => {
         const app = revokable({ steppedUpUntil: NOW + 120_000 });
         app.api.once(apiRoutes.revokeEngine, problem(403, 'step-up-required'));
         await confirmIn(app, 'Revoke permanently');
-        expect(await screen.findByText('Engine revoked')).toBeTruthy();
+        expect(await screen.findByText('Project revoked')).toBeTruthy();
         expect(screen.queryByRole('dialog', { name: 'Confirm it is you' })).toBeNull();
         expect(app.api.callsTo(apiRoutes.stepUpVerify)).toHaveLength(1);
         expect(app.api.callsTo(apiRoutes.revokeEngine)).toHaveLength(2);
@@ -897,9 +897,9 @@ describe('revoke', () => {
         expect(await within(dialog).findByRole('alert')).toBeTruthy();
         expect(within(dialog).getByText(/passkey prompt was closed/)).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.revokeEngine)).toEqual([]);
-        expect(screen.queryByText('Engine revoked')).toBeNull();
+        expect(screen.queryByText('Project revoked')).toBeNull();
         await app.user.click(within(dialog).getByRole('button', { name: 'Revoke with passkey' }));
-        expect(await screen.findByText('Engine revoked')).toBeTruthy();
+        expect(await screen.findByText('Project revoked')).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.revokeEngine)).toHaveLength(1);
     });
 
@@ -938,7 +938,7 @@ describe('unfinished setup', () => {
         expect(await screen.findByText('Setup not finished')).toBeTruthy();
         expect(screen.queryByText('Online')).toBeNull();
         const link = screen.getByRole('link', {
-            name: `Continue setup on engine ${ENGINE_ID.slice(0, 8)}…, in a new tab`,
+            name: `Continue setup on project ${ENGINE_ID.slice(0, 8)}…, in a new tab`,
         });
         expect(link.getAttribute('href')).toBe(engineAddress);
         expect(screen.queryByRole('link', { name: OPEN_NAME })).toBeNull();
@@ -966,13 +966,13 @@ describe('unfinished setup', () => {
             script: engine(withSetup('pending')),
         });
         expect(await screen.findByText('Setup not finished')).toBeTruthy();
-        expect(screen.getByText('Setup continues on the engine, where you left off.')).toBeTruthy();
+        expect(screen.getByText('Setup continues on the project, where you left off.')).toBeTruthy();
         expect(screen.queryByRole('alert')).toBeNull();
-        const link = screen.getByRole('link', { name: /^Continue setup on engine/ });
+        const link = screen.getByRole('link', { name: /^Continue setup on project/ });
         expect(link.getAttribute('href')).toBe(engineAddress);
         expect(link.className).toBe(buttonClassName('primary', 'md'));
         expect(screen.queryByRole('link', { name: OPEN_NAME })).toBeNull();
-        await app.user.click(screen.getByText('What the engine reported'));
+        await app.user.click(screen.getByText('What the project reported'));
         const setupTerm = screen.getByText('Setup', { selector: 'dt' });
         expect(setupTerm.nextElementSibling?.textContent).toBe('Not finished');
         expectOnlyLinksToEngines();
@@ -1002,7 +1002,7 @@ describe('unfinished setup', () => {
                 );
             },
         });
-        const link = await screen.findByRole('link', { name: 'Continue setup on engine Northwind, in a new tab' });
+        const link = await screen.findByRole('link', { name: 'Continue setup on project Northwind, in a new tab' });
         expect(link.getAttribute('href')).toBe(engineAddress);
         expect(screen.queryByRole('button', { name: 'Open Northwind' })).toBeNull();
         expect(app.api.callsTo(apiRoutes.createAccessTicket)).toEqual([]);
@@ -1017,7 +1017,7 @@ describe('unfinished setup', () => {
         expect(screen.getByText('Online')).toBeTruthy();
         expect(screen.queryByText('Setup not finished')).toBeNull();
         expect(screen.queryByText(/where you left off/)).toBeNull();
-        await app.user.click(screen.getByText('What the engine reported'));
+        await app.user.click(screen.getByText('What the project reported'));
         const setupTerm = screen.queryByText('Setup', { selector: 'dt' });
         expect(setupTerm?.nextElementSibling?.textContent).toBe(setup === 'done' ? 'Finished' : undefined);
     });

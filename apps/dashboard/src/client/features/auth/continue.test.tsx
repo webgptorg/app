@@ -128,7 +128,7 @@ describe('Continue, "Use a passkey"', () => {
         const app = renderApp({ path: '/continue', script: continueScript });
         app.api.on(apiRoutes.getSession, ok(session()));
         await openPasskeyPicker(app);
-        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Projects' })).toBeTruthy();
         expect(app.passkeys.authenticate).toHaveBeenCalledWith(AUTHENTICATION_OPTIONS);
         expect(app.api.callsTo(apiRoutes.signinVerify)).toEqual([{ body: { response: AUTHENTICATION_RESPONSE } }]);
         expect(app.api.callsTo(apiRoutes.signupStart)).toEqual([]);
@@ -179,7 +179,7 @@ describe('Continue, "Use a passkey"', () => {
         expect(await screen.findByText(/not registered with Promptbook/)).toBeTruthy();
         app.api.on(apiRoutes.getSession, ok(session()));
         await openPasskeyPicker(app);
-        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Projects' })).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.signupStart)).toEqual([]);
     });
 });
@@ -195,7 +195,7 @@ describe('Continue, passkey autofill', () => {
             },
         });
         app.api.on(apiRoutes.getSession, ok(session()));
-        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Projects' })).toBeTruthy();
         expect(app.passkeys.autofill).toHaveBeenCalledWith(AUTHENTICATION_OPTIONS);
         expect(app.passkeys.authenticate).not.toHaveBeenCalled();
     });
@@ -280,7 +280,7 @@ describe('Continue, returning afterwards', () => {
         async (returnTo) => {
             const app = renderApp({ path: `/continue?returnTo=${returnTo}`, script: continueScript });
             await openPasskeyPicker(app);
-            expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
+            expect(await screen.findByRole('heading', { name: 'Projects' })).toBeTruthy();
             expect(app.history.location.pathname).toBe('/engines');
         },
     );
@@ -288,7 +288,7 @@ describe('Continue, returning afterwards', () => {
     it('sends someone already signed in from /continue, /signin and /signup home', async () => {
         for (const path of ['/continue', '/signin', '/signup']) {
             const app = renderApp({ path, session: session() });
-            expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
+            expect(await screen.findByRole('heading', { name: 'Projects' })).toBeTruthy();
             await waitFor(() => {
                 expect(app.history.location.pathname).toBe('/engines');
             });

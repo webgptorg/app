@@ -135,9 +135,9 @@ export async function linkTeamEngine(
     await dashboard.subscribe();
 
     await page.goto(`${DASHBOARD_ORIGIN}/engines`);
-    await page.getByRole('button', { name: 'New engine' }).click();
-    await page.getByLabel('Engine name').fill(team);
-    await page.getByRole('button', { name: 'Create and link an engine' }).click();
+    await page.getByRole('button', { name: 'New project' }).click();
+    await page.getByLabel('Project name').fill(team);
+    await page.getByRole('button', { name: 'Create and link a project' }).click();
     await expect(page).toHaveURL(/\/engines\/new\?.*link=[a-z2-7]{26}/);
     const linkCode = devInstallLinkCode((await page.getByRole('tabpanel').locator('code').textContent()) ?? '');
 
@@ -200,12 +200,12 @@ export async function inviteToOrganization(page: Page, email: string): Promise<v
     await expect(page.getByText('Invitations sent: 1')).toBeVisible();
 }
 
-/** The admin opens the team's page and invites `email` with "Invite to this engine", as an org member. */
+/** The admin opens the team's page and invites `email` with "Invite to this project", as an org member. */
 export async function inviteToEngine(page: Page, team: string, email: string): Promise<void> {
     await page.goto(`${DASHBOARD_ORIGIN}/engines`);
     await page.getByRole('link', { name: team, exact: true }).click();
     await expect(page.getByRole('heading', { name: team, level: 1 })).toBeVisible();
-    await page.getByRole('button', { name: 'Invite to this engine' }).click();
+    await page.getByRole('button', { name: 'Invite to this project' }).click();
     const dialog = page.getByRole('dialog', { name: `Invite people to ${team}` });
     await dialog.getByLabel('Email addresses').fill(email);
     await expect(dialog.getByRole('checkbox', { name: team })).toBeChecked();
@@ -216,7 +216,7 @@ export async function inviteToEngine(page: Page, team: string, email: string): P
 /** After joining, the dashboard sends the person on to the engine's join page by itself. */
 export async function expectContinuedToEngine(person: Page, engineOrigin: string): Promise<void> {
     await expect(
-        person.getByText('Next, confirm a passkey for the engine itself: it has its own secure address.'),
+        person.getByText('Next, confirm a passkey for the project itself: it has its own secure address.'),
     ).toBeVisible();
     await person.waitForURL((url) => url.origin === engineOrigin && url.pathname === '/auth/join');
     expect(new URL(person.url()).hash).toBe('');

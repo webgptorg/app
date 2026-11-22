@@ -26,27 +26,27 @@ describe('engines in Czech', () => {
                 api.on(apiRoutes.getEngine, ok({ engine: engineView({ reachableRelays: 0 }) }));
             },
         });
-        expect(await screen.findByRole('heading', { name: 'Vaše enginy' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Vaše projekty' })).toBeTruthy();
         expect(await screen.findByText('Online')).toBeTruthy();
-        const table = screen.getByRole('table', { name: 'Enginy této organizace' });
-        for (const header of ['Engine', 'Stav', 'Adresa', 'Verze']) {
+        const table = screen.getByRole('table', { name: 'Projekty této organizace' });
+        for (const header of ['Projekt', 'Stav', 'Adresa', 'Verze']) {
             expect(within(table).getByRole('columnheader', { name: header })).toBeTruthy();
         }
         expect(within(table).getByText('Je k dispozici aktualizace')).toBeTruthy();
         expect(within(table).getByText('Dostupný přes 2 relaye')).toBeTruthy();
         expect(
-            within(table).getByRole('link', { name: `Otevřít engine ${ENGINE_ID.slice(0, 8)}… v nové kartě` }),
+            within(table).getByRole('link', { name: `Otevřít projekt ${ENGINE_ID.slice(0, 8)}… v nové kartě` }),
         ).toBeTruthy();
 
         await app.user.click(screen.getByRole('link', { name: `${ENGINE_ID.slice(0, 8)}…` }));
         expect(await screen.findByRole('heading', { name: 'Poslední signál' })).toBeTruthy();
-        expect(screen.getByText(/Přihlašovací a bezpečnostní stránka enginu/)).toBeTruthy();
+        expect(screen.getByText(/Přihlašovací a bezpečnostní stránka projektu/)).toBeTruthy();
         expect(screen.getByText('Přes relaye Promptbooku')).toBeTruthy();
         expect(screen.getByText('Nedostupný: žádné spojení s relayem')).toBeTruthy();
 
-        await app.user.click(screen.getByRole('button', { name: `Akce pro engine ${ENGINE_ID.slice(0, 8)}…` }));
-        await app.user.click(screen.getByRole('menuitem', { name: 'Odvolat engine' }));
-        const dialog = await screen.findByRole('dialog', { name: `Odvolat engine ${ENGINE_ID.slice(0, 8)}…?` });
+        await app.user.click(screen.getByRole('button', { name: `Akce pro projekt ${ENGINE_ID.slice(0, 8)}…` }));
+        await app.user.click(screen.getByRole('menuitem', { name: 'Odvolat projekt' }));
+        const dialog = await screen.findByRole('dialog', { name: `Odvolat projekt ${ENGINE_ID.slice(0, 8)}…?` });
         expect(within(dialog).getByText(/Dostane nové ID i adresu/)).toBeTruthy();
         expect(within(dialog).getByRole('button', { name: 'Odvolat přístupovým klíčem' })).toBeTruthy();
         expect(document.body.textContent).not.toMatch(/engines_|engine_[a-z]/);
@@ -68,12 +68,14 @@ describe('engines in Czech', () => {
         });
         expect(await screen.findByText('Nastavení není dokončené')).toBeTruthy();
         expect(
-            screen.getByRole('link', { name: `Pokračovat v nastavení enginu ${ENGINE_ID.slice(0, 8)}… v nové kartě` }),
+            screen.getByRole('link', {
+                name: `Pokračovat v nastavení projektu ${ENGINE_ID.slice(0, 8)}… v nové kartě`,
+            }),
         ).toBeTruthy();
 
         await app.user.click(screen.getByRole('link', { name: `${ENGINE_ID.slice(0, 8)}…` }));
-        expect(await screen.findByText('Nastavení pokračuje na enginu tam, kde jste skončili.')).toBeTruthy();
-        await app.user.click(screen.getByText('Co engine nahlásil'));
+        expect(await screen.findByText('Nastavení pokračuje na projektu tam, kde jste skončili.')).toBeTruthy();
+        await app.user.click(screen.getByText('Co projekt nahlásil'));
         expect(screen.getByText('Nastavení', { selector: 'dt' }).nextElementSibling?.textContent).toBe('Nedokončené');
         expect(document.body.textContent).not.toMatch(/engines_|engine_[a-z]/);
     });
@@ -120,7 +122,7 @@ describe('engines in Czech', () => {
                 api.on(apiRoutes.getInstallGuide, ok({ url: 'https://docs.ptbk.test/engine/installation' }));
             },
         });
-        expect(await screen.findByText('Engine se neozývá')).toBeTruthy();
+        expect(await screen.findByText('Projekt se neozývá')).toBeTruthy();
         expect(screen.getByText('Pokud jeho server běží, spusťte na něm:')).toBeTruthy();
         expect(await screen.findByRole('link', { name: /Řešení potíží v návodu k instalaci/ })).toBeTruthy();
     });

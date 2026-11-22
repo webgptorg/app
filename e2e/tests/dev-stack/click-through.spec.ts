@@ -46,7 +46,7 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
     const [enginePage, response] = await Promise.all([
         page.context().waitForEvent('page'),
         page.context().waitForEvent('response', (candidate) => candidate.url().includes(`.${DEV_ENGINE_DOMAIN}/`)),
-        row.getByRole('link', { name: /^Open engine/ }).click(),
+        row.getByRole('link', { name: /^Open project/ }).click(),
     ]);
     await enginePage.waitForLoadState('load');
     const engineHost = new URL(enginePage.url()).hostname;
@@ -96,7 +96,7 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
         .getByRole('button', { name: 'Use a passkey' })
         .click({ timeout: 5_000 })
         .catch(() => undefined);
-    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
     await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines/all`);
     await expectEngineListed(page, ['Online'], ONLINE_WITHIN_MS);
     await expect(row.getByText(engineHost, { exact: true })).toBeVisible();

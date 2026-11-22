@@ -45,14 +45,14 @@ describe('custom domains (platform admin)', () => {
                 api.on(apiRoutes.adminGetEngine, ok({ engine: adminEngineView({ engineId: ENGINE_ID }) }));
             },
         });
-        const field = await screen.findByLabelText(/Engine ID/);
+        const field = await screen.findByLabelText(/Project ID/);
         await app.user.type(field, 'not-an-engine');
         await app.user.click(screen.getByRole('button', { name: 'Open' }));
-        expect(await screen.findByText('Enter a 26-character engine ID.')).toBeTruthy();
+        expect(await screen.findByText('Enter a 26-character project ID.')).toBeTruthy();
         await app.user.clear(field);
         await app.user.type(field, ENGINE_ID.toUpperCase());
         await app.user.click(screen.getByRole('button', { name: 'Open' }));
-        expect(await screen.findByRole('heading', { name: 'Engine', level: 1 })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Project', level: 1 })).toBeTruthy();
         expect(app.history.location.pathname).toBe(`/admin/engines/${ENGINE_ID}`);
         await app.user.click(await screen.findByRole('link', { name: 'Custom domains' }));
         expect(await screen.findByRole('heading', { name: 'Custom domains', level: 1 })).toBeTruthy();
@@ -97,7 +97,7 @@ describe('custom domains (platform admin)', () => {
         await app.user.click(screen.getByRole('button', { name: 'Add domain' }));
         expect(
             await screen.findByText(
-                "The claim does not verify: the engine's key must sign exactly this hostname and engine ID.",
+                "The claim does not verify: the project's key must sign exactly this hostname and project ID.",
             ),
         ).toBeTruthy();
         await app.user.click(screen.getByRole('button', { name: 'Add domain' }));
@@ -119,7 +119,7 @@ describe('custom domains (platform admin)', () => {
         await app.user.type(screen.getByLabelText(/^Claim signature/), 'short');
         await app.user.click(screen.getByRole('button', { name: 'Add domain' }));
         expect(await screen.findByText('Enter a hostname.')).toBeTruthy();
-        expect(screen.getByText('Enter the 86-character signature the engine printed.')).toBeTruthy();
+        expect(screen.getByText('Enter the 86-character signature the project printed.')).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.adminAddHostname)).toEqual([]);
     });
 
@@ -154,7 +154,9 @@ describe('custom domains (platform admin)', () => {
         };
         await checkAgain();
         expect(await screen.findByText('Found relay-1.ptbk.test')).toBeTruthy();
-        expect(screen.getByText('The CNAME of agents.customer.example does not point at the engine yet.')).toBeTruthy();
+        expect(
+            screen.getByText('The CNAME of agents.customer.example does not point at the project yet.'),
+        ).toBeTruthy();
         await checkAgain();
         expect(await screen.findByText('No CNAME found')).toBeTruthy();
         await checkAgain();
@@ -179,7 +181,7 @@ describe('custom domains (platform admin)', () => {
         const dialog = within(await screen.findByRole('dialog', { name: 'Remove this domain?' }));
         expect(
             dialog.getByText(
-                'agents.customer.example stops routing to this engine within 5 minutes, when relays refresh their registry.',
+                'agents.customer.example stops routing to this project within 5 minutes, when relays refresh their registry.',
             ),
         ).toBeTruthy();
         await app.user.click(dialog.getByRole('button', { name: 'Remove' }));
@@ -195,7 +197,7 @@ describe('custom domains (platform admin)', () => {
             session: ADMIN,
             script: (api) => api.on(apiRoutes.adminListHostnames, problem(404, 'not-found')),
         });
-        expect(await screen.findByText('No engine has this ID.')).toBeTruthy();
+        expect(await screen.findByText('No project has this ID.')).toBeTruthy();
     });
 
     it('offers a retry when the list cannot be loaded', async () => {

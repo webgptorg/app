@@ -86,7 +86,7 @@ export async function signUpAndSubscribe(page: Page, email: string): Promise<voi
     const message = page.getByRole('listitem').filter({ hasText: `To ${email}` });
     await message.getByRole('link', { name: /\/signup#/ }).click();
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
 
     await page.getByRole('link', { name: 'Billing' }).click();
     await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
@@ -115,7 +115,7 @@ export async function expectEngineListed(page: Page, states: readonly string[], 
         .poll(
             async () => {
                 await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines/all`);
-                await expect(row.or(page.getByText('No engines yet', { exact: true })).first()).toBeVisible();
+                await expect(row.or(page.getByText('No projects yet', { exact: true })).first()).toBeVisible();
                 for (const state of states) {
                     if ((await row.getByText(state, { exact: true }).count()) === 1) seen = state;
                 }

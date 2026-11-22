@@ -16,8 +16,8 @@ describe('link page for a Czech browser', () => {
 
     it('renders in Czech', async () => {
         const app = renderApp({ path: `/link#${LINK_CODE}` });
-        expect(await screen.findByRole('heading', { name: 'Propojení enginu', level: 1 })).toBeTruthy();
-        expect(screen.getByText('Engine propojíte tak, že na počítači, kde běží, spustíte:')).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Propojení projektu', level: 1 })).toBeTruthy();
+        expect(screen.getByText('Projekt propojíte tak, že na počítači, kde běží, spustíte:')).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Kopírovat příkaz' })).toBeTruthy();
         await expectNoAxeViolations(app.container);
     });

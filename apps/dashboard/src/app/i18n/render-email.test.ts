@@ -169,8 +169,8 @@ describe('renderEmail', () => {
     });
 
     it.each([
-        ['en', 'Your engine Production is offline'],
-        ['cs', 'Váš engine Production je offline'],
+        ['en', 'Your project Production is offline'],
+        ['cs', 'Váš projekt Production je offline'],
     ] as const)(
         'names the engine by its label, then its address and when it was last seen in %s',
         (locale, subject) => {
@@ -186,8 +186,8 @@ describe('renderEmail', () => {
     );
 
     it.each([
-        ['en', 'Your engine abcdefgh… is online', "setup link in the engine's terminal"],
-        ['cs', 'Váš engine abcdefgh… je online', 'v terminálu enginu'],
+        ['en', 'Your project abcdefgh… is online', "setup link in the project's terminal"],
+        ['cs', 'Váš projekt abcdefgh… je online', 'v terminálu projektu'],
     ] as const)(
         'sends the first-online email in %s pointing to the terminal, never with a setup link',
         (locale, subject, where) => {
