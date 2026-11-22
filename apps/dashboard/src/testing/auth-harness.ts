@@ -8,6 +8,9 @@ import { createFakeEmailSender, type FakeEmailSender } from '../adapters/email/f
 import { createMemoryLogger, type MemoryLogger } from '../adapters/memory-logger';
 import { createMemoryRateLimiter } from '../adapters/rate-limit/memory-rate-limiter';
 import { cryptoRandom } from '../adapters/crypto-random';
+import { createConfiguredEngineInstallReleaseSource } from '../adapters/registration/configured-engine-install-release-source';
+import type { EngineInstallReleaseSource } from '../domain/registration/engine-install-release-source';
+import type { EngineInstallRelease } from '../shared/engine-installation';
 import { createSimpleWebAuthnRelyingParty } from '../adapters/webauthn/simple-webauthn-relying-party';
 import { parseConfig, DEV_MEMBER_KEY, DEV_RATE_LIMIT_HMAC_KEY } from '../app/config';
 import { authLinks, type DashboardDeps } from '../app/deps';
@@ -190,6 +193,8 @@ export function createAuthHarness(options: {
     readonly relays?: readonly string[];
     /** Where usage events go instead of `usage`, e.g. a store that fails. */
     readonly usageStore?: Pick<UsageStore, 'insertEvents'>;
+    readonly engineInstallation?: EngineInstallRelease;
+    readonly installReleases?: EngineInstallReleaseSource;
 }): AuthHarness {
     const clock = createFakeClock(START_MS);
     const timer = createManualTimer();
@@ -211,6 +216,7 @@ export function createAuthHarness(options: {
         ENGINE_DOMAIN: 'engines.ptbk.test',
         RELAYS: (options.relays ?? ['relay-1.ptbk.test']).map((relayId) => ({ relayId, region: 'eu-central' })),
         ...TEST_INSTALL_VARS,
+        ...(options.engineInstallation === undefined ? {} : { ENGINE_INSTALLATION: options.engineInstallation }),
         ADAPTERS: { email: options.email ?? 'fake', billing: options.billing ?? 'fake', rateLimit: 'memory' },
         EMAIL_FROM: 'no-reply@ptbk.test',
         ABUSE_EMAIL: 'abuse@ptbk.test',
@@ -275,6 +281,7 @@ export function createAuthHarness(options: {
     const relayPresence = options.relayPresence ?? createMemoryRelayPresenceStore();
     const deps: DashboardDeps = {
         config,
+        installReleases: options.installReleases ?? createConfiguredEngineInstallReleaseSource(),
         clock,
         random: cryptoRandom,
         timer,

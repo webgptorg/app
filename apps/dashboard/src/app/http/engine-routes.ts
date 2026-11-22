@@ -11,7 +11,7 @@ import { readLinkCodeStatus } from '../../domain/registration/read-link-code-sta
 import { OWNER_REVOKED } from '../../domain/registration/engine-store';
 import { apiRoutes, type EngineView, type LinkEligibilityView } from '../../shared/api/routes';
 import type { DashboardDeps } from '../deps';
-import { issuedLinkCodeView } from './link-code-view';
+import { resolveLinkCodeView } from './link-code-view';
 import type { RouteBinder } from './bind-route';
 
 function engineView(overview: EngineOverview): EngineView {
@@ -52,6 +52,7 @@ export function bindEngineRoutes(
         | 'logger'
         | 'timer'
         | 'linkCodes'
+        | 'installReleases'
         | 'engines'
         | 'engineStatus'
         | 'engineHostnames'
@@ -85,7 +86,7 @@ export function bindEngineRoutes(
             );
             return {
                 kind: 'ok',
-                body: issuedLinkCodeView(deps.config, outcome),
+                body: await resolveLinkCodeView(deps, outcome, request.signal),
             };
         }
         switch (outcome.reason) {
