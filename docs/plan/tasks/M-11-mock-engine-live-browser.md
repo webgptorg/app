@@ -25,5 +25,5 @@ The UI lane and e2e can try the live browser end to end against the mock engine,
 
 - [x] Without the flag, `GET /engine` does not advertise `browser-tab@1` and the routes answer 404 `capability-not-supported`.
 - [x] With it, the engine-api conformance suite's browser-tab checks pass against the mock engine.
-- [ ] `bun run check` passes.
+- [x] `bun run check` passes.
 - [x] **Status** line above set to `done (#<PR>)`.
