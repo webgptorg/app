@@ -208,22 +208,22 @@ A message never exceeds `MAX_LIVE_MEDIA_BYTES` (64 KiB) with its header, so it n
 
 **Designed, not built or typed.** Phase 1 (push-to-talk and spoken replies, [voice.md](voice.md)) is built over ordinary API requests. Phase 2 is a conversation: the member talks, the agent answers aloud, either may interrupt. `live-audio@1` stays in `RESERVED_CAPABILITIES`, and its route still answers 404 `capability-not-supported` on every engine.
 
-> TODO(C-17): type these messages in `live-channel.ts`, next to the browser tab's, and give `engine-api.live-audio.session` its body. Nothing here is in code yet.
+Nothing here is in code yet. When phase 2 is planned, its task types these messages in `live-channel.ts`, next to the browser tab's, and gives `engine-api.live-audio.session` its body.
 
 **Opening:** `POST /chats/{chatId}/live-audio` (`openLiveAudioSession`) with `{ formats }`, permission `chats.write`, no step-up (talking in a chat is ordinary chat use), one live session per chat, then [the channel](#the-channel) at `LIVE_CHANNEL_PATH` with the same auth, origin and single-attachment rules. Until then it answers 404 `capability-not-supported` on every engine, advertised or not, and `engine-api.live.reserved` fails an engine that advertises `live-audio@1` or `live-video@1`.
 
 **Control messages** (text, strict JSON with a `type`, parsed like the browser tab's):
 
-| Direction         | Message                                                        | Meaning                                                                                                                                               |
-| ----------------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| browser to engine | `hello { versions }`                                           | First message: the channel versions it speaks.                                                                                                        |
-| browser to engine | `mute { muted }`                                               | Stop or resume sending the member's audio to the provider; the engine also stops reading audio-in while muted.                                        |
-| browser to engine | `interrupt`                                                    | Barge-in: stop the agent's current speech now. The engine cancels the reply's audio-out and lets the provider hear the member.                        |
-| browser to engine | `end`                                                          | End the session.                                                                                                                                      |
-| engine to browser | `hello { version }`                                            | The version it chose.                                                                                                                                 |
-| engine to browser | `state { state }`                                              | `listening`, `thinking`, `speaking`, `muted` or `reconnecting` (the provider connection is being restored; audio is dropped).                         |
-| engine to browser | `caption { utteranceId, speaker: user \| agent, text, final }` | Live text of one utterance. An interim caption replaces the text of the same `utteranceId`; a `final` one is its last.                                |
-| engine to browser | `end { reason }`                                               | The last message, with a reason from `LIVE_END_REASONS` (all but `tab-closed`). |
+| Direction         | Message                                                        | Meaning                                                                                                                        |
+| ----------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| browser to engine | `hello { versions }`                                           | First message: the channel versions it speaks.                                                                                 |
+| browser to engine | `mute { muted }`                                               | Stop or resume sending the member's audio to the provider; the engine also stops reading audio-in while muted.                 |
+| browser to engine | `interrupt`                                                    | Barge-in: stop the agent's current speech now. The engine cancels the reply's audio-out and lets the provider hear the member. |
+| browser to engine | `end`                                                          | End the session.                                                                                                               |
+| engine to browser | `hello { version }`                                            | The version it chose.                                                                                                          |
+| engine to browser | `state { state }`                                              | `listening`, `thinking`, `speaking`, `muted` or `reconnecting` (the provider connection is being restored; audio is dropped).  |
+| engine to browser | `caption { utteranceId, speaker: user \| agent, text, final }` | Live text of one utterance. An interim caption replaces the text of the same `utteranceId`; a `final` one is its last.         |
+| engine to browser | `end { reason }`                                               | The last message, with a reason from `LIVE_END_REASONS` (all but `tab-closed`).                                                |
 
 - `utteranceId` is stable for one utterance across its interim and final captions, opaque, and unique within the session.
 - **Final utterances become chat messages.** Each final utterance, the member's and the agent's, is saved as an ordinary message of the chat with its real author, through the chats contract, and appears in the event stream (`chat.changed`) like any message. The channel carries only what is live: captions are not a second message store.

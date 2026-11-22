@@ -5,6 +5,7 @@ import {
     OWNER_PERMISSIONS,
     SessionId,
     UiUpdateCheck,
+    KNOWN_CAPABILITIES,
     createEngineApiClient,
 } from '@ptbk/engine-api';
 import { DEFAULT_CAPABILITIES } from '@ptbk/engine-api/in-memory';
