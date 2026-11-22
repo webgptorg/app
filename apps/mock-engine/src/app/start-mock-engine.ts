@@ -1,5 +1,6 @@
 import type { Duplex } from 'node:stream';
 
+import { KNOWN_CAPABILITIES, supports } from '@ptbk/engine-api';
 import type { InMemoryEngineCore } from '@ptbk/engine-api/in-memory';
 import type { Hostname } from '@ptbk/protocol';
 import {
@@ -316,6 +317,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         passkeys: config.passkeys,
         ...(config.onboarding === null ? {} : { onboarding: config.onboarding }),
         liveBrowser: config.liveBrowser,
+        voice: config.voice,
         faults: () => faults.plan(),
         onSimulationError: (error) => {
             logger.error('simulation.error', { problem: error instanceof Error ? error.name : 'unknown' });
@@ -422,6 +424,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   certificates: deps.certificates,
                   ...(deps.challenges === undefined ? {} : { challenges: deps.challenges }),
                   core: () => runtime.core(),
+                  microphone: () => supports(runtime.current(), KNOWN_CAPABILITIES.voiceInput),
                   sessions,
                   faults,
                   seed: config.seed,
@@ -778,6 +781,8 @@ export interface EngineServerDeps {
     /** Pending TLS-ALPN-01 challenges; none by default, so every `acme-tls/1` hello is refused. */
     readonly challenges?: AcmeChallenges;
     readonly core: () => InMemoryEngineCore;
+    /** Whether the engine advertises `voice-input@1` right now, so `Permissions-Policy` allows the microphone; no by default. */
+    readonly microphone?: () => boolean;
     readonly sessions: SessionStore;
     readonly faults: FaultSettings;
     /** Seeds fault decisions. */
@@ -812,6 +817,7 @@ export function createEngineServer(deps: EngineServerDeps): EngineServer {
         logger: deps.logger,
         sessions: deps.sessions,
         faults: createFaults(deps.faults, deps.seed, deps.clock),
+        ...(deps.microphone === undefined ? {} : { microphone: deps.microphone }),
     });
     const tls = createTlsStreamServer({
         certificates: deps.certificates,

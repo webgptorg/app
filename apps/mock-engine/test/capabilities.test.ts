@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ApiHarness } from '../src/testing/api-harness';
 import { HARNESS_ORIGIN, createApiHarness } from '../src/testing/api-harness';
 import { ALL_CAPABILITY_NAMES } from '../src/domain/state/capabilities';
+import { silentWav } from '../src/testing/wav';
 
 const signal = () => AbortSignal.timeout(10_000);
 const harnesses: ApiHarness[] = [];
@@ -33,7 +34,7 @@ async function start(options: Parameters<typeof createApiHarness>[0] = {}) {
 describe('capabilities through the mock HTTP server (contract)', () => {
     // One request per operation of the whole route table: about 4 s alone, so the 5 s default timed out under load.
     it('answers every C-07 operation, each response valid against its strict schema', { timeout: 30_000 }, async () => {
-        const { harness, owner } = await start({ liveBrowser: true });
+        const { harness, owner } = await start({ liveBrowser: true, voice: true });
         const answered = new Set<EngineApiRouteId>();
         const okFrom = async <T>(id: EngineApiRouteId, response: Promise<EngineApiResponse<T>>): Promise<T> => {
             const result = await response;
@@ -192,19 +193,24 @@ describe('capabilities through the mock HTTP server (contract)', () => {
         await okFrom('listBrowserHelpRequests', owner.browser.listHelpRequests({ status: 'open' }, signal()));
         await okFrom('getBrowserHelpRequest', owner.browser.getHelpRequest(help.id, signal()));
         await okFrom('dismissBrowserHelpRequest', owner.browser.dismissHelpRequest(help.id, signal()));
+        const [voiceChat] = ok(await owner.chats.listAll({ limit: 1 }, signal())).items;
+        if (voiceChat === undefined) throw new Error('no chat');
+        await okFrom('transcribeVoiceClip', owner.voice.transcribe(voiceChat.id, silentWav(), {}, signal()));
+        const spoken = ok(await owner.chats.sendMessage(voiceChat.id, { content: 'Say this.' }, signal()));
+        await okFrom(
+            'speakChatMessage',
+            owner.voice.speak(voiceChat.id, spoken.message.id, { formats: ['audio/wav'] }, signal()),
+        );
 
         const { members, apiTokens, audit, bookEditor, agentManagement } = KNOWN_CAPABILITIES;
         const coreFeatures = new Set<string>(
             [members, apiTokens, audit, bookEditor, agentManagement].map(({ id }) => id),
         );
-        // Voice is served only with `MOCK_VOICE`; voice.test.ts answers its routes.
-        const notServed = new Set<string>([KNOWN_CAPABILITIES.voiceInput.id, KNOWN_CAPABILITIES.voiceOutput.id]);
         const capabilityRoutes = ENGINE_API_ROUTE_LIST.filter(
             (route) =>
                 route.capability !== undefined &&
                 !isReservedCapability(route.capability) &&
-                !coreFeatures.has(route.capability.id) &&
-                !notServed.has(route.capability.id),
+                !coreFeatures.has(route.capability.id),
         ).map(({ id }) => id);
         expect([...answered].filter((id) => id !== 'listActivity').sort()).toEqual([...capabilityRoutes].sort());
     });

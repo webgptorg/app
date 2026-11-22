@@ -48,6 +48,12 @@ export const PROFILE_CAPABILITY_NAMES: Readonly<Record<MockProfile, readonly Moc
     full: FULL_CAPABILITY_NAMES,
 };
 
+/** `MOCK_VOICE`: both voice capabilities on top of `capabilities`, each once. */
+export function withVoice(capabilities: readonly CapabilityRef[]): readonly CapabilityRef[] {
+    const voice = [KNOWN_CAPABILITIES.voiceInput, KNOWN_CAPABILITIES.voiceOutput];
+    return [...capabilities.filter((ref) => !voice.some(({ id }) => id === ref.id)), ...voice];
+}
+
 export function capabilitiesFor(names: readonly MockCapabilityName[]): readonly CapabilityRef[] {
     return [...new Set(names)].map((name) => MOCK_CAPABILITIES[name]);
 }

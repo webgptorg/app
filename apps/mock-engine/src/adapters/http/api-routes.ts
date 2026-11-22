@@ -35,6 +35,8 @@ function bodyOf(route: RouteDefinition): RouteBody | null {
 /** Routes that cost more than a lookup get their own, tighter budget; everything else shares `engine-api-ip`. */
 const RATE_LIMIT_BY_ROUTE: Partial<Record<EngineApiRouteId, RateLimitRule>> = {
     testAgentDraft: 'engine-api-test-chat-ip',
+    transcribeVoiceClip: 'engine-api-voice-ip',
+    speakChatMessage: 'engine-api-voice-ip',
 };
 
 function isStream(route: RouteDefinition): boolean {

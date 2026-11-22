@@ -91,6 +91,12 @@ export interface MockEngineConfig {
      * A draft no environment advertises by accident, so it is off by default and refused with `NODE_ENV=production`.
      */
     readonly liveBrowser: boolean;
+    /**
+     * `MOCK_VOICE=enabled`: advertises `voice-input@1` and `voice-output@1` with the in-memory engine's fake transcriber
+     * and speech, whatever the capability list says. Not rolled out, so it is off by default and refused with
+     * `NODE_ENV=production`.
+     */
+    readonly voice: boolean;
     /** `MOCK_CONTROL=enabled` with `MOCK_CONTROL_HOST` and `MOCK_CONTROL_PORT`; refused with `NODE_ENV=production`. */
     readonly control: { readonly host: string; readonly port: number } | null;
     /** `PTBK_DASHBOARD_URL` and what goes with it; null runs the M1 dev mode on `PTBK_RELAYS`, without heartbeats. */
@@ -462,6 +468,7 @@ const envSchema = z.strictObject({
         'must be no-project, pending or completed',
     ).optional(),
     MOCK_LIVE_BROWSER: toggle.default('disabled'),
+    MOCK_VOICE: toggle.default('disabled'),
     MOCK_CONTROL: toggle.default('disabled'),
     MOCK_CONTROL_HOST: value(
         z.union([z.ipv4(), z.ipv6(), HostnameSchema]),
@@ -602,6 +609,7 @@ export function parseMockEngineConfig(env: Env): ParsedMockEngineConfig {
         if (result.data.MOCK_LIVE_BROWSER === 'enabled') {
             problems.push('MOCK_LIVE_BROWSER: must not be enabled in production');
         }
+        if (result.data.MOCK_VOICE === 'enabled') problems.push('MOCK_VOICE: must not be enabled in production');
         if (result.data.MOCK_UI_FAKE_PROVENANCE === 'enabled') {
             problems.push('MOCK_UI_FAKE_PROVENANCE: must not be enabled in production');
         }
@@ -648,6 +656,7 @@ export function parseMockEngineConfig(env: Env): ParsedMockEngineConfig {
         passkeys: parsedEnv.MOCK_PASSKEYS,
         onboarding: parsedEnv.MOCK_ONBOARDING ?? null,
         liveBrowser: parsedEnv.MOCK_LIVE_BROWSER === 'enabled',
+        voice: parsedEnv.MOCK_VOICE === 'enabled',
         control:
             parsedEnv.MOCK_CONTROL === 'enabled'
                 ? Object.freeze({ host: parsedEnv.MOCK_CONTROL_HOST, port: parsedEnv.MOCK_CONTROL_PORT })
