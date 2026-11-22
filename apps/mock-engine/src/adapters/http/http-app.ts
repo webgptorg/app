@@ -267,7 +267,11 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         if (route.auth === 'session') {
             // A browser sends cookies with a cross-site WebSocket too, and no CORS stops one: only `Origin` does.
             if (!isOwnOrigin({ hostname: connection.hostname, header })) {
-                rejectUpgradeWith(socket, { code: 'forbidden', extras: { detail: 'Cross-site request refused.' } }, microphone());
+                rejectUpgradeWith(
+                    socket,
+                    { code: 'forbidden', extras: { detail: 'Cross-site request refused.' } },
+                    microphone(),
+                );
                 return;
             }
             const outcome =
@@ -288,12 +292,16 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
             actor = outcome.actor;
         }
         if (route.subprotocol !== null && !offers(header('sec-websocket-protocol'), route.subprotocol)) {
-            rejectUpgradeWith(socket, {
-                code: 'validation-failed',
-                extras: {
-                    errors: [{ path: 'headers.sec-websocket-protocol', message: `Offer ${route.subprotocol}.` }],
+            rejectUpgradeWith(
+                socket,
+                {
+                    code: 'validation-failed',
+                    extras: {
+                        errors: [{ path: 'headers.sec-websocket-protocol', message: `Offer ${route.subprotocol}.` }],
+                    },
                 },
-            }, microphone());
+                microphone(),
+            );
             return;
         }
         const admission = route.handle({
