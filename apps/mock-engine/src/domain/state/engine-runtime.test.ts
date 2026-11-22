@@ -71,7 +71,9 @@ describe('engine runtime', () => {
             hostname: IDENTITY.hostname,
             mode: 'tunnel',
             dashboardUrl: null,
-            capabilities: Object.values(KNOWN_CAPABILITIES).filter((ref) => ref !== KNOWN_CAPABILITIES.fileScanning),
+            capabilities: Object.values(KNOWN_CAPABILITIES).filter(
+                (ref) => ref !== KNOWN_CAPABILITIES.fileScanning && ref !== KNOWN_CAPABILITIES.browserTab,
+            ),
         });
         expect(ok(await client().security.get(signal()))).toMatchObject({
             engine: { version: '0.4.2' },

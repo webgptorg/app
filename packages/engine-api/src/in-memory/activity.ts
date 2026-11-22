@@ -24,6 +24,9 @@ const EVENT_PERMISSION: Record<Exclude<EngineEvent['type'], 'activity'>, Permiss
     'trigger.changed': 'triggers.read',
     'file.changed': 'files.read',
     'integration.changed': 'integrations.read',
+    // IDs only: a watcher who may not see the tab's work gets 404 when reading it.
+    'browser-tab.changed': 'browser.watch',
+    'browser-help.changed': 'browser.watch',
 };
 
 export function canSeeEvent(permissions: ReadonlySet<Permission>, event: EngineEvent): boolean {

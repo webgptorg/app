@@ -182,6 +182,7 @@ describe('capabilities through the mock HTTP server (contract)', () => {
             (route) =>
                 route.capability !== undefined &&
                 !isReservedCapability(route.capability) &&
+                route.capability !== KNOWN_CAPABILITIES.browserTab &&
                 !coreFeatures.has(route.capability.id),
         ).map(({ id }) => id);
         expect([...answered].filter((id) => id !== 'listActivity').sort()).toEqual([...capabilityRoutes].sort());

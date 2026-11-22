@@ -22,5 +22,5 @@ One file per decision. Copy [0000-template.md](0000-template.md), take the next 
 | [0016](0016-engine-capabilities.md)               | Engine capabilities and a typed, extensible activity model            | Accepted |
 | [0017](0017-billing-entitlements.md)              | Billing through entitlements                                          | Accepted |
 | [0018](0018-teams-and-member-access.md)           | Teams, access requests and dashboard removals                         | Proposed |
-| [0019](0019-live-sessions-inside-the-tunnel.md)   | Live audio, video and the browser tab ride inside the engine's TLS    | Proposed |
+| [0019](0019-live-sessions-inside-the-tunnel.md)   | Live audio, video and the browser tab ride inside the engine's TLS    | Accepted |
 | [0022](0022-usage-data-in-d1.md)                  | Usage data in D1: closed events and daily rollups, no engine content  | Accepted |

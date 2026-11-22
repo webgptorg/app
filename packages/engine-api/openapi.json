@@ -6370,7 +6370,9 @@
                 "engine",
                 "run",
                 "trigger",
-                "integration"
+                "integration",
+                "browser-session",
+                "browser-help-request"
               ]
             }
           },
@@ -13570,7 +13572,7 @@
       "post": {
         "operationId": "openLiveAudioSession",
         "summary": "Open a voice session in a chat; the audio flows over the live channel",
-        "description": "Design only (`live-audio@1`). The voice belongs to the chat: transcripts become its messages with their real authors. One live session per chat at a time. None of the offered formats is 415 `unsupported-media-type`.",
+        "description": "Design only (`live-audio@1`, reserved). The voice belongs to the chat: transcripts become its messages with their real authors. One live session per chat at a time. None of the offered formats is 415 `unsupported-media-type`.",
         "tags": ["chats"],
         "x-required-permission": "chats.write",
         "x-capability": {
@@ -13732,12 +13734,12 @@
         }
       }
     },
-    "/browser-tab-sessions": {
+    "/browser-sessions": {
       "post": {
-        "operationId": "openBrowserTabSession",
+        "operationId": "openBrowserSignIn",
         "summary": "Open a new engine browser tab at a site for the owner to sign in by hand",
-        "description": "Design only (`browser-tab@1`). The channel carries the tab’s frames out and the owner’s input in. The engine refuses its own origins, origins outside its allowlist, and pages where secrets are typed.",
-        "tags": ["browser-tab-sessions"],
+        "description": "The session starts in control of a new tab at `origin`, which no agent uses and no other session reaches; ending it closes the tab, and the login stays in the browser profile. 422 `browser-origin-refused` for the engine’s own origins and origins outside its sign-in allowlist; 409 `browser-busy` while another sign-in session is open on the engine.",
+        "tags": ["browser-sessions"],
         "x-required-permission": "browser.control",
         "x-capability": {
           "id": "browser-tab",
@@ -13788,14 +13790,71 @@
                       "type": "string",
                       "pattern": "^[A-Za-z0-9_-]{1,64}$"
                     },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["sign-in", "agent-tab"]
+                    },
+                    "tabId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
                     "browser": {
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 64
                     },
-                    "origin": {
+                    "mode": {
                       "type": "string",
-                      "maxLength": 300
+                      "enum": ["watching", "controlling"]
+                    },
+                    "origin": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 300
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["open", "ended"]
+                    },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "ended",
+                            "expired",
+                            "idle",
+                            "not-attached",
+                            "revoked",
+                            "tab-closed",
+                            "engine-stopped",
+                            "protocol-error"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "helpRequestId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "$ref": "#/components/schemas/Timestamp"
                     },
                     "attachBy": {
                       "$ref": "#/components/schemas/Timestamp"
@@ -13804,7 +13863,20 @@
                       "$ref": "#/components/schemas/Timestamp"
                     }
                   },
-                  "required": ["id", "browser", "origin", "attachBy", "endsAt"],
+                  "required": [
+                    "id",
+                    "kind",
+                    "tabId",
+                    "browser",
+                    "mode",
+                    "origin",
+                    "status",
+                    "endReason",
+                    "helpRequestId",
+                    "openedAt",
+                    "attachBy",
+                    "endsAt"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -13846,6 +13918,2370 @@
           "404": {
             "description": "Problem: `capability-not-supported`, `not-found`.",
             "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `browser-busy`.",
+            "x-problem-codes": ["browser-busy"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `browser-origin-refused`.",
+            "x-problem-codes": ["browser-origin-refused"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser-tabs": {
+      "get": {
+        "operationId": "listBrowserTabs",
+        "summary": "The tabs agents work in now that the member may watch",
+        "description": "Only tabs of work the member can see (its chat, task or run). Sign-in tabs are never listed. Newest first, at most `MAX_BROWSER_TABS`.",
+        "tags": ["browser-tabs"],
+        "x-required-permission": "browser.watch",
+        "x-capability": {
+          "id": "browser-tab",
+          "version": 1,
+          "label": "browser-tab@1"
+        },
+        "x-draft": true,
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ChatId"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          },
+          {
+            "name": "runId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/RunId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "maxItems": 50,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                          },
+                          "browser": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          },
+                          "agentId": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/AgentId"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "chatId": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/ChatId"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "taskId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "runId": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/RunId"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "origin": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 300
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "agentState": {
+                            "type": "string",
+                            "enum": ["working", "waiting", "paused", "none"]
+                          },
+                          "participants": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "helpRequestId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "openedAt": {
+                            "$ref": "#/components/schemas/Timestamp"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "browser",
+                          "agentId",
+                          "chatId",
+                          "taskId",
+                          "runId",
+                          "origin",
+                          "agentState",
+                          "participants",
+                          "helpRequestId",
+                          "openedAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["items"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser-tabs/{tabId}/watch": {
+      "post": {
+        "operationId": "watchBrowserTab",
+        "summary": "Open a session that watches an agent’s tab without controlling it",
+        "description": "409 `browser-tab-full` when `MAX_BROWSER_PARTICIPANTS` − 1 watchers are open on the tab: the last place is kept for a controller.",
+        "tags": ["browser-tabs"],
+        "x-required-permission": "browser.watch",
+        "x-capability": {
+          "id": "browser-tab",
+          "version": 1,
+          "label": "browser-tab@1"
+        },
+        "x-draft": true,
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["sign-in", "agent-tab"]
+                    },
+                    "tabId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "browser": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": ["watching", "controlling"]
+                    },
+                    "origin": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 300
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["open", "ended"]
+                    },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "ended",
+                            "expired",
+                            "idle",
+                            "not-attached",
+                            "revoked",
+                            "tab-closed",
+                            "engine-stopped",
+                            "protocol-error"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "helpRequestId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "attachBy": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "endsAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "tabId",
+                    "browser",
+                    "mode",
+                    "origin",
+                    "status",
+                    "endReason",
+                    "helpRequestId",
+                    "openedAt",
+                    "attachBy",
+                    "endsAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `browser-tab-full`.",
+            "x-problem-codes": ["browser-tab-full"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser-tabs/{tabId}/control": {
+      "post": {
+        "operationId": "controlBrowserTab",
+        "summary": "Open a session that takes over an agent’s tab; the agent pauses until it gets the tab back",
+        "description": "Answers the tab’s open help request, if any. 409 `browser-tab-controlled` while someone else controls the tab; never full, since watchers leave a place for the controller.",
+        "tags": ["browser-tabs"],
+        "x-required-permission": "browser.control",
+        "x-capability": {
+          "id": "browser-tab",
+          "version": 1,
+          "label": "browser-tab@1"
+        },
+        "x-step-up": true,
+        "x-draft": true,
+        "parameters": [
+          {
+            "name": "tabId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["sign-in", "agent-tab"]
+                    },
+                    "tabId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "browser": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": ["watching", "controlling"]
+                    },
+                    "origin": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 300
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["open", "ended"]
+                    },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "ended",
+                            "expired",
+                            "idle",
+                            "not-attached",
+                            "revoked",
+                            "tab-closed",
+                            "engine-stopped",
+                            "protocol-error"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "helpRequestId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "attachBy": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "endsAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "tabId",
+                    "browser",
+                    "mode",
+                    "origin",
+                    "status",
+                    "endReason",
+                    "helpRequestId",
+                    "openedAt",
+                    "attachBy",
+                    "endsAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `step-up-required`, `unauthenticated`.",
+            "x-problem-codes": ["step-up-required", "unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `browser-tab-controlled`.",
+            "x-problem-codes": ["browser-tab-controlled"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser-sessions/{sessionId}": {
+      "get": {
+        "operationId": "getBrowserSession",
+        "summary": "One of the caller’s own browser sessions; 404 for any other gateway session’s",
+        "tags": ["browser-sessions"],
+        "x-required-permission": "browser.watch",
+        "x-capability": {
+          "id": "browser-tab",
+          "version": 1,
+          "label": "browser-tab@1"
+        },
+        "x-draft": true,
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["sign-in", "agent-tab"]
+                    },
+                    "tabId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "browser": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": ["watching", "controlling"]
+                    },
+                    "origin": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 300
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["open", "ended"]
+                    },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "ended",
+                            "expired",
+                            "idle",
+                            "not-attached",
+                            "revoked",
+                            "tab-closed",
+                            "engine-stopped",
+                            "protocol-error"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "helpRequestId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "attachBy": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "endsAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "tabId",
+                    "browser",
+                    "mode",
+                    "origin",
+                    "status",
+                    "endReason",
+                    "helpRequestId",
+                    "openedAt",
+                    "attachBy",
+                    "endsAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser-sessions/{sessionId}/control": {
+      "post": {
+        "operationId": "takeBrowserControl",
+        "summary": "Take control from a watching session; the agent pauses",
+        "description": "Idempotent while the session controls. 409 `browser-tab-controlled` while someone else controls the tab, `browser-session-ended` once the session ended.",
+        "tags": ["browser-sessions"],
+        "x-required-permission": "browser.control",
+        "x-capability": {
+          "id": "browser-tab",
+          "version": 1,
+          "label": "browser-tab@1"
+        },
+        "x-step-up": true,
+        "x-draft": true,
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["sign-in", "agent-tab"]
+                    },
+                    "tabId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "browser": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": ["watching", "controlling"]
+                    },
+                    "origin": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 300
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["open", "ended"]
+                    },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "ended",
+                            "expired",
+                            "idle",
+                            "not-attached",
+                            "revoked",
+                            "tab-closed",
+                            "engine-stopped",
+                            "protocol-error"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "helpRequestId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "attachBy": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "endsAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "tabId",
+                    "browser",
+                    "mode",
+                    "origin",
+                    "status",
+                    "endReason",
+                    "helpRequestId",
+                    "openedAt",
+                    "attachBy",
+                    "endsAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `step-up-required`, `unauthenticated`.",
+            "x-problem-codes": ["step-up-required", "unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `browser-session-ended`, `browser-tab-controlled`.",
+            "x-problem-codes": ["browser-session-ended", "browser-tab-controlled"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser-sessions/{sessionId}/hand-back": {
+      "post": {
+        "operationId": "handBackBrowserTab",
+        "summary": "Hand the tab back to the agent; the session keeps watching",
+        "description": "The agent resumes with the outcome `handed-back`. Idempotent while the session only watches. A sign-in session has no agent to hand back to, so it ends. 409 `browser-session-ended` once the session ended.",
+        "tags": ["browser-sessions"],
+        "x-required-permission": "browser.control",
+        "x-capability": {
+          "id": "browser-tab",
+          "version": 1,
+          "label": "browser-tab@1"
+        },
+        "x-draft": true,
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["sign-in", "agent-tab"]
+                    },
+                    "tabId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "browser": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": ["watching", "controlling"]
+                    },
+                    "origin": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 300
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["open", "ended"]
+                    },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "ended",
+                            "expired",
+                            "idle",
+                            "not-attached",
+                            "revoked",
+                            "tab-closed",
+                            "engine-stopped",
+                            "protocol-error"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "helpRequestId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "attachBy": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "endsAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "tabId",
+                    "browser",
+                    "mode",
+                    "origin",
+                    "status",
+                    "endReason",
+                    "helpRequestId",
+                    "openedAt",
+                    "attachBy",
+                    "endsAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `browser-session-ended`.",
+            "x-problem-codes": ["browser-session-ended"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser-sessions/{sessionId}/end": {
+      "post": {
+        "operationId": "endBrowserSession",
+        "summary": "End the session and close its channel; a controller’s agent resumes with the outcome `ended`",
+        "description": "Idempotent: an ended session answers as it is.",
+        "tags": ["browser-sessions"],
+        "x-required-permission": "browser.watch",
+        "x-capability": {
+          "id": "browser-tab",
+          "version": 1,
+          "label": "browser-tab@1"
+        },
+        "x-draft": true,
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["sign-in", "agent-tab"]
+                    },
+                    "tabId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "browser": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "mode": {
+                      "type": "string",
+                      "enum": ["watching", "controlling"]
+                    },
+                    "origin": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 300
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["open", "ended"]
+                    },
+                    "endReason": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "ended",
+                            "expired",
+                            "idle",
+                            "not-attached",
+                            "revoked",
+                            "tab-closed",
+                            "engine-stopped",
+                            "protocol-error"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "helpRequestId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "attachBy": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "endsAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "tabId",
+                    "browser",
+                    "mode",
+                    "origin",
+                    "status",
+                    "endReason",
+                    "helpRequestId",
+                    "openedAt",
+                    "attachBy",
+                    "endsAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser-help-requests": {
+      "get": {
+        "operationId": "listBrowserHelpRequests",
+        "summary": "Agents’ requests for a human to get past a page, for the work the member can see",
+        "tags": ["browser-help-requests"],
+        "x-required-permission": "browser.watch",
+        "x-capability": {
+          "id": "browser-tab",
+          "version": 1,
+          "label": "browser-tab@1"
+        },
+        "x-draft": true,
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": "open",
+              "type": "string",
+              "enum": ["open", "resolved"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "maxItems": 100,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                          },
+                          "tabId": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                          },
+                          "agentId": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/AgentId"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "chatId": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/ChatId"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "taskId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "runId": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/RunId"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "type": "string",
+                            "enum": ["login", "captcha", "confirmation", "blocked", "other"]
+                          },
+                          "origin": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 300
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "message": {
+                            "type": "string",
+                            "maxLength": 500
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["pending", "in-progress", "resolved"]
+                          },
+                          "resolution": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "outcome": {
+                                    "type": "string",
+                                    "enum": [
+                                      "handed-back",
+                                      "ended",
+                                      "expired",
+                                      "idle",
+                                      "blocked-origin",
+                                      "dismissed",
+                                      "revoked",
+                                      "cancelled"
+                                    ]
+                                  },
+                                  "origin": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "maxLength": 300
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "by": {
+                                    "anyOf": [
+                                      {
+                                        "$ref": "#/components/schemas/MemberId"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "at": {
+                                    "$ref": "#/components/schemas/Timestamp"
+                                  }
+                                },
+                                "required": ["outcome", "origin", "by", "at"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "$ref": "#/components/schemas/Timestamp"
+                          },
+                          "updatedAt": {
+                            "$ref": "#/components/schemas/Timestamp"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "tabId",
+                          "agentId",
+                          "chatId",
+                          "taskId",
+                          "runId",
+                          "reason",
+                          "origin",
+                          "message",
+                          "status",
+                          "resolution",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["items"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser-help-requests/{requestId}": {
+      "get": {
+        "operationId": "getBrowserHelpRequest",
+        "summary": "One help request with its resolution",
+        "tags": ["browser-help-requests"],
+        "x-required-permission": "browser.watch",
+        "x-capability": {
+          "id": "browser-tab",
+          "version": 1,
+          "label": "browser-tab@1"
+        },
+        "x-draft": true,
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "tabId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "agentId": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/AgentId"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "chatId": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/ChatId"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "taskId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "runId": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/RunId"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": ["login", "captcha", "confirmation", "blocked", "other"]
+                    },
+                    "origin": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 300
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "message": {
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["pending", "in-progress", "resolved"]
+                    },
+                    "resolution": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "outcome": {
+                              "type": "string",
+                              "enum": [
+                                "handed-back",
+                                "ended",
+                                "expired",
+                                "idle",
+                                "blocked-origin",
+                                "dismissed",
+                                "revoked",
+                                "cancelled"
+                              ]
+                            },
+                            "origin": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "maxLength": 300
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "by": {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/components/schemas/MemberId"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "$ref": "#/components/schemas/Timestamp"
+                            }
+                          },
+                          "required": ["outcome", "origin", "by", "at"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "updatedAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "tabId",
+                    "agentId",
+                    "chatId",
+                    "taskId",
+                    "runId",
+                    "reason",
+                    "origin",
+                    "message",
+                    "status",
+                    "resolution",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/browser-help-requests/{requestId}/dismiss": {
+      "post": {
+        "operationId": "dismissBrowserHelpRequest",
+        "summary": "Decline without taking control; the agent resumes with the outcome `dismissed`",
+        "description": "409 `browser-tab-controlled` while someone controls the tab (they hand back instead), `browser-help-resolved` once it is resolved.",
+        "tags": ["browser-help-requests"],
+        "x-required-permission": "browser.control",
+        "x-capability": {
+          "id": "browser-tab",
+          "version": 1,
+          "label": "browser-tab@1"
+        },
+        "x-draft": true,
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "tabId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "agentId": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/AgentId"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "chatId": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/ChatId"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "taskId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "runId": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/RunId"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "type": "string",
+                      "enum": ["login", "captcha", "confirmation", "blocked", "other"]
+                    },
+                    "origin": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 300
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "message": {
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["pending", "in-progress", "resolved"]
+                    },
+                    "resolution": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "outcome": {
+                              "type": "string",
+                              "enum": [
+                                "handed-back",
+                                "ended",
+                                "expired",
+                                "idle",
+                                "blocked-origin",
+                                "dismissed",
+                                "revoked",
+                                "cancelled"
+                              ]
+                            },
+                            "origin": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "maxLength": 300
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "by": {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/components/schemas/MemberId"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "$ref": "#/components/schemas/Timestamp"
+                            }
+                          },
+                          "required": ["outcome", "origin", "by", "at"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "updatedAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "tabId",
+                    "agentId",
+                    "chatId",
+                    "taskId",
+                    "runId",
+                    "reason",
+                    "origin",
+                    "message",
+                    "status",
+                    "resolution",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `browser-help-resolved`, `browser-tab-controlled`.",
+            "x-problem-codes": ["browser-help-resolved", "browser-tab-controlled"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -19959,6 +22395,13 @@
           "integration.enable",
           "integration.disable",
           "integration.delete",
+          "browser.sign-in.open",
+          "browser.watch",
+          "browser.control.take",
+          "browser.control.hand-back",
+          "browser.session.end",
+          "browser.channel.attach",
+          "browser.help.dismiss",
           "engine.update.install",
           "ui.update.install"
         ]
@@ -20172,7 +22615,9 @@
               "engine",
               "run",
               "trigger",
-              "integration"
+              "integration",
+              "browser-session",
+              "browser-help-request"
             ]
           },
           "id": {
@@ -20919,6 +23364,36 @@
               }
             },
             "required": ["type", "integrationId", "agentId"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "browser-tab.changed"
+              },
+              "tabId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              }
+            },
+            "required": ["type", "tabId"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "browser-help.changed"
+              },
+              "requestId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              }
+            },
+            "required": ["type", "requestId"],
             "additionalProperties": false
           },
           {
@@ -22222,6 +24697,7 @@
           "triggers.manage",
           "integrations.read",
           "integrations.manage",
+          "browser.watch",
           "browser.control"
         ]
       },
@@ -22281,11 +24757,18 @@
               "file-infected",
               "onboarding-prompt-stale",
               "onboarding-not-deferrable",
+              "browser-tab-controlled",
+              "browser-tab-full",
+              "browser-busy",
+              "browser-session-ended",
+              "live-channel-attached",
+              "browser-help-resolved",
               "payload-too-large",
               "unsupported-media-type",
               "invalid-book",
               "access-code-mismatch",
               "invalid-schedule",
+              "browser-origin-refused",
               "rate-limited",
               "internal-error",
               "reply-failed",

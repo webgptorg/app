@@ -5,6 +5,8 @@ import {
     OWNER_PERMISSIONS,
     SIGN_IN_PATH,
     createProblem,
+    encodeLiveMedia,
+    parseLiveClientMessage,
 } from '@ptbk/engine-api';
 import type { CapabilityRef, Permission } from '@ptbk/engine-api';
 import { createEngineApiHttpHandler } from '@ptbk/engine-api/http';
@@ -12,7 +14,8 @@ import { createDemoSeed, createInMemoryEngineCore } from '@ptbk/engine-api/in-me
 import type { Actor, Authorizer, FileUploadPolicies, InMemoryEngineCore } from '@ptbk/engine-api/in-memory';
 import { buildHeartbeat, deriveEngineId, encodeBase64Url } from '@ptbk/protocol';
 
-import type { ConformanceTarget, SessionSubject } from '../target';
+import type { ConformanceTarget, LiveBrowserTarget, SessionSubject } from '../target';
+import { LiveChannelQueue } from './live-channel-queue';
 
 /** One deliberate contract violation each; the self-test proves the matching check catches it. */
 export const DEFECTS = [
@@ -35,6 +38,28 @@ export const DEFECTS = [
 ] as const;
 export type Defect = (typeof DEFECTS)[number];
 
+/** Deliberate violations of the live browser's channel and levers, one each. */
+export const LIVE_DEFECTS = [
+    'channel-without-cookie',
+    'channel-any-origin',
+    'channel-any-session',
+    'channel-twice',
+    'step-up-ignored',
+    'watcher-input-silent',
+    'frames-while-blocked',
+    'protocol-errors-ignored',
+    'oversized-media',
+    'no-expiry',
+    'typed-text-audited',
+    'channel-refused',
+] as const;
+export type LiveDefect = (typeof LIVE_DEFECTS)[number];
+
+export type LiveTamper = (text: string) => readonly (string | Uint8Array)[];
+
+/** On the fake's sign-in allowlist. */
+export const FAKE_SIGN_IN_ORIGIN = 'https://accounts.conformance.invalid';
+
 export interface FakeEngineOptions {
     readonly defect?: Defect;
     readonly capabilities?: readonly CapabilityRef[];
@@ -46,6 +71,13 @@ export interface FakeEngineOptions {
     readonly tamper?: Tamper;
     /** By default knowledge takes Markdown and plain text up to 1 KiB, so both upload policy refusals are exercised. */
     readonly uploadPolicies?: FileUploadPolicies;
+    readonly liveDefect?: LiveDefect;
+    /** Rewrites each text message the engine sends on a live channel into any number of messages, frames included. */
+    readonly liveTamper?: LiveTamper;
+    /** `false` leaves out `staleOwnerSession`. */
+    readonly staleOwnerSessions?: boolean;
+    /** `false` leaves out `liveBrowser`, as a target that cannot reach the channel would. */
+    readonly liveBrowser?: boolean;
 }
 
 const FAKE_UPLOAD_POLICIES: FileUploadPolicies = { knowledge: { maxBytes: 1024, accept: ['.md', 'text/plain'] } };
@@ -175,7 +207,7 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
 
     const actors = new Map<string, Actor>();
     let issued = 0;
-    function signIn(subject: SessionSubject): string {
+    function signIn(subject: SessionSubject, stepUpFresh = true): string {
         issued++;
         const memberId = subject.kind === 'owner' ? OWNER : (spares[issued % SPARE_MEMBERS] ?? OWNER);
         const sessionId = `session-fake-${String(issued).padStart(4, '0')}`;
@@ -193,12 +225,30 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
             sessionId: sessionId as Actor['sessionId'],
             client: { ip: '192.0.2.10', userAgent: 'fake engine' },
             permissions: new Set(subject.kind === 'owner' ? OWNER_PERMISSIONS : subject.permissions),
-            stepUpFresh: true,
+            stepUpFresh: stepUpFresh || options.liveDefect === 'step-up-ignored',
         });
         return token;
     }
 
     const defect = createDefect(options.defect, actors, core);
+    core.controller.setBrowserSignInOrigins([FAKE_SIGN_IN_ORIGIN]);
+    const typed: string[] = [];
+    const actorOf = (cookie: string | null): Actor | undefined => {
+        const token = /(?:^|;\s*)fake_session=([^;]+)/.exec(cookie ?? '')?.[1];
+        const actor = token === undefined ? undefined : actors.get(token);
+        return core.controller.inspect().sessions.some(({ id }) => id === actor?.sessionId) ? actor : undefined;
+    };
+    const liveBrowser = createFakeLiveBrowser({
+        core,
+        origin: baseUrl.origin,
+        actorOf,
+        actors,
+        defect: options.liveDefect,
+        tamper: options.liveTamper,
+        stale: options.staleOwnerSessions !== false,
+        typed,
+        staleOwner: () => `${COOKIE}=${signIn({ kind: 'owner' }, false)}`,
+    });
     const answer = async (request: Request): Promise<Response> => {
         const url = new URL(request.url);
         if (!url.pathname.startsWith(`${ENGINE_API_PREFIX}/`)) {
@@ -216,7 +266,10 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
         if (!live) actor = defect.anonymous(request);
         if (actor === undefined) return problem('unauthenticated');
         const serve = createEngineApiHttpHandler(core.transport(defect.actor(request, actor)));
-        return defect.response(request, await serve(await defect.request(request)));
+        const response = await defect.response(request, await serve(await defect.request(request)));
+        return options.liveDefect === 'typed-text-audited' && url.pathname === `${ENGINE_API_PREFIX}/audit`
+            ? leakTyped(response, typed)
+            : response;
     };
     const handle = async (request: Request): Promise<Response> => {
         if (options.tamper === undefined) return answer(request);
@@ -240,6 +293,7 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
                       },
                   }),
             session: (subject) => Promise.resolve({ cookie: `${COOKIE}=${signIn(subject)}` }),
+            ...(options.liveBrowser === false ? {} : { liveBrowser }),
             walletRequest: (origin) =>
                 Promise.resolve(
                     core.controller.requestWalletLogin({
@@ -521,4 +575,110 @@ function createDefect(
                         : response,
             };
     }
+}
+
+/** Writes what was typed into the audit answer, as an engine that logs input would. */
+async function leakTyped(response: Response, typed: readonly string[]): Promise<Response> {
+    const page = (await response.json()) as { items: Record<string, unknown>[] };
+    const items = page.items.map((entry) => ({ ...entry, details: { typed: typed.join('') } }));
+    return new Response(JSON.stringify({ ...page, items }), { status: response.status, headers: response.headers });
+}
+
+interface FakeLiveDeps {
+    readonly core: InMemoryEngineCore;
+    readonly origin: string;
+    readonly actorOf: (cookie: string | null) => Actor | undefined;
+    readonly actors: ReadonlyMap<string, Actor>;
+    readonly defect: LiveDefect | undefined;
+    readonly tamper: LiveTamper | undefined;
+    readonly stale: boolean;
+    readonly typed: string[];
+    readonly staleOwner: () => string;
+}
+
+const OVERSIZED = new Uint8Array(70 * 1024);
+
+/** The fake's gateway in front of the core's live channel: cookie and Origin first, then the session binding. */
+function createFakeLiveBrowser(deps: FakeLiveDeps): LiveBrowserTarget {
+    const { core, defect } = deps;
+    const frame = (): Uint8Array => {
+        const encoded = encodeLiveMedia({ kind: 'tab-frame-png', seq: 999, timestamp: 0, payload: new Uint8Array(4) });
+        return encoded.kind === 'ok' ? encoded.bytes : new Uint8Array(0);
+    };
+    return {
+        signInOrigin: FAKE_SIGN_IN_ORIGIN,
+        openChannel(sessionId, credential, origin) {
+            if (defect === 'channel-refused') return Promise.resolve({ kind: 'refused', status: 503 });
+            if (origin !== deps.origin && defect !== 'channel-any-origin') {
+                return Promise.resolve({ kind: 'refused', status: 403 });
+            }
+            const cookie = credential !== null && 'cookie' in credential ? credential.cookie : null;
+            let actor = deps.actorOf(cookie);
+            if (actor === undefined && defect === 'channel-without-cookie') actor = [...deps.actors.values()][0];
+            if (actor === undefined) return Promise.resolve({ kind: 'refused', status: 401 });
+            let peer: { receive(data: string | Uint8Array): void; closed(): void } | null = null;
+            const queue = new LiveChannelQueue(
+                (data) => {
+                    const parsed = typeof data === 'string' ? parseLiveClientMessage(data) : null;
+                    if (defect === 'protocol-errors-ignored' && parsed?.kind !== 'ok') return;
+                    if (parsed?.kind === 'ok' && parsed.message.type === 'input') {
+                        const event = parsed.message.event;
+                        if (event.kind === 'key' && event.action === 'down') deps.typed.push(event.key);
+                    }
+                    peer?.receive(data);
+                },
+                () => peer?.closed(),
+            );
+            const sink = {
+                send: (data: string | Uint8Array): void => {
+                    if (typeof data !== 'string') {
+                        queue.push({ kind: 'binary', bytes: data });
+                        return;
+                    }
+                    if (defect === 'watcher-input-silent' && data.includes('"input-refused"')) return;
+                    for (const out of deps.tamper?.(data) ?? [data]) {
+                        queue.push(
+                            typeof out === 'string' ? { kind: 'text', text: out } : { kind: 'binary', bytes: out },
+                        );
+                    }
+                    if (defect === 'frames-while-blocked' && data.includes('"blocked"')) {
+                        queue.push({ kind: 'binary', bytes: frame() });
+                    }
+                    if (defect === 'oversized-media' && data.includes('"navigated"')) {
+                        queue.push({ kind: 'binary', bytes: OVERSIZED });
+                    }
+                },
+                close: (code: number): void => {
+                    queue.push({ kind: 'closed', code });
+                },
+            };
+            let result = core.attachLiveChannel(actor, sessionId, sink);
+            if (result.kind === 'refused' && defect === 'channel-any-session') {
+                for (const other of deps.actors.values()) {
+                    result = core.attachLiveChannel(other, sessionId, sink);
+                    if (result.kind === 'attached') break;
+                }
+            }
+            if (result.kind === 'refused') {
+                if (defect === 'channel-twice' && result.problem.code === 'live-channel-attached') {
+                    return Promise.resolve({ kind: 'open', channel: queue });
+                }
+                return Promise.resolve({ kind: 'refused', status: result.problem.status });
+            }
+            peer = result.peer;
+            return Promise.resolve({ kind: 'open', channel: queue });
+        },
+        openAgentTab: (origin) => Promise.resolve(core.controller.openAgentTab({ origin }).id),
+        requestHelp: (tabId, reason, message) =>
+            Promise.resolve(core.controller.requestBrowserHelp(tabId, { reason, message }).id),
+        navigate: (tabId, page) => {
+            core.controller.navigateBrowserTab(tabId, page);
+            return Promise.resolve();
+        },
+        elapse: (sessionId, what) => {
+            if (defect !== 'no-expiry') core.controller.elapseBrowserSession(sessionId, what);
+            return Promise.resolve();
+        },
+        ...(deps.stale ? { staleOwnerSession: () => Promise.resolve({ cookie: deps.staleOwner() }) } : {}),
+    };
 }

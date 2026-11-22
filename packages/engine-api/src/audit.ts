@@ -72,6 +72,13 @@ export const AUDIT_ACTIONS = [
     'integration.enable',
     'integration.disable',
     'integration.delete',
+    'browser.sign-in.open',
+    'browser.watch',
+    'browser.control.take',
+    'browser.control.hand-back',
+    'browser.session.end',
+    'browser.channel.attach',
+    'browser.help.dismiss',
     'engine.update.install',
     'ui.update.install',
 ] as const;
@@ -109,6 +116,8 @@ export const AUDIT_TARGET_KINDS = [
     'run',
     'trigger',
     'integration',
+    'browser-session',
+    'browser-help-request',
 ] as const;
 export const AuditTargetKind = z.enum(AUDIT_TARGET_KINDS);
 

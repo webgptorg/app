@@ -18,6 +18,9 @@ describe('package entries', () => {
             'DEFAULT_CAPABILITIES',
             'DEFAULT_EVENT_BUFFER_SIZE',
             'DEVICE_LOGIN_MS',
+            'FAKE_FRAME_HEIGHT',
+            'FAKE_FRAME_WIDTH',
+            'FAKE_VIEWPORT',
             'INSTALL_MS',
             'IN_MEMORY_CLIENT_MARKER',
             'PERMISSION_AUTHORIZER',
@@ -31,6 +34,7 @@ describe('package entries', () => {
             'createInMemoryEngineCore',
             'demoReplyScript',
             'nextScheduleFireAt',
+            'renderFakeFrame',
             'runPreview',
             'truncateRunText',
         ]);

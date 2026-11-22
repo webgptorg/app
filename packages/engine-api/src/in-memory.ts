@@ -58,3 +58,6 @@ export type { FireInput } from './in-memory/triggers';
 export { nextFireAt as nextScheduleFireAt } from './in-memory/schedule';
 export { createDemoSeed } from './in-memory/demo-seed';
 export { demoReplyScript } from './in-memory/demo-chats';
+export type { FakePage, LiveChannelAttach, LiveChannelPeer, LiveChannelSink, NewAgentTab } from './in-memory/live';
+export { FAKE_VIEWPORT } from './in-memory/live';
+export { FAKE_FRAME_HEIGHT, FAKE_FRAME_WIDTH, renderFakeFrame } from './in-memory/fake-frame';

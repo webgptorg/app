@@ -39,12 +39,25 @@ export const PROBLEM_STATUS = {
     'onboarding-prompt-stale': 409,
     /** "Skip for now" while the engine has no project yet (`canDefer` false); answers stay saved. */
     'onboarding-not-deferrable': 409,
+    /** Someone else controls this browser tab; one controller at a time. */
+    'browser-tab-controlled': 409,
+    /** `MAX_BROWSER_PARTICIPANTS` − 1 watchers are open on this tab; the last place is kept for a controller. */
+    'browser-tab-full': 409,
+    /** Another sign-in session is open on the engine; one at a time. */
+    'browser-busy': 409,
+    'browser-session-ended': 409,
+    /** The live session's channel is already attached; one attachment per participant. */
+    'live-channel-attached': 409,
+    /** The help request was already resolved; its `resolution` says how. */
+    'browser-help-resolved': 409,
     'payload-too-large': 413,
     'unsupported-media-type': 415,
     'invalid-book': 422,
     /** The code typed to approve an access request is not the one shown to the person asking. */
     'access-code-mismatch': 422,
     'invalid-schedule': 422,
+    /** The engine's own origin, or one outside its allowlist for remote sign-in. */
+    'browser-origin-refused': 422,
     'rate-limited': 429,
     'internal-error': 500,
     'reply-failed': 502,

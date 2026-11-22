@@ -274,7 +274,7 @@ describe('startMockEngine', () => {
                 mode: 'tunnel',
                 dashboardUrl: null,
                 capabilities: Object.values(KNOWN_CAPABILITIES).filter(
-                    (ref) => ref !== KNOWN_CAPABILITIES.fileScanning,
+                    (ref) => ref !== KNOWN_CAPABILITIES.fileScanning && ref !== KNOWN_CAPABILITIES.browserTab,
                 ),
             });
             interface Security {
