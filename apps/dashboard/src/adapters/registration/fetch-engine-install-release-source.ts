@@ -37,7 +37,8 @@ export function createFetchEngineInstallReleaseSource(deps: {
                 deadline.throwIfAborted();
                 const response = await deps.fetch(url, {
                     headers: { Accept: 'application/json', 'User-Agent': 'Promptbook-Dashboard' },
-                    redirect: 'error',
+                    // Workers reject `redirect: 'error'`; a 3xx under `manual` is simply not ok.
+                    redirect: 'manual',
                     signal: deadline,
                 });
                 if (!response.ok) {

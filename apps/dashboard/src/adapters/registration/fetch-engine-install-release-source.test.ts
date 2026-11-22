@@ -44,7 +44,7 @@ describe('published engine installation releases', () => {
             `https://api.github.com/repos/webgptorg/promptbook/releases/tags/v${VERSION}`,
         ]);
         for (const call of calls) {
-            expect(call.init.redirect).toBe('error');
+            expect(call.init.redirect).toBe('manual');
             expect(call.init.signal).toBeInstanceOf(AbortSignal);
             expect(call.init.headers).not.toHaveProperty('Authorization');
             expect(call.init.headers).not.toHaveProperty('Cookie');
@@ -104,21 +104,25 @@ describe('published engine installation releases', () => {
         expect(await releases.current(TEST_ENGINE_INSTALLATION, signal)).toBe(TEST_ENGINE_INSTALLATION);
     });
 
-    it.each([new Error('offline'), new Response('', { status: 429 }), new Response('not json')])(
-        'keeps the configured release when npm cannot be read (%o)',
-        async (response) => {
-            const { releases } = source([response]);
-            expect(await releases.current(TEST_ENGINE_INSTALLATION, signal)).toBe(TEST_ENGINE_INSTALLATION);
-        },
-    );
+    it.each([
+        new Error('offline'),
+        new Response('', { status: 429 }),
+        new Response('not json'),
+        new Response(null, { status: 302, headers: { Location: 'https://registry.example/ptbk/latest' } }),
+    ])('keeps the configured release when npm cannot be read (%o)', async (response) => {
+        const { releases } = source([response]);
+        expect(await releases.current(TEST_ENGINE_INSTALLATION, signal)).toBe(TEST_ENGINE_INSTALLATION);
+    });
 
-    it.each([new Error('offline'), new Response('', { status: 404 }), new Response('not json')])(
-        'keeps the configured release when GitHub cannot be read (%o)',
-        async (response) => {
-            const { releases } = source([Response.json({ name: 'ptbk', version: VERSION }), response]);
-            expect(await releases.current(TEST_ENGINE_INSTALLATION, signal)).toBe(TEST_ENGINE_INSTALLATION);
-        },
-    );
+    it.each([
+        new Error('offline'),
+        new Response('', { status: 404 }),
+        new Response('not json'),
+        new Response(null, { status: 301, headers: { Location: 'https://releases.example/v0.119.0-125' } }),
+    ])('keeps the configured release when GitHub cannot be read (%o)', async (response) => {
+        const { releases } = source([Response.json({ name: 'ptbk', version: VERSION }), response]);
+        expect(await releases.current(TEST_ENGINE_INSTALLATION, signal)).toBe(TEST_ENGINE_INSTALLATION);
+    });
 
     it('bounds metadata response sizes', async () => {
         const { releases } = source([new Response(' '.repeat(512 * 1024 + 1))]);
