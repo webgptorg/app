@@ -190,7 +190,7 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
         const tools = section('Tool calls');
         const logs = tools.querySelector('pre') as HTMLElement;
         expect(logs.textContent).toContain(HOSTILE);
-        expect(within(tools).getByText(/The engine truncated this output/)).toBeDefined();
+        expect(within(tools).getByText(/The project truncated this output/)).toBeDefined();
         expectNoActiveContent(tools);
 
         const banner = errorBanner();
@@ -210,7 +210,7 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
         vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800);
         await renderRun(RUN_IDS.largeDiff);
         const outputs = section('Outputs');
-        expect(within(outputs).getByText(/The engine truncated this diff/)).toBeDefined();
+        expect(within(outputs).getByText(/The project truncated this diff/)).toBeDefined();
         const diff = within(outputs).getByRole('region', { name: 'Diff of data' });
         const mounted = diff.querySelectorAll('.leading-5').length;
         expect(mounted).toBeGreaterThan(0);

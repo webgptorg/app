@@ -210,7 +210,7 @@ describe('invites', { timeout: TIMEOUT_MS }, () => {
         const engine = teamEngine();
         vi.spyOn(engine.client.members, 'listInvites').mockImplementation(() => problemResponse('not-found'));
         renderWithProviders({ path: '/members', engineApi: engine.client });
-        expect(await screen.findByText('This engine does not support invites and role changes yet.')).toBeDefined();
+        expect(await screen.findByText('This project does not support invites and role changes yet.')).toBeDefined();
         expect(screen.queryByRole('heading', { name: 'Pending invites' })).toBeNull();
         expect(screen.queryByRole('button', { name: /^Actions for/ })).toBeNull();
     });

@@ -191,7 +191,7 @@ describe('task screens, the less common cases', { timeout: TIMEOUT_MS }, () => {
         await user.keyboard('{Escape}');
         await user.click(screen.getByRole('button', { name: 'Filter' }));
         await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Kind' }));
-        await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Engine tasks' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Built-in tasks' }));
         await waitFor(() => {
             expect(router.state.location.search).toMatchObject({ kind: 'engine' });
         });
@@ -243,7 +243,7 @@ describe('task screens, the less common cases', { timeout: TIMEOUT_MS }, () => {
     it('names an engine task without an executor, and origins without text', async () => {
         const { unmount } = renderWithProviders({ path: '/tasks/task-update', engineApi: engine() });
         await screen.findByRole('heading', { level: 1, name: 'Engine update' });
-        expect(screen.getAllByText('The engine').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('The project').length).toBeGreaterThan(0);
         expect(screen.getByText('Added by you')).toBeTruthy();
         expect(screen.queryByRole('link', { name: 'Discuss in chat' })).toBeNull();
         unmount();

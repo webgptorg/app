@@ -14,7 +14,7 @@ test('the owner reads a recurring task, its occurrences and runs, and is sent to
     const table = page.getByRole('table', { name: 'Tasks' });
     await expect(table.getByText('Now', { exact: true })).toBeVisible();
     await expect(table.getByRole('link', { name: /^Launch the customer newsletter/ })).toBeVisible();
-    await expect(table.getByText('Engine', { exact: true })).toBeVisible();
+    await expect(table.getByText('Built-in', { exact: true })).toBeVisible();
 
     await page.getByRole('link', { name: /^Weekly analytics digest/ }).click();
     const history = page.getByRole('region', { name: 'History' });

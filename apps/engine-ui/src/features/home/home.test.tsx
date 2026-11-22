@@ -110,7 +110,7 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
 
         const box = await screen.findByRole('textbox', { name: 'Ask Chatter' });
         await user.type(box, 'Hello{Enter}');
-        expect(await screen.findByText(/Chatter isn’t set up on this engine yet/)).toBeDefined();
+        expect(await screen.findByText(/Chatter isn’t set up in this project yet/)).toBeDefined();
         expect((box as HTMLTextAreaElement).value).toBe('Hello');
 
         await user.type(box, '{Enter}');
@@ -400,7 +400,7 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
         const engine = createHomeEngine();
         renderWithProviders({ path: '/', engineApi: engine.client });
         await feed();
-        expect(screen.queryByText('Engine update available')).toBeNull();
+        expect(screen.queryByText('Update available')).toBeNull();
 
         act(() => {
             engine.controller.appendActivity({
@@ -413,9 +413,9 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByText('Version 9.2.0 is available.')).toBeDefined();
         // The feed's live region repeats the line once its announcer flushes, so look for the card in the list only.
         const list = within(await feed()).getByRole('list');
-        expect(await within(list).findByText('Engine version 9.2.0 is available')).toBeDefined();
+        expect(await within(list).findByText('Update 9.2.0 is available')).toBeDefined();
         await waitFor(() => {
-            expect(liveRegion()?.textContent).toBe('Engine version 9.2.0 is available');
+            expect(liveRegion()?.textContent).toBe('Update 9.2.0 is available');
         });
     });
 
@@ -573,7 +573,7 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
             'Triggers',
             'Integrations',
             'Members',
-            'Engine',
+            'Project',
         ]);
 
         await user.click(within(region).getByRole('button', { name: 'Members' }));

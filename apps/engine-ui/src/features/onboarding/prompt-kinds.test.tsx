@@ -91,7 +91,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         ]);
         const { user } = renderWithProviders({ path: '/onboarding', engineApi: client });
         await user.click(await screen.findByRole('button', { name: 'No' }));
-        expect(await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Your project is set up' })).toBeDefined();
         expect(answers).toEqual([{ kind: 'confirm', confirmed: false }]);
     });
 
@@ -136,7 +136,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         expect(screen.getByRole('button', { name: 'Continue' }).hasAttribute('disabled')).toBe(true);
         await user.type(name, 'Bakery');
         await user.click(screen.getByRole('button', { name: 'Continue' }));
-        await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' });
+        await screen.findByRole('heading', { level: 1, name: 'Your project is set up' });
         expect(answers).toEqual([
             { kind: 'choice', choiceIds: ['b'] },
             { kind: 'text', text: 'Bakery', fileIds: [] },
@@ -165,7 +165,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         await user.type(answer, 'Bread{Enter}Cakes');
         expect(answers).toEqual([]);
         await user.keyboard('{Control>}{Enter}{/Control}');
-        await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' });
+        await screen.findByRole('heading', { level: 1, name: 'Your project is set up' });
         expect(answers).toEqual([{ kind: 'text', text: 'Bread\nCakes', fileIds: [] }]);
     });
 
@@ -207,7 +207,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         );
         await user.click(screen.getByRole('button', { name: 'Remove plan.txt' }));
         await user.click(screen.getByRole('button', { name: 'Continue' }));
-        await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' });
+        await screen.findByRole('heading', { level: 1, name: 'Your project is set up' });
         expect(answers).toHaveLength(1);
         expect(answers[0]?.kind === 'upload' && answers[0].fileIds).toHaveLength(1);
     });
@@ -235,7 +235,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
             { status: 'working', deferred: false, canDefer: true, progress: null, activity: [], prompt: null },
         ]);
         renderWithProviders({ path: '/onboarding', engineApi: client });
-        expect(await screen.findByText('The engine is setting things up…')).toBeDefined();
+        expect(await screen.findByText('The project is setting things up…')).toBeDefined();
     });
 
     it('offers a retry when the setup cannot be loaded, and says when an answer did not arrive', async () => {
@@ -249,7 +249,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         get.mockRestore();
         await user.click(screen.getByRole('button', { name: 'Try again' }));
         await user.click(await screen.findByRole('button', { name: 'Yes' }));
-        expect(await screen.findByText('The engine did not get your answer. Try again.')).toBeDefined();
+        expect(await screen.findByText('The project did not get your answer. Try again.')).toBeDefined();
     });
 
     it('reads the state again when its answer was to a prompt the engine moved past', async () => {
@@ -263,7 +263,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(get.mock.calls.length).toBeGreaterThan(1);
         });
-        expect(screen.queryByText('The engine did not get your answer. Try again.')).toBeNull();
+        expect(screen.queryByText('The project did not get your answer. Try again.')).toBeNull();
     });
 
     it('skips to Home on an engine without Chatter', async () => {
@@ -396,7 +396,7 @@ describe('onboarding input kinds after pairing', { timeout: TIMEOUT_MS }, () => 
             'OpenAI Codex',
         ]);
         await user.click(screen.getByRole('button', { name: 'Create and start' }));
-        await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' });
+        await screen.findByRole('heading', { level: 1, name: 'Your project is set up' });
         expect(answers).toEqual([{ kind: 'confirm', confirmed: true }]);
     });
 
@@ -465,7 +465,7 @@ describe('onboarding input kinds after pairing', { timeout: TIMEOUT_MS }, () => 
             ),
         ]);
         const { user, queryClient } = renderWithProviders({ path: '/onboarding', engineApi: client });
-        const list = await screen.findByRole('list', { name: 'What the engine is doing' });
+        const list = await screen.findByRole('list', { name: 'What the project is doing' });
         const lines = within(list)
             .getAllByRole('listitem')
             .map((line) => line.textContent);
@@ -475,17 +475,17 @@ describe('onboarding input kinds after pairing', { timeout: TIMEOUT_MS }, () => 
             'Skipped: Install Gemini CLI · Skipped',
             'In progress: Download the model240 MB of 1.2 GB',
         ]);
-        expect(screen.queryByText('The engine is setting things up…')).toBeNull();
+        expect(screen.queryByText('The project is setting things up…')).toBeNull();
 
         await client.onboarding.answer({ promptId: 'none', action: 'back' }, AbortSignal.timeout(1_000));
         await queryClient.invalidateQueries({ queryKey: ['onboarding'] });
         expect(await screen.findByRole('button', { name: 'Yes' })).toBeDefined();
-        expect(screen.getByRole('list', { name: 'What the engine is doing' })).toBeDefined();
+        expect(screen.getByRole('list', { name: 'What the project is doing' })).toBeDefined();
         expect(screen.getByText('claude: command not found')).toBeDefined();
 
         await user.click(screen.getByRole('button', { name: 'Yes' }));
         expect(await screen.findByRole('button', { name: 'Fine' })).toBeDefined();
-        expect(screen.queryByRole('list', { name: 'What the engine is doing' })).toBeNull();
+        expect(screen.queryByRole('list', { name: 'What the project is doing' })).toBeNull();
     });
 
     it('offers no skip on an engine without a project yet, and says the answers are kept', async () => {

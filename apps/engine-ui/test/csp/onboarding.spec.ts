@@ -23,7 +23,7 @@ test.describe('setup in the browser on a paired engine under the engine CSP', ()
         const bodies = await routeSetupScript(page, SETUP_SCRIPT, 1);
         const report = await visit('/files');
         await expect(page).toHaveURL(/\/onboarding$/);
-        await expect(page.getByRole('list', { name: 'What the engine is doing' })).toContainText('command not found');
+        await expect(page.getByRole('list', { name: 'What the project is doing' })).toContainText('command not found');
         const terminal = page.getByRole('link', { name: /Sign in in a terminal instead/ });
         await expect(terminal).toHaveAttribute('href', '/_ptbk/harness-terminal?harness=codex');
         await expect(terminal).toHaveAttribute('target', '_blank');
