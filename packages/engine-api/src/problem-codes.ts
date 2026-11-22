@@ -50,6 +50,8 @@ export const PROBLEM_STATUS = {
     'live-channel-attached': 409,
     /** The help request was already resolved; its `resolution` says how. */
     'browser-help-resolved': 409,
+    /** Speech was asked of a message that is still being written, failed, was cancelled or has no text. */
+    'message-not-speakable': 409,
     'payload-too-large': 413,
     'unsupported-media-type': 415,
     'invalid-book': 422,
@@ -58,10 +60,23 @@ export const PROBLEM_STATUS = {
     'invalid-schedule': 422,
     /** The engine's own origin, or one outside its allowlist for remote sign-in. */
     'browser-origin-refused': 422,
+    /** The decoded clip is longer than `MAX_VOICE_CLIP_MS`. */
+    'voice-clip-too-long': 422,
+    /** The message's text is longer than `MAX_SPEECH_TEXT_LENGTH`. */
+    'speech-too-long': 422,
     'rate-limited': 429,
     'internal-error': 500,
     'reply-failed': 502,
+    /** The engine or its provider could not transcribe this clip (unreadable audio included); recording again may help. */
+    'transcription-failed': 502,
+    /** The engine or its provider could not make the audio; asking again later may help. */
+    'speech-failed': 502,
     unavailable: 503,
+    /**
+     * The capability is advertised, but no speech provider is ready right now (a harness signed out, a provider down).
+     * Runtime, not a missing capability: the UI keeps the control and says voice is unavailable for now.
+     */
+    'voice-unavailable': 503,
 } as const satisfies Record<string, number>;
 
 export type ProblemCode = keyof typeof PROBLEM_STATUS;

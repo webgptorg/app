@@ -7,6 +7,7 @@ import {
     createProblem,
     encodeLiveMedia,
     parseLiveClientMessage,
+    supports,
 } from '@ptbk/engine-api';
 import type { CapabilityRef, Permission } from '@ptbk/engine-api';
 import { createEngineApiHttpHandler } from '@ptbk/engine-api/http';
@@ -272,10 +273,21 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
             ? leakTyped(response, typed)
             : response;
     };
+    const capabilities = options.capabilities ?? Object.values(KNOWN_CAPABILITIES);
+    const permissionsPolicy = `camera=(), microphone=${
+        supports({ capabilities }, KNOWN_CAPABILITIES.voiceInput) ? '(self)' : '()'
+    }, geolocation=(), payment=(), usb=()`;
+    // The gateway's headers go on every answer, before any tamper, so a test can break them like anything else.
+    const withHeaders = async (request: Request): Promise<Response> => {
+        const response = await answer(request);
+        const headers = new Headers(response.headers);
+        headers.set('permissions-policy', permissionsPolicy);
+        return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    };
     const handle = async (request: Request): Promise<Response> => {
-        if (options.tamper === undefined) return answer(request);
+        if (options.tamper === undefined) return withHeaders(request);
         const original = request.clone();
-        return options.tamper(original, await answer(request));
+        return options.tamper(original, await withHeaders(request));
     };
 
     return {

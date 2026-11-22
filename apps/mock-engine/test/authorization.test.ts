@@ -91,6 +91,40 @@ function validBody(route: RouteDefinition): unknown {
     }
 }
 
+const WAV_HEADER = Uint8Array.from([
+    ...'RIFF'.split('').map((c) => c.charCodeAt(0)),
+    36,
+    0,
+    0,
+    0,
+    ...'WAVEfmt '.split('').map((c) => c.charCodeAt(0)),
+    16,
+    0,
+    0,
+    0,
+    1,
+    0,
+    1,
+    0,
+    0x80,
+    0x3e,
+    0,
+    0,
+    0,
+    0x7d,
+    0,
+    0,
+    2,
+    0,
+    16,
+    0,
+    ...'data'.split('').map((c) => c.charCodeAt(0)),
+    0,
+    0,
+    0,
+    0,
+]);
+
 /** Every path parameter names a resource nobody has, so an allowed call answers 404 and changes nothing. */
 function pathOf(route: RouteDefinition, ids: Readonly<Record<string, string>> = {}): string {
     return `${ENGINE_API_PREFIX}${route.path.replace(/\{(\w+)\}/g, (_, name: string) => ids[name] ?? 'unknown-id')}`;
@@ -107,6 +141,9 @@ async function call(
     if (route.body?.kind === 'json') {
         init.headers['content-type'] = 'application/json';
         init.body = JSON.stringify(body);
+    } else if (route.body?.kind === 'binary') {
+        // A silent WAV header with no samples: a clip the route accepts, so the permission decides.
+        init.body = new Blob([WAV_HEADER], { type: 'audio/wav' });
     } else if (route.body?.kind === 'multipart') {
         const form = new FormData();
         form.set('file', new Blob(['matrix']), 'matrix.txt');
@@ -144,9 +181,14 @@ function expectDecision(
     expect(result.body, label).toMatchObject({ code: 'forbidden', requiredPermission: route.permission });
 }
 
-// Reserved capabilities are never advertised, so their routes answer 404 before any permission check.
+// Reserved capabilities are never advertised, nor is voice without `MOCK_VOICE`, so their routes answer 404 before
+// any permission check.
 const SERVED_ROUTES = ENGINE_API_ROUTE_LIST.filter(
-    (route) => route.capability === undefined || !isReservedCapability(route.capability),
+    (route) =>
+        route.capability === undefined ||
+        (!isReservedCapability(route.capability) &&
+            route.capability.id !== KNOWN_CAPABILITIES.voiceInput.id &&
+            route.capability.id !== KNOWN_CAPABILITIES.voiceOutput.id),
 );
 
 let harness: ApiHarness;

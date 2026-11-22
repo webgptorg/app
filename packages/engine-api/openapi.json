@@ -20774,6 +20774,435 @@
           }
         }
       }
+    },
+    "/chats/{chatId}/transcriptions": {
+      "post": {
+        "operationId": "transcribeVoiceClip",
+        "summary": "Turn a recorded clip into a transcript draft for the composer; nothing is sent or kept",
+        "description": "The body is the clip itself, with its `Content-Type` one of `VOICE_CLIP_FORMATS`. Longer than `MAX_VOICE_CLIP_MS` is 422 `voice-clip-too-long`. The engine keeps no audio and no transcript, logs neither, and adds nothing to the chat: the member sends the edited text as an ordinary message. A provider that fails is 502 `transcription-failed`; none ready right now is 503 `voice-unavailable`.",
+        "tags": ["chats"],
+        "x-required-permission": "chats.write",
+        "x-capability": {
+          "id": "voice-input",
+          "version": 1,
+          "label": "voice-input@1"
+        },
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ChatId"
+            }
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 35,
+              "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "The raw bytes, at most 2097152.",
+          "content": {
+            "audio/webm;codecs=opus": {
+              "schema": {
+                "type": "string",
+                "contentMediaType": "audio/webm;codecs=opus"
+              }
+            },
+            "audio/ogg;codecs=opus": {
+              "schema": {
+                "type": "string",
+                "contentMediaType": "audio/ogg;codecs=opus"
+              }
+            },
+            "audio/wav": {
+              "schema": {
+                "type": "string",
+                "contentMediaType": "audio/wav"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "maxLength": 4000
+                    },
+                    "language": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 35,
+                          "pattern": "^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "confidence": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "durationMs": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 60000
+                    }
+                  },
+                  "required": ["text", "language", "confidence", "durationMs"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Problem: `payload-too-large`.",
+            "x-problem-codes": ["payload-too-large"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Problem: `unsupported-media-type`.",
+            "x-problem-codes": ["unsupported-media-type"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `voice-clip-too-long`.",
+            "x-problem-codes": ["voice-clip-too-long"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Problem: `transcription-failed`.",
+            "x-problem-codes": ["transcription-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`, `voice-unavailable`.",
+            "x-problem-codes": ["unavailable", "voice-unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chats/{chatId}/messages/{messageId}/speech": {
+      "post": {
+        "operationId": "speakChatMessage",
+        "summary": "Read a message aloud: its text as audio in the first offered format the engine can make",
+        "description": "Only a `completed` message with text (409 `message-not-speakable` otherwise), of at most `MAX_SPEECH_TEXT_LENGTH` (422 `speech-too-long`). None of the offered formats is 415 `unsupported-media-type`. The audio is made for this request and neither stored nor cached.",
+        "tags": ["chats"],
+        "x-required-permission": "chats.read",
+        "x-capability": {
+          "id": "voice-output",
+          "version": 1,
+          "label": "voice-output@1"
+        },
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ChatId"
+            }
+          },
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MessageId"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "formats": {
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": ["audio/mpeg", "audio/ogg;codecs=opus", "audio/wav"]
+                    }
+                  }
+                },
+                "required": ["formats"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The bytes, in one of these formats.",
+            "content": {
+              "audio/mpeg": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "audio/mpeg"
+                }
+              },
+              "audio/ogg;codecs=opus": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "audio/ogg;codecs=opus"
+                }
+              },
+              "audio/wav": {
+                "schema": {
+                  "type": "string",
+                  "contentMediaType": "audio/wav"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `message-not-speakable`.",
+            "x-problem-codes": ["message-not-speakable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Problem: `unsupported-media-type`.",
+            "x-problem-codes": ["unsupported-media-type"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `speech-too-long`.",
+            "x-problem-codes": ["speech-too-long"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Problem: `speech-failed`.",
+            "x-problem-codes": ["speech-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`, `voice-unavailable`.",
+            "x-problem-codes": ["unavailable", "voice-unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -24763,16 +25192,22 @@
               "browser-session-ended",
               "live-channel-attached",
               "browser-help-resolved",
+              "message-not-speakable",
               "payload-too-large",
               "unsupported-media-type",
               "invalid-book",
               "access-code-mismatch",
               "invalid-schedule",
               "browser-origin-refused",
+              "voice-clip-too-long",
+              "speech-too-long",
               "rate-limited",
               "internal-error",
               "reply-failed",
-              "unavailable"
+              "transcription-failed",
+              "speech-failed",
+              "unavailable",
+              "voice-unavailable"
             ]
           },
           "errors": {

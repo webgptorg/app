@@ -10,7 +10,8 @@ import {
     decodeFrame,
     encodeFrame,
 } from '@ptbk/protocol';
-import { ENGINE_API_ROUTES, KNOWN_CAPABILITIES, MemberId, OWNER_PERMISSIONS, SessionId } from '@ptbk/engine-api';
+import { ENGINE_API_ROUTES, MemberId, OWNER_PERMISSIONS, SessionId } from '@ptbk/engine-api';
+import { DEFAULT_CAPABILITIES } from '@ptbk/engine-api/in-memory';
 import { describe, expect, it } from 'vitest';
 
 import { tlsCertificateInfo } from '../adapters/certificate-fingerprint';
@@ -273,9 +274,7 @@ describe('startMockEngine', () => {
                 hostname: started.engine.hostname,
                 mode: 'tunnel',
                 dashboardUrl: null,
-                capabilities: Object.values(KNOWN_CAPABILITIES).filter(
-                    (ref) => ref !== KNOWN_CAPABILITIES.fileScanning && ref !== KNOWN_CAPABILITIES.browserTab,
-                ),
+                capabilities: DEFAULT_CAPABILITIES,
             });
             interface Security {
                 relays: { hostname: string; status: string }[];

@@ -8,6 +8,7 @@ import {
     KNOWN_CAPABILITIES,
     createEngineApiClient,
 } from '@ptbk/engine-api';
+import { DEFAULT_CAPABILITIES } from '@ptbk/engine-api/in-memory';
 import type { Actor } from '@ptbk/engine-api/in-memory';
 import { describe, expect, it } from 'vitest';
 
@@ -104,16 +105,14 @@ describe('engine runtime with the live browser', () => {
 });
 
 describe('engine runtime', () => {
-    it('reports the identity, version, mode and every capability but file scanning and the live browser', async () => {
+    it('reports the identity, version, mode and every capability but file scanning, the live browser and voice', async () => {
         const { client } = await start();
         expect(ok(await client().engine.get(signal()))).toMatchObject({
             engineId: IDENTITY.engineId,
             hostname: IDENTITY.hostname,
             mode: 'tunnel',
             dashboardUrl: null,
-            capabilities: Object.values(KNOWN_CAPABILITIES).filter(
-                (ref) => ref !== KNOWN_CAPABILITIES.fileScanning && ref !== KNOWN_CAPABILITIES.browserTab,
-            ),
+            capabilities: DEFAULT_CAPABILITIES,
         });
         expect(ok(await client().security.get(signal()))).toMatchObject({
             engine: { version: '0.4.2' },

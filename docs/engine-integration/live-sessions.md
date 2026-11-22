@@ -202,18 +202,45 @@ A message never exceeds `MAX_LIVE_MEDIA_BYTES` (64 KiB) with its header, so it n
 
 ## CSP and permissions on the engine origin
 
-**Decided.** `ENGINE_UI_CSP` does not change: `connect-src 'self'` covers the `wss:` WebSocket to the same host, and frames are drawn to a `<canvas>` with `createImageBitmap`, so `img-src` needs no `blob:`. `Permissions-Policy` stays `camera=(), microphone=(), …` ([gateway.md](gateway.md#security-headers)); the live browser needs neither. Model output stays data: a help request's `message` is text, rendered as text.
+**Decided.** `ENGINE_UI_CSP` does not change: `connect-src 'self'` covers the `wss:` WebSocket to the same host, and frames are drawn to a `<canvas>` with `createImageBitmap`, so `img-src` needs no `blob:`. `Permissions-Policy` stays `camera=(), microphone=(), …` ([gateway.md](gateway.md#security-headers)); the live browser needs neither. It sends `microphone=(self)` only while the engine advertises `voice-input@1` (push-to-talk, [voice.md](voice.md)) or `live-audio@1`, and never another origin. Model output stays data: a help request's `message` is text, rendered as text.
 
-## Voice and video (reserved, design only)
+## Live audio (phase 2)
 
-Unchanged since 2026-11-05 and not built. `POST /chats/{chatId}/live-audio` (`openLiveAudioSession`, `chats.write`, body `{ formats }`) answers 404 `capability-not-supported` on every engine, advertised or not; the conformance check `engine-api.live.reserved` fails an engine that advertises `live-audio@1` or `live-video@1`.
+**Designed, not built or typed.** Phase 1 (push-to-talk and spoken replies, [voice.md](voice.md)) is built over ordinary API requests. Phase 2 is a conversation: the member talks, the agent answers aloud, either may interrupt. `live-audio@1` stays in `RESERVED_CAPABILITIES`, and its route still answers 404 `capability-not-supported` on every engine.
 
-- A voice session belongs to a chat; transcripts become the chat's ordinary messages with their real authors. One live session per chat. No step-up: talking in a chat is ordinary chat use.
-- It would use the same channel: control messages `state` (listening, speaking, muted, reconnecting), `caption` (interim and final, with a stable utterance ID), `interrupt` and `mute`; audio as media kinds 16–31, in 20–60 ms groups.
-- Formats: `LIVE_AUDIO_FORMATS` proposes `opus-48k-mono` (WebCodecs) and `pcm16-24k-mono`; no WebAssembly encoder, since `ENGINE_UI_CSP` has no `'wasm-unsafe-eval'`. Video: VP8 or H.264 through WebCodecs, or JPEG frames, decided when video is planned.
-- `Permissions-Policy` would send `microphone=(self)` once `live-audio@1` is advertised, `camera=(self)` only with `live-video@1`.
+Nothing here is in code yet. When phase 2 is planned, its task types these messages in `live-channel.ts`, next to the browser tab's, and gives `engine-api.live-audio.session` its body.
 
-Open for audio: what the voice harness takes and returns (so `LIVE_AUDIO_FORMATS` can be fixed), mouth-to-ear latency through a relay over TCP, and whether `AudioWorklet.addModule` needs a Trusted Types policy.
+**Opening:** `POST /chats/{chatId}/live-audio` (`openLiveAudioSession`) with `{ formats }`, permission `chats.write`, no step-up (talking in a chat is ordinary chat use), one live session per chat, then [the channel](#the-channel) at `LIVE_CHANNEL_PATH` with the same auth, origin and single-attachment rules. Until then it answers 404 `capability-not-supported` on every engine, advertised or not, and `engine-api.live.reserved` fails an engine that advertises `live-audio@1` or `live-video@1`.
+
+**Control messages** (text, strict JSON with a `type`, parsed like the browser tab's):
+
+| Direction         | Message                                                        | Meaning                                                                                                                        |
+| ----------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| browser to engine | `hello { versions }`                                           | First message: the channel versions it speaks.                                                                                 |
+| browser to engine | `mute { muted }`                                               | Stop or resume sending the member's audio to the provider; the engine also stops reading audio-in while muted.                 |
+| browser to engine | `interrupt`                                                    | Barge-in: stop the agent's current speech now. The engine cancels the reply's audio-out and lets the provider hear the member. |
+| browser to engine | `end`                                                          | End the session.                                                                                                               |
+| engine to browser | `hello { version }`                                            | The version it chose.                                                                                                          |
+| engine to browser | `state { state }`                                              | `listening`, `thinking`, `speaking`, `muted` or `reconnecting` (the provider connection is being restored; audio is dropped).  |
+| engine to browser | `caption { utteranceId, speaker: user \| agent, text, final }` | Live text of one utterance. An interim caption replaces the text of the same `utteranceId`; a `final` one is its last.         |
+| engine to browser | `end { reason }`                                               | The last message, with a reason from `LIVE_END_REASONS` (all but `tab-closed`).                                                |
+
+- `utteranceId` is stable for one utterance across its interim and final captions, opaque, and unique within the session.
+- **Final utterances become chat messages.** Each final utterance, the member's and the agent's, is saved as an ordinary message of the chat with its real author, through the chats contract, and appears in the event stream (`chat.changed`) like any message. The channel carries only what is live: captions are not a second message store.
+- Captions and transcripts are model output: the UI renders them as text only.
+
+**Audio** is binary media in the [same framing](#media), at most `MAX_LIVE_MEDIA_BYTES` per message. Kinds 16–31 are audio: 16 audio-in (browser to engine), 17 audio-out (engine to browser); the rest stay free. Send audio in groups of 20–60 ms, never one tiny packet per message. Backpressure drops the **oldest** unsent audio rather than queueing it (late audio is worthless); control messages are never dropped.
+
+**Formats.** Phase 1 and phase 2 use separate lists, and neither implies the other:
+
+- Phase 1 (`VOICE_CLIP_FORMATS`, `SPEECH_FORMATS`) moves whole clips in container formats over HTTP: WebM or Ogg with Opus and WAV in, MP3, Ogg Opus or WAV out.
+- Phase 2 (`LIVE_AUDIO_FORMATS`) streams raw codec frames on the channel: `opus-48k-mono` through WebCodecs, or `pcm16-24k-mono` without a codec; no WebAssembly encoder, since `ENGINE_UI_CSP` has no `'wasm-unsafe-eval'`. One format per session, both directions.
+- An engine with `voice-input@1` and `voice-output@1` may reuse the same provider for `live-audio@1`, but advertising phase 1 says nothing about phase 2, and the other way round.
+- `Permissions-Policy` sends `microphone=(self)` while either `voice-input@1` or `live-audio@1` is advertised.
+
+**Video** (`live-video@1`): VP8 or H.264 through WebCodecs, or JPEG frames, decided when video is planned; `Permissions-Policy` sends `camera=(self)` only with it.
+
+**Open for audio:** what the voice harness takes and returns (so `LIVE_AUDIO_FORMATS` can be fixed), mouth-to-ear latency through a relay over TCP, and whether `AudioWorklet.addModule` needs a Trusted Types policy.
 
 ## WebRTC
 

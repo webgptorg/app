@@ -1,4 +1,4 @@
-import { ENGINE_API_PREFIX, PROBLEM_STATUS, ProblemDetails, createSseParser } from '@ptbk/engine-api';
+import { ENGINE_API_PREFIX, PROBLEM_STATUS, ProblemDetails, createSseParser, matchMediaType } from '@ptbk/engine-api';
 import type { RouteDefinition, RouteEngineData, RouteResponse, SseEventSchema, SseMessage } from '@ptbk/engine-api';
 
 import type { CheckContext } from '../../check';
@@ -216,7 +216,11 @@ export class EngineApi {
         if (request.lastEventId !== undefined) headers.set('Last-Event-ID', request.lastEventId);
         let body: BodyInit | undefined;
         if (request.body instanceof FormData) body = request.body;
-        else if (request.body !== undefined) {
+        else if (request.body instanceof Blob) {
+            // An untyped Blob goes without the header, as a browser sends it.
+            if (request.body.type !== '') headers.set('Content-Type', request.body.type);
+            body = request.body;
+        } else if (request.body !== undefined) {
             headers.set('Content-Type', 'application/json');
             body = JSON.stringify(request.body);
         }
@@ -280,6 +284,12 @@ function judgeSuccess(where: string, response: RouteResponse, raw: RawResponse):
             }
             if (!/^attachment\b/i.test(raw.headers.get('content-disposition') ?? '')) {
                 fail(`${where}: a download needs Content-Disposition: attachment`);
+            }
+            if (
+                response.mediaTypes !== undefined &&
+                matchMediaType(raw.headers.get('content-type'), response.mediaTypes) === null
+            ) {
+                fail(`${where}: content type is ${typeOf(raw.headers)}, not one the route declares`);
             }
             return raw.bytes;
         case 'sse':
@@ -351,8 +361,10 @@ function acceptFor(route: RouteDefinition): string {
     switch (successOf(route).response.kind) {
         case 'sse':
             return 'text/event-stream';
-        case 'binary':
-            return '*/*';
+        case 'binary': {
+            const { mediaTypes } = successOf(route).response as { readonly mediaTypes?: readonly string[] };
+            return mediaTypes === undefined ? '*/*' : [...mediaTypes, 'application/problem+json'].join(', ');
+        }
         case 'json':
         case 'empty':
             return 'application/json, application/problem+json';

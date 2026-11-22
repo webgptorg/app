@@ -46,6 +46,8 @@ import { Folder } from './folders';
 import { hashAuditEntry } from './in-memory/audit-chain';
 import { requestAccess, revokeDashboardMember } from './in-memory/access-requests';
 import { createOnboardingRecord, failHarnessCheck, onboardingState, settleHarnessLogin } from './in-memory/onboarding';
+import { createVoiceRecord } from './in-memory/voice';
+import type { VoiceFault } from './in-memory/voice';
 import type { HarnessLoginOutcome, OnboardingHarness, OnboardingSeed } from './in-memory/onboarding';
 import type { DashboardRevocationOutcome, NewAccessRequest } from './in-memory/access-requests';
 import { checkBook } from './in-memory/book';
@@ -127,7 +129,8 @@ import { Passkey } from './passkeys';
 import { OWNER_PERMISSIONS } from './permissions';
 import type { Permission, Role } from './permissions';
 import { createProblem } from './problem';
-import type { EngineApiStreamItem, ParsedRouteRequest, RouteDefinition } from './route';
+import type { EngineApiStreamItem, ParsedRouteRequest, RouteBody, RouteDefinition } from './route';
+import { matchMediaType } from './media-type';
 import type { EngineApiRouteId } from './routes';
 import { SecurityOverview } from './security';
 import { Session } from './sessions';
@@ -536,6 +539,10 @@ export interface InMemoryEngineController {
     failHarnessCheck(harness: OnboardingHarness, reason: string): void;
     /** `onboarding@1`: the setup as the engine itself sees it at its current time, e.g. for the heartbeat's `setup`. */
     onboarding(): OnboardingState;
+    /** `voice-input@1` and `voice-output@1`: the speech provider fails this way from now on; `null` heals it. */
+    failVoice(fault: VoiceFault | null): void;
+    /** `voice-input@1`: the fake transcriber hears `text` in the clip with this SHA-256 (lowercase hex). */
+    setVoiceTranscript(clipSha256: string, text: string): void;
     /** Agent work needs a login it does not have; asking again for the same origin and account counts on one request. */
     requestWalletLogin(request: Unbranded<NewWalletRequest>): WalletRequest;
     /** E.g. the operator set the Wallet up or it locked on this host. */
@@ -681,10 +688,14 @@ export const DEFAULT_EVENT_BUFFER_SIZE = 1_000;
 
 /**
  * Every capability this contract knows except malware scanning, which an engine offers only with a scanner, and the
- * live browser, which no environment advertises until it is rolled out.
+ * live browser and voice, which no environment advertises until they are rolled out: a core or the mock engine opts in.
  */
 export const DEFAULT_CAPABILITIES: readonly CapabilityRef[] = Object.values(KNOWN_CAPABILITIES).filter(
-    (ref) => ref !== KNOWN_CAPABILITIES.fileScanning && ref !== KNOWN_CAPABILITIES.browserTab,
+    (ref) =>
+        ref !== KNOWN_CAPABILITIES.fileScanning &&
+        ref !== KNOWN_CAPABILITIES.browserTab &&
+        ref !== KNOWN_CAPABILITIES.voiceInput &&
+        ref !== KNOWN_CAPABILITIES.voiceOutput,
 );
 
 const timerSleep: Sleep = (ms, signal) =>
@@ -945,6 +956,13 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             failHarnessCheck(system, harness, reason);
         },
         onboarding: () => onboardingState(system),
+        failVoice: (fault) => {
+            state.voice.fault = fault;
+        },
+        setVoiceTranscript: (clipSha256, text) => {
+            if (!/^[0-9a-f]{64}$/.test(clipSha256)) throw new Error('Expected a lowercase hex SHA-256');
+            state.voice.transcripts.set(clipSha256, text);
+        },
         requestWalletLogin: (request) => requestWalletLogin(system, request as NewWalletRequest),
         setWalletState: (walletState, lockedRecords = 0) => {
             state.wallet.state = walletState;
@@ -1211,9 +1229,15 @@ function parseRequest(route: RouteDefinition, request: Parameters<EngineApiTrans
         }
         return undefined;
     };
+    let rawBody = request.body;
+    if (route.body?.kind === 'binary') {
+        const clip = binaryBody(route.body, rawBody);
+        if (clip.kind === 'problem') return clip;
+        rawBody = clip.blob;
+    }
     const params = part('params', route.params, request.params);
     const query = part('query', route.query, request.query);
-    const body = part('body', route.body?.schema, request.body);
+    const body = part('body', route.body?.schema, rawBody);
     if (errors.length > 0) return { kind: 'problem', problem: createProblem('validation-failed', { errors }) };
     return {
         kind: 'ok',
@@ -1224,6 +1248,19 @@ function parseRequest(route: RouteDefinition, request: Parameters<EngineApiTrans
             lastEventId: request.lastEventId ?? null,
         } as ParsedRouteRequest<RouteDefinition>,
     };
+}
+
+/** As an engine's HTTP layer refuses a raw body: by its media type, then its size, before anything reads it. */
+function binaryBody(
+    body: Extract<RouteBody, { kind: 'binary' }>,
+    value: unknown,
+): { readonly kind: 'ok'; readonly blob: Blob } | { readonly kind: 'problem'; readonly problem: ProblemDetails } {
+    const type = value instanceof Blob ? matchMediaType(value.type, body.mediaTypes) : null;
+    if (!(value instanceof Blob) || type === null) {
+        return { kind: 'problem', problem: createProblem('unsupported-media-type') };
+    }
+    if (value.size > body.maxBytes) return { kind: 'problem', problem: createProblem('payload-too-large') };
+    return { kind: 'ok', blob: value.slice(0, value.size, type) };
 }
 
 /** A fake that answers outside its own contract is a bug, reported the way the fetch client reports the engine's. */
@@ -1240,8 +1277,12 @@ function checkSuccess(route: RouteDefinition, data: unknown): unknown {
         }
         case 'sse':
             return checkStream(route, success.event, data as AsyncIterable<EngineApiStreamItem<unknown>>);
-        case 'empty':
         case 'binary':
+            if (success.mediaTypes !== undefined && matchMediaType((data as Blob).type, success.mediaTypes) === null) {
+                throw new EngineApiContractError(route.id, 'in-memory response is in an undeclared format');
+            }
+            return data;
+        case 'empty':
         case undefined:
             return data;
     }
@@ -1532,6 +1573,7 @@ function createState(
         members,
         invites: byId((seed.invites ?? []).map((record) => Invite.parse(record))),
         onboarding: createOnboardingRecord(seed.onboarding ?? 'completed'),
+        voice: createVoiceRecord(),
         accessRequests: new Map(
             (seed.accessRequests ?? []).map(({ request, code, dashboardUserId }) => {
                 const parsed = AccessRequest.parse(request);

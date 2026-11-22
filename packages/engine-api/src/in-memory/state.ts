@@ -22,6 +22,7 @@ import type { Passkey } from '../passkeys';
 import type { SecurityOverview } from '../security';
 import type { Session } from '../sessions';
 import type { Settings } from '../settings';
+import type { InMemoryVoice } from './voice';
 
 export interface AgentRecord {
     agent: Agent;
@@ -86,6 +87,7 @@ export interface InMemoryState {
     readonly invites: Map<string, Invite>;
     readonly accessRequests: Map<string, AccessRequestRecord>;
     readonly onboarding: OnboardingRecord;
+    readonly voice: InMemoryVoice;
     readonly folders: Map<string, Folder>;
     readonly agents: Map<string, AgentRecord>;
     readonly chats: Map<string, ChatRecord>;

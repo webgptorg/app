@@ -320,11 +320,17 @@ describe('every response of that run', () => {
 
     it('came from every operation of the route table', () => {
         // Reserved routes have no client method; capabilities.test.ts checks that they answer 404. The shared client
-        // suite has no `browser-tab@1` cases yet (C-16); capabilities.test.ts answers each of its routes instead.
+        // suite has no `browser-tab@1` cases yet (C-16); capabilities.test.ts answers each of its routes instead. Voice
+        // is served only with `MOCK_VOICE`, and voice.test.ts answers its routes.
+        const notCovered = new Set<string>([
+            KNOWN_CAPABILITIES.browserTab.id,
+            KNOWN_CAPABILITIES.voiceInput.id,
+            KNOWN_CAPABILITIES.voiceOutput.id,
+        ]);
         const missing = ENGINE_API_ROUTE_LIST.filter(
             (route) =>
                 route.capability === undefined ||
-                (!isReservedCapability(route.capability) && route.capability.id !== KNOWN_CAPABILITIES.browserTab.id),
+                (!isReservedCapability(route.capability) && !notCovered.has(route.capability.id)),
         )
             .map(({ id }) => id)
             .filter((id) => !recorder.answered.has(id));
