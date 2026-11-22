@@ -33,6 +33,7 @@ export function session(
         readonly memberships?: SessionView['memberships'];
         readonly steppedUpUntil?: number | null;
         readonly billingEnabled?: boolean;
+        readonly licensing?: boolean;
     } = {},
 ): SessionView {
     const cooldown = overrides.recoveryCooldownEndsAt ?? null;
@@ -57,6 +58,7 @@ export function session(
         ],
         steppedUpUntil: overrides.steppedUpUntil ?? null,
         billingEnabled: overrides.billingEnabled ?? true,
+        licensing: overrides.licensing ?? false,
     };
 }
 

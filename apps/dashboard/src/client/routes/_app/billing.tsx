@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
 import { billingQuery } from '../../api/queries';
 import { BillingPage } from '../../features/billing/billing-page';
@@ -20,6 +20,10 @@ export const Route = createFileRoute('/_app/billing')({
         return checkout === undefined ? {} : { checkout };
     },
     beforeLoad: ({ context }) => {
+        // Billing became License with the website's licences (ADR 0021); old links and bookmarks follow it.
+        if (context.session.licensing) {
+            throw redirect({ to: '/license', replace: true });
+        }
         requireBilling(context.session);
     },
     // Prefetch only, failures swallowed: the page shows its own loading and error state.

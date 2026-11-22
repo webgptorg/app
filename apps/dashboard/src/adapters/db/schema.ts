@@ -534,3 +534,50 @@ export const usageDailyPeople = sqliteTable(
         index('usage_daily_people_user_id_idx').on(t.userId),
     ],
 );
+
+// Website licensing (D-30, ADR 0021): which website account licenses an organization, and what the website last said.
+// Account and licence metadata only.
+
+/** One website subject per organization and one organization per subject; changing either is a later, explicit flow. */
+export const websiteLinks = sqliteTable('website_links', {
+    orgId: text('org_id')
+        .primaryKey()
+        .references(() => organizations.id),
+    subject: text('subject').notNull().unique(),
+    linkedByUserId: text('linked_by_user_id').notNull(),
+    linkedAt: integer('linked_at').notNull(),
+});
+
+/** The last snapshot that validated, kept for when the website does not answer; numbers and dates, no prices. */
+export const websiteLicenseSnapshots = sqliteTable('website_license_snapshots', {
+    orgId: text('org_id')
+        .primaryKey()
+        .references(() => organizations.id),
+    subject: text('subject').notNull(),
+    snapshot: text('snapshot').notNull(),
+    fetchedAt: integer('fetched_at').notNull(),
+});
+
+/** A handoff this App started: the challenge only as SHA-256, used at most once. */
+export const websiteHandoffStates = sqliteTable(
+    'website_handoff_states',
+    {
+        challengeHash: text('challenge_hash').primaryKey(),
+        createdAt: integer('created_at').notNull(),
+        expiresAt: integer('expires_at').notNull(),
+    },
+    (t) => [index('website_handoff_states_expires_at_idx').on(t.expiresAt)],
+);
+
+/** A verified website identity waiting for an App account to sign in or sign up; the cookie only as SHA-256. */
+export const websitePendingLinks = sqliteTable(
+    'website_pending_links',
+    {
+        tokenHash: text('token_hash').primaryKey(),
+        subject: text('subject').notNull(),
+        email: text('email').notNull(),
+        createdAt: integer('created_at').notNull(),
+        expiresAt: integer('expires_at').notNull(),
+    },
+    (t) => [index('website_pending_links_expires_at_idx').on(t.expiresAt)],
+);

@@ -9,6 +9,7 @@ import { bindAdminHostnameRoutes } from './admin-hostname-routes';
 import { bindAuthRoutes } from './auth-routes';
 import { bindBillingRoutes } from './billing-routes';
 import { bindEngineRoutes } from './engine-routes';
+import { bindLicensingRoutes } from './licensing-routes';
 import type { RouteBinder } from './bind-route';
 import { crossSiteRequestGuard } from './csrf';
 import { bindTeamRoutes } from './team-routes';
@@ -28,10 +29,16 @@ export function createApiRouter(
         Promise.resolve({ kind: 'ok', body: { email: deps.config.abuseEmail } }),
     );
     const { billing } = deps;
-    bindAuthRoutes(router, API_MOUNT, { ...deps, billingEnabled: billing !== null });
-    // Not mounted with billing off, so every billing route answers 404 like any unknown path.
+    const website = deps.config.billing.adapter === 'website' ? deps.config.billing : null;
+    bindAuthRoutes(router, API_MOUNT, { ...deps, billingEnabled: billing !== null, licensing: website !== null });
+    // Not mounted with billing off or website, so every billing route answers 404 like any unknown path.
     if (billing !== null) {
         bindBillingRoutes(router, API_MOUNT, { ...deps, billing });
+    }
+    // Only with billing website: the website sells, and the App reads licences and links accounts (ADR 0021).
+    const { licensing } = deps;
+    if (website !== null && licensing !== null) {
+        bindLicensingRoutes(router, API_MOUNT, { ...deps, website, licensing });
     }
     bindEngineRoutes(router, API_MOUNT, deps);
     bindTeamRoutes(router, API_MOUNT, deps);

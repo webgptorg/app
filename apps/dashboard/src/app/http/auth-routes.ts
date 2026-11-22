@@ -84,6 +84,7 @@ export function bindAuthRoutes(
     deps: AuthDeps & {
         readonly routes: RouteBinder;
         readonly billingEnabled: boolean;
+        readonly licensing: boolean;
         readonly teams: InviteJoinDeps['teams'] & RecoveryDeps['teams'];
         readonly usage: UsageRecorder;
     },
@@ -117,6 +118,7 @@ export function bindAuthRoutes(
             memberships: memberships.map((m) => ({ orgId: m.orgId, kind: m.org.kind, name: m.org.name, role: m.role })),
             steppedUpUntil: record.steppedUpAt === null ? null : record.steppedUpAt + STEP_UP_WINDOW_MS,
             billingEnabled: deps.billingEnabled,
+            licensing: deps.licensing,
         };
     }
 

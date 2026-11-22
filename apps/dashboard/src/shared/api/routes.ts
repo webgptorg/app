@@ -77,6 +77,8 @@ export const sessionViewSchema = z.strictObject({
     steppedUpUntil: timestampSchema.nullable(),
     /** False while the dashboard charges nobody (billing `off`): no billing screen, plan step or Checkout exists. */
     billingEnabled: z.boolean(),
+    /** True with billing `website` (ADR 0021): the website sells licences, and the billing screen becomes License. */
+    licensing: z.boolean(),
 });
 export type SessionView = z.infer<typeof sessionViewSchema>;
 
@@ -337,6 +339,61 @@ const redirectSchema = z.strictObject({ url: z.url({ protocol: /^https?$/ }).max
 const ceremonyErrors = ['challenge-invalid', 'webauthn-failed'] as const;
 
 const SMALL_BODY_BYTES = 1024;
+
+const capacitySchema = z.number().int().nonnegative().nullable();
+
+/** ADR 0021's advisory licence view; numbers and dates from the website, never a price or a plan name. */
+export const licenseViewSchema = z.strictObject({
+    /** The website account linked to the active organization, by whoever linked it. */
+    link: z.strictObject({ linkedAt: timestampSchema, linkedByEmail: z.string().nullable() }).nullable(),
+    /** `stale`: the website did not answer and this is the last snapshot; `unknown`: there is none. */
+    state: z.enum(['current', 'stale', 'unknown']),
+    checkedAt: z.string().nullable(),
+    /** An https page on the website origin; the server checked it. */
+    manageUrl: z.string().nullable(),
+    grants: z.array(
+        z.strictObject({
+            id: z.string(),
+            validFrom: z.string(),
+            validUntil: z.string().nullable(),
+            active: z.boolean(),
+            /** Null is unlimited, zero is none. */
+            capabilities: z.strictObject({
+                engineProjects: capacitySchema,
+                specialists: capacitySchema,
+                controllingUsers: capacitySchema,
+                harnessInstances: capacitySchema,
+                browserProfiles: capacitySchema,
+                remoteControl: z.boolean(),
+            }),
+        }),
+    ),
+    coverage: z
+        .strictObject({
+            engines: z.strictObject({
+                used: z.number().int().nonnegative(),
+                covered: z.number().int().nonnegative(),
+                capacity: capacitySchema,
+            }),
+            people: z.strictObject({ used: z.number().int().nonnegative(), limit: capacitySchema }),
+        })
+        .nullable(),
+    /** Advisory: nothing is ever blocked by it. */
+    notice: z.enum(['unlinked', 'missing', 'expired', 'exceeded']).nullable(),
+});
+export type LicenseView = z.infer<typeof licenseViewSchema>;
+
+export const websitePendingViewSchema = z.strictObject({
+    /** The address the website verified; sign-up sends the App's own confirmation link to it. */
+    email: z.string(),
+    accountExists: z.boolean(),
+    expiresAt: timestampSchema,
+});
+export type WebsitePendingView = z.infer<typeof websitePendingViewSchema>;
+
+/** Why `/website-access` was reached without a pending link; the return route's only redirect parameter. */
+export const websiteAccessErrorSchema = z.enum(['expired', 'failed']);
+export type WebsiteAccessError = z.infer<typeof websiteAccessErrorSchema>;
 /** Attestation objects with certificate chains run to a few kilobytes; base64url and JSON add a third. */
 const WEBAUTHN_BODY_BYTES = 64 * 1024;
 
@@ -1305,6 +1362,59 @@ export const apiRoutes = {
                 }),
             ),
         }),
+        errorCodes: [],
+    }),
+    // Website licensing (D-30, ADR 0021); mounted only with billing `website`.
+    websiteAccessStart: defineRoute({
+        method: 'GET',
+        path: '/api/website-access/start',
+        auth: 'public',
+        permission: null,
+        rateLimit: 'website-access-ip',
+        input: NO_INPUT,
+        output: NO_CONTENT,
+        responseType: 'redirect',
+        errorCodes: [],
+    }),
+    websiteAccessReturn: defineRoute({
+        method: 'GET',
+        path: '/api/website-access/return',
+        auth: 'public',
+        permission: null,
+        rateLimit: 'website-access-ip',
+        input: { ...NO_INPUT, query: z.strictObject({ code: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }) },
+        output: NO_CONTENT,
+        responseType: 'redirect',
+        errorCodes: [],
+    }),
+    websiteAccessPending: defineRoute({
+        method: 'GET',
+        path: '/api/website-access/pending',
+        auth: 'public',
+        permission: null,
+        rateLimit: 'website-access-ip',
+        input: NO_INPUT,
+        output: websitePendingViewSchema,
+        errorCodes: [],
+    }),
+    websiteAccessLink: defineRoute({
+        method: 'POST',
+        path: '/api/website-access/link',
+        auth: 'session',
+        permission: 'license.link',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: z.strictObject({ linked: z.literal(true) }),
+        errorCodes: ['pending-invalid', 'email-mismatch', 'website-link-conflict'],
+    }),
+    getLicense: defineRoute({
+        method: 'GET',
+        path: '/api/license',
+        auth: 'session',
+        permission: 'license.read',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: licenseViewSchema,
         errorCodes: [],
     }),
 } as const;

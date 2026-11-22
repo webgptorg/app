@@ -94,6 +94,7 @@ function app(options: {
         },
         relayPresence: createMemoryRelayPresenceStore(),
         usage: { record: () => Promise.resolve() },
+        licensing: null,
         assets: { fetch: assets } as unknown as Fetcher,
         viteDevServer: options.viteDevServer,
     });

@@ -9,6 +9,7 @@ import { useApiClient } from '../../api/api-client-context';
 import { useBrowser } from '../../core/browser';
 import { registerWithEmailToken } from '../passkeys/ceremonies';
 import { useCeremony } from '../passkeys/use-ceremony';
+import { afterSignUp } from '../licensing/website-link-marker';
 import { useCompleteSignIn } from '../session/end-session';
 import { CeremonyPanel } from './ceremony-panel';
 import type { FragmentToken } from './fragment-token';
@@ -34,13 +35,17 @@ export function SignUpPage(props: { readonly initialToken: FragmentToken }) {
 
 function SignUpPasskeyStep(props: { readonly token: string; readonly onRestart: () => void }) {
     const api = useApiClient();
-    const { passkeys } = useBrowser();
+    const { passkeys, storage, now } = useBrowser();
     const completeSignIn = useCompleteSignIn();
     const ceremony = useCallback(
         () => registerWithEmailToken({ api, passkeys }, 'signup', props.token),
         [api, passkeys, props.token],
     );
-    const onRegistered = useCallback((session: SessionView) => completeSignIn(session, '/'), [completeSignIn]);
+    // Back to the ptbk.io link when this sign-up started there, even from the emailed link in a new tab.
+    const onRegistered = useCallback(
+        (session: SessionView) => completeSignIn(session, afterSignUp(storage, now()) ?? '/'),
+        [completeSignIn, storage, now],
+    );
     const { state, start } = useCeremony(ceremony, onRegistered);
     if (state.kind === 'failed' && state.failure.kind === 'api' && state.failure.code === 'token-invalid') {
         return <LinkExpired onRestart={props.onRestart} />;

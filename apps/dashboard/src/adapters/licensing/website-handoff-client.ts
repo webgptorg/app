@@ -1,5 +1,6 @@
 import { readBoundedJson } from './read-bounded-json';
 import { z } from 'zod';
+import type { WebsiteIdentityExchange } from '../../domain/licensing/website-access';
 import type { WebsiteIdentity } from '../../domain/licensing/website-handoff';
 const responseSchema = z.object({
     version: z.literal(1),
@@ -40,4 +41,14 @@ export async function exchangeWebsiteTicket(input: {
     } catch {
         return null;
     }
+}
+
+export function createWebsiteIdentityExchange(deps: {
+    readonly websiteOrigin: string;
+    readonly secret: string;
+    readonly fetch: typeof fetch;
+}): WebsiteIdentityExchange {
+    return {
+        exchange: (input, signal) => exchangeWebsiteTicket({ ...deps, ...input, signal }),
+    };
 }

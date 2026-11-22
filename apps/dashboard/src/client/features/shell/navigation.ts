@@ -1,6 +1,6 @@
 import type { LinkProps } from '@tanstack/react-router';
 import type { ComponentType } from 'react';
-import { Contact, CreditCard, ShieldCheck, UserRound, UsersRound } from 'lucide-react';
+import { BadgeCheck, Contact, CreditCard, ShieldCheck, UserRound, UsersRound } from 'lucide-react';
 
 import type { SessionView } from '../../../shared/api/routes';
 import { m } from '../../../paraglide/messages';
@@ -20,6 +20,8 @@ export interface NavEntry {
     readonly requires: NavRequirement;
     /** Shown only while the dashboard charges (`billingEnabled`). */
     readonly billingOnly?: true;
+    /** Shown only with billing `website` (`licensing`), where it takes billing's place. */
+    readonly licensingOnly?: true;
 }
 
 /** The shell's navigation; later screens (admin tools) add their entries here. */
@@ -48,6 +50,14 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
         billingOnly: true,
     },
     {
+        id: 'license',
+        to: '/license',
+        label: () => m.nav_license(),
+        icon: BadgeCheck,
+        requires: { permission: 'license.read' },
+        licensingOnly: true,
+    },
+    {
         id: 'account',
         to: '/account',
         label: () => m.nav_account(),
@@ -68,6 +78,9 @@ export function isAllowed(requirement: NavRequirement, session: SessionView): bo
 
 export function visibleNavEntries(session: SessionView): readonly NavEntry[] {
     return NAV_ENTRIES.filter(
-        (entry) => isAllowed(entry.requires, session) && (entry.billingOnly !== true || session.billingEnabled),
+        (entry) =>
+            isAllowed(entry.requires, session) &&
+            (entry.billingOnly !== true || session.billingEnabled) &&
+            (entry.licensingOnly !== true || session.licensing),
     );
 }

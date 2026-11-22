@@ -27,6 +27,7 @@ import type { RelyingParty } from '../domain/ports/relying-party';
 import type { Timer } from '../domain/ports/timer';
 import type { DashboardMetrics } from '../domain/monitoring/dashboard-metrics';
 import type { UsageRecorder } from '../domain/usage/usage-recorder';
+import type { WebsiteLicensingStore } from '../domain/licensing/website-licensing-store';
 import type { DashboardConfig } from './config';
 
 /** Everything handlers may use. Later tasks add their ports here, built from the adapters `config.adapters` selects. */
@@ -74,6 +75,11 @@ export interface DashboardDeps {
     readonly relayPresence: RelayPresenceStore;
     /** Funnel events (ADR 0022), best effort: handlers pass `record` to `waitUntil`. */
     readonly usage: UsageRecorder;
+    /**
+     * With billing `website` only (ADR 0021): the link to a website account, the last licence snapshot, and the `fetch`
+     * that reaches the website server to server. Null otherwise, and then no licensing route is mounted.
+     */
+    readonly licensing: { readonly store: WebsiteLicensingStore; readonly fetch: typeof fetch } | null;
     /** The fake outbox behind `email` when `config.adapters.email` is `fake` (dev only), else null. */
     readonly devOutbox: FakeEmailSender | null;
 }

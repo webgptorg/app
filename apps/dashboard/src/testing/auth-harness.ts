@@ -32,6 +32,11 @@ import type { HeartbeatEngineReader } from '../domain/status/heartbeat-engine-re
 import type { RouteContract } from '../shared/api/contract';
 import { syntheticWebhookSecret, TEST_OFF_PLAN, TEST_PLANS } from './billing-fixtures';
 import { createFixedEntitlements } from '../domain/billing/entitlements';
+import { createAdvisoryEntitlements } from '../domain/licensing/advisory-entitlements';
+import type { WebsiteLicensingStore } from '../domain/licensing/website-licensing-store';
+import { createFakeWebsite, FAKE_HANDOFF_URL, type FakeWebsite } from './fake-website';
+import { syntheticLicenseSecret } from './licensing-fixtures';
+import { createMemoryWebsiteLicensingStore } from './memory-website-licensing-store';
 import { createPlanCatalogue, planCatalogueSchema } from '../domain/billing/plan-catalogue';
 import { TEST_INSTALL_VARS } from './install-fixtures';
 import { createSoftwareAuthenticator, type SoftwareAuthenticator } from './software-authenticator';
@@ -108,6 +113,9 @@ export interface AuthHarness {
     readonly relayPresence: RelayPresenceStore;
     /** The usage events the routes and status objects recorded (ADR 0022). */
     readonly usage: MemoryUsageStore;
+    /** The fake website the App talks to with billing `website`, and the store it links accounts in. */
+    readonly website: FakeWebsite;
+    readonly websiteLicensing: WebsiteLicensingStore;
     /** Sends `body` exactly as given, for routes whose signature covers the raw bytes. */
     post(
         path: string,
@@ -144,8 +152,13 @@ export function createAuthHarness(options: {
     readonly store: AuthStore;
     readonly rateLimiter?: (clock: FakeClock) => RateLimiter;
     readonly email?: 'fake' | 'cloudflare';
-    /** `off` grants {@link TEST_OFF_PLAN} to everyone and mounts no billing route; the store is still there to inspect. */
-    readonly billing?: 'fake' | 'off';
+    /**
+     * `off` grants {@link TEST_OFF_PLAN} to everyone and mounts no billing route; the store is still there to inspect.
+     * `website` mounts no billing route either; licences come from {@link AuthHarness.website}.
+     */
+    readonly billing?: 'fake' | 'off' | 'website';
+    /** With billing `website`; an in-memory store by default (the D1 one in the workers project). */
+    readonly websiteLicensing?: WebsiteLicensingStore;
     /** Defaults to an in-memory store; the auth tests that use the default never touch billing. */
     readonly billingStore?: BillingStore;
     /** Default to in-memory stores whose organizations always exist. */
@@ -183,6 +196,15 @@ export function createAuthHarness(options: {
     const webhookSecret = syntheticWebhookSecret();
     const outbox = createFakeEmailSender();
     const logger = createMemoryLogger();
+    const licenseSecret = syntheticLicenseSecret();
+    const website = createFakeWebsite({ secret: licenseSecret, nowMs: () => clock.nowMs() });
+    const websiteLicensing =
+        options.websiteLicensing ??
+        createMemoryWebsiteLicensingStore((userId) =>
+            'state' in options.store
+                ? ((options.store as { readonly state: MemoryAuthState }).state.users.get(userId)?.email ?? null)
+                : null,
+        );
     const config = parseConfig({
         ENVIRONMENT: 'dev',
         DASHBOARD_ORIGIN: ORIGIN,
@@ -196,7 +218,9 @@ export function createAuthHarness(options: {
         MEMBER_KEY: DEV_MEMBER_KEY,
         ...(options.billing === 'off'
             ? { BILLING_OFF_PLAN: TEST_OFF_PLAN }
-            : { BILLING_PLANS: TEST_PLANS, STRIPE_WEBHOOK_SECRET: webhookSecret }),
+            : options.billing === 'website'
+              ? { WEBSITE_HANDOFF_URL: FAKE_HANDOFF_URL, PROMPTBOOK_APP_LICENSE_SECRET: licenseSecret }
+              : { BILLING_PLANS: TEST_PLANS, STRIPE_WEBHOOK_SECRET: webhookSecret }),
         ...(options.heartbeat === undefined ? {} : { HEARTBEAT: options.heartbeat }),
     });
     const testBilling = createTestBilling({
@@ -265,7 +289,10 @@ export function createAuthHarness(options: {
         devOutbox: options.email === 'cloudflare' ? null : outbox,
         ...(config.billing.adapter === 'off'
             ? { billing: null, entitlements: createFixedEntitlements(config.billing.grant) }
-            : { billing: testBilling.billing, entitlements: testBilling.entitlements }),
+            : config.billing.adapter === 'website'
+              ? { billing: null, entitlements: createAdvisoryEntitlements() }
+              : { billing: testBilling.billing, entitlements: testBilling.entitlements }),
+        licensing: config.billing.adapter === 'website' ? { store: websiteLicensing, fetch: website.fetch } : null,
         linkCodes: registration.linkCodes,
         engines: registration.engines,
         teams,
@@ -319,6 +346,8 @@ export function createAuthHarness(options: {
         engineStatuses,
         relayPresence,
         usage,
+        website,
+        websiteLicensing,
         settle,
         async post(path, body, headers = {}, postOptions = {}) {
             const response = await http.request(
