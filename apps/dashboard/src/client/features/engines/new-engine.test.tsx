@@ -31,7 +31,7 @@ const CHECKOUT_URL = 'https://checkout.stripe.com/c/pay/cs_test_example';
 
 const WAITING_TEXT = 'Waiting for your project to link. Run the command above; this page updates by itself.';
 const OWNER_TEXT =
-    "Finish in the browser window that opened on the project's computer: create your passkey there. Nothing opened? Open the setup link the project's terminal shows, or run ptbk connect --setup-link on that computer for a new one (in the project folder if it already exists). This page updates when you're done.";
+    'Open the first-access link from the installation terminal in the browser where you have App open, then create your passkey. If you installed over SSH, copy the link from your SSH session. To get a new link, run ptbk connect --setup-link on the machine running the project (in the project folder if it already exists). This page updates automatically after you create your passkey.';
 const COMMAND_NOTE = `Copy it now: it is shown only once and works until ${createFormatters('en').formatDateTime(new Date(NOW + LINK_CODE_LIFETIME_MS))}.`;
 
 const PENDING: LinkCodeStatusView = { status: 'pending', expiresAt: NOW + LINK_CODE_LIFETIME_MS };
@@ -689,7 +689,7 @@ describe('new engine page', () => {
             const live = progress().querySelectorAll('[aria-live="polite"]');
             expect(live).toHaveLength(1);
             expect(live[0]?.textContent).toBe(
-                "Project online. Finish in the browser window that opened on the project's computer, or run ptbk connect --setup-link on that computer.",
+                'Project online. Open the first-access link from the installation terminal in the browser where you have App open.',
             );
             expect(document.querySelectorAll('[aria-live="polite"] [data-step]')).toHaveLength(0);
         });

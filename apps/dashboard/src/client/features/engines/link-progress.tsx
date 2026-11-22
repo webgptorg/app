@@ -256,7 +256,7 @@ function ownerSetupCommand(engine: EngineView | undefined, engineId: string): st
 }
 
 /** The one sentence the live region speaks, so a screen reader hears each change once and nothing else. */
-function announcement(state: LinkState, engine: EngineView | undefined, engineId: string): string {
+function announcement(state: LinkState, engine: EngineView | undefined): string {
     switch (state) {
         case 'waiting':
             return m.link_progress_waiting();
@@ -265,7 +265,7 @@ function announcement(state: LinkState, engine: EngineView | undefined, engineId
         case 'linked':
             return m.link_progress_linked();
         case 'owner-pending':
-            return m.link_progress_owner_announcement({ command: ownerSetupCommand(engine, engineId) });
+            return m.link_progress_owner_announcement();
         case 'ready':
             return setupPending(engine) ? m.link_progress_setup_pending() : m.link_progress_ready();
     }
@@ -420,7 +420,7 @@ export function LinkProgress(props: {
             className="flex flex-col gap-4 border-t border-hairline pt-5"
         >
             <p className="sr-only" aria-live="polite">
-                {announcement(state, engine.data, linked?.engineId ?? '')}
+                {announcement(state, engine.data)}
             </p>
             {ready === null ? (
                 <>

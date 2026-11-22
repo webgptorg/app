@@ -36,7 +36,9 @@ describe('structured installation choices', () => {
         expect(screen.getByRole('tab', { name: 'New project' }).getAttribute('aria-selected')).toBe('true');
         expect(screen.getByText(/On macOS, open Terminal/)).toBeTruthy();
         expect(screen.getByText(/Paste the entire copied block/)).toBeTruthy();
-        expect(screen.getByText(/The project connects to this app first/)).toBeTruthy();
+        expect(
+            screen.getByText(/If you installed over SSH, copy the link from the SSH terminal to this browser/),
+        ).toBeTruthy();
         const writeText = vi.fn().mockResolvedValue(undefined);
         Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
         try {
