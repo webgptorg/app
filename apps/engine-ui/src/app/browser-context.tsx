@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import type { OpenLiveChannel } from '../features/browser/live-channel';
 import type { FrameDrawer } from '../features/browser/live-session';
 import type { StepUpPopups } from '../features/step-up/step-up-popup';
+import type { VoiceMedia } from '../features/voice/voice-media';
 import type { BrowserLocation } from './sign-in-redirect';
 import type { ThemeMatchMedia } from './theme';
 
@@ -24,6 +25,8 @@ export interface AppBrowser {
     readonly openLiveChannel?: OpenLiveChannel | undefined;
     /** How live frames reach the page; without it, `createImageBitmap` onto the viewer's canvas. */
     readonly frameDrawer?: ((canvas: HTMLCanvasElement) => FrameDrawer) | undefined;
+    /** Microphone, recorder and audio output for voice; without it, the window's own. */
+    readonly voiceMedia?: VoiceMedia | undefined;
 }
 
 const BrowserContext = createContext<AppBrowser | null>(null);
