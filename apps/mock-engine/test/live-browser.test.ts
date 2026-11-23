@@ -240,6 +240,11 @@ describe('the live channel', () => {
             status: 403,
             code: 'forbidden',
         });
+        // The upgrade checks the permission itself, before the subprotocol and before asking the core.
+        expect(await refused(harness, session.id, { cookie: blind, protocols: [] })).toEqual({
+            status: 403,
+            code: 'forbidden',
+        });
     });
 
     it('ends a controller’s session as revoked once a role change takes browser.control', async () => {

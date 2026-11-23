@@ -32,7 +32,7 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
   - The attach is audited once the WebSocket handshake completed; a failed handshake is `failed`.
   - `BrowserHelpRequest.message` refuses control characters (line breaks and tabs included) and bidi embeddings, overrides and isolates. `toBrowserHelpMessage` folds model output into an accepted line.
   - New checks: `engine-api.browser-tab.permissions` (403 on every browser route and the channel), `engine-api.browser-tab.origin-refused`, `engine-api.browser-tab.revoked`, `engine-api.browser-tab.watcher-blocked`.
-- **Redo:** end sessions on permission loss and audit the real attach outcome (LB-03, LB-08, LB-14 and LB-15 changed), pass the message through `toBrowserHelpMessage` or the same rule, then re-run the `engine-api.browser-tab.*` checks.
+- **Redo:** require `browser.watch` on the channel upgrade, end sessions on permission loss and audit the real attach outcome (LB-03, LB-08, LB-14 and LB-15 changed), pass the message through `toBrowserHelpMessage` or the same rule, then re-run the `engine-api.browser-tab.*` checks.
 
 ### 2026-11-23: Gateway pages print complete `ptbk` commands; local-stack findings
 
