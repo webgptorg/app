@@ -24,6 +24,18 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-23: Gateway pages print complete `ptbk` commands; local-stack findings
+
+- **Changed:**
+  - **Gateway pages:** the recovery hints on setup, sign-in and step-up now render whole commands (#353, [gateway-pages README](../../packages/gateway-pages/README.md)). New values `{{setupLinkCommand}}`, `{{resetOwnerCommand}}` and `{{statusCommand}}`. For `command: 'ptbk'` they default to `ptbk connect --setup-link`, `ptbk connect --reset-owner` and `ptbk status`.
+  - **Local stack:** the platform's local stack can now run your conformance build (#342, [testing-against-the-platform.md](testing-against-the-platform.md)). Running it turned up the items under "Worth fixing".
+- **Redo:**
+  - Re-vendor `setup.html`, `sign-in.html`, `step-up.html` **and** `render-page.ts`. While initialization is pending, pass `setupLinkCommand: 'ptbk connect --onboarding <engine-id> --setup-link'`, `resetOwnerCommand: 'ptbk connect --onboarding <engine-id> --reset-owner'` and `statusCommand: 'ptbk onboarding --id <engine-id> --json'`. Installed engines only see the new hints after a release.
+  - Worth fixing, none blocking:
+    1. The conformance build's daemons start the release build (`engineModule()` resolves `<root>/dist`). Make them start the build that launched them.
+    2. A pending engine (`init --prepare-only`) runs only as a detached background service. Add a foreground mode for containers and supervisors.
+    3. `--json` prints JSON over several lines. Print one compact line per result.
+
 ### 2026-11-20: PRIORITY: our UI out of the box, with a staging build of `ptbk`
 
 - **Goal:** the owner types two things into a terminal, and that is the last time they use it:
