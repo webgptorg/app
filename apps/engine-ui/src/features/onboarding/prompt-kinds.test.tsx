@@ -7,6 +7,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../testing/render-with-providers';
+import { spoken } from '../../testing/spoken';
 import { OneTimeValue } from '../wallet/one-time-value';
 import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
 
@@ -161,7 +162,11 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         const { user } = renderWithProviders({ path: '/onboarding', engineApi: client });
         const answer = await screen.findByRole('textbox', { name: 'What are you working on?' });
         expect(screen.getByText(/Tell me a little about your project/)).toBeDefined();
-        expect(screen.getByText('Step 1 of 2')).toBeDefined();
+        expect(
+            spoken(
+                within(screen.getByRole('list', { name: 'Setup steps' })).getByRole('listitem', { current: 'step' }),
+            ),
+        ).toBe('Setup');
         await user.type(answer, 'Bread{Enter}Cakes');
         expect(answers).toEqual([]);
         await user.keyboard('{Control>}{Enter}{/Control}');

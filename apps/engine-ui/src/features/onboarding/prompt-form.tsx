@@ -7,9 +7,9 @@ import type {
     ReadOnboardingPrompt,
     UnsupportedOnboardingPrompt,
 } from '@ptbk/engine-api';
-import { Banner, Button, buttonClassName, CopyButton, ExternalLink, IconButton, Spinner } from '@ptbk/ui';
+import { Banner, Button, buttonClassName, CopyButton, ExternalLink, Input, Spinner, Textarea } from '@ptbk/ui';
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { ArrowUp, ExternalLink as ExternalLinkIcon } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ExternalLink as ExternalLinkIcon } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode, SubmitEvent } from 'react';
 
@@ -53,27 +53,35 @@ export function PromptForm({ prompt, ...actions }: PromptFormProps<ReadOnboardin
             return <ChoicePrompt prompt={prompt} {...actions} />;
         case 'confirm':
             return (
-                <Frame prompt={prompt} {...actions}>
+                <Frame
+                    prompt={prompt}
+                    {...actions}
+                    answers={
+                        <>
+                            <Button
+                                size="lg"
+                                variant="secondary"
+                                disabled={actions.busy}
+                                onClick={() => {
+                                    actions.onAnswer({ kind: 'confirm', confirmed: false });
+                                }}
+                            >
+                                {prompt.declineLabel}
+                            </Button>
+                            <Button
+                                size="lg"
+                                variant="primary"
+                                loading={actions.busy}
+                                onClick={() => {
+                                    actions.onAnswer({ kind: 'confirm', confirmed: true });
+                                }}
+                            >
+                                {prompt.confirmLabel}
+                            </Button>
+                        </>
+                    }
+                >
                     <Question prompt={prompt} />
-                    <div className="flex flex-wrap gap-2">
-                        <Button
-                            variant="primary"
-                            loading={actions.busy}
-                            onClick={() => {
-                                actions.onAnswer({ kind: 'confirm', confirmed: true });
-                            }}
-                        >
-                            {prompt.confirmLabel}
-                        </Button>
-                        <Button
-                            disabled={actions.busy}
-                            onClick={() => {
-                                actions.onAnswer({ kind: 'confirm', confirmed: false });
-                            }}
-                        >
-                            {prompt.declineLabel}
-                        </Button>
-                    </div>
                 </Frame>
             );
         case 'upload':
@@ -88,8 +96,9 @@ export function PromptForm({ prompt, ...actions }: PromptFormProps<ReadOnboardin
 }
 
 /**
- * The engine's refusal of the last answer, the actions and its other ways through the step, around the controls of one
- * prompt.
+ * The engine's refusal of the last answer, the step's actions and its other ways through, around the controls of one
+ * prompt. The actions sit as in the agent wizard: Back on the start side, the way forward on the end side, so the step's
+ * one main action is always in the same place.
  */
 function Frame({
     prompt,
@@ -98,37 +107,52 @@ function Frame({
     onAlternative,
     submit,
     onSubmit,
+    answers,
     children,
 }: Omit<PromptActions, 'onAnswer'> & {
     readonly prompt: OnboardingPrompt;
-    /**
-     * A Continue button that submits the form; prompts that answer by their own buttons leave it out, and `inline`
-     * leaves it to the prompt, whose answer box carries its own.
-     */
-    readonly submit?: { readonly disabled: boolean; readonly inline?: boolean };
+    /** A Continue button that submits the form; prompts that answer by their own buttons give `answers` instead. */
+    readonly submit?: { readonly disabled: boolean };
     readonly onSubmit?: () => void;
+    readonly answers?: ReactNode;
     readonly children: ReactNode;
 }) {
     const handle = (event: SubmitEvent<HTMLFormElement>) => {
         event.preventDefault();
         onSubmit?.();
     };
+    const forward =
+        answers ??
+        (submit === undefined ? null : (
+            <Button
+                type="submit"
+                size="lg"
+                variant="primary"
+                loading={busy}
+                disabled={submit.disabled}
+                className="gap-2"
+            >
+                {m.onboarding_continue()}
+                <ArrowRight aria-hidden className="size-4" />
+            </Button>
+        ));
     return (
-        <form className="flex flex-col gap-4" onSubmit={handle} noValidate>
+        <form className="flex flex-col gap-6" onSubmit={handle} noValidate>
             {children}
             {prompt.error === null ? null : <Banner tone="danger">{prompt.error}</Banner>}
-            <div className="flex flex-wrap items-center gap-2 empty:hidden">
-                {submit === undefined || submit.inline === true ? null : (
-                    <Button type="submit" variant="primary" loading={busy} disabled={submit.disabled}>
-                        {m.onboarding_continue()}
-                    </Button>
-                )}
-                {prompt.canGoBack ? (
-                    <Button variant="ghost" disabled={busy} onClick={onBack}>
-                        {m.onboarding_back()}
-                    </Button>
-                ) : null}
-            </div>
+            {forward === null && !prompt.canGoBack ? null : (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    {prompt.canGoBack ? (
+                        <Button size="lg" variant="ghost" disabled={busy} onClick={onBack} className="-ms-3 gap-2">
+                            <ArrowLeft aria-hidden className="size-4" />
+                            {m.onboarding_back()}
+                        </Button>
+                    ) : null}
+                    {forward === null ? null : (
+                        <div className="ms-auto flex flex-wrap justify-end gap-2">{forward}</div>
+                    )}
+                </div>
+            )}
             <Alternatives alternatives={prompt.alternatives} busy={busy} onAlternative={onAlternative} />
         </form>
     );
@@ -137,9 +161,9 @@ function Frame({
 /** The question with the engine's hint and facts under it, where the question does not label a single field. */
 function Question({ prompt }: { readonly prompt: OnboardingPrompt }) {
     return (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
             <p className="text-base [overflow-wrap:anywhere]">{prompt.question}</p>
-            {prompt.hint === null ? null : <p className="text-xs text-text-muted">{prompt.hint}</p>}
+            {prompt.hint === null ? null : <p className="text-sm text-text-muted">{prompt.hint}</p>}
             <PromptDetails details={prompt.details} />
         </div>
     );
@@ -149,10 +173,10 @@ function Question({ prompt }: { readonly prompt: OnboardingPrompt }) {
 function PromptDetails({ details }: { readonly details: readonly OnboardingDetail[] }) {
     if (details.length === 0) return null;
     return (
-        <dl className="mt-3 flex flex-col divide-y divide-hairline border-y border-hairline text-sm">
+        <dl className="mt-4 flex flex-col divide-y divide-hairline border-y border-hairline text-sm">
             {details.map((detail, index) => (
                 // Labels may repeat; the engine's order is all that tells them apart.
-                <div key={index} className="flex flex-col gap-0.5 py-2.5 sm:flex-row sm:gap-6">
+                <div key={index} className="flex flex-col gap-0.5 py-3 sm:flex-row sm:gap-6">
                     <dt className="shrink-0 text-text-muted [overflow-wrap:anywhere] sm:w-40">{detail.label}</dt>
                     <dd className="min-w-0 whitespace-pre-line [overflow-wrap:anywhere]">{detail.text}</dd>
                 </div>
@@ -177,9 +201,9 @@ function Alternatives({
 }) {
     if (alternatives.length === 0) return null;
     return (
-        <div className="flex flex-col gap-3 border-t border-hairline pt-4">
-            <p className="text-xs text-text-muted">{m.onboarding_alternatives()}</p>
-            <ul className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 border-t border-hairline pt-5">
+            <p className="meta">{m.onboarding_alternatives()}</p>
+            <ul className="flex flex-col gap-4">
                 {alternatives.map((alternative) => (
                     <li key={alternative.id} className="flex flex-col items-start gap-1">
                         {alternative.href === null ? (
@@ -224,48 +248,8 @@ function Alternatives({
 const MULTILINE_ROWS = 3;
 
 /**
- * The rounded composer of "Ask Chatter anything…" on Home, with Continue inside it, so answering setup feels like
- * answering Chatter. It holds one answer field.
- */
-function Composer({
-    multiline,
-    busy,
-    disabled,
-    children,
-}: {
-    readonly multiline: boolean;
-    readonly busy: boolean;
-    readonly disabled: boolean;
-    readonly children: ReactNode;
-}) {
-    return (
-        <div
-            className={cx(
-                'flex gap-2 rounded-[1.5rem] bg-raised p-1.5 ps-3 shadow-raised ring-1 ring-divider',
-                'focus-within:outline-2 focus-within:outline-offset-0 focus-within:outline-focus',
-                multiline ? 'items-end' : 'items-center',
-            )}
-        >
-            {children}
-            <IconButton
-                type="submit"
-                label={m.onboarding_continue()}
-                icon={<ArrowUp className="size-4" strokeWidth={2.5} />}
-                variant="primary"
-                disabled={disabled}
-                loading={busy}
-                className="shrink-0 rounded-full!"
-            />
-        </div>
-    );
-}
-
-const COMPOSER_FIELD =
-    'min-w-0 flex-1 resize-none self-center bg-transparent py-2 ps-1 text-base text-text outline-none placeholder:text-text-muted';
-
-/**
- * A text answer in the composer. A multi-line answer grows with its text; Enter adds a line there and ⌘/Ctrl+Enter
- * continues, since setup answers are often pasted notes.
+ * A text answer in the app's own field. A multi-line answer grows with its text; Enter adds a line there and
+ * ⌘/Ctrl+Enter continues, since setup answers are often pasted notes.
  */
 function AnswerBox({
     id,
@@ -274,8 +258,6 @@ function AnswerBox({
     value,
     placeholder,
     required,
-    busy,
-    disabled,
     code = false,
     onChange,
 }: {
@@ -285,8 +267,6 @@ function AnswerBox({
     readonly value: string;
     readonly placeholder: string | undefined;
     readonly required: boolean;
-    readonly busy: boolean;
-    readonly disabled: boolean;
     /** A code to paste: monospace, and no autocomplete or spell check that would change it. */
     readonly code?: boolean;
     readonly onChange: (value: string) => void;
@@ -307,36 +287,31 @@ function AnswerBox({
         required,
         'aria-describedby': describedBy,
         ...(code ? { autoComplete: 'off', spellCheck: false } : {}),
-        className: cx(COMPOSER_FIELD, code && 'font-mono'),
+        className: cx(code && 'font-mono'),
     };
-    return (
-        <Composer multiline={multiline} busy={busy} disabled={disabled}>
-            {multiline ? (
-                <textarea
-                    {...control}
-                    ref={box}
-                    rows={MULTILINE_ROWS}
-                    className={cx(control.className, 'max-h-[40dvh] overflow-y-auto')}
-                    onChange={(event) => {
-                        onChange(event.target.value);
-                    }}
-                    onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
-                        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                            event.preventDefault();
-                            event.currentTarget.form?.requestSubmit();
-                        }
-                    }}
-                />
-            ) : (
-                <input
-                    {...control}
-                    type="text"
-                    onChange={(event) => {
-                        onChange(event.target.value);
-                    }}
-                />
-            )}
-        </Composer>
+    return multiline ? (
+        <Textarea
+            {...control}
+            ref={box}
+            rows={MULTILINE_ROWS}
+            className={cx(control.className, 'max-h-[40dvh] resize-none overflow-y-auto')}
+            onChange={(event) => {
+                onChange(event.target.value);
+            }}
+            onKeyDown={(event: KeyboardEvent<HTMLTextAreaElement>) => {
+                if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                }
+            }}
+        />
+    ) : (
+        <Input
+            {...control}
+            onChange={(event) => {
+                onChange(event.target.value);
+            }}
+        />
     );
 }
 
@@ -359,13 +334,13 @@ function TextPrompt({
             busy={busy}
             onBack={onBack}
             onAlternative={onAlternative}
-            submit={{ disabled: uploading || (prompt.required && blank), inline: true }}
+            submit={{ disabled: uploading || (prompt.required && blank) }}
             onSubmit={() => {
                 onAnswer({ kind: 'text', text, fileIds: files.map(({ id: fileId }) => fileId) });
             }}
         >
             <div className="flex flex-col gap-2">
-                {/* Chatter's question, the label of the answer below it. */}
+                {/* The engine's question, the label of the answer below it. */}
                 <label htmlFor={id} className="text-base [overflow-wrap:anywhere]">
                     {prompt.question}
                 </label>
@@ -377,12 +352,10 @@ function TextPrompt({
                     value={text}
                     placeholder={prompt.placeholder ?? undefined}
                     required={prompt.required}
-                    busy={busy}
-                    disabled={uploading || (prompt.required && blank)}
                     onChange={setText}
                 />
                 {prompt.hint === null ? null : (
-                    <p id={hintId} className="px-3 text-xs text-text-muted">
+                    <p id={hintId} className="text-sm text-text-muted">
                         {prompt.hint}
                     </p>
                 )}
@@ -418,15 +391,15 @@ function ChoicePrompt({
                 onAnswer({ kind: 'choice', choiceIds: [...selected] });
             }}
         >
-            <fieldset className="flex flex-col gap-2">
-                <legend className="mb-2 text-base [overflow-wrap:anywhere]">{prompt.question}</legend>
-                {prompt.hint === null ? null : <p className="mb-1 text-xs text-text-muted">{prompt.hint}</p>}
+            <fieldset className="flex flex-col gap-2.5">
+                <legend className="mb-1.5 text-base [overflow-wrap:anywhere]">{prompt.question}</legend>
+                {prompt.hint === null ? null : <p className="mb-1.5 text-sm text-text-muted">{prompt.hint}</p>}
                 <PromptDetails details={prompt.details} />
                 {prompt.choices.map((choice) => (
                     <label
                         key={choice.id}
                         className={cx(
-                            'flex cursor-pointer items-start gap-3 rounded-surface border border-hairline px-3.5 py-3',
+                            'flex cursor-pointer items-start gap-3 rounded-surface border border-divider px-4 py-3.5',
                             'hover:bg-hover has-checked:border-border has-checked:bg-selected',
                             'has-focus-visible:outline-2 has-focus-visible:outline-focus',
                             'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
@@ -509,7 +482,7 @@ function SecretPromptForm({ prompt, busy, onAnswer, onBack, onAlternative }: Pro
             busy={busy}
             onBack={onBack}
             onAlternative={onAlternative}
-            submit={{ disabled: blank, inline: true }}
+            submit={{ disabled: blank }}
             onSubmit={() => {
                 const element = input.current;
                 if (element === null) return;
@@ -519,41 +492,41 @@ function SecretPromptForm({ prompt, busy, onAnswer, onBack, onAlternative }: Pro
                 if (typed !== '') onAnswer({ kind: 'secret', value: new OneTimeValue(typed) });
             }}
         >
-            <p className="text-base [overflow-wrap:anywhere]">{prompt.question}</p>
-            <PromptDetails details={prompt.details} />
+            <div className="flex flex-col gap-1.5">
+                <p className="text-base [overflow-wrap:anywhere]">{prompt.question}</p>
+                <PromptDetails details={prompt.details} />
+            </div>
             <div className="flex flex-col gap-2">
-                <label htmlFor={id} className="px-3 text-sm font-medium [overflow-wrap:anywhere]">
+                <label htmlFor={id} className="text-sm font-medium [overflow-wrap:anywhere]">
                     {prompt.label}
                 </label>
-                <Composer multiline={false} busy={busy} disabled={blank}>
-                    <input
-                        ref={input}
-                        id={id}
-                        type="password"
-                        // `off` rather than `new-password`: this is a key to paste, not a password to generate or save.
-                        autoComplete="off"
-                        autoCorrect="off"
-                        autoCapitalize="off"
-                        spellCheck={false}
-                        data-1p-ignore=""
-                        data-lpignore="true"
-                        required
-                        maxLength={MAX_ONBOARDING_SECRET_LENGTH}
-                        placeholder={prompt.placeholder ?? undefined}
-                        aria-describedby={prompt.hint === null ? undefined : hintId}
-                        aria-invalid={prompt.error === null ? undefined : true}
-                        className={cx(COMPOSER_FIELD, 'font-mono')}
-                        onChange={(event) => {
-                            setBlank(event.target.value.trim() === '');
-                        }}
-                    />
-                </Composer>
+                <Input
+                    ref={input}
+                    id={id}
+                    type="password"
+                    // `off` rather than `new-password`: this is a key to paste, not a password to generate or save.
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    data-1p-ignore=""
+                    data-lpignore="true"
+                    required
+                    maxLength={MAX_ONBOARDING_SECRET_LENGTH}
+                    placeholder={prompt.placeholder ?? undefined}
+                    aria-describedby={prompt.hint === null ? undefined : hintId}
+                    aria-invalid={prompt.error === null ? undefined : true}
+                    className="font-mono"
+                    onChange={(event) => {
+                        setBlank(event.target.value.trim() === '');
+                    }}
+                />
                 {prompt.hint === null ? null : (
-                    <p id={hintId} className="px-3 text-xs text-text-muted">
+                    <p id={hintId} className="text-sm text-text-muted">
                         {prompt.hint}
                     </p>
                 )}
-                <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 text-xs text-text-muted">
+                <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-text-muted">
                     <span>{m.onboarding_secret_trust()}</span>
                     {prompt.helpUrl === null ? null : (
                         <ExternalLink href={prompt.helpUrl}>{m.onboarding_secret_help()}</ExternalLink>
@@ -582,16 +555,18 @@ function HarnessLogin({ prompt, busy, onAnswer, onBack, onAlternative }: PromptF
             onAlternative={onAlternative}
             {...(pasting
                 ? {
-                      submit: { disabled: returnCode.trim() === '', inline: true },
+                      submit: { disabled: returnCode.trim() === '' },
                       onSubmit: () => {
                           onAnswer({ kind: 'harness-login', returnCode: returnCode.trim() });
                       },
                   }
                 : {})}
         >
-            <p className="text-base [overflow-wrap:anywhere]">{prompt.question}</p>
-            <PromptDetails details={prompt.details} />
-            <ol className="flex list-decimal flex-col gap-3 ps-5 text-sm marker:text-text-muted marker:tabular-nums">
+            <div className="flex flex-col gap-1.5">
+                <p className="text-base [overflow-wrap:anywhere]">{prompt.question}</p>
+                <PromptDetails details={prompt.details} />
+            </div>
+            <ol className="flex list-decimal flex-col gap-4 ps-5 text-sm marker:text-text-muted marker:tabular-nums">
                 <li>
                     <ExternalLink href={prompt.url}>
                         {m.onboarding_login_open({ harness: prompt.harness })}
@@ -621,8 +596,6 @@ function HarnessLogin({ prompt, busy, onAnswer, onBack, onAlternative }: PromptF
                                 value={returnCode}
                                 placeholder={undefined}
                                 required
-                                busy={busy}
-                                disabled={returnCode.trim() === ''}
                                 code
                                 onChange={setReturnCode}
                             />
@@ -630,7 +603,7 @@ function HarnessLogin({ prompt, busy, onAnswer, onBack, onAlternative }: PromptF
                     </li>
                 ) : null}
             </ol>
-            {prompt.hint === null ? null : <p className="text-xs text-text-muted">{prompt.hint}</p>}
+            {prompt.hint === null ? null : <p className="text-sm text-text-muted">{prompt.hint}</p>}
             {pending && prompt.method === 'device-code' ? (
                 <p className="flex items-center gap-2 text-sm text-text-muted" role="status">
                     <Spinner size="sm" announce={false} />

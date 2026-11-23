@@ -48,7 +48,12 @@ test.describe('the built bundle under the engine CSP', () => {
         const report = await visit('/');
 
         await expect(page.getByRole('heading', { level: 1, name: 'Your project' })).toBeVisible();
-        await expect(page.getByRole('progressbar')).toBeVisible();
+        await expect(
+            page
+                .getByRole('list', { name: 'Setup steps' })
+                .getByRole('listitem')
+                .and(page.locator('[aria-current="step"]')),
+        ).toContainText('Your project');
         await page.getByRole('textbox', { name: 'What are you working on?' }).fill('<img src=x onerror=alert(1)>');
         await page.getByRole('button', { name: 'Continue' }).click();
         await page.getByRole('button', { name: 'Continue' }).click();

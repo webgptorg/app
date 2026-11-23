@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderWithProviders } from '../../testing/render-with-providers';
+import { spoken } from '../../testing/spoken';
 import { TEST_NOW } from '../../testing/test-engine-api';
 
 const TIMEOUT_MS = 20_000;
@@ -29,6 +30,7 @@ function pendingEngine(options: InMemoryEngineApiOptions = {}) {
 }
 
 const continueButton = () => screen.getByRole('button', { name: 'Continue' });
+const timeline = () => within(screen.getByRole('list', { name: 'Setup steps' }));
 /** The robot guiding setup is decoration; its pose is the one thing about it worth checking. */
 const robotPose = () => document.querySelector('svg[data-pose]')?.getAttribute('data-pose');
 
@@ -40,7 +42,8 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
             expect(router.state.location.pathname).toBe('/onboarding');
         });
         expect(await screen.findByRole('heading', { level: 1, name: 'Your project' })).toBeDefined();
-        expect(screen.getByText('Step 1 of 6')).toBeDefined();
+        expect(timeline().getAllByRole('listitem')).toHaveLength(6);
+        expect(spoken(timeline().getByRole('listitem', { current: 'step' }))).toBe('Your project');
         expect(screen.getByText(/Tell me a little about your project/)).toBeDefined();
         expect(robotPose()).toBe('thinking');
         await expectNoAxeViolations(container);
@@ -48,6 +51,10 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         await user.type(screen.getByRole('textbox', { name: 'What are you working on?' }), 'Books for my bakery');
         await user.click(continueButton());
         expect(await screen.findByRole('heading', { level: 1, name: 'AI tools' })).toBeDefined();
+        // The member's own answer took the form away; focus lands on the next step rather than on the page.
+        await waitFor(() => {
+            expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 }));
+        });
         expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /OpenAI Codex/ }).checked).toBe(true);
         await user.click(screen.getByRole('checkbox', { name: /OpenAI Codex/ }));
         await user.click(screen.getByRole('checkbox', { name: /Claude Code/ }));
@@ -75,10 +82,19 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByRole('heading', { level: 1, name: 'Project folder' })).toBeDefined();
         await user.click(continueButton());
         expect(await screen.findByRole('heading', { level: 1, name: 'Create and start' })).toBeDefined();
-        expect(screen.getByText('Step 6 of 6')).toBeDefined();
+        // Each step this visit saw keeps the title it was last asked under; the engine's count stays the engine's.
+        expect(timeline().getAllByRole('listitem').map(spoken)).toEqual([
+            'Your project(done)',
+            'AI tools(done)',
+            'Sign in to Claude Code(done)',
+            'Project name(done)',
+            'Project folder(done)',
+            'Create and start',
+        ]);
         expect(screen.getAllByRole('term').map((term) => term.textContent)).toContain('Folder');
         await user.click(screen.getByRole('button', { name: 'Create and start' }));
-        expect(await screen.findByText(/^Create /)).toBeDefined();
+        const work = await screen.findByRole('list', { name: 'What the project is doing' });
+        expect(within(work).getByText(/^Create /)).toBeDefined();
         engine.advance(CREATE_MS);
         expect(
             await screen.findByRole('heading', { level: 1, name: 'Your project is set up' }, { timeout: 5_000 }),
