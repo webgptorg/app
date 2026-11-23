@@ -32,9 +32,9 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:**
   - Re-vendor `setup.html`, `sign-in.html`, `step-up.html` **and** `render-page.ts`. While initialization is pending, pass `setupLinkCommand: 'ptbk connect --onboarding <engine-id> --setup-link'`, `resetOwnerCommand: 'ptbk connect --onboarding <engine-id> --reset-owner'` and `statusCommand: 'ptbk onboarding --id <engine-id> --json'`. Installed engines only see the new hints after a release.
   - Worth fixing, none blocking:
-    1. The conformance build's daemons start the release build (`engineModule()` resolves `<root>/dist`). Make them start the build that launched them.
-    2. A pending engine (`init --prepare-only`) runs only as a detached background service. Add a foreground mode for containers and supervisors.
-    3. `--json` prints JSON over several lines. Print one compact line per result.
+    1. The conformance build's daemons start the release build (`engineModule()` resolves `<root>/dist`); our image has to install `dist-conformance/` as `dist/`. Consider starting the build that launched them.
+    2. A pending engine (`init --prepare-only`) runs only as a detached background service. A foreground mode would fit containers better.
+    3. `--json` prints JSON over several lines, which is unusual for machine output. Consider one compact line per result.
 
 ### 2026-11-20: PRIORITY: our UI out of the box, with a staging build of `ptbk`
 
