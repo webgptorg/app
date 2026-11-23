@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { installationOptions } from '../src/domain/registration/installation-options';
+import { INSTALL_SCRIPT_SHA256, installationOptions } from '../src/domain/registration/installation-options';
 import { TEST_ENGINE_INSTALLATION } from '../src/testing/install-fixtures';
 import type { EngineInstallRelease } from '../src/shared/engine-installation';
 
@@ -80,7 +80,7 @@ cp "$TEST_CLI" "$4/bin/ptbk"`,
         `if [ "$1" = -s ]; then echo ${platform}; else echo ${platform === 'Darwin' ? 'arm64' : 'x86_64'}; fi`,
     );
     executable(bin, 'git', 'test -f "$HOME/git-ready"');
-    executable(bin, 'sudo', 'exec "$@"');
+    executable(bin, 'sudo', 'echo "$*" >> "$HOME/sudo-calls"; exec "$@"');
     executable(bin, 'id', 'echo 1000');
     executable(bin, 'apt-get', '[ "$1" = update ] || { [ "$*" = "install -y git" ] && touch "$HOME/git-ready"; }');
     executable(bin, 'brew', '[ "$*" = "install git" ] && touch "$HOME/git-ready"');
@@ -92,7 +92,7 @@ cp "$TEST_CLI" "$4/bin/ptbk"`,
         `printf '%s\\n' "$@" >> "$DOWNLOADS"
 if [ "$2" = "${SCRIPT_URL}" ]; then
     [ "$DOWNLOAD_STATUS" = 0 ] || exit "$DOWNLOAD_STATUS"
-    cat "$TEST_SCRIPT"
+    cp "$TEST_SCRIPT" "$4"
 elif [ "$4" = https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt ]; then
     echo "$DIGEST  node-v24.1.0-${stem}.tar.gz" > "$6"
 elif [ "$4" = https://nodejs.org/dist/v24.1.0/node-v24.1.0-${stem}.tar.gz ]; then
@@ -128,6 +128,8 @@ describe('the copied Bash/zsh installation on a computer without usable Git, Nod
         const available = spawnSync(shell, ['--version']).status === 0;
         it.skipIf(!available)(`installs and reuses the exact CLI on ${platform} through ${shell}`, () => {
             const { env, record, downloads, home } = localFixture(platform);
+            // Unattended runs never install system packages; that approval has its own tests below.
+            if (platform === 'Linux') writeFileSync(join(home, 'git-ready'), '');
             const cwd = temporary();
             for (let run = 0; run < 2; run++) {
                 const result = spawnSync(shell, ['-c', commands(trickyLink).posix], { cwd, env, encoding: 'utf8' });
@@ -148,19 +150,49 @@ describe('the copied Bash/zsh installation on a computer without usable Git, Nod
     }
 
     it.skipIf(process.platform !== 'linux' || spawnSync('script', ['--version']).status !== 0)(
-        'preserves the native first-access flow when the copied command is pasted into a terminal',
+        'preserves the native first-access flow and asks before installing Git when pasted into a terminal',
         () => {
-            const { env, record } = localFixture();
+            const { env, record, home } = localFixture();
             const result = spawnSync('script', ['-qec', commands(LINK).posix, '/dev/null'], {
                 cwd: temporary(),
                 env,
                 encoding: 'utf8',
+                input: 'y\n',
                 timeout: 10_000,
             });
             expect(result.status, result.stdout + result.stderr).toBe(0);
+            expect(result.stdout).toContain('Install it now? [y/N]');
+            expect(readFileSync(join(home, 'sudo-calls'), 'utf8')).toBe('apt-get update\napt-get install -y git\n');
             expect(readFileSync(record, 'utf8').trim().split('\n')).toEqual(['init', '--prepare-only', '--link', LINK]);
         },
     );
+
+    it('stops before sudo when nobody at a terminal approves the system package', () => {
+        const { env, record, home } = localFixture();
+        const result = spawnSync('bash', ['-c', commands().posix], { cwd: temporary(), env, encoding: 'utf8' });
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain('Install Git yourself');
+        expect(existsSync(join(home, 'sudo-calls'))).toBe(false);
+        expect(existsSync(record)).toBe(false);
+    });
+
+    it('runs only the installer bytes pinned in the command', () => {
+        expect(createHash('sha256').update(readFileSync(SCRIPT_PATH)).digest('hex')).toBe(INSTALL_SCRIPT_SHA256);
+        const { env, record, home } = localFixture();
+        writeFileSync(join(home, 'git-ready'), '');
+        const tampered = join(temporary(), 'install.sh');
+        const marker = join(home, 'tampered-ran');
+        writeFileSync(tampered, readFileSync(SCRIPT_PATH, 'utf8') + `\ntouch '${marker}'\n`);
+        const result = spawnSync('bash', ['-c', commands().posix], {
+            cwd: temporary(),
+            env: { ...env, TEST_SCRIPT: tampered },
+            encoding: 'utf8',
+        });
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain('Installer checksum mismatch.');
+        expect(existsSync(marker)).toBe(false);
+        expect(existsSync(record)).toBe(false);
+    });
 
     it.each([
         { DOWNLOAD_STATUS: '22' },
@@ -169,7 +201,8 @@ describe('the copied Bash/zsh installation on a computer without usable Git, Nod
         { REPORTED_VERSION: '0.114.0-42' },
         { VERSION_STATUS: '1' },
     ])('stops before pairing when installation or verification fails: %o', (overrides) => {
-        const { env, record } = localFixture();
+        const { env, record, home } = localFixture();
+        writeFileSync(join(home, 'git-ready'), '');
         const result = spawnSync('bash', ['-c', commands().posix], { cwd: temporary(), env: { ...env, ...overrides } });
         expect(result.status).not.toBe(0);
         expect(existsSync(record)).toBe(false);

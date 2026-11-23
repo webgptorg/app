@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Desktop pairing bootstrap. The public download carries no pairing data; Bash receives the link on fd 3.
+# Desktop pairing bootstrap, pinned by SHA-256 in the copied command. It carries no pairing data; the link arrives on fd 3.
 set -euo pipefail
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
@@ -19,6 +19,14 @@ as_admin() {
     if [[ "$(id -u)" == 0 ]]; then "$@"; else sudo "$@"; fi
 }
 
+# System packages change the whole computer, so the person at the terminal approves them first. Unattended runs stop.
+approve_system_install() {
+    local answer=
+    printf 'Promptbook needs %s. Your package manager will run as administrator: %s\n' "$1" "$2" >&2
+    if [[ -t 2 ]] && ( : </dev/tty ) 2>/dev/null; then read -r -p 'Install it now? [y/N] ' answer </dev/tty || answer=; fi
+    [[ "$answer" == [yY]* ]] || fail "Install $1 yourself, then run the same pairing command again."
+}
+
 prepare_git() {
     # Apple's /usr/bin/git is a launcher that opens a dialog when the developer tools are absent.
     if [[ "$platform" != darwin || "$(command -v git || true)" != /usr/bin/git ]] || xcode-select -p >/dev/null 2>&1; then
@@ -35,11 +43,17 @@ prepare_git() {
                 sleep 5
             done
         fi
-    elif command -v apt-get >/dev/null; then as_admin apt-get update && as_admin apt-get install -y git
-    elif command -v dnf >/dev/null; then as_admin dnf install -y git
-    elif command -v zypper >/dev/null; then as_admin zypper --non-interactive install git
-    elif command -v pacman >/dev/null; then as_admin pacman -S --needed --noconfirm git
-    elif command -v apk >/dev/null; then as_admin apk add git
+    elif command -v apt-get >/dev/null; then
+        approve_system_install Git 'apt-get update && apt-get install -y git'
+        as_admin apt-get update && as_admin apt-get install -y git
+    elif command -v dnf >/dev/null; then approve_system_install Git 'dnf install -y git'; as_admin dnf install -y git
+    elif command -v zypper >/dev/null; then
+        approve_system_install Git 'zypper --non-interactive install git'
+        as_admin zypper --non-interactive install git
+    elif command -v pacman >/dev/null; then
+        approve_system_install Git 'pacman -S --needed --noconfirm git'
+        as_admin pacman -S --needed --noconfirm git
+    elif command -v apk >/dev/null; then approve_system_install Git 'apk add git'; as_admin apk add git
     else fail 'Install Git using your distribution, then run the same pairing command again.'
     fi
     git --version >/dev/null || fail 'Git is unavailable. Complete its installation and retry.'
@@ -48,6 +62,7 @@ prepare_git() {
 prepare_node() {
     if compatible_tools; then return; fi
     if [[ "$platform" == linux && -f /etc/alpine-release ]]; then
+        approve_system_install 'Node.js and npm' 'apk add nodejs npm'
         as_admin apk add nodejs npm
     else
         local arch sums digest archive release actual

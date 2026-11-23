@@ -57,7 +57,7 @@ A new project opens the installation command for the browser's platform. You can
 
 ### Engine-first setup
 
-On macOS or Linux, copy the Bash command from **New project**. The script prepares prerequisites under the local user account. Approve the macOS developer tools dialog if it opens. On Windows, copy the PowerShell command and complete the official setup wizard. PowerShell checks the installer checksum, waits for it to finish, and pairs the installed engine. If you downloaded the EXE manually, use the shorter pairing command in the **Windows EXE** tab.
+On macOS or Linux, copy the Bash command from **New project**. The command verifies the script's checksum, and the script prepares prerequisites under the local user account. It asks before installing Git or Alpine packages as administrator. Approve the macOS developer tools dialog if it opens. On Windows, copy the PowerShell command and complete the official setup wizard. PowerShell checks the installer checksum, waits for it to finish, and pairs the installed engine. If you downloaded the EXE manually, use the shorter pairing command in the **Windows EXE** tab.
 
 The commands work outside a project and stop after installation/version failure. The engine chooses its standard projects home, reserves an identity and private draft, starts and pairs before requesting an agenda. Repeating the same pairing resumes that draft or reports the completed project; another pairing gets another engine. No `mkdir`, `cd`, fixed agenda, local/global question or second `connect` is part of new-engine setup.
 

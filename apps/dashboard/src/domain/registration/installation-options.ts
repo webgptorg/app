@@ -21,9 +21,28 @@ if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and -
 if ($LASTEXITCODE -ne 0) { throw 'Promptbook pairing failed.' }`;
 }
 
+/**
+ * SHA-256 of public/assets/install-project-v1.sh. The copied command runs only these bytes, so a stale cache, the SPA
+ * fallback page or a later edit of the asset can never reach Bash. A test keeps it in step with the file.
+ */
+export const INSTALL_SCRIPT_SHA256 = '947f53ba55e20a72f3ffd2576cafdddf9ce381dab8c76718710f84d9f5499062';
+
+function posixInstaller(url: string, version: string, link: string): string {
+    return `( set -euo pipefail
+installer=$(mktemp)
+trap 'rm -f "$installer"' EXIT
+curl -fsSL ${posix(url)} -o "$installer"
+digest=$(if command -v sha256sum >/dev/null; then sha256sum < "$installer"; else shasum -a 256 < "$installer"; fi)
+[ "\${digest%% *}" = '${INSTALL_SCRIPT_SHA256}' ] || { echo 'Installer checksum mismatch.' >&2; exit 1; }
+bash "$installer" '${version}' 3<<<${posix(link)}
+)`;
+}
+
+/** Progress is silenced because Windows PowerShell 5.1 downloads the large EXE many times slower while drawing it. */
 function windowsInstaller(url: string, digest: string, pairing: string): string {
     return `& {
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $file = Join-Path ([IO.Path]::GetTempPath()) ("ptbk-" + [guid]::NewGuid() + ".exe")
 try {
     Invoke-WebRequest -UseBasicParsing -Uri '${url}' -OutFile $file
@@ -86,7 +105,7 @@ export function installationOptions(release: EngineInstallRelease, link: string)
     const windowsUrl = `https://github.com/webgptorg/promptbook/releases/download/v${release.version}/Promptbook-Setup-${release.version}-windows-x64.exe`;
     const afterInstall = windowsPairing(release.version, link);
     const local = {
-        posix: `(set -o pipefail; curl -fsSL ${posix(script)} | bash -s -- '${release.version}' 3<<<${posix(link)})`,
+        posix: posixInstaller(script, release.version, link),
         powershell: windowsInstaller(windowsUrl, release.windowsSha256, afterInstall),
     };
     const ubuntu = ubuntuCommand(release, link);
