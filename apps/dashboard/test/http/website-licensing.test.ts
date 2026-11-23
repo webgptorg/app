@@ -268,7 +268,65 @@ describe('billing website: the handoff', () => {
         const browser = harness.browser();
         await browser.request('GET', '/api/website-access/start');
         expect((await browser.request('GET', '/api/website-access/return?code=short')).status).toBe(400);
-        expect((await browser.request('GET', '/api/website-access/return')).status).toBe(400);
+        expect(harness.website.calls).toEqual([]);
+    });
+
+    it.each([
+        ['cancelled on the website', ''],
+        ['refused by the website', '?error=access_denied'],
+    ])('shows the error page when the handoff was %s, and spends the state', async (_, query) => {
+        const harness = websiteHarness();
+        const browser = harness.browser();
+        const start = await browser.request('GET', '/api/website-access/start');
+        const challenge = new URL(start.headers.get('location') ?? '').searchParams.get('challenge') ?? '';
+        const back = await browser.request('GET', `/api/website-access/return${query}`);
+        expect(back.status).toBe(303);
+        expect(back.headers.get('location')).toBe(`${ORIGIN}/website-access?error=failed`);
+        expect(back.headers.get('referrer-policy')).toBe('no-referrer');
+        expect(back.headers.get('cache-control')).toBe('no-store');
+        expect(back.setCookies).toEqual([`${STATE_COOKIE}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax`]);
+        expect(browser.cookies.has(LINK_COOKIE)).toBe(false);
+
+        browser.cookies.set(STATE_COOKIE, challenge);
+        const code = harness.website.issueTicket(challenge, {
+            subject: subject(),
+            email: 'a@example.test',
+            emailVerified: true,
+        });
+        const late = await browser.request('GET', `/api/website-access/return?code=${code}`);
+        expect(late.headers.get('location')).toBe(`${ORIGIN}/website-access?error=expired`);
+        expect(harness.website.calls).toEqual([]);
+    });
+
+    it('shows the error page for a return without a ticket or a state cookie', async () => {
+        const harness = websiteHarness();
+        const back = await harness.browser().request('GET', '/api/website-access/return');
+        expect(back.status).toBe(303);
+        expect(back.headers.get('location')).toBe(`${ORIGIN}/website-access?error=failed`);
+    });
+
+    it('still completes a fresh handoff after a cancelled one', async () => {
+        const harness = websiteHarness();
+        const browser = harness.browser();
+        await browser.request('GET', '/api/website-access/start');
+        await browser.request('GET', '/api/website-access/return');
+        const { back } = await handoff(harness, browser, { subject: subject(), email: 'again@example.test' });
+        expect(back.headers.get('location')).toBe(`${ORIGIN}/website-access`);
+        expect(browser.cookies.has(LINK_COOKIE)).toBe(true);
+    });
+
+    it.each([
+        ['an unknown parameter', '?state=x'],
+        ['a ticket and an error at once', `?code=${'a'.repeat(43)}&error=access_denied`],
+        ['an empty error', '?error='],
+        ['an overlong error', `?error=${'e'.repeat(65)}`],
+        ['an error with markup', '?error=%3Cscript%3E'],
+    ])('refuses a return with %s', async (_, query) => {
+        const harness = websiteHarness();
+        const browser = harness.browser();
+        await browser.request('GET', '/api/website-access/start');
+        expect((await browser.request('GET', `/api/website-access/return${query}`)).status).toBe(400);
+        expect(browser.cookies.has(STATE_COOKIE)).toBe(true);
         expect(harness.website.calls).toEqual([]);
     });
 });

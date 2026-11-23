@@ -79,6 +79,16 @@ describe('website access handoff', () => {
         expect(outcome.expiresAt - 1_800_000_000_000).toBe(PENDING_LINK_TTL_MS);
     });
 
+    it('spends the state of an abandoned handoff without calling the website', async () => {
+        const { flows, exchange, store, signal } = setup();
+        const { challenge } = await flows.start();
+        await flows.abandon(challenge);
+        await flows.abandon(null);
+        expect(store.states.size).toBe(0);
+        expect(await flows.complete({ code: CODE, challenge }, signal)).toEqual({ kind: 'state-invalid' });
+        expect(exchange).not.toHaveBeenCalled();
+    });
+
     it('fails closed without the state cookie, on a replay, after expiry and on a challenge it never issued', async () => {
         const { flows, exchange, signal, advance } = setup();
         expect(await flows.complete({ code: CODE, challenge: null }, signal)).toEqual({ kind: 'state-invalid' });

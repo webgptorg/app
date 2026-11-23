@@ -70,10 +70,15 @@ export function bindLicensingRoutes(
     });
 
     bind(router, mount, apiRoutes.websiteAccessReturn, async ({ input, request }) => {
-        const outcome = await flows.complete(
-            { code: input.query.code, challenge: request.secretCookie(WEBSITE_STATE_COOKIE) },
-            request.signal,
-        );
+        const challenge = request.secretCookie(WEBSITE_STATE_COOKIE);
+        if (!('code' in input.query)) {
+            await flows.abandon(challenge);
+            deps.logger.info('website-access.return', {
+                outcome: 'error' in input.query ? 'website-error' : 'cancelled',
+            });
+            return { kind: 'redirect', location: accessPage('failed'), setCookies: [clearWebsiteStateCookie()] };
+        }
+        const outcome = await flows.complete({ code: input.query.code, challenge }, request.signal);
         deps.logger.info('website-access.return', { outcome: outcome.kind });
         switch (outcome.kind) {
             case 'pending':
