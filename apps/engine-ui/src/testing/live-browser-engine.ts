@@ -55,6 +55,7 @@ export function createLiveBrowserTestEngine(options: InMemoryEngineApiOptions = 
             return { send: () => undefined, close: () => undefined };
         }
         const { peer } = attached;
+        peer.opened();
         queueMicrotask(handlers.onOpen);
         const hangUp = () => {
             if (closed) return;
