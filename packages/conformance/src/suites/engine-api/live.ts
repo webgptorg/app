@@ -8,6 +8,7 @@ import {
     MAX_BROWSER_TAB_SESSION_MS,
     MAX_LIVE_CONTROL_MESSAGE_BYTES,
     MAX_UNACKED_FRAMES,
+    PERMISSIONS,
     RESERVED_CAPABILITIES,
     capabilityLabel,
     decodeLiveMedia,
@@ -15,17 +16,18 @@ import {
     readLiveEngineMessage,
     supports,
 } from '@ptbk/engine-api';
-import type { BrowserSession, ReadLiveEngineMessage } from '@ptbk/engine-api';
+import type { BrowserSession, EngineApiRouteId, Permission, ReadLiveEngineMessage } from '@ptbk/engine-api';
 
 import type { CheckContext, ConformanceCheck } from '../../check';
 import { Findings, fail, skip } from '../../check';
 import { randomToken } from '../../random';
 import type { LiveBrowserTarget, LiveChannelClient } from '../../target';
-import { EngineApi } from './api';
+import { EngineApi, describe } from './api';
+import type { ApiRequest } from './api';
 import { requireCapability } from './capability-support';
 import { placeholderRequest } from './requests';
 import { SUITE, attempt } from './support';
-import { createWorld, sessionFor } from './world';
+import { allPermissionsExcept, createWorld, sessionFor } from './world';
 import type { World } from './world';
 
 const R = ENGINE_API_ROUTES;
@@ -230,6 +232,60 @@ async function expectRefused(
     }
 }
 
+/** Reads until a `type` message, acks what came before, then listens: answers it and the frames that followed. */
+async function awaitPage(
+    viewer: Viewer,
+    type: 'blocked' | 'navigated',
+): Promise<{ readonly page: ReadLiveEngineMessage | null; readonly frames: number }> {
+    const page = await viewer.read((message) => message.type === type, ANSWER_MS);
+    viewer.ack();
+    return { page, frames: (await viewer.listen(QUIET_MS)).frames };
+}
+
+/** The IDs a browser route acts on, all real, so an engine that looks them up first still has to refuse. */
+interface BrowserIds {
+    readonly tabId: string;
+    readonly requestId: string;
+    /** The owner's session. */
+    readonly ownerSessionId: string;
+    /** The member's own session, when it may open one. */
+    readonly ownSessionId: string | null;
+    readonly signInOrigin: string;
+}
+
+type BrowserRouteId = Extract<
+    EngineApiRouteId,
+    | 'openBrowserSignIn'
+    | 'listBrowserTabs'
+    | 'watchBrowserTab'
+    | 'controlBrowserTab'
+    | 'getBrowserSession'
+    | 'takeBrowserControl'
+    | 'handBackBrowserTab'
+    | 'endBrowserSession'
+    | 'listBrowserHelpRequests'
+    | 'getBrowserHelpRequest'
+    | 'dismissBrowserHelpRequest'
+>;
+
+const BROWSER_REQUESTS: Readonly<Record<BrowserRouteId, (ids: BrowserIds) => ApiRequest>> = {
+    openBrowserSignIn: (ids) => ({ body: { browser: null, origin: ids.signInOrigin } }),
+    listBrowserTabs: () => ({ query: {} }),
+    watchBrowserTab: (ids) => ({ params: { tabId: ids.tabId } }),
+    controlBrowserTab: (ids) => ({ params: { tabId: ids.tabId } }),
+    getBrowserSession: (ids) => ({ params: { sessionId: ids.ownSessionId ?? ids.ownerSessionId } }),
+    takeBrowserControl: (ids) => ({ params: { sessionId: ids.ownSessionId ?? ids.ownerSessionId } }),
+    handBackBrowserTab: (ids) => ({ params: { sessionId: ids.ownSessionId ?? ids.ownerSessionId } }),
+    endBrowserSession: (ids) => ({ params: { sessionId: ids.ownSessionId ?? ids.ownerSessionId } }),
+    listBrowserHelpRequests: () => ({ query: { status: 'open' } }),
+    getBrowserHelpRequest: (ids) => ({ params: { requestId: ids.requestId } }),
+    dismissBrowserHelpRequest: (ids) => ({ params: { requestId: ids.requestId } }),
+};
+
+function isBrowserRoute(id: EngineApiRouteId): id is BrowserRouteId {
+    return id in BROWSER_REQUESTS;
+}
+
 async function tabOf(t: Live, tabId: string) {
     return (await t.owner.ok(R.listBrowserTabs, { query: {} })).items.find(({ id }) => id === tabId);
 }
@@ -422,6 +478,112 @@ export const LIVE_CHECKS: readonly ConformanceCheck[] = [
         },
     },
     {
+        id: 'engine-api.browser-tab.permissions',
+        suite: SUITE,
+        title: 'Every browser route answers 403 forbidden to a member without its permission, and so does the channel without browser.watch',
+        async run(ctx) {
+            const t = await live(ctx);
+            const tabId = await agentTab(t, 'permissions');
+            const requestId = await t.lb.requestHelp(tabId, 'login', 'Please sign in.');
+            const ownerSession = await watch(t, t.owner, tabId);
+            const members = new Map<Permission, EngineApi>();
+            const memberWithout = async (permission: Permission): Promise<EngineApi> => {
+                const known = members.get(permission);
+                if (known) return known;
+                const api = await sessionFor(
+                    ctx,
+                    { kind: 'member', permissions: allPermissionsExcept(permission, PERMISSIONS) },
+                    'members with chosen permissions',
+                );
+                members.set(permission, api);
+                return api;
+            };
+            const withoutControl = await memberWithout('browser.control');
+            const own = await watch(t, withoutControl, tabId);
+            for (const route of ENGINE_API_ROUTE_LIST) {
+                if (route.capability === undefined || capabilityLabel(route.capability) !== 'browser-tab@1') continue;
+                const id = route.id as EngineApiRouteId;
+                if (!isBrowserRoute(id) || route.permission === null) {
+                    t.findings.add(`${describe(route)}: the suite has no permission case for this browser route`);
+                    continue;
+                }
+                const permission = route.permission;
+                await attempt(t.findings, async () => {
+                    const member = await memberWithout(permission);
+                    const ids = {
+                        tabId,
+                        requestId,
+                        ownerSessionId: ownerSession.id,
+                        ownSessionId: permission === 'browser.control' ? own.id : null,
+                        signInOrigin: t.lb.signInOrigin,
+                    };
+                    const problem = await member.problem(route, BROWSER_REQUESTS[id](ids), 'forbidden');
+                    if (problem.requiredPermission !== permission) {
+                        t.findings.add(
+                            `${describe(route)}: forbidden names ${problem.requiredPermission ?? 'no permission'}, not ${permission}`,
+                        );
+                    }
+                });
+            }
+            await expectRefused(
+                t,
+                ownerSession.id,
+                (await memberWithout('browser.watch')).credential,
+                ctx.target.baseUrl.origin,
+                403,
+                'for a member without browser.watch',
+            );
+            if ((await t.owner.ok(R.getBrowserHelpRequest, { params: { requestId } })).status !== 'pending') {
+                t.findings.add('GET /browser-help-requests/{requestId}: a refused member changed the help request');
+            }
+            if ((await tabOf(t, tabId))?.agentState !== 'waiting') {
+                t.findings.add('GET /browser-tabs: a refused member changed the agent’s state');
+            }
+            return t.findings.outcome();
+        },
+    },
+    {
+        id: 'engine-api.browser-tab.origin-refused',
+        suite: SUITE,
+        title: 'A sign-in tab opens only at an allowlisted origin: another origin and the engine’s own get 422 browser-origin-refused',
+        async run(ctx) {
+            const t = await live(ctx);
+            const refused = [t.origin('refused'), ctx.target.baseUrl.origin];
+            for (const origin of refused) {
+                const result = await t.owner.call(R.openBrowserSignIn, { body: { browser: null, origin } });
+                if (result.kind === 'problem' && result.problem.code === 'step-up-required') skip(STALE_STEP_UP);
+                if (result.kind === 'ok') {
+                    track(t, t.owner, result.data);
+                    t.findings.add(`POST /browser-sessions: opened a sign-in tab at ${origin}`);
+                } else if (result.problem.code !== 'browser-origin-refused') {
+                    t.findings.add(
+                        `POST /browser-sessions: ${origin} got ${String(result.status)} ${result.problem.code}, not 422 browser-origin-refused`,
+                    );
+                }
+            }
+            return t.findings.outcome();
+        },
+    },
+    {
+        id: 'engine-api.browser-tab.revoked',
+        suite: SUITE,
+        title: 'Revoking the gateway session ends its browser sessions with revoked',
+        async run(ctx) {
+            const t = await live(ctx);
+            const member = await sessionFor(ctx, { kind: 'member', permissions: [...WATCH_PERMISSIONS] }, 'a watcher');
+            const session = await watch(t, member, await agentTab(t, 'revoked'));
+            const viewer = await join(t, session, member);
+            const current = (await member.ok(R.listMySessions)).items.find((item) => item.current);
+            if (current === undefined) fail('GET /me/sessions: the member’s current session is not listed');
+            await member.ok(R.revokeMySession, { params: { sessionId: current.id } });
+            const end = await viewer.end();
+            if (end?.type !== 'end' || end.reason !== 'revoked') {
+                t.findings.add('live channel: revoking the gateway session did not end its session with revoked');
+            }
+            return t.findings.outcome();
+        },
+    },
+    {
         id: 'engine-api.browser-tab.single-controller',
         suite: SUITE,
         title: 'One controller per tab: the agent pauses while it controls, others get 409, handing back resumes the agent',
@@ -492,6 +654,44 @@ export const LIVE_CHECKS: readonly ConformanceCheck[] = [
             if ((await viewer.read((message) => message.type === 'navigated', ANSWER_MS)) === null) {
                 t.findings.add('live channel: no navigated once the tab was back on its origin');
             }
+            return t.findings.outcome();
+        },
+    },
+    {
+        id: 'engine-api.browser-tab.watcher-blocked',
+        suite: SUITE,
+        title: 'A watcher sees any web origin the agent visits but no frame of a secret or browser page, nor off the controller’s origins',
+        async run(ctx) {
+            const t = await live(ctx);
+            const member = await sessionFor(ctx, { kind: 'member', permissions: [...WATCH_PERMISSIONS] }, 'a watcher');
+            const tabId = await agentTab(t, 'watched');
+            const viewer = await join(t, await watch(t, member, tabId), member);
+            viewer.ack();
+            for (const page of [{ kind: 'secret-page' }, { kind: 'browser-page' }] as const) {
+                await t.lb.navigate(tabId, page);
+                const seen = await awaitPage(viewer, 'blocked');
+                if (seen.page?.type !== 'blocked')
+                    t.findings.add(`live channel: a watcher got no blocked on a ${page.kind}`);
+                else if (seen.page.origin !== null) {
+                    t.findings.add(`live channel: blocked on a ${page.kind} names an origin to a watcher`);
+                }
+                if (seen.frames > 0) t.findings.add(`live channel: a watcher got a frame of a ${page.kind}`);
+            }
+            const away = t.origin('watched-away');
+            await t.lb.navigate(tabId, { kind: 'web', origin: away });
+            const followed = await awaitPage(viewer, 'navigated');
+            if (followed.page?.type !== 'navigated' || followed.page.origin !== away) {
+                t.findings.add('live channel: a watcher does not follow the agent to another web origin');
+            }
+            await control(t, tabId);
+            await t.lb.navigate(tabId, { kind: 'web', origin: t.origin('watched-off') });
+            const off = await awaitPage(viewer, 'blocked');
+            if (off.page?.type !== 'blocked' || off.page.reason !== 'origin-not-allowed') {
+                t.findings.add(
+                    'live channel: under control, a watcher got no blocked origin-not-allowed off the origin',
+                );
+            }
+            if (off.frames > 0) t.findings.add('live channel: under control, a watcher got a frame off the origin');
             return t.findings.outcome();
         },
     },

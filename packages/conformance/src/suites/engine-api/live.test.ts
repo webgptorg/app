@@ -40,6 +40,31 @@ const SESSION = {
     endsAt: AT,
 };
 
+const PROBLEM_NOT_FOUND = {
+    type: 'https://ptbk.io/problems/not-found',
+    title: 'Not found',
+    status: 404,
+    code: 'not-found',
+};
+const PROBLEM_BUSY = {
+    type: 'https://ptbk.io/problems/browser-busy',
+    title: 'Busy',
+    status: 409,
+    code: 'browser-busy',
+};
+
+/** Rewrites the permission a 403 names. */
+function edit403(permission: string): Tamper {
+    return async (_request, response) => {
+        if (response.status !== 403) return response;
+        const body = (await response.json()) as Record<string, unknown>;
+        return new Response(JSON.stringify({ ...body, requiredPermission: permission }), {
+            status: 403,
+            headers: response.headers,
+        });
+    };
+}
+
 const path = (request: Request): string => new URL(request.url).pathname.slice('/api/v1'.length);
 
 /** Answers a matching refusal with a forged success, as an engine that skips the rule would. */
@@ -86,6 +111,9 @@ describe('the browser-tab checks', () => {
         ['engine-api.browser-tab.channel-handshake', 'oversized-media'],
         ['engine-api.browser-tab.time-limits', 'no-expiry'],
         ['engine-api.browser-tab.audit-metadata', 'typed-text-audited'],
+        ['engine-api.browser-tab.permissions', 'channel-without-permission'],
+        ['engine-api.browser-tab.revoked', 'revocation-ignored'],
+        ['engine-api.browser-tab.watcher-blocked', 'frames-while-blocked'],
     ])('%s fails an engine with %s', async (id, liveDefect) => {
         expect(await outcome(id, { liveDefect })).toMatchObject({ kind: 'fail' });
     });
@@ -135,6 +163,27 @@ describe('the browser-tab checks', () => {
             'engine-api.browser-tab.audit-metadata',
             'no browser entries',
             edit('GET', /^\/audit$/, (data) => ({ ...data, items: [] })),
+        ],
+        [
+            'engine-api.browser-tab.permissions',
+            'a member without browser.watch lists tabs',
+            forge('GET', /^\/browser-tabs$/, 200, { items: [] }, 403),
+        ],
+        [
+            'engine-api.browser-tab.permissions',
+            'a member without browser.control dismisses a request',
+            forge('POST', /^\/browser-help-requests\/[^/]+\/dismiss$/, 404, PROBLEM_NOT_FOUND, 403),
+        ],
+        ['engine-api.browser-tab.permissions', 'forbidden names another permission', edit403('browser.read')],
+        [
+            'engine-api.browser-tab.origin-refused',
+            'a sign-in at any origin',
+            forge('POST', /^\/browser-sessions$/, 201, { ...SESSION, kind: 'sign-in' }, 422),
+        ],
+        [
+            'engine-api.browser-tab.origin-refused',
+            'another refusal',
+            forge('POST', /^\/browser-sessions$/, 409, PROBLEM_BUSY, 422),
         ],
     ])('%s fails an engine where %s', async (id, _what, tamper) => {
         expect(await outcome(id, { tamper })).toMatchObject({ kind: 'fail' });
@@ -211,6 +260,24 @@ describe('the browser-tab checks on the channel', () => {
             (text) => (text.includes('"navigated"') && text.includes('blocked-') ? [] : [text]),
         ],
         ['engine-api.browser-tab.channel-handshake', 'neither navigated nor blocked', rewrite('navigated', () => null)],
+        ['engine-api.browser-tab.watcher-blocked', 'no blocked', rewrite('blocked', () => null)],
+        [
+            'engine-api.browser-tab.watcher-blocked',
+            'blocked naming an origin',
+            rewrite('blocked', (m) => ({ ...m, origin: m['origin'] ?? 'https://x.invalid' })),
+        ],
+        [
+            'engine-api.browser-tab.watcher-blocked',
+            'no navigated as the agent moves on',
+            (text) => (text.includes('"navigated"') && text.includes('watched-away') ? [] : [text]),
+        ],
+        [
+            'engine-api.browser-tab.watcher-blocked',
+            'the wrong reason under control',
+            rewrite('blocked', (m) =>
+                m['reason'] === 'origin-not-allowed' ? { ...m, reason: 'secret-page', origin: null } : m,
+            ),
+        ],
     ])('%s fails an engine that sends %s', async (id, _what, liveTamper) => {
         expect(await outcome(id, { liveTamper })).toMatchObject({ kind: 'fail' });
     });
