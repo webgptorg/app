@@ -16,6 +16,7 @@ import { LICENSE_ENFORCEMENT_MODES, type LicenseEnforcement } from '../domain/li
 import { LINK_CODE_TTL_MS } from '../domain/registration/issue-link-code';
 import type { HeartbeatTiming } from '../domain/status/engine-status';
 import { DEFAULT_THRESHOLDS, thresholdsSchema, type AlertThresholds } from '../domain/monitoring/alert-rules';
+import { BILLING_ADAPTERS } from '../shared/billing';
 import { environmentSchema, type Environment } from '../shared/environment';
 import { engineInstallReleaseSchema, type EngineInstallRelease } from '../shared/engine-installation';
 import {
@@ -86,7 +87,7 @@ const installGuideUrlSchema = z
 const adaptersSchema = z.strictObject({
     email: z.enum(['cloudflare', 'fake']),
     /** `off` (dev and staging): nobody is charged and every organization holds `BILLING_OFF_PLAN`; no Stripe at all. */
-    billing: z.enum(['stripe', 'fake', 'off', 'website']),
+    billing: z.enum(BILLING_ADAPTERS),
     rateLimit: z.enum(['workers', 'memory']),
 });
 

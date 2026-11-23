@@ -41,6 +41,13 @@ export const planPriceSchema = z.strictObject({
 });
 export type PlanPrice = z.infer<typeof planPriceSchema>;
 
+/**
+ * `ADAPTERS.billing`: who sells and bills. `fake` is the in-memory Checkout for dev and the e2e stack, `website` is
+ * ptbk.io (ADR 0021). Shared so the SPA can name the same list it renders a screen for.
+ */
+export const BILLING_ADAPTERS = ['stripe', 'fake', 'off', 'website'] as const;
+export type BillingAdapter = (typeof BILLING_ADAPTERS)[number];
+
 /** An organization's billing state, mapped from the provider's subscription status (D-07). */
 export const billingStatusSchema = z.enum(['none', 'active', 'trialing', 'past_due', 'unpaid', 'canceled']);
 export type BillingStatus = z.infer<typeof billingStatusSchema>;

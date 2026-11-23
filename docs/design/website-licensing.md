@@ -127,6 +127,7 @@ When Pavol's endpoint for linking organizations lands (expected 20 November 2026
 - [x] The licence status on License, and the `engine.link` and `member.invite` check points, advisory (`LICENSE_ENFORCEMENT` unset everywhere).
 - [ ] Pavol's endpoint for linking organizations, behind the ports above.
 - [ ] Follow-up (#327): a quiet licence line in the engine UI, linking to the dashboard or the website.
+- [ ] Billing as the licence card with buy, manage and invoices links to the website (#329): prepared, not routed, in `apps/dashboard/src/client/features/website-billing/` (its README says how to switch it on).
 - [ ] The website's handoff page and "Open app" link (open point below), then `WEBSITE_HANDOFF_URL`.
 - [ ] Install the dedicated shared server credential in both deployments, then select website billing ([apply.md](../plan/apply.md), step 13). Do not reuse Stripe/session/engine secrets.
 - [ ] Test one-time handoff, forged/replayed/expired tickets, account mismatch, multiple Start/Business grants, unknown telemetry, outage and expired trial with actual staging control.
