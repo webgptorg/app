@@ -13,7 +13,11 @@ afterEach(() => {
 });
 
 describe('structured installation choices', () => {
-    it('defaults to a new project, switches OS/AI targets, copies exact payloads and preserves the EXE pairing step', async () => {
+    it.each([
+        ['Macintosh', 'macOS / Linux'],
+        ['Windows NT 10.0', 'Windows PowerShell'],
+    ])('offers the local installer for %s and allows a different target', async (userAgent, initialTab) => {
+        vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(userAgent);
         const options = testInstallationOptions(LINK_URL);
         const app = renderApp({
             path: '/engines/new',
@@ -34,7 +38,7 @@ describe('structured installation choices', () => {
                 .map((tab) => tab.textContent),
         ).toEqual(['New project', 'Install with AI', 'Windows EXE']);
         expect(screen.getByRole('tab', { name: 'New project' }).getAttribute('aria-selected')).toBe('true');
-        expect(screen.getByText(/On macOS, open Terminal/)).toBeTruthy();
+        expect(screen.getByRole('tab', { name: initialTab }).getAttribute('aria-selected')).toBe('true');
         expect(screen.getByText(/Paste the entire copied block/)).toBeTruthy();
         expect(screen.getByText(/The project connects to this app first/)).toBeTruthy();
         const writeText = vi.fn().mockResolvedValue(undefined);

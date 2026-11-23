@@ -800,7 +800,7 @@
   "engines_new_copy_prompt": "Copy prompt",
   "engines_new_download_windows": "Download Windows EXE · {version}",
   "engines_new_next_step": "The project connects to this app first. Then open the first-access link printed in the terminal (it may open automatically on this computer). In your browser, create a passkey, describe the agenda, add files and sign in to your AI tools. Keep this page open; connection progress updates automatically. Your setup is saved, so you can finish it later.",
-  "engines_new_prerequisites": "For this computer: Node.js 22.13+ in the 22 line or 24+, npm 10+ and Git. Select Ubuntu VPS for a clean supported server.",
+  "engines_new_prerequisites": "The installer sets up compatible Node.js, npm and Git and pairs the project with this app. macOS may ask to install developer tools. On Windows, complete the setup wizard that opens.",
   "engines_new_shell": "Computer or server",
   "engines_new_tab_ai": "Install with AI",
   "engines_new_ubuntu": "Ubuntu 24.04 x64 with systemd and root or sudo access. The bootstrap prepares dependencies and runs the project as the ordinary promptbook user.",

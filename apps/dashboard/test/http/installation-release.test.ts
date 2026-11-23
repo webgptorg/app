@@ -38,7 +38,7 @@ describe('current installation release over HTTP', () => {
             expect(response.status).toBe(200);
             expect(lookups).toBe(1);
             const view = response.body as LinkCodeView;
-            expect(view.installCommands[0]?.command).toContain('ptbk@0.119.0-125');
+            expect(view.installCommands[0]?.command).toContain("'0.119.0-125'");
             expect(JSON.stringify(view.installationOptions)).not.toContain(TEST_ENGINE_INSTALLATION.version);
             for (const option of view.installationOptions ?? []) {
                 switch (option.kind) {
@@ -56,7 +56,7 @@ describe('current installation release over HTTP', () => {
                         expect(option.version).toBe('0.119.0-125');
                         expect(option.url).toContain('Promptbook-Setup-0.119.0-125-windows-x64.exe');
                         expect(option.sha256).toBe('b'.repeat(64));
-                        expect(option.afterInstall).toContain('ptbk@0.119.0-125');
+                        expect(option.afterInstall).toContain("'0.119.0-125'");
                         break;
                 }
             }

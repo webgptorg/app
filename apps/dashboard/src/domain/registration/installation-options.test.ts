@@ -17,9 +17,12 @@ describe('engine-first installation options', () => {
                     for (const command of Object.values(option.commands)) {
                         expect(command).toContain(LINK);
                         expect(command).toContain(TEST_ENGINE_INSTALLATION.version);
-                        expect(command).toContain('--prepare-only');
                         expect(command).not.toMatch(/mkdir|my-agenda|--path/);
                     }
+                    expect(option.commands.posix).toContain('/assets/install-project-v1.sh');
+                    expect(option.commands.powershell).toContain(TEST_ENGINE_INSTALLATION.windowsSha256);
+                    expect(option.commands.powershell).toContain('--prepare-only --link-stdin');
+                    expect(option.commands.ubuntu).toContain('--prepare-only --link-stdin');
                     break;
                 case 'ai':
                     for (const targets of Object.values(option.prompts)) {
