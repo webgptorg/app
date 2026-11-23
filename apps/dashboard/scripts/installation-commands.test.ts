@@ -44,7 +44,7 @@ const SCRIPT_URL = 'https://app.ptbk.io/assets/install-project-v1.sh';
 const trickyLink = LINK + "'$(touch injected)";
 const fakeCli = `if [ "$1" = --version ]; then echo "$REPORTED_VERSION"; exit "$VERSION_STATUS"; fi
 printf '%s\\n' "$@" > "$RECORD"
-cat >> "$RECORD"
+if [ "$3" = --link-stdin ]; then cat >> "$RECORD"; fi
 exit "$PAIR_STATUS"`;
 
 function executable(dir: string, name: string, body: string) {
@@ -146,6 +146,21 @@ describe('the copied Bash/zsh installation on a computer without usable Git, Nod
             expect(readdirSync(join(home, '.local/share/promptbook'))).toEqual(['bin', 'cli']);
         });
     }
+
+    it.skipIf(process.platform !== 'linux' || spawnSync('script', ['--version']).status !== 0)(
+        'preserves the native first-access flow when the copied command is pasted into a terminal',
+        () => {
+            const { env, record } = localFixture();
+            const result = spawnSync('script', ['-qec', commands(LINK).posix, '/dev/null'], {
+                cwd: temporary(),
+                env,
+                encoding: 'utf8',
+                timeout: 10_000,
+            });
+            expect(result.status, result.stdout + result.stderr).toBe(0);
+            expect(readFileSync(record, 'utf8').trim().split('\n')).toEqual(['init', '--prepare-only', '--link', LINK]);
+        },
+    );
 
     it.each([
         { DOWNLOAD_STATUS: '22' },

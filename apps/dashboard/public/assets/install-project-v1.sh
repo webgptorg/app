@@ -134,7 +134,12 @@ main() {
         matches_version "$cli" || fail 'Promptbook version mismatch. Pairing stopped.'
         install_launcher
     fi
-    printf '%s\n' "$link" | "$cli" init --prepare-only --link-stdin
+    # The CLI shows first access automatically only with terminal stdin and stdout.
+    if [[ -t 1 ]] && ( : </dev/tty ) 2>/dev/null; then
+        "$cli" init --prepare-only --link "$link" </dev/tty
+    else
+        printf '%s\n' "$link" | "$cli" init --prepare-only --link-stdin
+    fi
 }
 
 # Keep the invocation last, so an incomplete download cannot start the installer.

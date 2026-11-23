@@ -14,7 +14,10 @@ function windowsPairing(version: string, link: string): string {
     return `$cli = (Get-Command ptbk.cmd -CommandType Application -ErrorAction Stop).Source
 $installed = & $cli --version
 if ($LASTEXITCODE -ne 0 -or $installed -ne '${version}') { throw 'Promptbook version mismatch.' }
-${powershell(link)} | & $cli init --prepare-only --link-stdin
+$link = ${powershell(link)}
+if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected) {
+    & $cli init --prepare-only --link $link
+} else { $link | & $cli init --prepare-only --link-stdin }
 if ($LASTEXITCODE -ne 0) { throw 'Promptbook pairing failed.' }`;
 }
 
