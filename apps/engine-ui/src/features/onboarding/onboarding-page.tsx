@@ -98,8 +98,15 @@ export function OnboardingPage() {
     const focus = useFocusAfterAnswer();
 
     const answer = useMutation({
-        mutationFn: async ({ prompt, submit }: { readonly prompt: ReadOnboardingPrompt; readonly submit: Submit }) =>
-            unwrap(await engineApi.onboarding.answer(answerBody(prompt.id, submit), AbortSignal.timeout(30_000))),
+        mutationFn: async ({ prompt, submit }: { readonly prompt: ReadOnboardingPrompt; readonly submit: Submit }) => {
+            const next = unwrap(
+                await engineApi.onboarding.answer(answerBody(prompt.id, submit), AbortSignal.timeout(30_000)),
+            );
+            // A read still on its way (a poll, or the one on coming back to the tab) left before this answer and
+            // would land after it, putting the answered prompt back with its old defaults.
+            await queryClient.cancelQueries({ queryKey: onboardingKeys.state });
+            return next;
+        },
         onMutate: () => {
             setFailed(false);
         },
@@ -118,7 +125,11 @@ export function OnboardingPage() {
     });
 
     const skip = useMutation({
-        mutationFn: async () => unwrap(await engineApi.onboarding.defer(AbortSignal.timeout(30_000))),
+        mutationFn: async () => {
+            const next = unwrap(await engineApi.onboarding.defer(AbortSignal.timeout(30_000)));
+            await queryClient.cancelQueries({ queryKey: onboardingKeys.state });
+            return next;
+        },
         onSuccess: async (next) => {
             queryClient.setQueryData<ReadOnboardingState>(onboardingKeys.state, next);
             await openChatter();

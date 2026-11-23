@@ -111,6 +111,7 @@ export function renderWithProviders(options: RenderWithProvidersOptions = {}): R
             engineApi={engineApi}
             queryClient={queryClient}
             router={router}
+            onUnauthenticated={onUnauthenticated}
             browser={{
                 storage,
                 matchMedia: media.matchMedia,

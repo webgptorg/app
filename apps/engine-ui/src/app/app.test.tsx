@@ -31,6 +31,22 @@ describe('engine-ui app', () => {
         expect(SIGN_IN_PATH).toBe('/auth/sign-in');
     });
 
+    it('offers to sign in again on the page a 401 left behind, returning to it', async () => {
+        const engineApi = createTestEngineApi();
+        const agents = { ...engineApi.agents };
+        vi.spyOn(agents, 'get').mockImplementation(() => problemResponse('unauthenticated'));
+        const { user, location } = renderWithProviders({
+            path: '/agents/seed-agent-000001?tab=chat',
+            engineApi: { ...engineApi, agents },
+        });
+
+        expect(await screen.findByRole('heading', { level: 1, name: 'You’re signed out' })).toBeDefined();
+        await user.click(screen.getByRole('button', { name: 'Sign in again' }));
+        expect(location.assign).toHaveBeenLastCalledWith(
+            `${SIGN_IN_PATH}?next=%2Fagents%2Fseed-agent-000001%3Ftab%3Dchat`,
+        );
+    });
+
     it('shows the route error when a loader throws, without a sign-in, and recovers on retry', async () => {
         const engineApi = createTestEngineApi();
         const agents = { ...engineApi.agents };

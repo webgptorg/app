@@ -44,7 +44,8 @@ export async function bootstrap(container: HTMLElement, browser: BrowserDeps): P
         }),
     );
     const engineApi = await createAppEngineApiClient({ origin: browser.location.origin, fetch: browser.fetch });
-    const queryClient = createAppQueryClient({ onUnauthenticated: createSignInRedirect(browser.location) });
+    const onUnauthenticated = createSignInRedirect(browser.location);
+    const queryClient = createAppQueryClient({ onUnauthenticated });
     const router = createAppRouter({ engineApi, queryClient, features: FEATURES }, { matchMedia: browser.matchMedia });
     preloadMatchedRouteChunks(router);
 
@@ -62,6 +63,7 @@ export async function bootstrap(container: HTMLElement, browser: BrowserDeps): P
                 engineApi={engineApi}
                 queryClient={queryClient}
                 router={router}
+                onUnauthenticated={onUnauthenticated}
                 browser={{
                     storage: browser.storage,
                     matchMedia: browser.matchMedia,

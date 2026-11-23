@@ -26,13 +26,17 @@ export async function loadSetupOnly(context: RouterContext): Promise<boolean> {
     }
 }
 
-/** For the shell: the same answer, following the cached state as setup moves on, without polling of its own. */
+/**
+ * For the shell: the same answer, following the cached state as setup moves on, without polling of its own. Not
+ * `'static'`: one observer with that makes TanStack skip the query in every invalidation, so a stale answer on the
+ * setup page would never read the state again.
+ */
 export function useSetupOnly(): boolean {
     const allowed = useAllows(ONBOARDING_REQUIREMENT);
     const state = useQuery({
         ...onboardingQueryOptions(useEngineApi()),
         enabled: allowed,
-        staleTime: 'static',
+        staleTime: Infinity,
         refetchInterval: false,
     });
     return allowed && isSetupOnly(state.data);
