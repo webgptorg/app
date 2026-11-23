@@ -221,6 +221,50 @@ describe('the live channel', () => {
         expect(answer).toMatch(/^HTTP\/1\.1 400 /);
         const channel = await opened(harness, session.id, { cookie });
         channel.ws.close();
+        const audit = await harness.client(cookie).audit.list({ limit: 100 }, signal());
+        if (audit.kind !== 'ok') throw new Error(audit.problem.code);
+        expect(
+            audit.data.items
+                .filter((entry) => entry.action === 'browser.channel.attach')
+                .map(({ outcome }) => outcome)
+                .sort(),
+        ).toEqual(['failed', 'success']);
+    });
+
+    it('refuses a member without browser.watch with 403 before it looks at the session', async () => {
+        const { harness, cookie } = await start();
+        const session = await watchStartupTab(harness, cookie);
+        const blind = harness.signIn({ memberId: harness.ownerId(), permissions: ['agents.read', 'browser.control'] });
+        expect(await refused(harness, session.id, { cookie: blind })).toEqual({ status: 403, code: 'forbidden' });
+        expect(await refused(harness, 'session-nowhere', { cookie: blind })).toEqual({
+            status: 403,
+            code: 'forbidden',
+        });
+    });
+
+    it('ends a controller’s session as revoked once a role change takes browser.control', async () => {
+        const { harness, owner } = await start();
+        const admin = harness
+            .core()
+            .controller.inspect()
+            .members.find(({ role }) => role === 'admin');
+        if (admin === undefined) throw new Error('no admin in the scenario');
+        const promoted = await owner.members.update(admin.id, { role: 'owner' }, signal());
+        expect(promoted.kind).toBe('ok');
+        const cookie = harness.signIn({ memberId: admin.id });
+        const tabId = BrowserTabId.parse(harness.runtime?.liveBrowserTab() ?? '');
+        const controlled = await harness.client(cookie).browser.control(tabId, signal());
+        if (controlled.kind !== 'ok') throw new Error(controlled.problem.code);
+        const channel = await opened(harness, controlled.data.id, { cookie });
+        channel.send({ type: 'hello', versions: [1] });
+        await channel.until((event) => event.kind === 'frame');
+        expect((await owner.members.update(admin.id, { role: 'admin' }, signal())).kind).toBe('ok');
+        expect(await channel.until((event) => event.kind === 'text' && event.message.type === 'end')).toEqual({
+            kind: 'text',
+            message: { type: 'end', reason: 'revoked' },
+        });
+        const tabs = await owner.browser.listTabs({}, signal());
+        expect(tabs.kind === 'ok' && tabs.data.items.find(({ id }) => id === tabId)?.agentState).toBe('working');
     });
 
     it('lets a viewer watch, since watching shows only work they can see', async () => {

@@ -290,6 +290,14 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
                 return;
             }
             actor = outcome.actor;
+            if (route.permission !== null && !actor.permissions.has(route.permission)) {
+                rejectUpgradeWith(
+                    socket,
+                    { code: 'forbidden', extras: { requiredPermission: route.permission } },
+                    microphone(),
+                );
+                return;
+            }
         }
         if (route.subprotocol !== null && !offers(header('sec-websocket-protocol'), route.subprotocol)) {
             rejectUpgradeWith(

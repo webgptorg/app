@@ -184,6 +184,7 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
     const clock = options.clock ?? systemClock;
     const logger = createMemoryLogger();
     const faults = createFaultSettings(options.faults ?? NO_FAULTS);
+    let sessionStore: SessionStore | null = null;
     const runtime =
         options.core === undefined
             ? await createEngineRuntime({
@@ -202,6 +203,7 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
                   passkeys: options.passkeys ?? (options.onboarding === undefined ? 'seeded' : 'none'),
                   liveBrowser: options.liveBrowser ?? false,
                   voice: options.voice ?? false,
+                  browserPermissions: (memberId, sessionId) => sessionStore?.permissionsOf(memberId, sessionId) ?? null,
                   faults: () => faults.plan(),
                   onSimulationError: (error) => {
                       logger.error('simulation.error', { problem: error instanceof Error ? error.message : 'unknown' });
@@ -214,6 +216,7 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
         clock,
         random: options.random ?? createCryptoRandom(),
     });
+    sessionStore = sessions;
     runtime?.onReset(() => {
         sessions.clear();
     });

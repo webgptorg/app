@@ -25,7 +25,7 @@ function bytesOf(data: RawData): Uint8Array {
 
 /**
  * The live channel (`browser-tab@1`) at `LIVE_CHANNEL_PATH`: the HTTP app has already checked the gateway cookie, the
- * `Origin` and the `ptbk-live` subprotocol, so what is left is the core's answer, given before the handshake completes
+ * `Origin`, the permission and the `ptbk-live` subprotocol, so what is left is the core's answer, given before the handshake completes
  * so a refusal is a plain HTTP problem. Nothing a message carries is logged: frames show the tab, input is what a
  * person types.
  */
@@ -35,7 +35,7 @@ export function createLiveChannelRoute(deps: { readonly core: () => InMemoryEngi
         method: 'GET',
         path: `${ENGINE_API_PREFIX}${LIVE_CHANNEL_PATH}`,
         auth: 'session',
-        // The core decides: `browser.watch`, or `browser.control` alone, attaches the member's own session.
+        // Like reading or ending the session; the core still checks the session's own needs (control, the tab's work).
         permission: 'browser.watch',
         rateLimit: 'live-channel-ip',
         params: BrowserSessionParams,
@@ -74,6 +74,7 @@ export function createLiveChannelRoute(deps: { readonly core: () => InMemoryEngi
                 kind: 'accept',
                 open(ws) {
                     socket = ws;
+                    peer.opened();
                     ws.on('message', (data, isBinary) => {
                         const bytes = bytesOf(data);
                         peer.receive(isBinary ? bytes : decoder.decode(bytes));

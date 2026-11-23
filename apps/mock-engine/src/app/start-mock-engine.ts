@@ -301,6 +301,8 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
               });
     const linkedAtStart = dashboard === null || registration !== null;
     const faults = createFaultSettings(config.faults);
+    // The session store needs the runtime, and the runtime's cores ask the store; neither asks before startup ends.
+    let sessionStore: SessionStore | null = null;
     const runtime = await createEngineRuntime({
         seed: config.seed,
         scenario: config.scenario,
@@ -318,12 +320,14 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         ...(config.onboarding === null ? {} : { onboarding: config.onboarding }),
         liveBrowser: config.liveBrowser,
         voice: config.voice,
+        browserPermissions: (memberId, sessionId) => sessionStore?.permissionsOf(memberId, sessionId) ?? null,
         faults: () => faults.plan(),
         onSimulationError: (error) => {
             logger.error('simulation.error', { problem: error instanceof Error ? error.name : 'unknown' });
         },
     });
     const sessions = createSessionStore({ engine: () => runtime.controller(), clock: deps.clock, random: deps.random });
+    sessionStore = sessions;
     const stopLiveBrowser = config.liveBrowser
         ? startLiveBrowserTicks(deps.clock, () => {
               try {
