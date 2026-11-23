@@ -9,8 +9,10 @@ import {
     BrowserSession,
     BrowserTab,
     LIVE_AUDIO_FORMATS,
+    MAX_BROWSER_HELP_MESSAGE_LENGTH,
     OpenBrowserSignInBody,
     OpenLiveAudioBody,
+    toBrowserHelpMessage,
 } from './live';
 
 const AT = '2026-11-20T10:00:00.000Z';
@@ -98,6 +100,35 @@ describe('OpenBrowserSignInBody', () => {
     });
 });
 
+describe('a help request’s message', () => {
+    it.each([
+        ['a bidi override', 'Sign in at moc.\u202Eelpmaxe'],
+        ['a bidi embedding', 'Sign in \u202Bhere'],
+        ['a bidi isolate', 'Sign in \u2067here\u2069'],
+        ['a line break', 'Sign in\nthen continue'],
+        ['a carriage return', 'Sign in\r'],
+        ['a tab', 'Sign\tin'],
+        ['a NUL', 'Sign in\u0000'],
+        ['an escape sequence', 'Sign in \u001B[31m'],
+        ['a C1 control', 'Sign in\u0085'],
+    ])('refuses %s', (_what, message) => {
+        expect(BrowserHelpRequest.safeParse({ ...REQUEST, message }).success).toBe(false);
+        expect(BrowserHelpRequest.safeParse({ ...REQUEST, message: toBrowserHelpMessage(message) }).success).toBe(true);
+    });
+
+    it('is folded to one trimmed line by toBrowserHelpMessage', () => {
+        expect(toBrowserHelpMessage('  Sign in\r\n\tat \u202Eexample\u202C\u0007 now  ')).toBe(
+            'Sign in at example now',
+        );
+        expect(toBrowserHelpMessage('x'.repeat(600))).toHaveLength(MAX_BROWSER_HELP_MESSAGE_LENGTH);
+        const emoji = `${'x'.repeat(MAX_BROWSER_HELP_MESSAGE_LENGTH - 1)}😀`;
+        expect(toBrowserHelpMessage(emoji)).toBe('x'.repeat(MAX_BROWSER_HELP_MESSAGE_LENGTH - 1));
+        expect(toBrowserHelpMessage(`${'x'.repeat(MAX_BROWSER_HELP_MESSAGE_LENGTH - 1)} y`)).toBe(
+            'x'.repeat(MAX_BROWSER_HELP_MESSAGE_LENGTH - 1),
+        );
+    });
+});
+
 describe('browser resources', () => {
     it('are strict on the engine side', () => {
         expect(BrowserSession.parse(SESSION)).toEqual(SESSION);
@@ -106,6 +137,9 @@ describe('browser resources', () => {
         expect(BrowserHelpRequest.parse(REQUEST)).toEqual(REQUEST);
         expect(BrowserHelpRequest.safeParse({ ...REQUEST, reason: 'password' }).success).toBe(false);
         expect(BrowserHelpRequest.safeParse({ ...REQUEST, message: 'x'.repeat(501) }).success).toBe(false);
+        expect(BrowserHelpRequest.safeParse({ ...REQUEST, message: 'Sign in 👩‍💻 — přihlášení, تسجيل' }).success).toBe(
+            true,
+        );
         expect(
             BrowserTab.safeParse({
                 id: 'tab-1',

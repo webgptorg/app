@@ -4,11 +4,11 @@ import {
     BrowserHelpRequestId,
     BrowserTabId,
     LIVE_SESSION_ATTACH_MS,
-    MAX_BROWSER_HELP_MESSAGE_LENGTH,
     MAX_BROWSER_HELP_REQUESTS,
     MAX_BROWSER_PARTICIPANTS,
     MAX_BROWSER_TAB_SESSION_MS,
     MAX_BROWSER_TABS,
+    toBrowserHelpMessage,
 } from '../capabilities/live';
 import type {
     BrowserHelpOutcome,
@@ -63,8 +63,12 @@ export interface LiveChannelSink {
     close(code: number): void;
 }
 
-/** What the server feeds from the WebSocket: every message, then `closed` once when it drops. */
+/**
+ * What the server feeds from the WebSocket: `opened` once the handshake completed, every message, then `closed` once
+ * when it drops. A `closed` without `opened` is a handshake that failed after the engine accepted it.
+ */
 export interface LiveChannelPeer {
+    opened(): void;
     receive(data: string | Uint8Array): void;
     closed(): void;
 }
@@ -110,6 +114,8 @@ interface SessionRecord {
     readonly gatewaySessionId: SessionId;
     /** Whether the gateway session was listed when this opened, so its revocation can be noticed. */
     readonly gatewaySessionListed: boolean;
+    /** What the gateway session held at its latest request, for engines that cannot ask for it now. */
+    permissions: ReadonlySet<Permission>;
     mode: BrowserSessionMode;
     status: 'open' | 'ended';
     endReason: LiveEndReason | null;
@@ -140,6 +146,8 @@ export interface InMemoryBrowser {
     signInOrigins: ReadonlySet<string>;
     /** Where engine-initiated events (attach, timeouts, revocation) are audited; the core sets it. */
     audit: (input: LiveAuditInput) => void;
+    /** What a gateway session holds now, or `null` to go by its latest request; the core sets it. */
+    permissionsOf: (memberId: MemberId, sessionId: SessionId) => ReadonlySet<Permission> | null;
 }
 
 export function createInMemoryBrowser(): InMemoryBrowser {
@@ -149,6 +157,7 @@ export function createInMemoryBrowser(): InMemoryBrowser {
         helpRequests: new Map(),
         signInOrigins: new Set(),
         audit: () => undefined,
+        permissionsOf: () => null,
     };
 }
 
@@ -346,14 +355,27 @@ function endSession(ctx: EngineContext, session: SessionRecord, reason: LiveEndR
     tabChanged(ctx, tab);
 }
 
-/** Ends what ran out of time, or lost its member or gateway session. */
+/**
+ * Whether the member still holds what the session needs: the tab's work in sight (`browser.watch`, a sign-in tab
+ * included) and, while controlling, `browser.control`.
+ */
+function stillPermitted(browser: InMemoryBrowser, session: SessionRecord): boolean {
+    const held = browser.permissionsOf(session.memberId, session.gatewaySessionId) ?? session.permissions;
+    const tab = browser.tabs.get(session.tabId);
+    /* v8 ignore next -- a tab's sessions end before it is forgotten */
+    if (!tab) return true;
+    return canSee(held, tab) && (session.mode === 'watching' || held.has('browser.control'));
+}
+
+/** Ends what ran out of time, or lost its member, its gateway session or the permission it needs. */
 export function sweepBrowser(ctx: EngineContext): void {
     const now = time(ctx.now());
     for (const session of [...ctx.state.browser.sessions.values()]) {
         if (session.status === 'ended') continue;
         if (
             !ctx.state.members.has(session.memberId) ||
-            (session.gatewaySessionListed && !ctx.state.sessions.has(session.gatewaySessionId))
+            (session.gatewaySessionListed && !ctx.state.sessions.has(session.gatewaySessionId)) ||
+            !stillPermitted(ctx.state.browser, session)
         ) {
             endSession(ctx, session, 'revoked', null);
         } else if (!session.attached && now > time(session.attachBy)) {
@@ -364,6 +386,19 @@ export function sweepBrowser(ctx: EngineContext): void {
             endSession(ctx, session, 'idle', null);
         }
     }
+}
+
+/**
+ * A request or an attach by `actor`: its gateway session's sessions go by what it holds now, and end if that is no
+ * longer enough. Engines whose `permissionsOf` answers learn of a change without waiting for a request.
+ */
+export function noteBrowserActor(ctx: EngineContext, actor: Actor): void {
+    for (const session of ctx.state.browser.sessions.values()) {
+        if (session.gatewaySessionId === actor.sessionId && session.memberId === actor.memberId) {
+            session.permissions = actor.permissions;
+        }
+    }
+    sweepBrowser(ctx);
 }
 
 /** Another gateway session's, the same member's included, is reported exactly like a missing one. */
@@ -411,6 +446,7 @@ function openSession(ctx: HandlerContext, tab: TabRecord, mode: BrowserSessionMo
         memberId: ctx.member.id,
         gatewaySessionId: ctx.actor.sessionId,
         gatewaySessionListed: ctx.state.sessions.has(ctx.actor.sessionId),
+        permissions: ctx.permissions,
         mode: 'watching',
         status: 'open',
         endReason: null,
@@ -700,12 +736,12 @@ export function attachLiveChannel(
     sessionId: string,
     sink: LiveChannelSink,
 ): LiveChannelAttach {
-    sweepBrowser(ctx);
+    noteBrowserActor(ctx, actor);
     const { browser } = ctx.state;
     const found = browser.sessions.get(sessionId);
     const session =
         found?.gatewaySessionId === actor.sessionId && found.memberId === actor.memberId ? found : undefined;
-    const audit = (outcome: 'success' | 'denied', problem: ProblemDetails | null): void => {
+    const audit = (outcome: LiveAuditInput['outcome'], problem: ProblemDetails | null): void => {
         browser.audit({
             actor: { kind: 'member', memberId: actor.memberId },
             action: 'browser.channel.attach',
@@ -732,14 +768,23 @@ export function attachLiveChannel(
     };
     session.attached = true;
     session.channel = channel;
-    audit('success', null);
+    let opened = false;
     return {
         kind: 'attached',
         peer: {
+            opened: () => {
+                if (opened) return;
+                opened = true;
+                audit('success', null);
+            },
             receive: (data) => {
                 if (session.channel === channel) receive(ctx, session, data);
             },
             closed: () => {
+                if (!opened) {
+                    opened = true;
+                    audit('failed', null);
+                }
                 if (session.channel !== channel) return;
                 // A reload attaches again within the attach window; a closed page frees its place and, if it was
                 // controlling, hands the tab back to the agent instead of pausing it until the idle limit.
@@ -820,7 +865,7 @@ export function requestBrowserHelp(
         runId: tab.runId,
         reason: input.reason,
         origin: tab.page.kind === 'web' ? tab.page.origin : null,
-        message: input.message.slice(0, MAX_BROWSER_HELP_MESSAGE_LENGTH),
+        message: toBrowserHelpMessage(input.message),
         status: controller ? 'in-progress' : 'pending',
         resolution: null,
         createdAt: ctx.now(),

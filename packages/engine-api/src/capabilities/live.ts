@@ -43,6 +43,28 @@ export const MAX_BROWSER_HELP_REQUESTS = 100;
 export const MAX_BROWSER_HELP_MESSAGE_LENGTH = 500;
 
 /**
+ * Control characters (line breaks and tabs included) and bidi embeddings, overrides and isolates. The message is one
+ * line of plain text, and these could make it read as something other than what it says, such as a reversed origin.
+ */
+const HELP_MESSAGE_REFUSED = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/u;
+const HELP_MESSAGE_REFUSED_ALL = new RegExp(HELP_MESSAGE_REFUSED.source, 'gu');
+
+/**
+ * What an engine stores for the agent's explanation: whitespace and control characters folded into single spaces, bidi
+ * controls dropped, trimmed, and cut to {@link MAX_BROWSER_HELP_MESSAGE_LENGTH} without splitting a character.
+ */
+export function toBrowserHelpMessage(text: string): string {
+    const folded = text
+        .replace(/[\u202A-\u202E\u2066-\u2069]/gu, '')
+        .replace(HELP_MESSAGE_REFUSED_ALL, ' ')
+        .replace(/\s+/gu, ' ')
+        .trim();
+    let cut = folded.slice(0, MAX_BROWSER_HELP_MESSAGE_LENGTH);
+    if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1);
+    return cut.trimEnd();
+}
+
+/**
  * Proposed audio encodings, one per session for both directions. The list is open for the engine team (it depends on
  * what the voice harness takes); within `live-audio@1` it only grows.
  */
@@ -217,8 +239,16 @@ export const BrowserHelpRequest = z.strictObject({
     reason: BrowserHelpReason,
     /** Where the tab was when the agent asked. */
     origin: TabOrigin.nullable(),
-    /** The agent's short explanation. Model output: rendered as text only, never as markup or a link. */
-    message: z.string().max(MAX_BROWSER_HELP_MESSAGE_LENGTH),
+    /**
+     * The agent's short explanation, one line ({@link toBrowserHelpMessage}). Model output: rendered as text only, never
+     * as markup or a link.
+     */
+    message: z
+        .string()
+        .max(MAX_BROWSER_HELP_MESSAGE_LENGTH)
+        .refine((text) => !HELP_MESSAGE_REFUSED.test(text), {
+            message: 'No control characters, line breaks or bidi controls',
+        }),
     status: BrowserHelpStatus,
     /** Set exactly when `status` is `resolved`. */
     resolution: BrowserHelpResolution.nullable(),
