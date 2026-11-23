@@ -1,3 +1,4 @@
+import { X509Certificate } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -190,10 +191,20 @@ describe('ACME TLS-ALPN-01 issuance with acme-client, through the ClientHello ro
     it('creates the account once and orders every hostname in one certificate', async () => {
         const { acme, issuer } = await setup();
         await issuer.issue([HOST], new AbortController().signal);
+        expect(acme.validations).toEqual([{ hostname: HOST, valid: true }]);
         const both = await issuer.issue([HOST, OTHER], new AbortController().signal);
         expect(acme.accounts).toHaveLength(1);
-        expect(acme.validations.map((validation) => validation.hostname)).toEqual([HOST, HOST, OTHER]);
-        expect(both.certificateChainPem).toContain('BEGIN CERTIFICATE');
+        // An order's authorizations are validated concurrently, so they may settle in either order.
+        const second = acme.validations.slice(1);
+        expect(second).toHaveLength(2);
+        expect(second).toEqual(
+            expect.arrayContaining([
+                { hostname: HOST, valid: true },
+                { hostname: OTHER, valid: true },
+            ]),
+        );
+        const leaf = new X509Certificate(both.certificateChainPem);
+        expect([leaf.checkHost(HOST), leaf.checkHost(OTHER)]).toEqual([HOST, OTHER]);
     });
 
     it('skips authorizations the CA already holds as valid', async () => {
