@@ -24,6 +24,16 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-23: Live browser: permission loss, help message, more checks
+
+- **Changed** ([live-sessions.md](live-sessions.md#a-session-belongs-to-its-gateway-session), in place in `browser-tab@1`):
+  - A browser session ends with `revoked` as soon as its member no longer holds what it needs: `browser.watch` with sight of the tab's work, and `browser.control` while controlling. A role change counts, without waiting for the member's next request.
+  - The channel upgrade needs `browser.watch` (403 before the session is looked up). `browser.control` alone no longer attaches.
+  - The attach is audited once the WebSocket handshake completed; a failed handshake is `failed`.
+  - `BrowserHelpRequest.message` refuses control characters (line breaks and tabs included) and bidi embeddings, overrides and isolates. `toBrowserHelpMessage` folds model output into an accepted line.
+  - New checks: `engine-api.browser-tab.permissions` (403 on every browser route and the channel), `engine-api.browser-tab.origin-refused`, `engine-api.browser-tab.revoked`, `engine-api.browser-tab.watcher-blocked`.
+- **Redo:** end sessions on permission loss and audit the real attach outcome (LB-03, LB-08, LB-14 and LB-15 changed), pass the message through `toBrowserHelpMessage` or the same rule, then re-run the `engine-api.browser-tab.*` checks.
+
 ### 2026-11-23: Gateway pages print complete `ptbk` commands; local-stack findings
 
 - **Changed:**
@@ -140,19 +150,19 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Test cases (engine, unit level):**
   - LB-01 Without the setting, `GET /engine` lacks `browser-tab@1` and every route answers 404 `capability-not-supported`.
   - LB-02 A session opened by one gateway session is 404 to every other one, the same member's included, on every route and on the channel.
-  - LB-03 The channel upgrade without a cookie is 401, with another `Origin` 403, without `ptbk-live` refused, a second attach 409 `live-channel-attached`; after a drop the same gateway session attaches again.
+  - LB-03 The channel upgrade without a cookie is 401, with another `Origin` or without `browser.watch` 403, without `ptbk-live` refused, a second attach 409 `live-channel-attached`; after a drop the same gateway session attaches again. A handshake that fails after the engine accepted the upgrade is audited as `failed`.
   - LB-04 `POST /browser-sessions`, `POST /browser-tabs/{id}/control` and `POST /browser-sessions/{id}/control` answer 401 `step-up-required` without a fresh assertion, 403 without `browser.control`.
   - LB-05 A watcher's `input` is answered `input-refused { reason: 'not-controlling' }` and nothing reaches `Input.dispatch*`.
   - LB-06 A second controller gets 409 `browser-tab-controlled`; watchers keep their frames.
   - LB-07 Taking control pauses the agent's browser tool at its next action; handing back resumes it with `handed-back`.
-  - LB-08 On a `chrome://` page, the password manager and the Wallet's entry page, no frame is forwarded, input is refused `blocked`, and `blocked` carries no origin.
+  - LB-08 On a `chrome://` page, the password manager and the Wallet's entry page, no frame is forwarded to anyone, watchers included, input is refused `blocked`, and `blocked` carries no origin. A watcher follows the agent to any web origin, but while someone controls the tab gets no frame off the controller's origins.
   - LB-09 A sign-in at an origin outside the allowlist or at the engine's own origin is 422 `browser-origin-refused`; while controlled, a link to another origin stops frames until the tab returns.
   - LB-10 Every `LiveInputEvent` maps to one `Input.dispatchMouseEvent` or `Input.dispatchKeyEvent` with Shift as the only modifier; file choosers and downloads are refused while controlled.
   - LB-11 An unknown message, a message over 4 KiB, a binary message from the browser, or anything before `hello` ends the channel with `end { reason: 'protocol-error' }` and close 1008.
   - LB-12 Every media message decodes with `decodeLiveMedia`, is at most 64 KiB, and no third frame is sent before an ack.
   - LB-13 With a fake clock: no attach in 30 s, after opening or after a drop, ends with `not-attached` (a controlled tab goes back to the agent), `endsAt` with `expired`, 2 minutes without a controller's input with `idle`; watchers are not idle-ended.
-  - LB-14 Revoking the gateway session or removing the member ends their sessions with `revoked`.
-  - LB-15 A help request goes `pending` (tab `waiting`), `in-progress` on control, `resolved` with `handed-back`, `dismissed`, `blocked-origin` or `cancelled` (the agent's work closed the tab); its `message` is stored as plain text.
+  - LB-14 Revoking the gateway session, removing the member, or a policy or role change that takes `browser.watch` (or sight of the tab's work) ends their sessions with `revoked`; one that takes `browser.control` ends a controller's session, and its help request resolves `revoked`. Without waiting for the member's next request.
+  - LB-15 A help request goes `pending` (tab `waiting`), `in-progress` on control, `resolved` with `handed-back`, `dismissed`, `blocked-origin` or `cancelled` (the agent's work closed the tab); its `message` is stored as one line of plain text: the model's line breaks, tabs, control characters and bidi controls folded away (`toBrowserHelpMessage`).
   - LB-16 After a session in which `hunter2` was typed, the audit log holds the `browser.*` entries and neither the typed text nor a URL path.
   - LB-17 `browser-tab.changed` and `browser-help.changed` go out, IDs only, to members with `browser.watch` only.
 - **Test cases (by hand, on a headless VPS engine with the setting on):**
