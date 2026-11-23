@@ -11,6 +11,7 @@ import {
 } from '@ptbk/ui';
 import type { StatusTone } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import type { LicenseView } from '../../../shared/api/routes';
@@ -176,9 +177,10 @@ function Limits(props: { readonly coverage: NonNullable<LicenseView['coverage']>
 
 /**
  * Plan, state, term, limits against what the App counts, and the way to ptbk.io. Quiet in every state: a missing or
- * ended licence is information, never an alarm, and nothing here blocks anything.
+ * ended licence is information, never an alarm, and nothing here blocks anything. `actions` replaces the default
+ * manage or buy link, for a page that brings its own links to the website.
  */
-function StatusSection(props: { readonly license: LicenseView }) {
+export function LicenseStatusSection(props: { readonly license: LicenseView; readonly actions?: ReactNode }) {
     const { navigate } = useBrowser();
     const formatters = useFormatters();
     const { license } = props;
@@ -193,9 +195,13 @@ function StatusSection(props: { readonly license: LicenseView }) {
             title={m.license_status_title()}
             divided={false}
             actions={
-                <ExternalLink href={license.manageUrl}>
-                    {key === 'none' ? m.license_buy_action() : m.license_manage_action()}
-                </ExternalLink>
+                props.actions === undefined ? (
+                    <ExternalLink href={license.manageUrl}>
+                        {key === 'none' ? m.license_buy_action() : m.license_manage_action()}
+                    </ExternalLink>
+                ) : (
+                    props.actions
+                )
             }
         >
             <div className="flex flex-col gap-1">
@@ -280,7 +286,7 @@ export function LicensePage() {
                         {m.license_stale_body()}
                     </Banner>
                 ) : null}
-                <StatusSection license={view} />
+                <LicenseStatusSection license={view} />
                 {view.link === null ? null : <AccountSection link={view.link} checkedAt={view.checkedAt} />}
                 {view.state === 'unknown' || view.grants.length === 0 ? null : (
                     <Section title={m.license_grants_title()} count={active}>
