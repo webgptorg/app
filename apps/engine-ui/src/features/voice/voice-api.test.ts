@@ -1,4 +1,4 @@
-import { ChatId, EngineApiContractError, KNOWN_CAPABILITIES, MessageId, PROBLEM_STATUS } from '@ptbk/engine-api';
+import { ChatId, KNOWN_CAPABILITIES, MessageId, PROBLEM_STATUS } from '@ptbk/engine-api';
 import type { EngineApiClient, ProblemCode } from '@ptbk/engine-api';
 import { createInMemoryEngine, DEFAULT_CAPABILITIES } from '@ptbk/engine-api/in-memory';
 import { describe, expect, it, vi } from 'vitest';
@@ -144,7 +144,6 @@ describe('voice problems', () => {
         expect(voiceProblemFromFailure({ kind: 'contract' }, 'speak')).toBe('unexpected');
         expect(voiceProblemFromFailure({ kind: 'unexpected' }, 'speak')).toBe('unexpected');
         expect(microphoneProblem('not an error')).toBe('recording-failed');
-        expect(new EngineApiContractError('x', 'y')).toBeInstanceOf(Error);
     });
 
     it('give every problem its own plain sentence, never the engine detail', () => {

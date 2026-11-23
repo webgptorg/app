@@ -1,6 +1,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 
+import { m } from '../../paraglide/messages';
 import { PushToTalkButton } from '../voice/push-to-talk-button';
 import type { PushToTalkState } from '../voice/push-to-talk';
 import { ReadAloudButton } from '../voice/read-aloud-button';
@@ -113,7 +114,11 @@ export function VoiceGallery() {
                 </Row>
             ))}
             <Row label="too long">
-                <ReadAloudButton state={{ kind: 'idle' }} onToggle={noop} disabledReason="Too long to read aloud." />
+                <ReadAloudButton
+                    state={{ kind: 'idle' }}
+                    onToggle={noop}
+                    disabledReason={m.voice_error_speech_too_long()}
+                />
             </Row>
             <Row label="live (a tone)">
                 <div data-voice-demo="">

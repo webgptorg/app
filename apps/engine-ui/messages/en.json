@@ -2272,7 +2272,7 @@
   "voice_error_transcription_failed": "The recording couldn't be transcribed. Try again.",
   "voice_error_speech_too_long": "This message is too long to read aloud.",
   "voice_error_message_not_speakable": "This message can't be read aloud yet.",
-  "voice_error_speech_format_refused": "This project can't make audio this browser plays.",
+  "voice_error_speech_format_refused": "This project can't make audio this browser can play.",
   "voice_error_speech_failed": "The message couldn't be read aloud. Try again.",
   "voice_error_playback_failed": "This browser couldn't play the audio.",
   "voice_error_unavailable": "Voice isn't available in this project right now. Try again later.",

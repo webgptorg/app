@@ -16,7 +16,7 @@ Decision (Seb, 2026-11-23): "just prepare these, don't put them inside the UI ye
 
 ## Scope
 
-- `features/voice/`: capability hooks (engine advertises it and the browser supports it), a `MediaRecorder` recorder that picks a format from `VOICE_CLIP_FORMATS`, enforces `MAX_VOICE_CLIP_MS` and `MAX_VOICE_CLIP_BYTES` and always releases the microphone, typed calls to `transcribe` and `speak`, plain copy for every voice problem code, a speech player that negotiates `SPEECH_FORMATS` with `canPlayType` and revokes its object URLs, and presentational push-to-talk and read-aloud buttons.
+- `features/voice/`: capability hooks (engine advertises it and the browser supports it), a `MediaRecorder` recorder that picks a format from `VOICE_CLIP_FORMATS`, enforces `MAX_VOICE_CLIP_MS` and `MAX_VOICE_CLIP_BYTES` and always releases the microphone, typed calls to `transcribe` and `speak`, plain copy for every voice problem code, a speech player that negotiates `SPEECH_FORMATS` with `canPlayType` and plays through `AudioContext.decodeAudioData`, with no object URLs, and presentational push-to-talk and read-aloud buttons.
 - Gallery entries for both buttons' states.
 - en and cs copy.
 
@@ -27,7 +27,7 @@ Decision (Seb, 2026-11-23): "just prepare these, don't put them inside the UI ye
 
 ## Acceptance criteria
 
-- [x] Tests with fakes for `MediaRecorder`, `getUserMedia` and `Audio`: permission denied, unsupported format, cap reached, every problem code, unmount mid-recording releases the microphone, object URLs revoked.
+- [x] Tests with fakes for `MediaRecorder`, `getUserMedia` and Web Audio: permission denied, unsupported format, cap reached, every problem code, unmount mid-recording releases the microphone, the audio output closed.
 - [x] Nothing renders in the product; no CSP or header change; `test:csp` passes.
 - [x] Audio and transcripts are never logged or put into errors.
 - [x] **Status** line above set to `done (#<PR>)`.
