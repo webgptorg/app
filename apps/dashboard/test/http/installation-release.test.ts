@@ -9,7 +9,7 @@ import { createMemoryAuthStore } from '../../src/testing/memory-auth-store';
 
 describe('current installation release over HTTP', () => {
     it.each(['personal', 'team'] as const)(
-        'uses one resolved release in every %s installation option',
+        'puts the %s release selected at issuance in the EXE download only',
         async (target) => {
             let lookups = 0;
             const installReleases: EngineInstallReleaseSource = {
@@ -38,19 +38,14 @@ describe('current installation release over HTTP', () => {
             expect(response.status).toBe(200);
             expect(lookups).toBe(1);
             const view = response.body as LinkCodeView;
-            expect(view.installCommands[0]?.command).toContain("'0.119.0-125'");
+            expect(view.installCommands[0]?.command).toContain(`PTBK_LINK=${view.linkCode} bash`);
             expect(JSON.stringify(view.installationOptions)).not.toContain(TEST_ENGINE_INSTALLATION.version);
             for (const option of view.installationOptions ?? []) {
                 switch (option.kind) {
                     case 'command':
-                        for (const command of Object.values(option.commands)) {
-                            expect(command).toContain('0.119.0-125');
-                            expect(command).toContain(view.linkUrl);
-                        }
-                        break;
                     case 'ai':
-                        for (const prompts of Object.values(option.prompts))
-                            for (const prompt of Object.values(prompts)) expect(prompt).toContain('0.119.0-125');
+                        // The release lives in the served script, so a copied command always gets the current one.
+                        expect(JSON.stringify(option)).not.toContain('0.119.0-125');
                         break;
                     case 'download':
                         expect(option.version).toBe('0.119.0-125');

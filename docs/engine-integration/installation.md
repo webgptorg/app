@@ -53,19 +53,30 @@ The link URL, `https://<dashboard host>/link#<link code>`, names the dashboard a
 
 ## Install paths
 
-A new project opens the installation command for the browser's platform. You can switch targets, including a remote Ubuntu VPS. Each command uses the exact published release selected when App issued the link.
+A new project opens the installation command for the browser's platform. You can switch targets, including a remote Ubuntu VPS. Each is one line that fetches a script from App and hands it the pairing code in an environment variable, never as an argument:
+
+```sh
+curl -fsSL https://app.ptbk.io/install.sh | PTBK_LINK=<code> bash          # macOS / Linux
+curl -fsSL https://app.ptbk.io/install-server.sh | PTBK_LINK=<code> bash   # Ubuntu VPS
+```
+
+```powershell
+$env:PTBK_LINK='<code>'; irm https://app.ptbk.io/install.ps1 | iex       # Windows
+```
+
+App serves each script with the exact published release it selects at that moment, the same way it does when it issues a link.
 
 ### Engine-first setup
 
-On macOS or Linux, copy the Bash command from **New project**. The command verifies the script's checksum, and the script prepares prerequisites under the local user account. It asks before installing Git or Alpine packages as administrator. Approve the macOS developer tools dialog if it opens. On Windows, copy the PowerShell command and complete the official setup wizard. PowerShell checks the installer checksum, waits for it to finish, and pairs the installed engine. If you downloaded the EXE manually, use the shorter pairing command in the **Windows EXE** tab.
+On macOS or Linux, copy the Bash command from **New project**. The script prepares prerequisites under the local user account. It asks before installing Git or Alpine packages as administrator, and on Linux with systemd before enabling linger, so the project starts again after a reboot without you logging in. Approve the macOS developer tools dialog if it opens. On Windows, copy the PowerShell command and complete the official setup wizard. PowerShell checks the installer checksum, waits for it to finish, and pairs the installed engine. If you downloaded the EXE manually, use the shorter pairing command in the **Windows EXE** tab.
 
 The commands work outside a project and stop after installation/version failure. The engine chooses its standard projects home, reserves an identity and private draft, starts and pairs before requesting an agenda. Repeating the same pairing resumes that draft or reports the completed project; another pairing gets another engine. No `mkdir`, `cd`, fixed agenda, local/global question or second `connect` is part of new-engine setup.
 
 The engine prints the owner setup link locally (optionally QR/open). It is distinct from the App pairing URL, passkey and licence token and must never reach the Dashboard. The owner registers a passkey on the engine origin, then answers `onboarding@1` prompts and supplies `files@1` attachments there. Answers use the current `promptId`. Closing a client retains accepted work; deferred work stays deferred. Handoff preserves identity, access and attachments. Ordinary standalone `ptbk init` and existing-project `ptbk connect` remain available.
 
-For a clean VPS, download the reviewed immutable Ubuntu bootstrap, verify its SHA-256, then pass the App URL through `--prepare-only --link-stdin` with `--version`. Sudo prepares the system; the engine and AI credentials belong to `promptbook`. The engine prints its setup link outside the install log. Stdin avoids sudo arguments but does not erase a pasted command from shell history.
+For a clean VPS, the script downloads the reviewed immutable Ubuntu bootstrap, verifies its SHA-256, then passes the App URL through `--prepare-only --link-stdin` with `--version`. Sudo prepares the system; the engine and AI credentials belong to `promptbook`. The engine prints its setup link outside the install log. Stdin avoids sudo arguments but does not erase a pasted command from shell history.
 
-AI prompts must use the current pairing URL and this flow rather than creating an unrelated project from a generic website prompt. Preserve supported dependencies, sign-ins, data, native tool approvals and SSH host verification; do not buy a server. The default PowerShell command pairs in the same session. When installing the EXE manually, open a fresh PowerShell and copy the pairing command from its tab.
+AI prompts must use the current pairing code and this flow rather than creating an unrelated project from a generic website prompt. Preserve supported dependencies, sign-ins, data, native tool approvals and SSH host verification; do not buy a server. The default PowerShell command pairs in the same session. When installing the EXE manually, open a fresh PowerShell and copy the pairing command from its tab.
 
 A working relay alone is not a usable signed UI. Configure the approved release mirror and trust policy (a [staging build](ui-loader.md#staging-builds) embeds both); inspect the authenticated security response's UI version, bundle hash, release-log index and last update outcome. The loader refuses unsigned/incompatible/revoked bundles and does not serve a cached bundle without a trust policy. Never bypass these checks to make the installer appear complete.
 

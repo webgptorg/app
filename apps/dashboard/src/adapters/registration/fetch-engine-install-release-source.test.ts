@@ -49,7 +49,7 @@ describe('published engine installation releases', () => {
             expect(call.init.headers).not.toHaveProperty('Authorization');
             expect(call.init.headers).not.toHaveProperty('Cookie');
         }
-        const options = installationOptions(release, 'https://app.ptbk.io/link#example');
+        const options = installationOptions(release, `https://app.ptbk.io/link#${'a'.repeat(26)}`);
         expect(JSON.stringify(options)).toContain(VERSION);
         expect(JSON.stringify(options)).not.toContain(TEST_ENGINE_INSTALLATION.version);
         expect(options.find((option) => option.kind === 'download')).toMatchObject({ version: VERSION, sha256: SHA });

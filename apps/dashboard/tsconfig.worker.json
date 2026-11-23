@@ -10,6 +10,7 @@
     "src/workerd-webcrypto.d.ts",
     "src/worker.ts",
     "src/worker-env.d.ts",
+    "src/raw-text.d.ts",
     "src/app/**/*",
     "src/domain/**/*",
     "src/adapters/**/*",

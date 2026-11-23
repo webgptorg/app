@@ -39,7 +39,7 @@ describe('structured installation choices', () => {
         ).toEqual(['New project', 'Install with AI', 'Windows EXE']);
         expect(screen.getByRole('tab', { name: 'New project' }).getAttribute('aria-selected')).toBe('true');
         expect(screen.getByRole('tab', { name: initialTab }).getAttribute('aria-selected')).toBe('true');
-        expect(screen.getByText(/Paste the entire copied block/)).toBeTruthy();
+        expect(screen.getByText(/paste it into the terminal and press Enter/)).toBeTruthy();
         expect(screen.getByText(/The project connects to this app first/)).toBeTruthy();
         const writeText = vi.fn().mockResolvedValue(undefined);
         Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });

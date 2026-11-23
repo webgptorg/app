@@ -815,7 +815,7 @@
   "engines_new_open_terminal": "Na macOS otevřete Terminál z Aplikace / Utility; na Linuxu otevřete svůj terminál. Použijte počítač, na kterém mají agenti běžet.",
   "engines_new_open_powershell": "Otevřete PowerShell z nabídky Start ve Windows na počítači, na kterém mají agenti běžet.",
   "engines_new_open_ssh": "Připojte se přes SSH k serveru, na kterém mají agenti běžet. Příkaz spusťte v jeho Bash terminálu.",
-  "engines_new_run_block": "Zkopírujte celý blok tlačítkem Kopírovat příkaz, vložte jej do terminálu a potvrďte Enterem. Složku nemusíte vytvářet ani vybírat; Promptbook ji připraví sám.",
+  "engines_new_run_block": "Zkopírujte příkaz tlačítkem Kopírovat příkaz, vložte jej do terminálu a potvrďte Enterem. Složku nemusíte vytvářet ani vybírat; Promptbook ji připraví sám.",
   "nav_license": "Licence",
   "license_title": "Licence",
   "license_intro": "Licence se kupují a spravují na ptbk.io. Tady vidíte, co pokrývají. Projekt nikdy nezastaví.",

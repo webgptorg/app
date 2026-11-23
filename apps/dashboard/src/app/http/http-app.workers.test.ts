@@ -72,6 +72,16 @@ describe('dashboard Worker', () => {
         await expectProblem(await get('/.well-known/nope'), 404, 'not-found');
     });
 
+    // Dev has no installation metadata, so this proves the routes answer ahead of the SPA fallback in the built Worker.
+    it.each(['/install.sh', '/install-server.sh', '/install.ps1'])(
+        'never serves the SPA shell for %s',
+        async (path) => {
+            const response = await get(path);
+            await expectProblem(response, 404, 'not-found');
+            expect(response.headers.get('Cache-Control')).toBe('no-store');
+        },
+    );
+
     it('sets the headers on other static files served through the Worker', async () => {
         const response = await get('/favicon.svg');
         expect(response.status).toBe(200);

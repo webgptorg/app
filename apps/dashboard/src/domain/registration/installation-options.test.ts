@@ -4,7 +4,8 @@ import { engineInstallReleaseSchema, installationOptionSchema } from '../../shar
 import { TEST_ENGINE_INSTALLATION } from '../../testing/install-fixtures';
 import { installationOptions } from './installation-options';
 
-const LINK = `https://app.ptbk.io/link#${'a'.repeat(26)}`;
+const CODE = 'a'.repeat(26);
+const LINK = `https://app.ptbk.io/link#${CODE}`;
 
 describe('engine-first installation options', () => {
     it('separates bounded shell, localized AI prompts and a real version-matched download', () => {
@@ -14,26 +15,22 @@ describe('engine-first installation options', () => {
         for (const option of options) {
             switch (option.kind) {
                 case 'command':
-                    for (const command of Object.values(option.commands)) {
-                        expect(command).toContain(LINK);
-                        expect(command).toContain(TEST_ENGINE_INSTALLATION.version);
-                        expect(command).not.toMatch(/mkdir|my-agenda|--path/);
-                    }
-                    expect(option.commands.posix).toContain('/assets/install-project-v1.sh');
-                    expect(option.commands.powershell).toContain(TEST_ENGINE_INSTALLATION.windowsSha256);
-                    expect(option.commands.powershell).toContain('--prepare-only --link-stdin');
-                    expect(option.commands.ubuntu).toContain('--prepare-only --link-stdin');
+                    expect(option.commands).toEqual({
+                        posix: `curl -fsSL https://app.ptbk.io/install.sh | PTBK_LINK=${CODE} bash`,
+                        powershell: `$env:PTBK_LINK='${CODE}'; irm https://app.ptbk.io/install.ps1 | iex`,
+                        ubuntu: `curl -fsSL https://app.ptbk.io/install-server.sh | PTBK_LINK=${CODE} bash`,
+                    });
                     break;
                 case 'ai':
                     for (const targets of Object.values(option.prompts)) {
                         for (const prompt of Object.values(targets)) {
-                            expect(prompt).toContain(LINK);
-                            expect(prompt).toContain(TEST_ENGINE_INSTALLATION.version);
+                            expect(prompt).toContain(`PTBK_LINK=${CODE}`);
                             expect(prompt).toContain('ptbk onboarding --id <engine-id>');
                         }
                     }
                     expect(option.prompts.cs.local).toContain('Windows PowerShell:');
                     expect(option.prompts.en.server).toContain('SSH');
+                    expect(option.prompts.en.server).toContain('/install-server.sh');
                     break;
                 case 'download':
                     expect(option.url).toBe(
@@ -45,6 +42,12 @@ describe('engine-first installation options', () => {
                     break;
             }
         }
+    });
+
+    it('needs a valid link URL to build commands from', () => {
+        expect(() => installationOptions(TEST_ENGINE_INSTALLATION, 'https://app.ptbk.io/link#short')).toThrow(
+            TypeError,
+        );
     });
 
     it('refuses old product lines, unsupported prereleases, malformed checksums and unknown config fields', () => {

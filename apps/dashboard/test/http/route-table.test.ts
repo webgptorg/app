@@ -11,6 +11,9 @@ const PUBLIC_ROUTES = [
     'GET /api/__dev/emails',
     'GET /api/abuse-contact',
     'GET /api/environment',
+    'GET /install-server.sh',
+    'GET /install.ps1',
+    'GET /install.sh',
     'GET /v1/health',
     'POST /api/auth/recovery/options',
     'POST /api/auth/recovery/request',
@@ -27,6 +30,8 @@ const PUBLIC_ROUTES = [
 ];
 
 const MOUNTS = ['/api', '/v1', '/internal', '/webhooks', '/.well-known'];
+/** Prefixes whose unknown paths answer a 404 problem instead of the SPA shell. */
+const PROBLEM_PREFIXES = [...MOUNTS, '/install.sh', '/install-server.sh', '/install.ps1'];
 
 /**
  * I-05's abuse review: every endpoint reachable without a session and the limits it is held to, per client IP (or per
@@ -38,6 +43,9 @@ const ANONYMOUS_LIMITS = {
     'GET /api/__dev/emails': ['public-read-ip', null],
     'GET /api/abuse-contact': ['public-read-ip', null],
     'GET /api/environment': ['public-read-ip', null],
+    'GET /install-server.sh': ['public-read-ip', null],
+    'GET /install.ps1': ['public-read-ip', null],
+    'GET /install.sh': ['public-read-ip', null],
     'GET /internal/v1/engines/:engineId': ['registry-relay', null],
     'GET /v1/health': ['public-read-ip', null],
     'POST /api/auth/recovery/options': ['options-ip', null],
@@ -76,14 +84,17 @@ describe('route table', () => {
 
     it('mounts nothing that bypassed the route helper', () => {
         const mounted = harness.http.routes
-            // Middleware and the per-mount 404 catch-alls are `ALL`; the SPA fallback serves static assets only.
+            // Middleware and the per-prefix 404 catch-alls are `ALL`; the SPA fallback serves static assets only.
             .filter(
                 (route) => route.method !== 'ALL' && !(route.path === '/*' && ['GET', 'HEAD'].includes(route.method)),
             )
             .map((route) => `${route.method} ${route.path}`);
         expect(mounted.sort()).toEqual([...declared].sort());
         for (const route of harness.http.routes.filter((r) => r.method === 'ALL')) {
-            expect(route.path === '/*' || MOUNTS.some((mount) => route.path === `${mount}/*`), route.path).toBe(true);
+            expect(
+                route.path === '/*' || PROBLEM_PREFIXES.some((prefix) => route.path === `${prefix}/*`),
+                route.path,
+            ).toBe(true);
         }
     });
 

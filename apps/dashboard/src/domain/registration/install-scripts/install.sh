@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Desktop pairing bootstrap, pinned by SHA-256 in the copied command. It carries no pairing data; the link arrives on fd 3.
+# Promptbook for macOS and Linux: prepares Git, Node.js and npm, installs the exact CLI and pairs this computer.
+#   curl -fsSL __PTBK_ORIGIN__/install.sh | PTBK_LINK=<pairing code> bash
+# Served per request with the current release filled in; it carries no pairing data. Everything runs from the call on
+# the last line, so a download cut short defines functions at most and never starts the installer.
 set -euo pipefail
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
@@ -19,12 +22,28 @@ as_admin() {
     if [[ "$(id -u)" == 0 ]]; then "$@"; else sudo "$@"; fi
 }
 
-# System packages change the whole computer, so the person at the terminal approves them first. Unattended runs stop.
-approve_system_install() {
+# Only the person at the terminal can say yes to anything run as administrator; unattended runs answer no.
+confirm() {
     local answer=
+    if [[ -t 2 ]] && ( : </dev/tty ) 2>/dev/null; then read -r -p "$1 [y/N] " answer </dev/tty || answer=; fi
+    [[ "$answer" == [yY]* ]]
+}
+
+approve_system_install() {
     printf 'Promptbook needs %s. Your package manager will run as administrator: %s\n' "$1" "$2" >&2
-    if [[ -t 2 ]] && ( : </dev/tty ) 2>/dev/null; then read -r -p 'Install it now? [y/N] ' answer </dev/tty || answer=; fi
-    [[ "$answer" == [yY]* ]] || fail "Install $1 yourself, then run the same pairing command again."
+    confirm 'Install it now?' || fail "Install $1 yourself, then run the same pairing command again."
+}
+
+# The engine runs as a systemd user service, which systemd stops at logout and starts again only at the next login
+# unless the user lingers. logind answers `no` only where it runs and linger is off; root and other hosts are skipped.
+enable_linger() {
+    local user
+    [[ "$platform" == linux && "$(id -u)" != 0 ]] || return 0
+    user=$(id -un)
+    [[ "$(loginctl show-user "$user" --property=Linger --value 2>/dev/null || true)" == no ]] || return 0
+    printf 'So the project starts again after a reboot without you logging in, systemd needs to keep your services running. As administrator: loginctl enable-linger %s\n' "$user" >&2
+    if confirm 'Allow it now?' && as_admin loginctl enable-linger "$user"; then return; fi
+    printf 'Linger not enabled: the project starts again only when %s logs in. Later: sudo loginctl enable-linger %s\n' "$user" "$user" >&2
 }
 
 prepare_git() {
@@ -129,26 +148,25 @@ install_launcher() {
 }
 
 main() {
-    [[ $# == 1 && "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || fail 'Expected an exact Promptbook version.'
-    local version="$1" link platform root prefix work stage cli
-    IFS= read -r link <&3 || fail 'Missing pairing link.'
-    exec 3<&-
+    local version='__PTBK_VERSION__' code="${PTBK_LINK:-}" link platform root prefix work stage cli
+    # Nothing this script starts needs the code in its environment; the CLI gets the link on stdin or from the terminal.
+    unset PTBK_LINK
+    [[ "$code" =~ ^[a-z2-7]{25}[aeimquy4]$ ]] || fail 'Set PTBK_LINK to the pairing code shown in Promptbook App.'
+    link="__PTBK_ORIGIN__/link#$code"
     case "$(uname -s)" in Darwin) platform=darwin ;; Linux) platform=linux ;; *) fail 'Use the Windows PowerShell command on Windows.' ;; esac
     prepare_git
-    if compatible_tools && command -v ptbk >/dev/null && matches_version ptbk; then
-        cli=$(command -v ptbk)
-    else
-        root="$HOME/.local/share/promptbook"
-        prefix="$root/cli/$version"
-        mkdir -p "$root/cli"
-        # A running project may have updated this installation in place. An older copied command gets its own prefix.
-        while [[ -e "$prefix" ]] && ! PATH="$prefix/bin:$PATH" matches_version "$prefix/bin/ptbk"; do prefix="$prefix.retry"; done
-        PATH="$prefix/bin:$PATH"
-        if [[ ! -x "$prefix/bin/ptbk" ]]; then install_cli; fi
-        cli="$prefix/bin/ptbk"
-        matches_version "$cli" || fail 'Promptbook version mismatch. Pairing stopped.'
-        install_launcher
-    fi
+    # Only a CLI in our own prefix is reused. Any other `ptbk` on PATH may be a wrapper that runs as someone else.
+    root="$HOME/.local/share/promptbook"
+    prefix="$root/cli/$version"
+    mkdir -p "$root/cli"
+    # A running project may have updated this installation in place. An older release gets its own prefix.
+    while [[ -e "$prefix" ]] && ! PATH="$prefix/bin:$PATH" matches_version "$prefix/bin/ptbk"; do prefix="$prefix.retry"; done
+    PATH="$prefix/bin:$PATH"
+    if [[ ! -x "$prefix/bin/ptbk" ]]; then install_cli; fi
+    cli="$prefix/bin/ptbk"
+    matches_version "$cli" || fail 'Promptbook version mismatch. Pairing stopped.'
+    install_launcher
+    enable_linger
     # The CLI shows first access automatically only with terminal stdin and stdout.
     if [[ -t 1 ]] && ( : </dev/tty ) 2>/dev/null; then
         "$cli" init --prepare-only --link "$link" </dev/tty
@@ -157,5 +175,4 @@ main() {
     fi
 }
 
-# Keep the invocation last, so an incomplete download cannot start the installer.
 main "$@"
