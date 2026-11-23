@@ -24,6 +24,27 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-23: PRIORITY: browser onboarding on a server is broken (0.119.0-132)
+
+- **Changed:** nothing in the contract. Seb ran the copied install command on a Hetzner Ubuntu 24.04 server with UI 0.2.4 and could not finish setup. Each item says whether a blank box hits it too. Line numbers are against `v0.119.0-132`. Fix them in this order:
+  1. **Claude sign-in link is never found (blank box too).** `returnChallenge` (`claude-code/index.ts:33-44`) strips only CSI. claude 2.1.330 prints the URL inside an OSC-8 hyperlink (`\e]8;;https://claude.ai/oauth/authorize?…\a…\e]8;;\a`), so a control character follows the URL, not whitespace, and `session.ts:450` reports "The native CLI did not provide a supported authorization link" after 25 s. Strip OSC sequences (`/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g`) before matching and add a test with the real 2.1.330 output. Once this works, a server never needs the terminal: our UI already renders `harness-login` with `method: 'return-code'` (open the link, paste the code).
+  2. **No API key option for Claude Code (blank box too).** The plugin has `apiKeyVariable` but no `setupApiKey`, so `session.ts:369-378` never offers "Use an API key instead". Add it (Anthropic API key, `https://console.anthropic.com/settings/keys`), with a test that the key reaches `ANTHROPIC_API_KEY`. Consider also accepting a `claude setup-token` token (it needs an auth mode that keeps `CLAUDE_CODE_OAUTH_TOKEN`).
+  3. **The harness choice falls behind (blank box too).**
+     - `noteActivity` (`session.ts:478-485`) never removes entries, and an aborted job returns at `:534` without updating its entry, so "Check Claude Code — running" stays after Claude Code is deselected.
+     - `drive()` does nothing while an old job exists (`:528`), and its `finally` clears `this.job` without checking it is the same job (`:543-545`).
+     - The final `next('harnesses', {error})` (`:611`) writes back whatever harnesses the draft holds by then. Seb's draft ended as `harnesses: ["opencode"]` with Gemini's error and no OpenCode check.
+     - Fix: give each job an identity and let a job clear only itself; re-drive when the step is `prepare` and no job runs; have the final write check the step and harness list it started with; reset activity on a new answer. Add a test that answers, changes the answer mid-check and deselects.
+  4. **A failed check hides the sign-in (Gemini here).** `gemini/index.ts:37` treats `selectedType: "gemini-api-key"` in `~/.gemini/settings.json` as signed in even for a NATIVE check, whose environment blanks `GEMINI_API_KEY`. `session.ts:573` then skips the sign-in prompt and fails at `:591` with "the engine could not verify a real response". A NATIVE check must not count an API-type selection. On any failed check, show the CLI's own diagnostic and fall through to the sign-in/API key prompt instead of a dead end.
+  5. **Provider sign-in expires and there is no way back (blank box too).**
+     - Without `accountProfile`, every project of one OS user shares `~/.claude` (`harnesses.ts:74`). Concurrent `claude` processes then race on refresh-token rotation. Seb's project failed 3 minutes after signing in with "OAuth session expired and could not be refreshed".
+     - Give each project its own `CLAUDE_CONFIG_DIR`, or serialize refreshes.
+     - After setup there is no browser path to sign in again: the harness terminal is mounted only while initialization is pending (`onboarding-page.ts:10`). We will add a capability for harness status and re-sign-in. Until then, the chat error must name `ptbk tool enable <name>`.
+  6. **The terminal page asks "This link could potentially be dangerous" (blank box too).** `harness-terminal-browser.ts:40` creates the xterm `Terminal` without a `linkHandler`, so xterm 6 falls back to its `confirm()`. Pass a `linkHandler` that opens `https:` links with `window.open(uri, '_blank', 'noopener,noreferrer')`.
+  7. **Wallet on a fresh Ubuntu 24.04 as non-root.** `host-unlock.ts:116-139` fails: systemd 255 has no `--user` for `systemd-creds`, and the host secret is root-only with no TPM. Setup continues without the Wallet (`wallet.ts:999-1003`), so this isn't fatal, but most VPSes look like this. Fall back to a key file sealed under the engine user, or say clearly what is lost.
+  8. **Stopping takes 90 s and ends in SIGKILL.** `ServiceHost.shutdown` (`host.ts:553-586`) runs about 12 steps, each allowed 10 s, and `cli.ts:47` only sets `process.exitCode`. Add an overall shutdown deadline and exit after a foreground shutdown.
+- **Platform side (ours, in progress):** the install script reuses only a `ptbk` from its own prefix (Seb's run picked up an unrelated wrapper on `PATH`), enables linger so a user unit survives reboots, and shrinks to one line. The UI fixes a stale selection in the choice form and gives the setup screens a step timeline.
+- **Redo:** items 1 to 6, then 8. Item 7 when you can. Publish, and tell us the version so we can repeat the run on a blank Hetzner box.
+
 ### 2026-11-23: Live browser: permission loss, help message, more checks
 
 - **Changed** ([live-sessions.md](live-sessions.md#a-session-belongs-to-its-gateway-session), in place in `browser-tab@1`):
