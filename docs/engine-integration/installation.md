@@ -26,7 +26,7 @@ sequenceDiagram
     O->>I: run the install command on the host
     I->>I: preflight: runtime prerequisites, outbound HTTPS, proxy, clock, disk
     I->>I: install exact compatible package, verify CLI version
-    I->>E: init --prepare-only --link '<link URL>'
+    I->>E: init --prepare-only --link-stdin
     E->>E: create or resume private identity and onboarding draft
     E->>D: POST /v1/engines/register (signed)
     D-->>E: engine ID, hostname, relays
@@ -44,7 +44,7 @@ The link URL, `https://<dashboard host>/link#<link code>`, names the dashboard a
 
 ## Requirements
 
-- **Host:** macOS, Linux or Windows with a supported published Reborn npm CLI; Node.js 22.13+ in the 22 line or 24+, npm 10+ and Git. Windows EXE prepares supported prerequisites. macOS DMG is a separate bundled desktop distribution. The system bootstrap supports Ubuntu 24.04 x86-64 with systemd and root/sudo; engine work and AI sign-in run as the ordinary engine user. Existing Docker installations keep their own image/Compose prerequisites.
+- **Host:** on macOS and Linux, use Bash or zsh and curl. The local installer supplies compatible Git, Node.js and npm as needed. Its Node.js downloads support x64 and arm64. The Windows PowerShell option uses the official x64 EXE. The dedicated VPS installer supports Ubuntu 24.04 x86-64 with systemd and root/sudo access. Existing Docker deployments keep their own prerequisites.
 - **Resources:** the engine team sets the minimum and the installer checks it. Agents running coding CLIs and a headless browser need memory; state the number in the installer's preflight, not only in docs.
 - **Network:** outbound HTTPS (TCP 443) only. Nothing inbound, no public IP, no open port. See [Networking](#networking).
 - **Clock:** synchronised (NTP). Heartbeats are refused more than 2 minutes off, and certificates need the right time.
@@ -53,37 +53,19 @@ The link URL, `https://<dashboard host>/link#<link code>`, names the dashboard a
 
 ## Install paths
 
-The 18 November 2026 revision makes published Reborn npm installation the default for a new engine. AI-assisted installation and Windows EXE use the same pairing context. The numbered Docker/Compose paths below describe advanced existing deployments, not a requirement for the default path.
+A new project opens the installation command for the browser's platform. You can switch targets, including a remote Ubuntu VPS. Each command uses the exact published release selected when App issued the link.
 
 ### Engine-first setup
 
-App supplies an exact published version and the full pairing URL. The verified candidate available on 18 November is `0.119.0-117` (prerelease), with matching EXE/DMG assets. Later source changes are not proof of publication. A complete real-engine/provider/signed-UI walkthrough remains a separate release acceptance check.
+On macOS or Linux, copy the Bash command from **New project**. The command verifies the script's checksum, and the script prepares prerequisites under the local user account. It asks before installing Git or Alpine packages as administrator. Approve the macOS developer tools dialog if it opens. On Windows, copy the PowerShell command and complete the official setup wizard. PowerShell checks the installer checksum, waits for it to finish, and pairs the installed engine. If you downloaded the EXE manually, use the shorter pairing command in the **Windows EXE** tab.
 
-Bash/zsh:
-
-```sh
-npm install --global ptbk@0.119.0-117 &&
-{ ptbk_installed_version=$(ptbk --version) && [ "$ptbk_installed_version" = '0.119.0-117' ] || { echo 'Open a new terminal: ptbk version mismatch.' >&2; false; }; } &&
-ptbk init --prepare-only --link '<pairing-url-from-app>'
-```
-
-Windows PowerShell:
-
-```powershell
-npm install --global ptbk@0.119.0-117
-if (-not $? -or $LASTEXITCODE -ne 0) { throw 'Promptbook installation failed.' }
-$ptbkInstalledVersion = ptbk --version
-if (-not $? -or $LASTEXITCODE -ne 0 -or $ptbkInstalledVersion -ne '0.119.0-117') { throw 'Open a new terminal: ptbk version mismatch.' }
-ptbk init --prepare-only --link '<pairing-url-from-app>'
-```
-
-These blocks work outside a project and stop after installation/version failure. The engine chooses its standard projects home, reserves an identity and private draft, starts and pairs before requesting an agenda. Repeating the same pairing resumes that draft or reports the completed project; another pairing gets another engine. No `mkdir`, `cd`, fixed agenda, local/global question or second `connect` is part of new-engine setup.
+The commands work outside a project and stop after installation/version failure. The engine chooses its standard projects home, reserves an identity and private draft, starts and pairs before requesting an agenda. Repeating the same pairing resumes that draft or reports the completed project; another pairing gets another engine. No `mkdir`, `cd`, fixed agenda, local/global question or second `connect` is part of new-engine setup.
 
 The engine prints the owner setup link locally (optionally QR/open). It is distinct from the App pairing URL, passkey and licence token and must never reach the Dashboard. The owner registers a passkey on the engine origin, then answers `onboarding@1` prompts and supplies `files@1` attachments there. Answers use the current `promptId`. Closing a client retains accepted work; deferred work stays deferred. Handoff preserves identity, access and attachments. Ordinary standalone `ptbk init` and existing-project `ptbk connect` remain available.
 
 For a clean VPS, download the reviewed immutable Ubuntu bootstrap, verify its SHA-256, then pass the App URL through `--prepare-only --link-stdin` with `--version`. Sudo prepares the system; the engine and AI credentials belong to `promptbook`. The engine prints its setup link outside the install log. Stdin avoids sudo arguments but does not erase a pasted command from shell history.
 
-AI prompts must use the current pairing URL and this flow rather than creating an unrelated project from a generic website prompt. Preserve supported dependencies, sign-ins, data, native tool approvals and SSH host verification; do not buy a server. After Windows EXE, open a fresh PowerShell and run the checked block from App; close any standalone project wizard without creating a project. There is no assumed installer deep link.
+AI prompts must use the current pairing URL and this flow rather than creating an unrelated project from a generic website prompt. Preserve supported dependencies, sign-ins, data, native tool approvals and SSH host verification; do not buy a server. The default PowerShell command pairs in the same session. When installing the EXE manually, open a fresh PowerShell and copy the pairing command from its tab.
 
 A working relay alone is not a usable signed UI. Configure the approved release mirror and trust policy (a [staging build](ui-loader.md#staging-builds) embeds both); inspect the authenticated security response's UI version, bundle hash, release-log index and last update outcome. The loader refuses unsigned/incompatible/revoked bundles and does not serve a cached bundle without a trust policy. Never bypass these checks to make the installer appear complete.
 

@@ -32,7 +32,10 @@ describe('issuedLinkCodeView', () => {
         );
         expect(linkCodeViewSchema.parse(view)).toEqual(view);
         expect(view.installCommands[0]?.labelKey).toBe('new-project');
-        expect(view.installCommands[0]?.command).toContain('--prepare-only');
+        const primary = view.installationOptions?.find((option) => option.kind === 'command');
+        expect(view.installCommands[0]?.command).toBe(primary?.commands.posix);
+        expect(view.installCommands[0]?.command).toContain('/assets/install-project-v1.sh');
+        expect(view.installCommands[0]?.command).toContain(view.linkUrl);
         expect(view.installCommands[1]?.id).toBe('connect');
         expect(view.installationOptions?.map((option) => option.kind)).toEqual(['command', 'ai', 'download']);
     });

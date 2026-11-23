@@ -1,11 +1,21 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    readdirSync,
+    rmSync,
+    symlinkSync,
+    writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { installationOptions } from '../src/domain/registration/installation-options';
+import { INSTALL_SCRIPT_SHA256, installationOptions } from '../src/domain/registration/installation-options';
 import { TEST_ENGINE_INSTALLATION } from '../src/testing/install-fixtures';
 import type { EngineInstallRelease } from '../src/shared/engine-installation';
 
@@ -29,58 +39,174 @@ function commands(link = LINK, release: EngineInstallRelease = TEST_ENGINE_INSTA
     return option.commands;
 }
 
-describe('the copied local block, executed with inert npm/ptbk fixtures', () => {
-    for (const shell of ['bash', 'zsh']) {
-        const available = spawnSync(shell, ['--version']).status === 0;
-        describe.skipIf(!available)(shell, () => {
-            it.each([
-                { installStatus: 0, version: VERSION, versionStatus: 0, expected: true },
-                { installStatus: 42, version: VERSION, versionStatus: 0, expected: false },
-                { installStatus: 0, version: '0.114.0-42', versionStatus: 0, expected: false },
-                { installStatus: 0, version: VERSION, versionStatus: 1, expected: false },
-            ])(
-                'guards installation and the CLI actually on PATH: %o',
-                ({ installStatus, version, versionStatus, expected }) => {
-                    const cwd = temporary();
-                    const args = join(temporary(), 'arguments');
-                    const fixture = `npm() { return ${String(installStatus)}; }\nptbk() { if [ "$1" = --version ]; then printf '%s\\n' '${version}'; return ${String(versionStatus)}; else printf '%s\\n' "$@" > "$PTBK_TEST_ARGS"; fi; }\n`;
-                    const result = spawnSync(shell, ['-c', fixture + commands().posix], {
-                        cwd,
-                        env: { ...process.env, PTBK_TEST_ARGS: args },
-                        encoding: 'utf8',
-                        timeout: 10_000,
-                    });
-                    expect(result.status === 0, result.stderr).toBe(expected);
-                    expect(readdirSync(cwd)).toEqual([]);
-                    expect(existsSync(args)).toBe(expected);
-                    if (expected)
-                        expect(readFileSync(args, 'utf8').split('\n')).toEqual([
-                            'init',
-                            '--prepare-only',
-                            '--link',
-                            LINK,
-                            '',
-                        ]);
-                },
-            );
+const SCRIPT_PATH = new URL('../public/assets/install-project-v1.sh', import.meta.url);
+const SCRIPT_URL = 'https://app.ptbk.io/assets/install-project-v1.sh';
+const trickyLink = LINK + "'$(touch injected)";
+const fakeCli = `if [ "$1" = --version ]; then echo "$REPORTED_VERSION"; exit "$VERSION_STATUS"; fi
+printf '%s\\n' "$@" > "$RECORD"
+if [ "$3" = --link-stdin ]; then cat >> "$RECORD"; fi
+exit "$PAIR_STATUS"`;
 
-            it('passes quotes, fragments and shell metacharacters as one literal argument', () => {
-                const cwd = temporary();
-                const args = join(temporary(), 'arguments');
-                const link = `${LINK}'$(touch injected)`;
-                const fixture = `npm() { return 0; }\nptbk() { if [ "$1" = --version ]; then echo '${VERSION}'; else printf '%s\\n' "$@" > "$PTBK_TEST_ARGS"; fi; }\n`;
-                const result = spawnSync(shell, ['-c', fixture + commands(link).posix], {
-                    cwd,
-                    env: { ...process.env, PTBK_TEST_ARGS: args },
-                    encoding: 'utf8',
-                    timeout: 10_000,
-                });
+function executable(dir: string, name: string, body: string) {
+    writeFileSync(join(dir, name), '#!/bin/sh\n' + body + '\n', { mode: 0o755 });
+}
+
+/** Inert download, OS package manager and npm. The actual copied command runs the shipped Bash script. */
+function localFixture(platform = 'Linux') {
+    const home = temporary();
+    const bin = temporary();
+    const archiveDir = temporary();
+    const runtime = join(archiveDir, 'node-v24.1.0');
+    mkdirSync(join(runtime, 'bin'), { recursive: true });
+    symlinkSync(process.execPath, join(runtime, 'bin/node'));
+    executable(
+        join(runtime, 'bin'),
+        'npm',
+        `if [ "$1" = --version ]; then echo 10.0.0; exit; fi
+[ "$1 $2 $3 $5 $6" = "install --global --prefix --registry=https://registry.npmjs.org/ ptbk@$EXPECTED_VERSION" ] || exit 80
+[ "$INSTALL_STATUS" = 0 ] || exit "$INSTALL_STATUS"
+cp "$TEST_CLI" "$4/bin/ptbk"`,
+    );
+    const archive = join(temporary(), 'node.tar.gz');
+    const tar = spawnSync('tar', ['-czf', archive, '-C', archiveDir, 'node-v24.1.0']);
+    expect(tar.status).toBe(0);
+    const digest = createHash('sha256').update(readFileSync(archive)).digest('hex');
+    const stem = platform === 'Darwin' ? 'darwin-arm64' : 'linux-x64';
+    const record = join(temporary(), 'pair');
+    const downloads = join(temporary(), 'requests');
+    executable(
+        bin,
+        'uname',
+        `if [ "$1" = -s ]; then echo ${platform}; else echo ${platform === 'Darwin' ? 'arm64' : 'x86_64'}; fi`,
+    );
+    executable(bin, 'git', 'test -f "$HOME/git-ready"');
+    executable(bin, 'sudo', 'echo "$*" >> "$HOME/sudo-calls"; exec "$@"');
+    executable(bin, 'id', 'echo 1000');
+    executable(bin, 'apt-get', '[ "$1" = update ] || { [ "$*" = "install -y git" ] && touch "$HOME/git-ready"; }');
+    executable(bin, 'brew', '[ "$*" = "install git" ] && touch "$HOME/git-ready"');
+    for (const tool of ['node', 'npm', 'ptbk']) executable(bin, tool, 'exit 127');
+    executable(bin, 'fixture-cli', fakeCli);
+    executable(
+        bin,
+        'curl',
+        `printf '%s\\n' "$@" >> "$DOWNLOADS"
+if [ "$2" = "${SCRIPT_URL}" ]; then
+    [ "$DOWNLOAD_STATUS" = 0 ] || exit "$DOWNLOAD_STATUS"
+    cp "$TEST_SCRIPT" "$4"
+elif [ "$4" = https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt ]; then
+    echo "$DIGEST  node-v24.1.0-${stem}.tar.gz" > "$6"
+elif [ "$4" = https://nodejs.org/dist/v24.1.0/node-v24.1.0-${stem}.tar.gz ]; then
+    cp "$ARCHIVE" "$6"
+else exit 81; fi`,
+    );
+    const env = {
+        ...process.env,
+        HOME: home,
+        SHELL: '/bin/bash',
+        PATH: bin + ':' + (process.env['PATH'] ?? ''),
+        EXPECTED_VERSION: VERSION,
+        REPORTED_VERSION: VERSION,
+        VERSION_STATUS: '0',
+        INSTALL_STATUS: '0',
+        DOWNLOAD_STATUS: '0',
+        PAIR_STATUS: '0',
+        RECORD: record,
+        DOWNLOADS: downloads,
+        DIGEST: digest,
+        ARCHIVE: archive,
+        TEST_SCRIPT: fileURLToPath(SCRIPT_PATH),
+        TEST_CLI: join(bin, 'fixture-cli'),
+    };
+    return { env, record, downloads, home };
+}
+
+describe('the copied Bash/zsh installation on a computer without usable Git, Node.js or npm', () => {
+    for (const [shell, platform] of [
+        ['bash', 'Linux'],
+        ['zsh', 'Darwin'],
+    ] as const) {
+        const available = spawnSync(shell, ['--version']).status === 0;
+        it.skipIf(!available)(`installs and reuses the exact CLI on ${platform} through ${shell}`, () => {
+            const { env, record, downloads, home } = localFixture(platform);
+            // Unattended runs never install system packages; that approval has its own tests below.
+            if (platform === 'Linux') writeFileSync(join(home, 'git-ready'), '');
+            const cwd = temporary();
+            for (let run = 0; run < 2; run++) {
+                const result = spawnSync(shell, ['-c', commands(trickyLink).posix], { cwd, env, encoding: 'utf8' });
                 expect(result.status, result.stderr).toBe(0);
-                expect(readFileSync(args, 'utf8')).toContain(link);
+                expect(readFileSync(record, 'utf8').trim().split('\n')).toEqual([
+                    'init',
+                    '--prepare-only',
+                    '--link-stdin',
+                    trickyLink,
+                ]);
                 expect(readdirSync(cwd)).toEqual([]);
-            });
+            }
+            const requests = readFileSync(downloads, 'utf8');
+            expect(requests).not.toContain(LINK);
+            expect(requests.match(/https:\/\/nodejs\.org\/dist\/latest-v24\.x\/SHASUMS256/g)).toHaveLength(1);
+            expect(readdirSync(join(home, '.local/share/promptbook'))).toEqual(['bin', 'cli']);
         });
     }
+
+    it.skipIf(process.platform !== 'linux' || spawnSync('script', ['--version']).status !== 0)(
+        'preserves the native first-access flow and asks before installing Git when pasted into a terminal',
+        () => {
+            const { env, record, home } = localFixture();
+            const result = spawnSync('script', ['-qec', commands(LINK).posix, '/dev/null'], {
+                cwd: temporary(),
+                env,
+                encoding: 'utf8',
+                input: 'y\n',
+                timeout: 10_000,
+            });
+            expect(result.status, result.stdout + result.stderr).toBe(0);
+            expect(result.stdout).toContain('Install it now? [y/N]');
+            expect(readFileSync(join(home, 'sudo-calls'), 'utf8')).toBe('apt-get update\napt-get install -y git\n');
+            expect(readFileSync(record, 'utf8').trim().split('\n')).toEqual(['init', '--prepare-only', '--link', LINK]);
+        },
+    );
+
+    it('stops before sudo when nobody at a terminal approves the system package', () => {
+        const { env, record, home } = localFixture();
+        const result = spawnSync('bash', ['-c', commands().posix], { cwd: temporary(), env, encoding: 'utf8' });
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain('Install Git yourself');
+        expect(existsSync(join(home, 'sudo-calls'))).toBe(false);
+        expect(existsSync(record)).toBe(false);
+    });
+
+    it('runs only the installer bytes pinned in the command', () => {
+        expect(createHash('sha256').update(readFileSync(SCRIPT_PATH)).digest('hex')).toBe(INSTALL_SCRIPT_SHA256);
+        const { env, record, home } = localFixture();
+        writeFileSync(join(home, 'git-ready'), '');
+        const tampered = join(temporary(), 'install.sh');
+        const marker = join(home, 'tampered-ran');
+        writeFileSync(tampered, readFileSync(SCRIPT_PATH, 'utf8') + `\ntouch '${marker}'\n`);
+        const result = spawnSync('bash', ['-c', commands().posix], {
+            cwd: temporary(),
+            env: { ...env, TEST_SCRIPT: tampered },
+            encoding: 'utf8',
+        });
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain('Installer checksum mismatch.');
+        expect(existsSync(marker)).toBe(false);
+        expect(existsSync(record)).toBe(false);
+    });
+
+    it.each([
+        { DOWNLOAD_STATUS: '22' },
+        { DIGEST: '0'.repeat(64) },
+        { INSTALL_STATUS: '1' },
+        { REPORTED_VERSION: '0.114.0-42' },
+        { VERSION_STATUS: '1' },
+    ])('stops before pairing when installation or verification fails: %o', (overrides) => {
+        const { env, record, home } = localFixture();
+        writeFileSync(join(home, 'git-ready'), '');
+        const result = spawnSync('bash', ['-c', commands().posix], { cwd: temporary(), env: { ...env, ...overrides } });
+        expect(result.status).not.toBe(0);
+        expect(existsSync(record)).toBe(false);
+    });
 });
 
 describe('the copied Ubuntu bootstrap, with an inert downloaded script', () => {
@@ -122,69 +248,77 @@ describe('the copied Ubuntu bootstrap, with an inert downloaded script', () => {
     });
 });
 
-describe('the copied PowerShell block, executed with inert native-command fixtures', () => {
+describe('the copied PowerShell installer', () => {
     const executable = process.env['PTBK_TEST_PWSH'] ?? 'pwsh';
     const available =
         spawnSync(executable, ['-NoProfile', '-Command', '$PSVersionTable.PSVersion.ToString()']).status === 0;
+    const digest = createHash('sha256').update('fixture setup').digest('hex');
+    const fixture = `
+function Invoke-WebRequest { param([switch]$UseBasicParsing, $Uri, $OutFile)
+    if ($Uri -ne $env:EXPECTED_URL) { throw 'unexpected download' }
+    [IO.File]::WriteAllText($OutFile, 'fixture setup')
+}
+function Start-Process { param($FilePath, $ArgumentList, [switch]$Wait, [switch]$PassThru)
+    if (-not $Wait -or -not $PassThru -or ($ArgumentList -join ' ') -ne '/PrepareOnly=yes /NORESTART') { throw 'unexpected setup arguments' }
+    [IO.File]::WriteAllText($env:SETUP, $FilePath)
+    @{ ExitCode = [int]$env:SETUP_STATUS }
+}
+function Get-Command { param($Name, $CommandType, $ErrorAction)
+    if ($Name -ne 'ptbk.cmd' -or $CommandType -ne 'Application') { throw 'unexpected executable' }
+    @{ Source = 'Invoke-FixtureCli' }
+}
+function Invoke-FixtureCli {
+    if ($args[0] -eq '--version') { $global:LASTEXITCODE = [int]$env:VERSION_STATUS; $env:REPORTED_VERSION; return }
+    [IO.File]::WriteAllLines($env:RECORD, [string[]](@($args) + @($input)))
+    $global:LASTEXITCODE = 0
+}
+`;
     it.skipIf(!available).each([
-        { installStatus: 0, version: VERSION, versionStatus: 0, expected: true },
-        { installStatus: 42, version: VERSION, versionStatus: 0, expected: false },
-        { installStatus: 0, version: '0.114.0-42', versionStatus: 0, expected: false },
-        { installStatus: 0, version: VERSION, versionStatus: 1, expected: false },
-    ])('guards npm status and actual CLI version: %o', ({ installStatus, version, versionStatus, expected }) => {
+        { valid: true, setup: 0, version: VERSION, status: 0, pairs: true },
+        { valid: false, setup: 0, version: VERSION, status: 0, pairs: false },
+        { valid: true, setup: 1, version: VERSION, status: 0, pairs: false },
+        { valid: true, setup: 0, version: '0.114.0-42', status: 0, pairs: false },
+        { valid: true, setup: 0, version: VERSION, status: 1, pairs: false },
+    ])('checks the exact EXE before running it and its CLI before using the private link: %o', (scenario) => {
         const cwd = temporary();
-        const args = join(temporary(), 'arguments');
-        const fixture = `function npm { $global:LASTEXITCODE = ${String(installStatus)} }\nfunction ptbk { if ($args[0] -eq '--version') { $global:LASTEXITCODE = ${String(versionStatus)}; '${version}' } else { [IO.File]::WriteAllLines($env:PTBK_TEST_ARGS, [string[]]$args) } }\n`;
+        const record = join(temporary(), 'pair');
+        const setup = join(temporary(), 'setup');
+        const release = { ...TEST_ENGINE_INSTALLATION, windowsSha256: scenario.valid ? digest : '0'.repeat(64) };
         const result = spawnSync(
             executable,
-            ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', fixture + commands().powershell],
+            [
+                '-NoLogo',
+                '-NoProfile',
+                '-NonInteractive',
+                '-Command',
+                fixture + commands(trickyLink, release).powershell,
+            ],
             {
                 cwd,
-                env: { ...process.env, PTBK_TEST_ARGS: args },
                 encoding: 'utf8',
                 timeout: 10_000,
+                env: {
+                    ...process.env,
+                    EXPECTED_URL: `https://github.com/webgptorg/promptbook/releases/download/v${VERSION}/Promptbook-Setup-${VERSION}-windows-x64.exe`,
+                    RECORD: record,
+                    SETUP: setup,
+                    SETUP_STATUS: String(scenario.setup),
+                    REPORTED_VERSION: scenario.version,
+                    VERSION_STATUS: String(scenario.status),
+                },
             },
         );
-        expect(result.status === 0, result.stderr).toBe(expected);
-        expect(existsSync(args)).toBe(expected);
-        expect(readdirSync(cwd)).toEqual([]);
-        if (expected)
-            expect(readFileSync(args, 'utf8').trim().split(/\r?\n/)).toEqual([
+        expect(result.status === 0, result.stderr).toBe(scenario.pairs);
+        expect(existsSync(setup)).toBe(scenario.valid);
+        if (scenario.valid) expect(existsSync(readFileSync(setup, 'utf8'))).toBe(false);
+        expect(existsSync(record)).toBe(scenario.pairs);
+        if (scenario.pairs)
+            expect(readFileSync(record, 'utf8').trim().split(/\r?\n/)).toEqual([
                 'init',
                 '--prepare-only',
-                '--link',
-                LINK,
+                '--link-stdin',
+                trickyLink,
             ]);
-    });
-    it.skipIf(!available)('keeps an apostrophe and PowerShell expressions in one literal URL argument', () => {
-        const cwd = temporary();
-        const args = join(temporary(), 'arguments');
-        const link = `${LINK}'$(New-Item injected)`;
-        const fixture = `function npm { $global:LASTEXITCODE = 0 }\nfunction ptbk { if ($args[0] -eq '--version') { '${VERSION}' } else { [IO.File]::WriteAllLines($env:PTBK_TEST_ARGS, [string[]]$args) } }\n`;
-        const result = spawnSync(
-            executable,
-            ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', fixture + commands(link).powershell],
-            { cwd, env: { ...process.env, PTBK_TEST_ARGS: args }, encoding: 'utf8', timeout: 10_000 },
-        );
-        expect(result.status, result.stderr).toBe(0);
-        expect(readFileSync(args, 'utf8')).toContain(link);
         expect(readdirSync(cwd)).toEqual([]);
-    });
-    it.skipIf(!available)('stops when npm is missing even if an old last-exit code and a matching CLI remain', () => {
-        const cwd = temporary();
-        const args = join(temporary(), 'arguments');
-        const fixture = `$global:LASTEXITCODE = 0\nfunction ptbk { if ($args[0] -eq '--version') { '${VERSION}' } else { [IO.File]::WriteAllLines($env:PTBK_TEST_ARGS, [string[]]$args) } }\n`;
-        const result = spawnSync(
-            executable,
-            ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', fixture + commands().powershell],
-            {
-                cwd,
-                env: { ...process.env, PATH: cwd, PTBK_TEST_ARGS: args },
-                encoding: 'utf8',
-                timeout: 10_000,
-            },
-        );
-        expect(result.status).not.toBe(0);
-        expect(existsSync(args)).toBe(false);
     });
 });

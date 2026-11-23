@@ -11,7 +11,7 @@ const ExtraInstallationOption = lazy(async () => {
 });
 
 function CommandOption(props: { readonly option: Extract<InstallationOption, { readonly kind: 'command' }> }) {
-    const [shell, setShell] = useState('posix');
+    const [shell, setShell] = useState(() => (/Windows/i.test(navigator.userAgent) ? 'powershell' : 'posix'));
     const instructions = (
         <ol className="list-decimal space-y-2 pl-5 text-sm">
             <li>
