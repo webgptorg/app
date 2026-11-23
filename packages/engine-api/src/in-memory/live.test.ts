@@ -120,6 +120,7 @@ function setup(options: InMemoryEngineCoreOptions = {}) {
         });
         if (result.kind !== 'attached') throw new Error(`refused: ${result.problem.code}`);
         const peer = result.peer;
+        peer.opened();
         return Object.assign(viewer, {
             peer,
             send: (message: unknown) => {
@@ -323,6 +324,32 @@ describe('the channel', () => {
         });
         const reader = live.actor('member-watcher', 'session-watcher', ['chats.read']);
         expect(live.core.attachLiveChannel(reader, 'live-1', sink)).toMatchObject({ problem: { code: 'forbidden' } });
+        const controlOnly = live.actor('member-watcher', 'session-watcher', ['browser.control']);
+        expect(live.core.attachLiveChannel(controlOnly, 'live-1', sink)).toMatchObject({
+            problem: { code: 'forbidden', requiredPermission: 'browser.watch' },
+        });
+    });
+
+    it('audits an attach whose handshake failed as failed, and lets the session attach again', async () => {
+        const world = setup();
+        const session = await watch(world);
+        const result = world.core.attachLiveChannel(world.watcher, session.id, {
+            send: () => undefined,
+            close: () => undefined,
+        });
+        if (result.kind !== 'attached') throw new Error('refused');
+        result.peer.closed();
+        result.peer.opened();
+        world.join(world.watcher, session.id);
+        const entries = ok(await world.call(world.owner, R.listAuditEntries, { query: {} })) as unknown as {
+            items: { action: string; outcome: string }[];
+        };
+        expect(
+            entries.items
+                .filter((entry) => entry.action === 'browser.channel.attach')
+                .map(({ outcome }) => outcome)
+                .sort(),
+        ).toEqual(['failed', 'success']);
     });
 
     it('agrees a version, then sends the state, the origin and a PNG frame', async () => {
@@ -542,6 +569,12 @@ describe('help requests', () => {
             runId: 'run-1',
         });
         expect(request.message).toHaveLength(500);
+        const elsewhere = setup();
+        const folded = elsewhere.core.controller.requestBrowserHelp(elsewhere.agentTab().id, {
+            reason: 'login',
+            message: 'Sign in at\n\u202Eelpmaxe.moc\u202C please\u0007',
+        });
+        expect(folded.message).toBe('Sign in at elpmaxe.moc please');
         expect(world.core.controller.requestBrowserHelp(tab.id, { reason: 'other', message: 'again' })).toEqual(
             request,
         );
@@ -746,6 +779,82 @@ describe('time and revocation', () => {
         world.core.controller.browserTick();
         expect(world.core.controller.getBrowserTab(tab.id)).toMatchObject({ agentState: 'working', participants: 0 });
         expect(ownerOnRequest.helpRequestId).toBe(request.id);
+    });
+
+    it('ends at once when a request revokes the gateway session', async () => {
+        const world = setup();
+        const watching = await watch(world);
+        const view = world.join(world.watcher, watching.id);
+        ok(await world.call(world.owner, R.revokeSession, { params: { sessionId: 'session-watcher' } }));
+        expect(view.messages.at(-1)).toEqual({ type: 'end', reason: 'revoked' });
+        expect(view.closed).toBe(1000);
+    });
+
+    it('ends a member’s sessions once a request shows they lost browser.watch or sight of the work', async () => {
+        const world = setup();
+        const tab = world.agentTab();
+        const watching = await watch(world, world.watcher, tab.id);
+        const view = world.join(world.watcher, watching.id);
+        const other = await watch(world, world.actor('member-watcher', 'session-other', WATCH), tab.id);
+        await world.call(world.actor('member-watcher', 'session-watcher', ['chats.read']), R.getMe);
+        expect(view.messages.at(-1)).toEqual({ type: 'end', reason: 'revoked' });
+        // Another gateway session of the same member keeps what it holds.
+        const params = { params: { sessionId: other.id } };
+        const otherActor = world.actor('member-watcher', 'session-other', WATCH);
+        expect(ok(await world.call(otherActor, R.getBrowserSession, params))).toMatchObject({ status: 'open' });
+        const blind = world.actor('member-watcher', 'session-other', ['browser.watch', 'chats.read', 'agents.read']);
+        expect(code(await world.call(blind, R.getBrowserSession, params))).toBe('ok');
+        expect(ok(await world.call(otherActor, R.getBrowserSession, params))).toMatchObject({
+            status: 'ended',
+            endReason: 'revoked',
+        });
+    });
+
+    it('ends control when the controller loses browser.control, resuming the agent with revoked', async () => {
+        const world = setup();
+        const tab = world.agentTab();
+        const request = world.core.controller.requestBrowserHelp(tab.id, { reason: 'login', message: 'Sign in.' });
+        const owned = await control(world, tab.id);
+        const view = world.join(world.owner, owned.id);
+        const demoted = world.actor('member-owner', 'session-current', [...WATCH]);
+        expect(code(await world.call(demoted, R.handBackBrowserTab, { params: { sessionId: owned.id } }))).toBe(
+            'forbidden',
+        );
+        expect(view.messages.at(-1)).toEqual({ type: 'end', reason: 'revoked' });
+        expect(world.core.controller.getBrowserTab(tab.id)).toMatchObject({ agentState: 'working', participants: 0 });
+        const resolved = ok(await world.call(demoted, R.getBrowserHelpRequest, { params: { requestId: request.id } }));
+        expect(resolved).toMatchObject({ resolution: { outcome: 'revoked', by: null } });
+    });
+
+    it('asks browserPermissions on every sweep, so a role change applies without a request', async () => {
+        let held: ReadonlySet<Permission> | null = null;
+        const world = setup({ browserPermissions: (memberId) => (memberId === 'member-watcher' ? held : null) });
+        world.core.controller.setBrowserSignInOrigins([SITE]);
+        const signIn = BrowserSession.parse(
+            ok(await world.call(world.owner, R.openBrowserSignIn, { body: { browser: null, origin: SITE } })),
+        );
+        const watching = await watch(world);
+        const view = world.join(world.watcher, watching.id);
+        world.core.controller.browserTick();
+        expect(view.messages.at(-1)?.type).not.toBe('end');
+        held = new Set(['browser.watch', 'agents.read']);
+        world.core.controller.browserTick();
+        expect(view.messages.at(-1)).toEqual({ type: 'end', reason: 'revoked' });
+        const params = { params: { sessionId: signIn.id } };
+        expect(ok(await world.call(world.owner, R.getBrowserSession, params))).toMatchObject({ status: 'open' });
+    });
+
+    it('ends a sign-in session whose owner loses browser.control', async () => {
+        const world = setup();
+        world.core.controller.setBrowserSignInOrigins([SITE]);
+        const signIn = BrowserSession.parse(
+            ok(await world.call(world.owner, R.openBrowserSignIn, { body: { browser: null, origin: SITE } })),
+        );
+        const demoted = world.actor('member-owner', 'session-current', ['browser.watch']);
+        expect(ok(await world.call(demoted, R.getBrowserSession, { params: { sessionId: signIn.id } }))).toMatchObject({
+            status: 'ended',
+            endReason: 'revoked',
+        });
     });
 });
 

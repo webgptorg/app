@@ -12,7 +12,13 @@ import {
 import type { CapabilityRef, Permission } from '@ptbk/engine-api';
 import { createEngineApiHttpHandler } from '@ptbk/engine-api/http';
 import { createDemoSeed, createInMemoryEngineCore } from '@ptbk/engine-api/in-memory';
-import type { Actor, Authorizer, FileUploadPolicies, InMemoryEngineCore } from '@ptbk/engine-api/in-memory';
+import type {
+    Actor,
+    Authorizer,
+    FileUploadPolicies,
+    InMemoryEngineCore,
+    LiveChannelPeer,
+} from '@ptbk/engine-api/in-memory';
 import { buildHeartbeat, deriveEngineId, encodeBase64Url } from '@ptbk/protocol';
 
 import type { ConformanceTarget, LiveBrowserTarget, SessionSubject } from '../target';
@@ -54,6 +60,8 @@ export const LIVE_DEFECTS = [
     'no-expiry',
     'typed-text-audited',
     'channel-refused',
+    'channel-without-permission',
+    'revocation-ignored',
 ] as const;
 export type LiveDefect = (typeof LIVE_DEFECTS)[number];
 
@@ -630,7 +638,8 @@ function createFakeLiveBrowser(deps: FakeLiveDeps): LiveBrowserTarget {
             let actor = deps.actorOf(cookie);
             if (actor === undefined && defect === 'channel-without-cookie') actor = [...deps.actors.values()][0];
             if (actor === undefined) return Promise.resolve({ kind: 'refused', status: 401 });
-            let peer: { receive(data: string | Uint8Array): void; closed(): void } | null = null;
+            let peer: LiveChannelPeer | null = null;
+            let swallowClose = false;
             const queue = new LiveChannelQueue(
                 (data) => {
                     const parsed = typeof data === 'string' ? parseLiveClientMessage(data) : null;
@@ -650,6 +659,10 @@ function createFakeLiveBrowser(deps: FakeLiveDeps): LiveBrowserTarget {
                         return;
                     }
                     if (defect === 'watcher-input-silent' && data.includes('"input-refused"')) return;
+                    if (defect === 'revocation-ignored' && data.includes('"revoked"')) {
+                        swallowClose = true;
+                        return;
+                    }
                     for (const out of deps.tamper?.(data) ?? [data]) {
                         queue.push(
                             typeof out === 'string' ? { kind: 'text', text: out } : { kind: 'binary', bytes: out },
@@ -663,10 +676,17 @@ function createFakeLiveBrowser(deps: FakeLiveDeps): LiveBrowserTarget {
                     }
                 },
                 close: (code: number): void => {
-                    queue.push({ kind: 'closed', code });
+                    if (!swallowClose) queue.push({ kind: 'closed', code });
                 },
             };
             let result = core.attachLiveChannel(actor, sessionId, sink);
+            if (
+                result.kind === 'refused' &&
+                result.problem.code === 'forbidden' &&
+                defect === 'channel-without-permission'
+            ) {
+                return Promise.resolve({ kind: 'open', channel: queue });
+            }
             if (result.kind === 'refused' && defect === 'channel-any-session') {
                 for (const other of deps.actors.values()) {
                     result = core.attachLiveChannel(other, sessionId, sink);
@@ -680,6 +700,7 @@ function createFakeLiveBrowser(deps: FakeLiveDeps): LiveBrowserTarget {
                 return Promise.resolve({ kind: 'refused', status: result.problem.status });
             }
             peer = result.peer;
+            peer.opened();
             return Promise.resolve({ kind: 'open', channel: queue });
         },
         openAgentTab: (origin) => Promise.resolve(core.controller.openAgentTab({ origin }).id),

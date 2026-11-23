@@ -85,7 +85,7 @@ Strict in, tolerant out, as everywhere: the engine refuses unknown request field
 
 - A `BrowserSession` is one member's participation in one tab, bound to the gateway session that opened it. Any other gateway session, the same member's included, gets **404** for it on every route and on the channel.
 - One channel per session at a time: a second upgrade while one is attached is 409 `live-channel-attached`. After a drop, the same gateway session may attach again within a fresh `LIVE_SESSION_ATTACH_MS` (30 s); otherwise the session ends with `not-attached`. A reload reattaches, and a closed page frees its place and hands a controlled tab back to the agent instead of pausing it until the idle limit.
-- Revoking the gateway session or the member (or the member losing the permission) ends their sessions with `revoked`, within one message or one sweep of the engine's timer.
+- A session needs what opened it, for as long as it is open: `browser.watch` with sight of the tab's work (a sign-in tab included), and `browser.control` while it controls. Revoking the gateway session, removing the member, or the member losing either permission (a role change, a narrower policy) ends their sessions with `revoked`, within one request or one sweep of the engine's timer. Losing `browser.control` ends a controller's session; it does not demote it to watching.
 
 ### Control
 
@@ -97,7 +97,7 @@ Strict in, tolerant out, as everywhere: the engine refuses unknown request field
 
 An agent stuck on a page only a human can get past raises a `BrowserHelpRequest`:
 
-- `id`, `tabId`, the work it came from (`agentId`, `chatId`, `taskId`, `runId`), `reason` from a closed set (`login`, `captcha`, `confirmation`, `blocked`, `other`), the tab's `origin`, the agent's short `message` (model output, at most 500 characters, **rendered as text only**), `status` (`pending`, `in-progress`, `resolved`), `resolution`, `createdAt`, `updatedAt`.
+- `id`, `tabId`, the work it came from (`agentId`, `chatId`, `taskId`, `runId`), `reason` from a closed set (`login`, `captcha`, `confirmation`, `blocked`, `other`), the tab's `origin`, the agent's short `message` (model output, at most 500 characters, **rendered as text only**; one line: no control characters, line breaks and tabs included, and no bidi embedding, override or isolate, which `toBrowserHelpMessage` folds away), `status` (`pending`, `in-progress`, `resolved`), `resolution`, `createdAt`, `updatedAt`.
 - One open request per tab; asking again while one is open is the same request.
 - The tab's `agentState` is `waiting` while it is pending. The owner joins in control with one click (`POST /browser-tabs/{tabId}/control`, step-up); the request becomes `in-progress` and the session carries its `helpRequestId`.
 - The agent waits until the request is resolved, then gets the **resolution** `{ outcome, origin, by, at }`. This is what the engine hands to the agent. Outcomes:
@@ -143,7 +143,9 @@ Every open, control change, hand-back, end, attach and refusal goes to the audit
 - A WebSocket upgrade at `ENGINE_API_PREFIX` + `LIVE_CHANNEL_PATH` (`/api/v1/live-sessions/{sessionId}/channel`) with subprotocol `LIVE_CHANNEL_SUBPROTOCOL` (`ptbk-live`), which names the protocol only.
 - Authenticated like every API request, by the gateway session cookie. No token in the URL, the subprotocol or the first message.
 - The gateway checks that `Origin` equals the engine's own origin before upgrading (cross-site WebSocket hijacking).
-- Refusals before the upgrade are problem+json: 401 without a session, 403 for a wrong or missing `Origin` or a missing permission, 404 for an unknown session or another gateway session's, 409 `browser-session-ended` or `live-channel-attached`, 404 `capability-not-supported`.
+- The member needs `browser.watch`, as for reading or ending the session; a controller holds it too.
+- Refusals before the upgrade are problem+json: 401 without a session, 403 for a wrong or missing `Origin` or without `browser.watch` (before the session is looked up), 404 for an unknown session or another gateway session's, 409 `browser-session-ended` or `live-channel-attached`, 404 `capability-not-supported`.
+- The attach is audited once the handshake completed; a handshake that fails after the engine accepted the upgrade is audited as `failed`, never as a success.
 
 ### Control messages
 

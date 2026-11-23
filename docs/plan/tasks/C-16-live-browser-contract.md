@@ -2,7 +2,7 @@
 
 - **Lane:** C · **Module:** `packages/engine-api`, `packages/conformance` · **Milestone:** M5
 - **Depends on:** C-15
-- **Status:** done (#346)
+- **Status:** done (#363)
 - **Spec:** Access, transport and zero trust; ADRs: [0016](../../adr/0016-engine-capabilities.md), [0019](../../adr/0019-live-sessions-inside-the-tunnel.md)
 
 ## Goal

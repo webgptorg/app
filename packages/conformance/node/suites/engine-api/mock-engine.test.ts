@@ -27,13 +27,21 @@ const WITH_VOICE = {
     'engine-api.capabilities.unadvertised-404': 'skip: the engine advertises every capability this contract defines',
 };
 
-/** Without it the voice checks skip, and the voice routes are the unadvertised ones that must answer 404. */
-const WITHOUT_VOICE = {
+/**
+ * Without voice and the live browser their checks skip, and their routes are the unadvertised ones that must answer
+ * 404, so this run is what covers `browser-tab@1`'s 404s.
+ */
+const WITHOUT_VOICE_OR_LIVE_BROWSER = {
     ...MOCK_SKIPS,
     'engine-api.voice.transcription-caps': 'skip: capability-not-advertised',
     'engine-api.voice.transcription-draft': 'skip: capability-not-advertised',
     'engine-api.voice.speech': 'skip: capability-not-advertised',
     'engine-api.voice.permissions': 'skip: capability-not-advertised',
+    ...Object.fromEntries(
+        ENGINE_API_SUITE.checks
+            .filter(({ id }) => id.startsWith('engine-api.browser-tab.'))
+            .map(({ id }) => [id, 'skip: capability-not-advertised']),
+    ),
 };
 
 function notPassed(results: readonly CheckResult[]): Record<string, string> {
@@ -95,24 +103,18 @@ describe('the engine-api suite on one engine the harness starts', () => {
             // The mock's command asks its dev-only control listener, which needs a port of its own per engine.
             const mockControl = createMockEngineTargetFactory();
             await runAgainstMock(
-                { ...sessions, engineEnv: () => mockControl.engineEnv() },
                 {
-                    ...WITHOUT_VOICE,
+                    ...sessions,
+                    engineEnv: async () => ({ ...(await mockControl.engineEnv()), MOCK_LIVE_BROWSER: 'disabled' }),
+                },
+                {
+                    ...WITHOUT_VOICE_OR_LIVE_BROWSER,
                     // Engine policy that only the mock's own target reports.
                     'engine-api.cross-member.private-resources':
                         'skip: the target reports no resources private to one member',
                     // Raising a Wallet request is a test-mode lever the session command does not offer.
                     'engine-api.wallet.requests':
                         'skip: the target cannot raise a Wallet request (ConformanceTarget.walletRequest)',
-                    // So are the live browser's levers and channel.
-                    ...Object.fromEntries(
-                        ENGINE_API_SUITE.checks
-                            .filter(({ id }) => id.startsWith('engine-api.browser-tab.'))
-                            .map(({ id }) => [
-                                id,
-                                'skip: the target cannot reach the live browser (ConformanceTarget.liveBrowser)',
-                            ]),
-                    ),
                 },
                 'disabled',
             );

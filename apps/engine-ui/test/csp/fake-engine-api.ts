@@ -1204,6 +1204,7 @@ async function routeLiveChannels(page: Page, engine: InMemoryLiveEngine): Promis
             void socket.close({ code: 1008 });
             return;
         }
+        attached.peer.opened();
         socket.onMessage((message) => {
             attached.peer.receive(typeof message === 'string' ? message : new Uint8Array(message));
         });

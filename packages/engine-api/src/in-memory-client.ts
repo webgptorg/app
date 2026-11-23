@@ -115,8 +115,10 @@ import {
     createInMemoryBrowser,
     elapseBrowserSession,
     navigateBrowserTab,
+    noteBrowserActor,
     openAgentTab,
     requestBrowserHelp,
+    sweepBrowser,
 } from './in-memory/live';
 import type { FakePage, LiveChannelAttach, LiveChannelSink, NewAgentTab } from './in-memory/live';
 import { requestWalletLogin } from './in-memory/wallet';
@@ -360,6 +362,12 @@ export interface InMemoryEngineCoreOptions {
     readonly capabilities?: readonly Unbranded<CapabilityRef>[];
     /** Runs for every route with a permission; the default allows exactly the actor's permissions. */
     readonly authorizer?: Authorizer;
+    /**
+     * What a gateway session holds now, as its gateway would resolve it (`null` when unknown). The live browser asks on
+     * every sweep, so a member who loses `browser.watch` or `browser.control` loses those sessions without making
+     * another request. Without it, a session goes by what its gateway session held at its latest request.
+     */
+    readonly browserPermissions?: (memberId: MemberId, sessionId: SessionId) => ReadonlySet<Permission> | null;
     /** How many events `GET /events` can replay after a reconnect (default 1,000). */
     readonly eventBufferSize?: number;
     /** Paces scripted replies; defaults to a timer. */
@@ -840,6 +848,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
     state.browser.audit = (input) => {
         appendAudit(input);
     };
+    state.browser.permissionsOf = options.browserPermissions ?? (() => null);
     const checks: EngineChecks = { ...DEFAULT_ENGINE_CHECKS, ...options.checks };
     const system: EngineContext = { state, checks, now, newId, publish, replies };
     const chatRecord = (chatId: string): ChatRecord => {
@@ -1070,6 +1079,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             // Read on every request, so a removed member is signed out and a changed role applies at once.
             const member = state.members.get(actor.memberId);
             if (!member) return { kind: 'problem', problem: createProblem('unauthenticated') };
+            noteBrowserActor(system, actor);
             const routeId = route.id as EngineApiRouteId;
             const audited = AUDITED[routeId];
             // Taken before the handler runs, so a deleted or renamed target is logged under the name it had.
@@ -1103,6 +1113,8 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
                 replyScript: options.replyScript ?? DEFAULT_REPLY_SCRIPT,
                 signal,
             });
+            // A revoked session, a removed member or a changed role ends live browser sessions now, not at the next tick.
+            sweepBrowser(system);
             if (audited && (result.kind === 'problem' || (audited.successWhen?.(parsed.request.body) ?? true))) {
                 if (result.kind === 'ok') {
                     const target = auditTarget(state, audited, parsed.request.params, result.data);
@@ -1120,7 +1132,9 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             return { kind: 'refused', problem: createProblem('capability-not-supported') };
         }
         if (!state.members.has(actor.memberId)) return { kind: 'refused', problem: createProblem('unauthenticated') };
-        if (!actor.permissions.has('browser.watch') && !actor.permissions.has('browser.control')) {
+        noteBrowserActor(system, actor);
+        // Like reading or ending the session: a controller holds `browser.watch` too.
+        if (!actor.permissions.has('browser.watch')) {
             return {
                 kind: 'refused',
                 problem: createProblem('forbidden', { requiredPermission: 'browser.watch' }),

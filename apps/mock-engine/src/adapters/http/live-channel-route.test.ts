@@ -7,10 +7,11 @@ import { createLiveChannelRoute } from './live-channel-route';
 
 function openWithSocket(bufferedAmount: () => number) {
     let sink: LiveChannelSink | undefined;
+    const peer = { opened: vi.fn(), receive: vi.fn(), closed: vi.fn() };
     const core = {
         attachLiveChannel: (_actor: unknown, _sessionId: string, given: LiveChannelSink) => {
             sink = given;
-            return { kind: 'attached', peer: { receive: vi.fn(), closed: vi.fn() } };
+            return { kind: 'attached', peer };
         },
     } as unknown as InMemoryEngineCore;
     const route = createLiveChannelRoute({ core: () => core });
@@ -18,6 +19,7 @@ function openWithSocket(bufferedAmount: () => number) {
         typeof route.handle
     >[0]);
     if (admission.kind !== 'accept') throw new Error('refused');
+    expect(peer.opened).not.toHaveBeenCalled();
     const socket = {
         OPEN: 1,
         readyState: 1,
@@ -30,6 +32,8 @@ function openWithSocket(bufferedAmount: () => number) {
         once: vi.fn(),
     };
     admission.open(socket as unknown as WebSocket);
+    // The core audits the attach only once the handshake completed.
+    expect(peer.opened).toHaveBeenCalledOnce();
     if (sink === undefined) throw new Error('no sink');
     return { sink, socket };
 }
