@@ -410,6 +410,15 @@ export type WebsitePendingView = z.infer<typeof websitePendingViewSchema>;
 /** Why `/website-access` was reached without a pending link; the return route's only redirect parameter. */
 export const websiteAccessErrorSchema = z.enum(['expired', 'failed']);
 export type WebsiteAccessError = z.infer<typeof websiteAccessErrorSchema>;
+/**
+ * The website sends the browser back with its ticket, with an `error` slug when it could not issue one, or with nothing
+ * when the member cancelled there. Each shape is exact, so a ticket never rides along with an error.
+ */
+const websiteAccessReturnQuerySchema = z.union([
+    z.strictObject({ code: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }),
+    z.strictObject({ error: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/) }),
+    z.strictObject({}),
+]);
 /** Attestation objects with certificate chains run to a few kilobytes; base64url and JSON add a third. */
 const WEBAUTHN_BODY_BYTES = 64 * 1024;
 
@@ -1399,7 +1408,7 @@ export const apiRoutes = {
         auth: 'public',
         permission: null,
         rateLimit: 'website-access-ip',
-        input: { ...NO_INPUT, query: z.strictObject({ code: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }) },
+        input: { ...NO_INPUT, query: websiteAccessReturnQuerySchema },
         output: NO_CONTENT,
         responseType: 'redirect',
         errorCodes: [],

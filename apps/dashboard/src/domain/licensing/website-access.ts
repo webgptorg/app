@@ -112,6 +112,13 @@ export function createWebsiteAccessFlows(deps: WebsiteAccessDeps) {
             return { kind: 'pending', token, expiresAt };
         },
 
+        /** The website came back without a ticket; the state is spent all the same, like after a failed exchange. */
+        async abandon(challenge: string | null): Promise<void> {
+            if (challenge !== null) {
+                await deps.handoffs.consumeState(await sha256Hex(challenge), deps.clock.nowMs());
+            }
+        },
+
         /**
          * Whether the address has an App account decides between sign-in and sign-up. Only a browser holding the pending
          * cookie learns it, about the address the website just verified for that same browser.
