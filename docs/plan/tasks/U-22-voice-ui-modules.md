@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M5
 - **Depends on:** C-17, M-12
-- **Status:** in progress (feat/u-22-voice-ui-modules)
+- **Status:** done (#364)
 - **Spec:** Access, transport and zero trust; ADRs: [0015](../../adr/0015-ui-architecture-and-design-system.md), [0016](../../adr/0016-engine-capabilities.md)
 - **Design:** [ui.md](../../design/ui.md), [voice.md](../../engine-integration/voice.md)
 
@@ -27,7 +27,7 @@ Decision (Seb, 2026-11-23): "just prepare these, don't put them inside the UI ye
 
 ## Acceptance criteria
 
-- [ ] Tests with fakes for `MediaRecorder`, `getUserMedia` and `Audio`: permission denied, unsupported format, cap reached, every problem code, unmount mid-recording releases the microphone, object URLs revoked.
-- [ ] Nothing renders in the product; no CSP or header change; `test:csp` passes.
-- [ ] Audio and transcripts are never logged or put into errors.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Tests with fakes for `MediaRecorder`, `getUserMedia` and `Audio`: permission denied, unsupported format, cap reached, every problem code, unmount mid-recording releases the microphone, object URLs revoked.
+- [x] Nothing renders in the product; no CSP or header change; `test:csp` passes.
+- [x] Audio and transcripts are never logged or put into errors.
+- [x] **Status** line above set to `done (#<PR>)`.
