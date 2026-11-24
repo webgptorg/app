@@ -338,7 +338,7 @@ describe('threadViews waiting and rechecks', () => {
     });
 
     it('shows a recheck instead, naming the waiting agent or the thread’s main one', () => {
-        const recheck = { cause: 'Model overloaded', nextAt: minute(9), rounds: 2 };
+        const recheck = { cause: 'Model overloaded', nextAt: minute(9), rounds: 2, aiToolId: null };
         const views = rows({ ...team, recheck }, [asked], INITIAL_CHAT_SESSION, options);
         expect(views.at(-1)).toEqual({
             kind: 'recheck',
@@ -348,6 +348,7 @@ describe('threadViews waiting and rechecks', () => {
             cause: 'Model overloaded',
             nextAt: minute(9),
             rounds: 2,
+            aiToolId: null,
         });
         const quiet = rows({ ...team, recheck }, [message(2)], INITIAL_CHAT_SESSION, options).at(-1);
         expect(quiet?.kind === 'recheck' && quiet.agentName).toBe('Ada');

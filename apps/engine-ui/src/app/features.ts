@@ -1,4 +1,5 @@
 import { agentWizardFeature } from '../features/agent-wizard/agent-wizard-feature';
+import { aiToolsFeature } from '../features/ai-tools/ai-tools-feature';
 import { agentsFeature } from '../features/agents/agents-feature';
 import { auditFeature } from '../features/audit/audit-feature';
 import { bookFeature } from '../features/book/book-feature';
@@ -38,5 +39,6 @@ export const FEATURES: readonly FeatureDefinition[] = [
     browserFeature,
     auditFeature,
     settingsFeature,
+    aiToolsFeature,
     onboardingFeature,
 ];

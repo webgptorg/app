@@ -104,6 +104,8 @@ export interface RecheckView {
     readonly cause: string;
     readonly nextAt: string;
     readonly rounds: number;
+    /** The AI tool the reply failed for because it needs signing in again (`ai-tools@1`), else `null`. */
+    readonly aiToolId: string | null;
 }
 
 export type ThreadView = MessageView | StepsView | TaskView | EventView | DayView | WaitingView | RecheckView;
@@ -366,6 +368,7 @@ export function threadViews(
             cause: chat.recheck.cause,
             nextAt: chat.recheck.nextAt,
             rounds: chat.recheck.rounds,
+            aiToolId: chat.recheck.aiToolId,
         });
     } else if (waiting !== null && chat.working.length === 0) {
         tail.push(waiting);
