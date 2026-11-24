@@ -202,6 +202,29 @@ describe('capabilities through the mock HTTP server (contract)', () => {
             owner.voice.speak(voiceChat.id, spoken.message.id, { formats: ['audio/wav'] }, signal()),
         );
 
+        const [tool] = (await okFrom('listAiTools', owner.aiTools.list(signal()))).items;
+        if (tool === undefined) throw new Error('no AI tool');
+        await okFrom('getAiTool', owner.aiTools.get(tool.id, signal()));
+        await okFrom('checkAiTool', owner.aiTools.check(tool.id, signal()));
+        const keySignIn = await okFrom(
+            'startAiToolSignIn',
+            owner.aiTools.startSignIn(tool.id, { method: 'api-key' }, signal()),
+        );
+        const keyPrompt = (await okFrom('getAiToolSignIn', owner.aiTools.getSignIn(tool.id, keySignIn.id, signal())))
+            .prompt;
+        if (keyPrompt === null) throw new Error('no sign-in prompt');
+        await okFrom(
+            'answerAiToolSignIn',
+            owner.aiTools.answerSignIn(
+                tool.id,
+                keySignIn.id,
+                { promptId: keyPrompt.id, action: 'alternative', alternativeId: 'account' },
+                signal(),
+            ),
+        );
+        await okFrom('cancelAiToolSignIn', owner.aiTools.cancelSignIn(tool.id, keySignIn.id, signal()));
+        await okFrom('signOutAiTool', owner.aiTools.signOut(tool.id, signal()));
+
         const { members, apiTokens, audit, bookEditor, agentManagement } = KNOWN_CAPABILITIES;
         const coreFeatures = new Set<string>(
             [members, apiTokens, audit, bookEditor, agentManagement].map(({ id }) => id),

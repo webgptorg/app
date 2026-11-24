@@ -37,11 +37,21 @@ describe('engine API routes', () => {
             `${ENGINE_API_PREFIX}/chats/{chatId}/transcriptions`,
             `${ENGINE_API_PREFIX}/chats/{chatId}/messages/{messageId}/speech`,
         ];
+        const aiTools = [
+            `${ENGINE_API_PREFIX}/ai-tools/{aiToolId}/check`,
+            `${ENGINE_API_PREFIX}/ai-tools/{aiToolId}/sign-ins/{signInId}/answer`,
+        ];
         expect(
             routes
-                .filter((route) => route.path !== testChat && !voice.includes(route.path))
+                .filter(
+                    (route) => route.path !== testChat && !voice.includes(route.path) && !aiTools.includes(route.path),
+                )
                 .every((route) => route.rateLimit === 'engine-api-ip'),
         ).toBe(true);
+        expect(routes.filter((route) => aiTools.includes(route.path)).map((route) => route.rateLimit)).toEqual([
+            'engine-api-ai-tools-ip',
+            'engine-api-ai-tools-ip',
+        ]);
         expect(routes.filter((route) => voice.includes(route.path)).map((route) => route.rateLimit)).toEqual([
             'engine-api-voice-ip',
             'engine-api-voice-ip',

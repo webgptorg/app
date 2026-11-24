@@ -1,11 +1,14 @@
 import {
     AgentId,
+    AiToolId,
+    AiToolProblem,
     BrowserHelpReason,
     BrowserOrigin,
     BrowserTabId,
     ChatId,
     LiveSessionId,
     MAX_BROWSER_HELP_MESSAGE_LENGTH,
+    KNOWN_CAPABILITIES,
     Permission,
     Role,
     TriggerId,
@@ -98,6 +101,12 @@ const LiveBrowserNavigation = z.strictObject({
         z.strictObject({ kind: z.literal('secret-page') }),
     ]),
 });
+
+/** Without `aiToolId`, the tool new chat turns run on: the first installed one. */
+const AiToolExpiry = z.strictObject({ aiToolId: AiToolId.optional() });
+const AiToolRef = z.strictObject({ aiToolId: AiToolId });
+const AiToolCheckFailure = z.strictObject({ aiToolId: AiToolId, problem: AiToolProblem.nullable() });
+const AiToolDeviceLogin = z.strictObject({ aiToolId: AiToolId, ...HarnessLoginOutcome.shape });
 
 const LiveBrowserElapse = z.strictObject({ sessionId: LiveSessionId, what: z.enum(['expired', 'idle']) });
 
@@ -193,6 +202,25 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
     const liveBrowser = (act: (tab: string) => Response): Response => {
         const tab = runtime.liveBrowserTab();
         return tab === null ? problemResponse({ code: 'capability-not-supported' }) : act(tab);
+    };
+    /** Like the API: without `ai-tools@1` the levers have nothing to act on. */
+    const aiTools = (act: () => Response): Response =>
+        runtime.current().capabilities.some(({ id }) => id === KNOWN_CAPABILITIES.aiTools.id)
+            ? act()
+            : problemResponse({ code: 'capability-not-supported' });
+    const aiTool = (aiToolId: string, act: () => unknown): Response => {
+        if (
+            !runtime
+                .controller()
+                .aiTools()
+                .some(({ id }) => id === aiToolId)
+        )
+            return problemResponse({ code: 'not-found' });
+        try {
+            return Response.json(act() ?? { tools: runtime.controller().aiTools() });
+        } catch (error) {
+            return invalidBody('body.aiToolId', error instanceof Error ? error.message : 'Not possible for this tool.');
+        }
     };
     const knownTab = (tabId: string, act: () => Response): Response =>
         runtime.controller().getBrowserTab(tabId) === undefined ? problemResponse({ code: 'not-found' }) : act();
@@ -386,6 +414,50 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
                 controller.failHarnessCheck(body.harness, body.reason);
                 return Response.json(controller.onboarding());
             },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/ai-tools/expire',
+            body: { kind: 'json', schema: AiToolExpiry, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                aiTools(() => {
+                    const controller = runtime.controller();
+                    const aiToolId =
+                        body.aiToolId ?? controller.aiTools().find(({ status }) => status !== 'not-installed')?.id;
+                    if (aiToolId === undefined) return invalidBody('body.aiToolId', 'No AI tool is installed.');
+                    return aiTool(aiToolId, () => ({ tool: controller.expireAiToolSignIn(aiToolId) }));
+                }),
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/ai-tools/renew',
+            body: { kind: 'json', schema: AiToolRef, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                aiTools(() =>
+                    aiTool(body.aiToolId, () => ({ tool: runtime.controller().renewAiToolSignIn(body.aiToolId) })),
+                ),
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/ai-tools/check-failure',
+            body: { kind: 'json', schema: AiToolCheckFailure, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                aiTools(() =>
+                    aiTool(body.aiToolId, () => {
+                        runtime.controller().failAiToolCheck(body.aiToolId, body.problem);
+                    }),
+                ),
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/ai-tools/device-login',
+            body: { kind: 'json', schema: AiToolDeviceLogin, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                aiTools(() =>
+                    aiTool(body.aiToolId, () => {
+                        runtime.controller().settleAiToolSignIn(body.aiToolId, body.outcome, body.diagnostic);
+                    }),
+                ),
         }),
         control({
             method: 'PUT',

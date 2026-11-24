@@ -321,9 +321,11 @@ describe('every response of that run', () => {
     it('came from every operation of the route table', () => {
         // Reserved routes have no client method; capabilities.test.ts checks that they answer 404. The shared client
         // suite has no `browser-tab@1` cases yet (C-16); capabilities.test.ts answers each of its routes instead. Voice
-        // is served only with `MOCK_VOICE`, and voice.test.ts answers its routes.
+        // is served only with `MOCK_VOICE`, and voice.test.ts answers its routes; so does capabilities.test.ts for
+        // `ai-tools@1`, whose sign-ins the shared suite does not drive.
         const notCovered = new Set<string>([
             KNOWN_CAPABILITIES.browserTab.id,
+            KNOWN_CAPABILITIES.aiTools.id,
             KNOWN_CAPABILITIES.voiceInput.id,
             KNOWN_CAPABILITIES.voiceOutput.id,
         ]);

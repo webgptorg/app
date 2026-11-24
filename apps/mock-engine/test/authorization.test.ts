@@ -89,6 +89,10 @@ function validBody(route: RouteDefinition): unknown {
             return { formats: ['audio/wav'] };
         case 'testAgentDraft':
             return { book: 'Matrix', messages: [{ role: 'user', content: 'hello' }] };
+        case 'startAiToolSignIn':
+            return { method: 'account' };
+        case 'answerAiToolSignIn':
+            return { promptId: 'matrix-prompt', action: 'alternative', alternativeId: 'api-key' };
         default:
             return undefined;
     }

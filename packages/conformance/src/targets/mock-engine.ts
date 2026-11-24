@@ -105,6 +105,20 @@ export function createMockEngineTarget(options: MockEngineTargetOptions): Confor
             return data.request.id;
         },
         ...(liveBrowser === undefined ? {} : { liveBrowser }),
+        aiTools: {
+            async expireSignIn() {
+                const data = (await control('/__mock/ai-tools/expire', {}, 200)) as {
+                    readonly tool?: { readonly id?: unknown };
+                } | null;
+                if (typeof data?.tool?.id !== 'string') {
+                    throw new Error('the mock control listener sent no AI tool ID');
+                }
+                return data.tool.id;
+            },
+            async renewSignIn(aiToolId) {
+                await control('/__mock/ai-tools/renew', { aiToolId }, 200);
+            },
+        },
         session: (subject) => signIn(subject, 'fresh'),
     };
 }

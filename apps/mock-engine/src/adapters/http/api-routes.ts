@@ -37,6 +37,8 @@ const RATE_LIMIT_BY_ROUTE: Partial<Record<EngineApiRouteId, RateLimitRule>> = {
     testAgentDraft: 'engine-api-test-chat-ip',
     transcribeVoiceClip: 'engine-api-voice-ip',
     speakChatMessage: 'engine-api-voice-ip',
+    checkAiTool: 'engine-api-ai-tools-ip',
+    answerAiToolSignIn: 'engine-api-ai-tools-ip',
 };
 
 function isStream(route: RouteDefinition): boolean {

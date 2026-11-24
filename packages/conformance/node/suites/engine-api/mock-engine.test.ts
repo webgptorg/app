@@ -65,7 +65,7 @@ async function runAgainstMock(
         command: mockEngineCommand(
             `MOCK_SCENARIO=small-team MOCK_SEED=1 MOCK_VOICE=${voice} ` +
                 'MOCK_CAPABILITIES=runs,tasks,files,triggers,integrations,test-chat,access-requests,file-scanning,' +
-                'members,api-tokens,audit,book-editor,agent-management,onboarding,wallet',
+                'members,api-tokens,audit,book-editor,agent-management,onboarding,wallet,ai-tools',
         ),
         suites: [ENGINE_API_PLATFORM_SUITE],
         targets,
@@ -115,6 +115,8 @@ describe('the engine-api suite on one engine the harness starts', () => {
                     // Raising a Wallet request is a test-mode lever the session command does not offer.
                     'engine-api.wallet.requests':
                         'skip: the target cannot raise a Wallet request (ConformanceTarget.walletRequest)',
+                    // So is expiring an AI tool's sign-in.
+                    'engine-api.ai-tools.sign-in-required': 'skip: the target has no AI tool levers',
                 },
                 'disabled',
             );

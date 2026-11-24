@@ -17,6 +17,8 @@ export const RATE_LIMITS = {
      * or listens to a few a minute; a conformance run sends a few dozen.
      */
     'engine-api-voice-ip': { limit: 60, windowMs: 60_000 },
+    /** AI tool checks and sign-in answers (`ai-tools@1`): each is a model or provider call; a person clicks a few. */
+    'engine-api-ai-tools-ip': { limit: 30, windowMs: 60_000 },
     /** UI bundle files: a cold page load fetches a few dozen, cached ones none. */
     'ui-ip': { limit: 1_200, windowMs: 60_000 },
     /** Gateway pages and forms: sign-in, sign-out, step-up. */

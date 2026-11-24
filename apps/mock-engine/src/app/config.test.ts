@@ -622,6 +622,7 @@ describe('parseIdentityConfig', () => {
                 'agent-management',
                 'onboarding',
                 'wallet',
+                'ai-tools',
             ]);
             expect(
                 parseMockEngineConfig({ ...BASE, MOCK_PROFILE: 'full', MOCK_CAPABILITIES: 'runs' }).capabilities,
