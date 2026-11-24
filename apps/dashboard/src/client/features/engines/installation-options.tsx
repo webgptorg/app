@@ -1,85 +1,70 @@
-import { Skeleton, Tabs } from '@ptbk/ui';
-import { lazy, Suspense, useState } from 'react';
+import { Skeleton, type TabDefinition } from '@ptbk/ui';
+import { lazy, Suspense } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import type { InstallationOption } from '../../../shared/engine-installation';
 import { InstallationCopyBlock } from './installation-copy-block';
 
-const ExtraInstallationOption = lazy(async () => {
-    const module = await import('./installation-extra-options');
-    return { default: module.ExtraInstallationOption };
-});
+const WindowsInstallerOption = lazy(async () => ({
+    default: (await import('./installation-extra-options')).WindowsInstallerOption,
+}));
 
-function CommandOption(props: { readonly option: Extract<InstallationOption, { readonly kind: 'command' }> }) {
-    const [shell, setShell] = useState(() => (/Windows/i.test(navigator.userAgent) ? 'powershell' : 'posix'));
-    const instructions = (
-        <ol className="list-decimal space-y-2 pl-5 text-sm">
-            <li>
-                {shell === 'powershell'
-                    ? m.engines_new_open_powershell()
-                    : shell === 'ubuntu'
-                      ? m.engines_new_open_ssh()
-                      : m.engines_new_open_terminal()}
-            </li>
-            <li>{m.engines_new_run_block()}</li>
-        </ol>
-    );
-    function commandPanel(command: string) {
-        return (
-            <div className="flex flex-col gap-3">
-                {instructions}
-                <InstallationCopyBlock value={command} />
-            </div>
-        );
-    }
-    return (
-        <>
-            <p className="text-sm">{m.engines_new_prerequisites()}</p>
-            <Tabs
-                label={m.engines_new_shell()}
-                selectedId={shell}
-                onSelect={setShell}
-                tabs={[
+/** The local methods come first, followed by configured paths and the remote-server alternatives. */
+export function installationTabs(
+    options: readonly InstallationOption[],
+    configuredTabs: readonly TabDefinition[],
+    locale: string,
+): TabDefinition[] {
+    const local: TabDefinition[] = [];
+    const remote: TabDefinition[] = [];
+    for (const option of options) {
+        switch (option.kind) {
+            case 'command':
+                local.push(
                     {
                         id: 'posix',
                         label: 'macOS / Linux',
-                        panel: commandPanel(props.option.commands.posix),
+                        panel: <InstallationCopyBlock value={option.commands.posix} />,
                     },
                     {
                         id: 'powershell',
                         label: 'Windows PowerShell',
-                        panel: commandPanel(props.option.commands.powershell),
+                        panel: <InstallationCopyBlock value={option.commands.powershell} />,
                     },
-                    {
-                        id: 'ubuntu',
-                        label: 'Ubuntu VPS',
-                        panel: (
-                            <>
-                                <p className="mb-3 text-sm">{m.engines_new_ubuntu()}</p>
-                                {commandPanel(props.option.commands.ubuntu)}
-                            </>
-                        ),
-                    },
-                ]}
-            />
-        </>
-    );
-}
-
-/** Render structured commands, prompts and downloads without parsing any payload as markup. */
-export function InstallationOptionPanel(props: { readonly option: InstallationOption }) {
-    const { option } = props;
-    return (
-        <div className="flex flex-col gap-3">
-            {option.kind === 'command' ? (
-                <CommandOption option={option} />
-            ) : (
-                <Suspense fallback={<Skeleton className="h-32 w-full" />}>
-                    <ExtraInstallationOption option={option} />
-                </Suspense>
-            )}
-            <p className="text-sm">{m.engines_new_next_step()}</p>
-            <p className="text-sm text-text-muted">{m.engines_new_computer_access()}</p>
-        </div>
-    );
+                );
+                remote.push({
+                    id: 'ubuntu',
+                    label: 'Ubuntu VPS',
+                    panel: <InstallationCopyBlock value={option.commands.ubuntu} />,
+                });
+                break;
+            case 'ai': {
+                const prompts = option.prompts[locale.startsWith('cs') ? 'cs' : 'en'];
+                const label = m.engines_new_copy_prompt();
+                local.push({
+                    id: 'ai',
+                    label: m.engines_new_tab_ai(),
+                    panel: <InstallationCopyBlock label={label} value={prompts.local} />,
+                });
+                remote.push({
+                    id: 'ai-server',
+                    label: m.engines_new_ai_server(),
+                    panel: <InstallationCopyBlock label={label} value={prompts.server} />,
+                });
+                break;
+            }
+            case 'download':
+                local.push({
+                    id: option.id,
+                    label: 'Windows EXE',
+                    panel: (
+                        <Suspense fallback={<Skeleton className="h-32 w-full" />}>
+                            <WindowsInstallerOption option={option} />
+                        </Suspense>
+                    ),
+                });
+                break;
+        }
+    }
+    return [...local, ...configuredTabs, ...remote];
 }

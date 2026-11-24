@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { testInstallationOptions } from '../../../testing/install-fixtures';
@@ -32,56 +32,54 @@ describe('structured installation choices', () => {
             },
         });
         const list = await screen.findByRole('tablist', { name: 'How to install' });
+        expect(screen.getAllByRole('tablist')).toHaveLength(1);
+        expect(within(list).getByRole('tab', { name: initialTab, selected: true })).toBeTruthy();
+        expect(screen.getByText(/Choose an installation method/)).toBeTruthy();
+        expect(within(screen.getByRole('tabpanel')).queryByRole('list')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Copy address' })).toBeNull();
+
+        const commands = options.find((option) => option.kind === 'command')?.commands;
+        const prompts = options.find((option) => option.kind === 'ai')?.prompts.en;
+        const download = options.find((option) => option.kind === 'download');
+        const paths = linkCodeView().installCommands;
+        const choices = [
+            ['macOS / Linux', 'Copy command', commands?.posix],
+            ['Windows PowerShell', 'Copy command', commands?.powershell],
+            ['Install with AI', 'Copy prompt', prompts?.local],
+            ['Windows EXE', 'Copy command', download?.afterInstall],
+            ['Docker Compose', 'Copy command', paths.find((path) => path.id === 'compose')?.command],
+            ['Running project', 'Copy command', paths.find((path) => path.id === 'connect')?.command],
+            ['Ubuntu VPS', 'Copy command', commands?.ubuntu],
+            ['AI over SSH', 'Copy prompt', prompts?.server],
+        ] as const;
         expect(
             within(list)
                 .getAllByRole('tab')
                 .map((tab) => tab.textContent),
-        ).toEqual(['New project', 'Install with AI', 'Windows EXE']);
-        expect(screen.getByRole('tab', { name: 'New project' }).getAttribute('aria-selected')).toBe('true');
-        expect(screen.getByRole('tab', { name: initialTab }).getAttribute('aria-selected')).toBe('true');
-        expect(screen.getByText(/paste it into the terminal and press Enter/)).toBeTruthy();
-        expect(screen.getByText(/The project connects to this app first/)).toBeTruthy();
+        ).toEqual(choices.map(([name]) => name));
+
         const writeText = vi.fn().mockResolvedValue(undefined);
         Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
         try {
-            await app.user.click(screen.getByRole('tab', { name: 'Windows PowerShell' }));
-            expect(screen.getByText(/Open PowerShell from the Windows Start menu/)).toBeTruthy();
-            expect(screen.queryByText(/On macOS, open Terminal/)).toBeNull();
-            await app.user.click(
-                within(screen.getByRole('tabpanel', { name: 'Windows PowerShell' })).getByRole('button', {
-                    name: 'Copy command',
-                }),
-            );
-            expect(writeText).toHaveBeenLastCalledWith(
-                options.find((option) => option.kind === 'command')?.commands.powershell,
-            );
-            await app.user.click(screen.getByRole('tab', { name: 'Ubuntu VPS' }));
-            expect(screen.getByText(/Connect over SSH to the server/)).toBeTruthy();
-            expect(screen.queryByText(/Open PowerShell from the Windows Start menu/)).toBeNull();
-            await app.user.click(screen.getByRole('tab', { name: 'Install with AI' }));
-            await app.user.click(await screen.findByRole('tab', { name: 'Existing VPS over SSH' }));
-            await app.user.click(
-                within(screen.getByRole('tabpanel', { name: 'Existing VPS over SSH' })).getByRole('button', {
-                    name: 'Copy prompt',
-                }),
-            );
-            expect(writeText).toHaveBeenLastCalledWith(
-                options.find((option) => option.kind === 'ai')?.prompts.en.server,
-            );
-            await app.user.click(screen.getByRole('tab', { name: 'Windows EXE' }));
-            const download = options.find((option) => option.kind === 'download');
-            expect((await screen.findByRole('link', { name: /Download Windows EXE/ })).getAttribute('href')).toBe(
-                download?.url,
-            );
-            await app.user.click(
-                within(screen.getByRole('tabpanel', { name: 'Windows EXE' })).getByRole('button', {
-                    name: 'Copy command',
-                }),
-            );
-            expect(writeText).toHaveBeenLastCalledWith(download?.afterInstall);
-            await waitFor(() => {
-                expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(1);
-            });
+            for (const [name, button, value] of choices) {
+                await app.user.click(within(list).getByRole('tab', { name }));
+                const panel = within(screen.getByRole('tabpanel', { name }));
+                await app.user.click(await panel.findByRole('button', { name: button }));
+                expect(writeText).toHaveBeenLastCalledWith(value);
+                expect(panel.queryByRole('tablist')).toBeNull();
+                if (name === 'Windows EXE') {
+                    expect(panel.getByRole('link', { name: /Download Windows EXE/ }).getAttribute('href')).toBe(
+                        download?.url,
+                    );
+                    await app.user.click(panel.getByText('Installer SHA-256'));
+                    expect(panel.getByText(download?.sha256 ?? '')).toBeTruthy();
+                }
+                if (name === 'Running project') {
+                    await app.user.click(panel.getByRole('button', { name: 'Copy address' }));
+                    expect(writeText).toHaveBeenLastCalledWith(LINK_URL);
+                }
+            }
+            expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(1);
             await expectNoAxeViolations(app.container);
         } finally {
             Reflect.deleteProperty(navigator, 'clipboard');

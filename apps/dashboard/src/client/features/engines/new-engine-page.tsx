@@ -17,7 +17,6 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { m } from '../../../paraglide/messages';
 import { apiRoutes, type LinkCodeView, type SessionView } from '../../../shared/api/routes';
 import type { InstallPathLabelKey } from '../../../shared/install-paths';
-import type { InstallationOption } from '../../../shared/engine-installation';
 import { useApiClient } from '../../api/api-client-context';
 import { billingQuery, dataOrThrow, problemCode } from '../../api/queries';
 import { useBrowser } from '../../core/browser';
@@ -31,7 +30,8 @@ import { LINK_POLL_MS, LinkProgress, useObservedLink } from './link-progress';
 import type { ObservedLink } from './link-progress';
 import { linkCodeQuery, linkEligibilityQuery } from './link-queries';
 import { LinkSteps } from './link-steps';
-import { InstallationOptionPanel } from './installation-options';
+import { InstallationCopyBlock } from './installation-copy-block';
+import { installationTabs } from './installation-options';
 import type { LinkStep } from './link-steps';
 
 const NewEnginePlanStep = lazy(async () => {
@@ -54,12 +54,6 @@ const INSTALL_PATH_LABELS: Record<InstallPathLabelKey, () => string> = {
     'docker-compose': () => m.engines_new_tab_docker_compose(),
     'already-running': () => m.engines_new_tab_already_running(),
     'new-project': () => m.engines_new_tab_new_project(),
-};
-
-const INSTALL_OPTION_LABELS: Record<InstallationOption['id'], () => string> = {
-    'new-project': () => m.engines_new_tab_new_project(),
-    ai: () => m.engines_new_tab_ai(),
-    windows: () => 'Windows EXE',
 };
 
 type InstallCommandView = LinkCodeView['installCommands'][number];
@@ -183,30 +177,22 @@ function guideLink(guideUrl: string, anchor: string): string {
     return `${guideUrl}#${anchor}`;
 }
 
-/** Text only: a command is never parsed as markup, and the copy is the exact configured string. */
-function InstallPathPanel(props: { readonly path: InstallCommandView; readonly guideUrl: string }) {
-    const { path, guideUrl } = props;
+function InstallPathPanel(props: {
+    readonly path: InstallCommandView;
+    readonly guideUrl: string;
+    readonly linkUrl: string | null;
+}) {
+    const { path, guideUrl, linkUrl } = props;
     return (
         <div className="flex flex-col gap-3">
-            {path.id === 'compose' ? <p className="text-sm">{m.engines_new_compose_hint()}</p> : null}
-            <div className="overflow-hidden rounded-control border border-hairline bg-(--code-text-bg) text-(--code-text-text)">
-                <div className="flex justify-end px-2 pt-2">
-                    <CopyButton value={path.command} label={m.engines_new_copy()} variant="secondary" showLabel />
-                </div>
-                <pre className="px-3 pt-1 pb-3 font-mono text-sm wrap-anywhere whitespace-pre-wrap">
-                    <code>{path.command}</code>
-                </pre>
-            </div>
-            <p className="text-sm text-text-muted">
-                {m.engines_new_requirements()}{' '}
+            <InstallationCopyBlock value={path.command} />
+            {linkUrl === null ? null : <LinkUrl url={linkUrl} />}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                 <ExternalLink href={guideLink(guideUrl, path.docsAnchor)}>{m.engines_new_docs()}</ExternalLink>
-            </p>
-            {path.id === 'connect' ? (
-                <p className="text-sm">
-                    {m.engines_new_move()}{' '}
+                {path.id === 'connect' ? (
                     <ExternalLink href={guideLink(guideUrl, MOVING_ANCHOR)}>{m.engines_new_move_docs()}</ExternalLink>
-                </p>
-            ) : null}
+                ) : null}
+            </div>
         </div>
     );
 }
@@ -249,7 +235,10 @@ function InstallCommand(props: {
     const remaining = useRemainingMs(props.view.expiresAt);
     const paths = props.view.installCommands;
     const options = props.view.installationOptions;
-    const [selectedId, setSelectedId] = useState<string>(options?.[0]?.id ?? paths[0]?.id ?? '');
+    const [selectedId, setSelectedId] = useState<string>(() => {
+        if (options === undefined) return paths[0]?.id ?? '';
+        return /Windows/i.test(navigator.userAgent) ? 'powershell' : 'posix';
+    });
     // Only observes what the progress panel polls; it never asks on its own.
     const status = useQuery({ ...linkCodeQuery(api, props.view.linkCodeId), enabled: false }).data?.status;
     if (status === 'linked') {
@@ -258,6 +247,21 @@ function InstallCommand(props: {
     if (remaining === 0 || status === 'expired') {
         return <ExpiredBanner onRenew={props.onRenew} renewing={props.renewing} />;
     }
+    const linkInConnectTab = options !== undefined && paths.some((path) => path.id === 'connect');
+    const configuredTabs = paths
+        .filter((path) => options === undefined || path.id !== 'installer')
+        .map((path) => ({
+            id: path.id,
+            label: INSTALL_PATH_LABELS[path.labelKey](),
+            panel: (
+                <InstallPathPanel
+                    path={path}
+                    guideUrl={props.view.installGuideUrl}
+                    linkUrl={linkInConnectTab && path.id === 'connect' ? props.view.linkUrl : null}
+                />
+            ),
+        }));
+
     return (
         <Section
             title={m.engines_new_command_title()}
@@ -271,43 +275,11 @@ function InstallCommand(props: {
                     onSelect={setSelectedId}
                     tabs={
                         options === undefined
-                            ? paths.map((path) => ({
-                                  id: path.id,
-                                  label: INSTALL_PATH_LABELS[path.labelKey](),
-                                  // Keyed, so "Copied" on one command never shows on the next tab's.
-                                  panel: (
-                                      <InstallPathPanel
-                                          key={path.id}
-                                          path={path}
-                                          guideUrl={props.view.installGuideUrl}
-                                      />
-                                  ),
-                              }))
-                            : options.map((option) => ({
-                                  id: option.id,
-                                  label: INSTALL_OPTION_LABELS[option.id](),
-                                  panel: <InstallationOptionPanel key={option.id} option={option} />,
-                              }))
+                            ? configuredTabs
+                            : installationTabs(options, configuredTabs, locale.locale)
                     }
                 />
-                {options === undefined ? null : (
-                    <details className="text-sm">
-                        <summary>{m.engines_new_advanced_installation()}</summary>
-                        <div className="mt-3 flex flex-col gap-4">
-                            {paths
-                                .filter((path) => path.id !== 'installer')
-                                .map((path) => (
-                                    <div key={path.id}>
-                                        <p className="mb-2 font-medium">{INSTALL_PATH_LABELS[path.labelKey]()}</p>
-                                        <InstallPathPanel path={path} guideUrl={props.view.installGuideUrl} />
-                                    </div>
-                                ))}
-                            {props.view.linkUrl === null ? null : <LinkUrl url={props.view.linkUrl} />}
-                            <ExternalLink href={props.view.installGuideUrl}>{m.engines_new_docs()}</ExternalLink>
-                        </div>
-                    </details>
-                )}
-                {options !== undefined || props.view.linkUrl === null ? null : <LinkUrl url={props.view.linkUrl} />}
+                {!linkInConnectTab && props.view.linkUrl !== null ? <LinkUrl url={props.view.linkUrl} /> : null}
                 <p className="text-sm text-text-muted" aria-live="off">
                     {m.engines_new_command_body({ time: locale.formatDateTime(new Date(props.view.expiresAt)) })}
                 </p>

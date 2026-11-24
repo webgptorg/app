@@ -12,13 +12,13 @@ Both metadata requests share a ten-second deadline and each response is capped a
 
 At link-code issuance, optional `installationOptions` separates these payloads:
 
-| Kind       | UI                    | Payload                                                             |
-| ---------- | --------------------- | ------------------------------------------------------------------- |
-| `command`  | New project (default) | One line each for Bash/zsh, Windows PowerShell and an Ubuntu VPS    |
-| `ai`       | Install with AI       | CS/EN prompts for this computer or an existing VPS over SSH         |
-| `download` | Windows EXE           | Exact release URL, SHA-256, checked PowerShell pairing continuation |
+| Kind       | UI                 | Payload                                                             |
+| ---------- | ------------------ | ------------------------------------------------------------------- |
+| `command`  | Terminal (default) | One line each for Bash/zsh, Windows PowerShell and an Ubuntu VPS    |
+| `ai`       | Install with AI    | CS/EN prompts for this computer or an existing VPS over SSH         |
+| `download` | Windows EXE        | Exact release URL, SHA-256, checked PowerShell pairing continuation |
 
-Legacy configurations keep their original tabs. `INSTALL_COMMANDS` still validates its 512-character shell templates and one placeholder; long prompts/downloads never enter it. With new metadata, the generated local block is also retained as the legacy `installer` command, and configured connect/Compose choices move behind a secondary disclosure.
+Legacy configurations keep their original tabs. `INSTALL_COMMANDS` still validates its 512-character shell templates and one placeholder; long prompts/downloads never enter it. With new metadata, the generated local block is also retained as the legacy `installer` command, and each configured connect or Compose command has its own tab.
 
 Each command is one line: `curl -fsSL <origin>/install.sh | PTBK_LINK=<code> bash`, `curl -fsSL <origin>/install-server.sh | PTBK_LINK=<code> bash`, or `$env:PTBK_LINK='<code>'; irm <origin>/install.ps1 | iex`. The code travels in the environment, never in argv, and each script removes it from its environment before starting anything. The scripts are public Worker routes (`auth: public`, `public-read-ip` rate limit, no input) that render the selected release into templates kept as real files under `src/domain/registration/install-scripts/`. They carry no pairing data.
 
@@ -30,7 +30,7 @@ The Windows script downloads the exact published x64 EXE, checks its SHA-256 and
 
 The Ubuntu VPS script uses the upstream installer. It verifies the immutable script before elevation, passes the link on stdin and runs the engine as the dedicated `promptbook` user. All paths leave project placement and first access to the engine.
 
-The command panel explains how to open Terminal on macOS/Linux, PowerShell on Windows, or an SSH session for Ubuntu. It asks users to paste the copied command and explains that no folder selection is needed. The continuation names the first-access link in plain language, states that connection precedes agenda setup, and explains automatic progress and saved setup. These instructions are available in Czech and English.
+The installation page opens the terminal command for the browser’s platform. Other terminal targets, AI prompts, the Windows EXE and configured commands share one tab list. Each command can be copied directly. The running-project tab also offers the pairing address when available.
 
 AI prompts carry the same one-line commands, preserve data/sign-ins and native approvals, and leave agenda/harness choices to the engine UI. No engine name is represented as a known project path. Dashboard and its payloads never know an owner setup secret.
 
