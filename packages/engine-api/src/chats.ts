@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AgentParams } from './agents';
 import {
     AgentId,
+    AiToolId,
     ChatId,
     Cursor,
     MemberId,
@@ -192,6 +193,11 @@ export const ChatRecheck = z.strictObject({
     nextAt: Timestamp,
     /** Attempts scheduled so far. */
     rounds: z.int().min(1),
+    /**
+     * Set when the reply failed because this AI tool needs signing in again (`ai-tool-sign-in-required`), so the UI can
+     * offer "Sign in again"; `null` for any other failure and from engines without `ai-tools@1` (since 2026-11-24).
+     */
+    aiToolId: AiToolId.nullable().default(null),
 });
 export type ChatRecheck = z.infer<typeof ChatRecheck>;
 

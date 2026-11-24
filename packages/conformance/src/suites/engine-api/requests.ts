@@ -83,6 +83,7 @@ const BODIES: Partial<Record<EngineApiRouteId, BodyBuilder>> = {
             url: 'https://mcp.conformance.invalid/',
         }),
     transcribeVoiceClip: () => Promise.resolve(silentWav(SILENT_CLIP_MS)),
+    startAiToolSignIn: () => Promise.resolve({ method: 'account' }),
     speakChatMessage: () => Promise.resolve({ formats: [...SPEECH_FORMATS] }),
     testAgentDraft: (world) =>
         Promise.resolve({ book: validBook(world.name('draft')), messages: [{ role: 'user', content: CHAT_MESSAGE }] }),

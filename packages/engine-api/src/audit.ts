@@ -79,6 +79,9 @@ export const AUDIT_ACTIONS = [
     'browser.session.end',
     'browser.channel.attach',
     'browser.help.dismiss',
+    'ai-tool.sign-in.start',
+    'ai-tool.sign-in.complete',
+    'ai-tool.sign-out',
     'engine.update.install',
     'ui.update.install',
 ] as const;
@@ -118,6 +121,7 @@ export const AUDIT_TARGET_KINDS = [
     'integration',
     'browser-session',
     'browser-help-request',
+    'ai-tool',
 ] as const;
 export const AuditTargetKind = z.enum(AUDIT_TARGET_KINDS);
 

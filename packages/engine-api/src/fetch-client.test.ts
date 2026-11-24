@@ -561,7 +561,8 @@ describe('tolerant reading', () => {
             { kind: 'unknown', tool: null, text: 'Outline', level: 'unknown' },
         ]);
         expect(read.data.tasks[0]?.state).toBe('unknown');
-        expect(read.data.recheck).toEqual(busy.recheck);
+        // An engine from before 2026-11-24 names no AI tool.
+        expect(read.data.recheck).toEqual({ ...busy.recheck, aiToolId: null });
         const entries = await client.chats.listEntries(ChatId.parse('c1'), {}, signal());
         if (entries.kind !== 'ok') throw new Error('expected a page');
         expect(entries.data.items).toEqual([linked, progress]);

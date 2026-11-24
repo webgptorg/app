@@ -1108,6 +1108,7 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                 { id: 'agent-management', version: 1 },
                 { id: 'onboarding', version: 1 },
                 { id: 'wallet', version: 1 },
+                { id: 'ai-tools', version: 1 },
             ]);
             expect(info.engineId).toMatch(/^[a-z2-7]{26}$/);
             const first = ok(

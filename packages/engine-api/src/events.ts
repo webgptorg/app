@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AgentRunState } from './agents';
+import { AiToolChangedEvent } from './capabilities/ai-tools';
 import { ActivityEvent, parseActivity } from './capabilities/activity';
 import type { ActivityItem } from './capabilities/activity';
 import { FileChangedEvent } from './capabilities/files';
@@ -22,6 +23,7 @@ const coreEvents = [
     IntegrationChangedEvent,
     BrowserTabChangedEvent,
     BrowserHelpChangedEvent,
+    AiToolChangedEvent,
 ] as const;
 const CoreEngineEvent = z.discriminatedUnion('type', [...coreEvents, RunChangedEvent, TaskChangedEvent]);
 

@@ -315,6 +315,17 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
                   }),
             session: (subject) => Promise.resolve({ cookie: `${COOKIE}=${signIn(subject)}` }),
             ...(options.liveBrowser === false ? {} : { liveBrowser }),
+            aiTools: {
+                expireSignIn: () => {
+                    const tool = core.controller.aiTools().find(({ status }) => status !== 'not-installed');
+                    if (tool === undefined) throw new Error('the fake has no installed AI tool');
+                    return Promise.resolve(core.controller.expireAiToolSignIn(tool.id).id);
+                },
+                renewSignIn: (aiToolId) => {
+                    core.controller.renewAiToolSignIn(aiToolId);
+                    return Promise.resolve();
+                },
+            },
             walletRequest: (origin) =>
                 Promise.resolve(
                     core.controller.requestWalletLogin({

@@ -23,6 +23,7 @@ import type { SecurityOverview } from '../security';
 import type { Session } from '../sessions';
 import type { Settings } from '../settings';
 import type { InMemoryVoice } from './voice';
+import type { InMemoryAiTools } from './ai-tools';
 
 export interface AgentRecord {
     agent: Agent;
@@ -88,6 +89,8 @@ export interface InMemoryState {
     readonly accessRequests: Map<string, AccessRequestRecord>;
     readonly onboarding: OnboardingRecord;
     readonly voice: InMemoryVoice;
+    /** The project's AI tools and the sign-ins in progress (`ai-tools@1`). */
+    readonly aiTools: InMemoryAiTools;
     readonly folders: Map<string, Folder>;
     readonly agents: Map<string, AgentRecord>;
     readonly chats: Map<string, ChatRecord>;

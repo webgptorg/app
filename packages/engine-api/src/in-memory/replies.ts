@@ -5,6 +5,7 @@ import type { EngineApiStreamItem } from '../route';
 import type { Agent } from '../agents';
 import type { EngineContext, HandlerContext, HandlerResult, ReplyScript, ScriptedReply } from './kit';
 import { fail, ok } from './kit';
+import { blockingAiTool } from './ai-tools';
 import { advanceRun, runForMessage } from './runs';
 import type { ChatRecord } from './threads';
 import { settleMessage, touch } from './threads';
@@ -32,6 +33,17 @@ export function startTurn(ctx: EngineContext, record: ChatRecord, turn: NewTurn)
         prompt: turn.prompt,
         ...(turn.rounds === undefined ? {} : { rounds: turn.rounds }),
     });
+    // The harness cannot answer without its sign-in: the turn fails before any step, naming the tool to sign in again.
+    const blocked = blockingAiTool(ctx);
+    if (blocked !== null) {
+        const name = ctx.state.aiTools.tools.get(blocked)?.fake.name ?? blocked;
+        endTurn(ctx, record, working, {
+            kind: 'failed',
+            cause: `${name} needs signing in again before agents can answer.`,
+            aiToolId: blocked,
+        });
+        return;
+    }
     const steps = (turn.script.steps ?? []).map((step) => ({ step: toStep(step), delayMs: step.delayMs }));
     const write = (announce: boolean): void => {
         const reply = startText(ctx, record, working, {

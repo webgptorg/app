@@ -401,6 +401,37 @@ export interface EngineApiClient {
             signal: AbortSignal,
         ): Result<'speakChatMessage'>;
     };
+    /**
+     * `ai-tools@1`: the project's AI tools. A sign-in belongs to the session that started it; poll `getSignIn` while
+     * it is `working` or its login waits. A key goes in `answerSignIn` only, and comes back nowhere.
+     */
+    readonly aiTools: {
+        list(signal: AbortSignal): Result<'listAiTools'>;
+        get(aiToolId: Param<'getAiTool', 'aiToolId'>, signal: AbortSignal): Result<'getAiTool'>;
+        check(aiToolId: Param<'checkAiTool', 'aiToolId'>, signal: AbortSignal): Result<'checkAiTool'>;
+        startSignIn(
+            aiToolId: Param<'startAiToolSignIn', 'aiToolId'>,
+            body: Body<'startAiToolSignIn'>,
+            signal: AbortSignal,
+        ): Result<'startAiToolSignIn'>;
+        getSignIn(
+            aiToolId: Param<'getAiToolSignIn', 'aiToolId'>,
+            signInId: Param<'getAiToolSignIn', 'signInId'>,
+            signal: AbortSignal,
+        ): Result<'getAiToolSignIn'>;
+        answerSignIn(
+            aiToolId: Param<'answerAiToolSignIn', 'aiToolId'>,
+            signInId: Param<'answerAiToolSignIn', 'signInId'>,
+            body: Body<'answerAiToolSignIn'>,
+            signal: AbortSignal,
+        ): Result<'answerAiToolSignIn'>;
+        cancelSignIn(
+            aiToolId: Param<'cancelAiToolSignIn', 'aiToolId'>,
+            signInId: Param<'cancelAiToolSignIn', 'signInId'>,
+            signal: AbortSignal,
+        ): Result<'cancelAiToolSignIn'>;
+        signOut(aiToolId: Param<'signOutAiTool', 'aiToolId'>, signal: AbortSignal): Result<'signOutAiTool'>;
+    };
     /** Items of unknown kinds read as `{ kind: 'unknown' }`; items without a valid base are dropped and counted. */
     readonly activity: {
         list(query: Query<'listActivity'>, signal: AbortSignal): Result<'listActivity'>;
@@ -599,6 +630,19 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
                 call(R.transcribeVoiceClip, { params: { chatId }, query, body: clip }, signal),
             speak: (chatId, messageId, body, signal) =>
                 call(R.speakChatMessage, { params: { chatId, messageId }, body }, signal),
+        },
+        aiTools: {
+            list: (signal) => call(R.listAiTools, {}, signal),
+            get: (aiToolId, signal) => call(R.getAiTool, { params: { aiToolId } }, signal),
+            check: (aiToolId, signal) => call(R.checkAiTool, { params: { aiToolId } }, signal),
+            startSignIn: (aiToolId, body, signal) => call(R.startAiToolSignIn, { params: { aiToolId }, body }, signal),
+            getSignIn: (aiToolId, signInId, signal) =>
+                call(R.getAiToolSignIn, { params: { aiToolId, signInId } }, signal),
+            answerSignIn: (aiToolId, signInId, body, signal) =>
+                call(R.answerAiToolSignIn, { params: { aiToolId, signInId }, body }, signal),
+            cancelSignIn: (aiToolId, signInId, signal) =>
+                call(R.cancelAiToolSignIn, { params: { aiToolId, signInId } }, signal),
+            signOut: (aiToolId, signal) => call(R.signOutAiTool, { params: { aiToolId } }, signal),
         },
         activity: {
             list: (query, signal) => call(R.listActivity, { query }, signal),

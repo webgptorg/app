@@ -81,6 +81,7 @@ const CAPABILITY_BY_PATH = [
     ['/browser-help-requests', KNOWN_CAPABILITIES.browserTab],
     ['/onboarding', KNOWN_CAPABILITIES.onboarding],
     ['/wallet', KNOWN_CAPABILITIES.wallet],
+    ['/ai-tools', KNOWN_CAPABILITIES.aiTools],
 ] as const;
 
 /** Core features an engine may leave out: these routes share paths with core routes that stay, so they go by ID. */
@@ -112,8 +113,11 @@ function expectedCapability(route: RouteDefinition) {
     );
 }
 
-/** POSTs that read and change nothing, so the read permission of what they read is enough. */
-const READ_ONLY_POSTS: ReadonlySet<string> = new Set(['speakChatMessage']);
+/**
+ * POSTs that read and change nothing, or only refresh what they read (an AI tool's check), so the read permission of
+ * what they read is enough.
+ */
+const READ_ONLY_POSTS: ReadonlySet<string> = new Set(['speakChatMessage', 'checkAiTool']);
 
 const capabilityRoutes = ENGINE_API_ROUTE_LIST.filter((route) => expectedCapability(route) !== undefined);
 
@@ -240,18 +244,23 @@ describe('capability routes', () => {
         expect(ENGINE_API_ROUTES.checkIntegration.permission).toBe('integrations.manage');
     });
 
-    it('takes a credential only in Wallet writes and a secret setup answer, and returns none but the new API token', () => {
+    it('takes a credential only in Wallet writes and secret answers, and returns none but the new API token', () => {
         const walletWrites: readonly RouteDefinition[] = [
             ENGINE_API_ROUTES.addWalletRecord,
             ENGINE_API_ROUTES.updateWalletRecord,
         ];
-        const takesCredential: readonly RouteDefinition[] = [...walletWrites, ENGINE_API_ROUTES.answerOnboarding];
+        const takesCredential: readonly RouteDefinition[] = [
+            ...walletWrites,
+            ENGINE_API_ROUTES.answerOnboarding,
+            ENGINE_API_ROUTES.answerAiToolSignIn,
+        ];
         for (const route of capabilityRoutes.filter((candidate) => candidate.id !== 'createApiToken')) {
             expect(credentialKeys(route), route.id).toEqual([]);
             if (!takesCredential.includes(route)) expect(requestCredentialKeys(route), route.id).toEqual([]);
         }
         for (const route of walletWrites) expect(requestCredentialKeys(route).sort()).toEqual(['password', 'value']);
         expect(requestCredentialKeys(ENGINE_API_ROUTES.answerOnboarding)).toEqual(['value']);
+        expect(requestCredentialKeys(ENGINE_API_ROUTES.answerAiToolSignIn)).toEqual(['value']);
     });
 
     it('lists chats across agents with chats.read and filters activity per item', () => {

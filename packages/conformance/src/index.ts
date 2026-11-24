@@ -11,6 +11,7 @@ export type {
 } from './check';
 export { CheckFailure, CheckSkip, Findings, PASS, fail, skip } from './check';
 export type {
+    AiToolsTarget,
     ConformanceTarget,
     LiveBrowserPage,
     LiveBrowserTarget,

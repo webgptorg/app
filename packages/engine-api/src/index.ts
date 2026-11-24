@@ -34,6 +34,7 @@ export * from './capabilities/live-channel';
 export * from './capabilities/onboarding';
 export * from './capabilities/wallet';
 export * from './capabilities/voice';
+export * from './capabilities/ai-tools';
 export { stripUnknownFields, toTolerant } from './tolerant';
 
 export { createEngineApiClient, EngineApiContractError } from './client';

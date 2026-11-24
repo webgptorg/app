@@ -1,6 +1,7 @@
 import { MAX_REPLY_STEP_TEXT_LENGTH, MAX_REPLY_STEPS, ReplyStep } from '../chats';
 import type { Message, ParticipantRef, ReplyStepKind, ReplyStepLevel } from '../chats';
 import { Timestamp } from '../common';
+import type { AiToolId } from '../common';
 import type { EngineContext } from './kit';
 import { time } from './kit';
 import type { ChatRecord, WorkingRecord } from './threads';
@@ -132,7 +133,7 @@ export function startText(
 export type TurnOutcome =
     | { readonly kind: 'completed' }
     | { readonly kind: 'cancelled' }
-    | { readonly kind: 'failed'; readonly cause: string };
+    | { readonly kind: 'failed'; readonly cause: string; readonly aiToolId?: AiToolId | null };
 
 /**
  * The turn is over; a failed one leaves a recheck the engine attempts at `nextAt`, or sooner when asked to. Callers
@@ -149,6 +150,7 @@ export function endTurn(ctx: EngineContext, record: ChatRecord, working: Working
             rounds: working.rounds + 1,
             author: working.author,
             prompt: working.prompt,
+            aiToolId: outcome.aiToolId ?? null,
         };
     }
 }

@@ -1,4 +1,4 @@
-import type { Diagnostic, ProblemDetails } from './common';
+import type { AiToolId, Diagnostic, ProblemDetails } from './common';
 import type { Permission } from './permissions';
 import { PROBLEM_STATUS, problemType } from './problem-codes';
 import type { ProblemCode } from './problem-codes';
@@ -9,6 +9,7 @@ export interface ProblemExtras {
     readonly requiredPermission?: Permission;
     readonly diagnostics?: readonly Diagnostic[];
     readonly attemptsRemaining?: number;
+    readonly aiToolId?: AiToolId;
 }
 
 /** A problem with the status, `type` and title its code always has, so engines cannot drift apart. */
@@ -24,5 +25,6 @@ export function createProblem(code: ProblemCode, extras: ProblemExtras = {}): Pr
         ...(extras.requiredPermission === undefined ? {} : { requiredPermission: extras.requiredPermission }),
         ...(extras.diagnostics === undefined ? {} : { diagnostics: [...extras.diagnostics] }),
         ...(extras.attemptsRemaining === undefined ? {} : { attemptsRemaining: extras.attemptsRemaining }),
+        ...(extras.aiToolId === undefined ? {} : { aiToolId: extras.aiToolId }),
     };
 }

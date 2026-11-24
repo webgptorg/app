@@ -13,7 +13,7 @@ Spec: [Engine security baseline](../spec/zero-trust-spec.md#engine-security-base
 
 ## Route groups
 
-111 operations today. Every group must be served; capability groups only if the engine advertises the capability.
+119 operations today. Every group must be served; capability groups only if the engine advertises the capability.
 
 | Group                             | Paths                                                                                                                                                                                 | Ops | Source                                                                              |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | ----------------------------------------------------------------------------------- |
@@ -42,6 +42,7 @@ Spec: [Engine security baseline](../spec/zero-trust-spec.md#engine-security-base
 | `browser-tab@1`                   | `/browser-sessions` with `{sessionId}`, `control`, `hand-back`, `end`; `/browser-tabs` with `{tabId}/watch`, `control`; `/browser-help-requests` with `{requestId}`, `dismiss`: draft | 11  | [live.ts](../../packages/engine-api/src/capabilities/live.ts)                       |
 | Reserved live audio               | `/chats/{chatId}/live-audio`: draft, design only (`live-audio@1`; `live-video@1` has no routes)                                                                                       | 1   | [live.ts](../../packages/engine-api/src/capabilities/live.ts)                       |
 | `voice-input@1`, `voice-output@1` | `/chats/{chatId}/transcriptions`, `/chats/{chatId}/messages/{messageId}/speech`                                                                                                       | 2   | [voice.ts](../../packages/engine-api/src/capabilities/voice.ts)                     |
+| `ai-tools@1`                      | `/ai-tools`, `/ai-tools/{aiToolId}` with `check`, `credentials`, `sign-ins` and `sign-ins/{signInId}` with `answer`                                                                   | 8   | [ai-tools.ts](../../packages/engine-api/src/capabilities/ai-tools.ts)               |
 
 `draft` routes have their shape designed but no behaviour committed: an engine may answer them with 404 `not-found`. The reserved live audio route is the exception: no engine advertises `live-audio@1` or `live-video@1`, so it answers 404 `capability-not-supported`. `browser-tab@1` is a draft capability since 2026-11-20 with a reference implementation and conformance checks; its WebSocket channel and the rules around it are in [live-sessions.md](live-sessions.md).
 
@@ -193,7 +194,7 @@ Capability `access-requests@1`, since API 1.12.0. People an organization invites
 ## Step-up
 
 - Routes flagged `stepUp` (`x-step-up` in OpenAPI) need a fresh passkey assertion. Without one, the engine answers 401 `step-up-required`; the UI asks for the passkey in a popup on `STEP_UP_PATH` ([gateway.md, Step-up](gateway.md#step-up)) and sends the same request again. The in-memory engine audits a refused step-up as `denied`; the engine should too.
-- Flagged today: `PUT /settings/update-policy`, `PUT /settings/dashboard-removals`, `POST /api-tokens`, `DELETE /passkeys/{passkeyId}`, `DELETE /me/passkeys/{passkeyId}`, `PATCH /members/{memberId}`, `DELETE /members/{memberId}`, `POST /invites` and `POST /access-requests/{accessRequestId}/approve`. Which further routes need it is an open point.
+- Flagged today: `PUT /settings/update-policy`, `PUT /settings/dashboard-removals`, `POST /api-tokens`, `DELETE /passkeys/{passkeyId}`, `DELETE /me/passkeys/{passkeyId}`, `PATCH /members/{memberId}`, `DELETE /members/{memberId}`, `POST /invites`, `POST /access-requests/{accessRequestId}/approve`, `POST /ai-tools/{aiToolId}/sign-ins` and `DELETE /ai-tools/{aiToolId}/credentials`. Which further routes need it is an open point.
 
 ## Audit
 
@@ -252,13 +253,25 @@ Capabilities `voice-input@1` and `voice-output@1` (2026-11-20, [voice.ts](../../
 - While `voice-input@1` is advertised, `Permissions-Policy` sends `microphone=(self)` ([gateway.md](gateway.md#security-headers)).
 - The typed client groups them as `client.voice.transcribe(chatId, clip, query, signal)` and `client.voice.speak(chatId, messageId, body, signal)`; `speak` resolves with a `Blob` whose `type` is the chosen format.
 
+## AI tools
+
+Capability `ai-tools@1` (2026-11-24, [ai-tools.ts](../../packages/engine-api/src/capabilities/ai-tools.ts), design and reasons in [ai-tools.md](ai-tools.md)): the project's AI tools (the engine's harnesses), their status, Check now, and signing one in again or with an API key from the browser.
+
+- `GET /ai-tools` and `GET /ai-tools/{aiToolId}` (`ai-tools.read`): `AiTool { id, name, version, status, auth, signInMethods, checkedAt, checking, problem }`. `status` is `signed-in`, `needs-sign-in`, `error` or `not-installed`; `problem { code, message }` is set exactly when the tool is not `signed-in`, with `code` from `AI_TOOL_PROBLEM_CODES`. `auth` names the method (`account` with the provider's account name, or `api-key`), never the key.
+- `POST /ai-tools/{aiToolId}/check` (`ai-tools.read`): 202 with the tool, `checking` until the real call ends; `ai-tool.changed` follows.
+- `POST /ai-tools/{aiToolId}/sign-ins` (`ai-tools.manage`, step-up) with `{ method }` answers 201 `AiToolSignIn`, whose `prompt` is onboarding's `harness-login` or `secret` prompt. `GET` and `DELETE /ai-tools/{aiToolId}/sign-ins/{signInId}` read and abandon it; `POST …/answer` takes `{ promptId, action: 'answer', answer }` (onboarding's `secret` or `harness-login` answer) or `{ promptId, action: 'alternative', alternativeId }`. A sign-in belongs to the gateway session that started it; new credentials replace the old ones only once a real call verified them.
+- `DELETE /ai-tools/{aiToolId}/credentials` (`ai-tools.manage`, step-up) signs the tool out.
+- Problems: 409 `ai-tool-not-installed`, 409 `ai-tool-sign-in-stale`, 422 `ai-tool-method-unsupported`, and 503 `ai-tool-sign-in-required` with the extension `aiToolId` for work that cannot run until a tool is signed in again. A failed chat reply's `recheck.aiToolId` names that tool too.
+- Audit actions `ai-tool.sign-in.start`, `ai-tool.sign-in.complete` and `ai-tool.sign-out` on target kind `ai-tool`; never a key or code in `details`.
+- The typed client groups them as `client.aiTools.list`, `get`, `check`, `startSignIn`, `getSignIn`, `answerSignIn`, `cancelSignIn` and `signOut`.
+
 ## Agent origin
 
 Every `Agent` carries `origin` (2026-11-05), as the Reborn engine models agents ([core agents](../../packages/engine-api/src/agents.ts), Reborn `specs/agents/core-agents.md` and `system-agents.md`): `content` for the project's own agents, `core` for the roles the engine prepares as ordinary project Books (Chatter, Adam, Tasker, Router, Fixer, Teacher), `system` for agents the engine defines itself with no project Book (Expert). Origin grants nothing. `GET /agents?origin=` takes one origin or a comma-separated set; the UI lists `content` agents first and `core,system` in a quiet "Built-in" section, each with `profile.description` as its one-line role. Agents created through `POST /agents` are `content`. A `system` agent belongs to the engine: `PATCH`, `DELETE`, `restore` and `PUT .../source` on it are 409 `agent-engine-owned` and change nothing. The UI lists Chatter first, then the other core agents, then the system ones.
 
 ## Capabilities
 
-- `GET /engine` (`EngineInfo`) returns `capabilities: [{ id, version }]` (`CapabilityRef`) and `engineId`. `KNOWN_CAPABILITIES` lists `runs@1`, `tasks@1`, `files@1`, `triggers@1`, `integrations@1`, `test-chat@1`, `access-requests@1`, `file-scanning@1`, `members@1`, `api-tokens@1`, `audit@1`, `book-editor@1`, `agent-management@1`, `voice-input@1` and `voice-output@1` ([capability.ts](../../packages/engine-api/src/capabilities/capability.ts)).
+- `GET /engine` (`EngineInfo`) returns `capabilities: [{ id, version }]` (`CapabilityRef`) and `engineId`. `KNOWN_CAPABILITIES` lists `runs@1`, `tasks@1`, `files@1`, `triggers@1`, `integrations@1`, `test-chat@1`, `access-requests@1`, `file-scanning@1`, `members@1`, `api-tokens@1`, `audit@1`, `book-editor@1`, `agent-management@1`, `voice-input@1`, `voice-output@1` and `ai-tools@1` ([capability.ts](../../packages/engine-api/src/capabilities/capability.ts)).
 - **The engine is the source.** The UI shows a screen only when the engine reports it, so features the Reborn engine does not have are capabilities too, not core (2026-11-05):
   - `members@1`: roles, invites, role changes and removals (`PATCH`/`DELETE /members/{memberId}`, `/invites`). `GET /members`, `GET /members/{memberId}` and `/me` stay core. Without it, access is binary: whoever can sign in is the one level of member.
   - `api-tokens@1`: every `/api-tokens` route.
@@ -293,6 +306,7 @@ Every `Agent` carries `origin` (2026-11-05), as the Reborn engine models agents 
 | Events and SSE             | `EngineEvent`, `ReplyStreamEvent`, `encodeSseMessage`, `parseSseStream`                                                                                                                  |
 | Capabilities and activity  | `CapabilityRef`, `KNOWN_CAPABILITIES`, `supports`, `parseActivity`, `ACTIVITY_PERMISSIONS`                                                                                               |
 | Voice                      | `VOICE_ROUTES`, `VOICE_CLIP_FORMATS`, `SPEECH_FORMATS`, `MAX_VOICE_CLIP_BYTES`, `MAX_VOICE_CLIP_MS`, `MAX_SPEECH_TEXT_LENGTH`, `TranscriptDraft`, `normalizeMediaType`, `matchMediaType` |
+| AI tools                   | `AI_TOOL_ROUTES`, `AiTool`, `AiToolSignIn`, `AI_TOOL_STATUSES`, `AI_TOOL_PROBLEM_CODES`, `AnswerAiToolSignInBody`                                                                        |
 | Audit                      | `AuditEntry`, `AUDIT_ACTIONS`, `AUDIT_TARGET_KINDS`, `AuditVerification`                                                                                                                 |
 | Clients (what the UI uses) | `EngineApiClient`, `createFetchEngineApiClient`, `toTolerant`                                                                                                                            |
 
@@ -300,7 +314,7 @@ All from `@ptbk/engine-api`, entry [index.ts](../../packages/engine-api/src/inde
 
 ## Conformance
 
-C-05's v1 suite covers this API: authentication (every route without credentials gives 401 problem+json), schemas, input strictness, pagination, Wallet secrets (`engine-api.secrets.never-returned`: a canary password or field value never appears in any response, plain, base64 or hex; `engine-api.wallet.*`), agents, chat streaming with `Last-Event-ID`, audit (`actor.memberId` and the hash chain), permissions (403 `forbidden` with `requiredPermission` and a `denied` audit entry for every mutating route), the security panel, cross-member access and voice (`engine-api.voice.*`, [voice.md](voice.md#conformance)). Every check ID is in [checklist.md](checklist.md), and the [package README](../../packages/conformance/README.md) says what each one does.
+C-05's v1 suite covers this API: authentication (every route without credentials gives 401 problem+json), schemas, input strictness, pagination, Wallet secrets (`engine-api.secrets.never-returned`: a canary password or field value never appears in any response, plain, base64 or hex; `engine-api.wallet.*`), agents, chat streaming with `Last-Event-ID`, audit (`actor.memberId` and the hash chain), permissions (403 `forbidden` with `requiredPermission` and a `denied` audit entry for every mutating route), the security panel, cross-member access, voice (`engine-api.voice.*`, [voice.md](voice.md#conformance)) and AI tools (`engine-api.ai-tools.*`, [ai-tools.md](ai-tools.md#conformance)). Every check ID is in [checklist.md](checklist.md), and the [package README](../../packages/conformance/README.md) says what each one does.
 
 ## Reference implementation
 

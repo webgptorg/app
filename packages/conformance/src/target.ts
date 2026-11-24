@@ -42,6 +42,18 @@ export interface ConformanceTarget {
     readonly walletRequest?: (origin: string) => Promise<string>;
     /** How the checks reach `browser-tab@1`'s channel and test-mode levers; without it those checks skip. */
     readonly liveBrowser?: LiveBrowserTarget;
+    /** Test-mode levers for `ai-tools@1`; without them `engine-api.ai-tools.sign-in-required` skips. */
+    readonly aiTools?: AiToolsTarget;
+}
+
+export interface AiToolsTarget {
+    /**
+     * The provider stops accepting the sign-in of the AI tool new chat turns run on, as when its refresh token is
+     * rotated away; answers that tool's ID.
+     */
+    expireSignIn(): Promise<string>;
+    /** The provider accepts that sign-in again, as after signing in on the host. */
+    renewSignIn(aiToolId: string): Promise<void>;
 }
 
 /** One event on a live channel as the test sees it, in arrival order. */

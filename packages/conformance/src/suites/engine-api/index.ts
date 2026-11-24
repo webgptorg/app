@@ -2,6 +2,7 @@ import { ENGINE_API_ROUTES } from '@ptbk/engine-api';
 
 import type { ConformanceSuite } from '../../check';
 import { ACTIVITY_CHECKS } from './activity';
+import { AI_TOOL_CHECKS } from './ai-tools';
 import { EngineApi } from './api';
 import { AGENT_CHECKS } from './agents';
 import { AUDIT_CHECKS } from './audit';
@@ -49,6 +50,7 @@ export const ENGINE_API_SUITE: ConformanceSuite = {
         ...LIVE_CHECKS,
         ...ONBOARDING_CHECKS,
         ...VOICE_CHECKS,
+        ...AI_TOOL_CHECKS,
         ...ACTIVITY_CHECKS,
         ...AUDIT_CHECKS,
         ...PERMISSION_CHECKS,
