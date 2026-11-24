@@ -43,6 +43,7 @@ Spec: [Engine security baseline](../spec/zero-trust-spec.md#engine-security-base
 | Reserved live audio               | `/chats/{chatId}/live-audio`: draft, design only (`live-audio@1`; `live-video@1` has no routes)                                                                                       | 1   | [live.ts](../../packages/engine-api/src/capabilities/live.ts)                       |
 | `voice-input@1`, `voice-output@1` | `/chats/{chatId}/transcriptions`, `/chats/{chatId}/messages/{messageId}/speech`                                                                                                       | 2   | [voice.ts](../../packages/engine-api/src/capabilities/voice.ts)                     |
 | `ai-tools@1`                      | `/ai-tools`, `/ai-tools/{aiToolId}` with `check`, `credentials`, `sign-ins` and `sign-ins/{signInId}` with `answer`                                                                   | 8   | [ai-tools.ts](../../packages/engine-api/src/capabilities/ai-tools.ts)               |
+| `updates@1`                       | `/updates/ui/check`, and its fields in `/security`                                                                                                                                    | 1   | [updates.ts](../../packages/engine-api/src/capabilities/updates.ts)                 |
 
 `draft` routes have their shape designed but no behaviour committed: an engine may answer them with 404 `not-found`. The reserved live audio route is the exception: no engine advertises `live-audio@1` or `live-video@1`, so it answers 404 `capability-not-supported`. `browser-tab@1` is a draft capability since 2026-11-20 with a reference implementation and conformance checks; its WebSocket channel and the rules around it are in [live-sessions.md](live-sessions.md).
 
@@ -217,6 +218,8 @@ Capability `access-requests@1`, since API 1.12.0. People an organization invites
 - **Heartbeat:** the last body **verbatim** with the exact `Ptbk-Signature` header value sent with it ([heartbeat.md](heartbeat.md)), and `clockSkew`: the engine's clock minus the dashboard's `serverTime` from the last `stale-timestamp` refusal, `null` while unknown or once a beat is accepted again.
 - **Outbound destinations:** every destination the engine contacts.
 
+- **Updates (`updates@1`, additive under API 1.15.0):** `update.checkedAt` and `update.command` (the one line that updates the engine on its host), and `ui.nextCheckAt` (when the next scheduled UI check is due). Check-now is `POST /updates/ui/check`. All in [updates.md](updates.md).
+
 The fields added in API 1.3.0 default to `null` or `[]`, so a client reads a 1.2 engine's answer; an engine on 1.3 sends them all. Since API 1.10.0, `ui.lastUpdateCheck.eligibleAt` is when a delayed release becomes eligible, set exactly when `reason` is `delay-not-elapsed` (`null` otherwise and from older engines), so the owner sees when it installs. The client reads an update outcome, refusal reason, revocation reason or certificate status it does not know as `unknown`.
 
 ## Onboarding
@@ -271,7 +274,7 @@ Every `Agent` carries `origin` (2026-11-05), as the Reborn engine models agents 
 
 ## Capabilities
 
-- `GET /engine` (`EngineInfo`) returns `capabilities: [{ id, version }]` (`CapabilityRef`) and `engineId`. `KNOWN_CAPABILITIES` lists `runs@1`, `tasks@1`, `files@1`, `triggers@1`, `integrations@1`, `test-chat@1`, `access-requests@1`, `file-scanning@1`, `members@1`, `api-tokens@1`, `audit@1`, `book-editor@1`, `agent-management@1`, `voice-input@1`, `voice-output@1` and `ai-tools@1` ([capability.ts](../../packages/engine-api/src/capabilities/capability.ts)).
+- `GET /engine` (`EngineInfo`) returns `capabilities: [{ id, version }]` (`CapabilityRef`) and `engineId`. `KNOWN_CAPABILITIES` lists `runs@1`, `tasks@1`, `files@1`, `triggers@1`, `integrations@1`, `test-chat@1`, `access-requests@1`, `file-scanning@1`, `members@1`, `api-tokens@1`, `audit@1`, `book-editor@1`, `agent-management@1`, `voice-input@1`, `voice-output@1`, `ai-tools@1` and `updates@1` ([capability.ts](../../packages/engine-api/src/capabilities/capability.ts)).
 - **The engine is the source.** The UI shows a screen only when the engine reports it, so features the Reborn engine does not have are capabilities too, not core (2026-11-05):
   - `members@1`: roles, invites, role changes and removals (`PATCH`/`DELETE /members/{memberId}`, `/invites`). `GET /members`, `GET /members/{memberId}` and `/me` stay core. Without it, access is binary: whoever can sign in is the one level of member.
   - `api-tokens@1`: every `/api-tokens` route.
@@ -307,6 +310,7 @@ Every `Agent` carries `origin` (2026-11-05), as the Reborn engine models agents 
 | Capabilities and activity  | `CapabilityRef`, `KNOWN_CAPABILITIES`, `supports`, `parseActivity`, `ACTIVITY_PERMISSIONS`                                                                                               |
 | Voice                      | `VOICE_ROUTES`, `VOICE_CLIP_FORMATS`, `SPEECH_FORMATS`, `MAX_VOICE_CLIP_BYTES`, `MAX_VOICE_CLIP_MS`, `MAX_SPEECH_TEXT_LENGTH`, `TranscriptDraft`, `normalizeMediaType`, `matchMediaType` |
 | AI tools                   | `AI_TOOL_ROUTES`, `AiTool`, `AiToolSignIn`, `AI_TOOL_STATUSES`, `AI_TOOL_PROBLEM_CODES`, `AnswerAiToolSignInBody`                                                                        |
+| Updates                    | `UPDATES_ROUTES`, `UpdatesChangedEvent`, `MAX_UI_CHECK_INTERVAL_MS`, `UPDATE_CHECK_MIN_INTERVAL_MS`, `MAX_UPDATE_COMMAND_LENGTH`, `UiUpdateCheck`                                        |
 | Audit                      | `AuditEntry`, `AUDIT_ACTIONS`, `AUDIT_TARGET_KINDS`, `AuditVerification`                                                                                                                 |
 | Clients (what the UI uses) | `EngineApiClient`, `createFetchEngineApiClient`, `toTolerant`                                                                                                                            |
 

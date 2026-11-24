@@ -85,6 +85,36 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
   - **AT-15** On a Hetzner box: expire the Claude sign-in, send a chat message; the turn fails with `recheck.aiToolId: 'claude-code'`, the UI's "Sign in again" completes the sign-in in the browser, and the waiting recheck answers. No SSH involved.
   - **AT-16** Same box: switch Claude Code to an API key from Settings › AI tools, then back to the account, with the chat working after each switch.
 
+### 2026-11-24: Updates (updates@1) and the missing periodic UI check
+
+- **Bug first (0.119.0-132, the demo server, staging policy).** The periodic UI check did not run for about 15 hours. The UI state's `firstSeenAt` for 0.2.5 was written only on a manual restart at 2026-11-24T07:30:48Z, and that check refused it with `delay-not-elapsed`. The extra check at `eligibleAt` ([ENG-120](checklist.md#ui-loader-interface-5)) did not install it either; a second restart did. So neither timer fired. Find the bug with a test on a fake clock before changing anything: start under `auto`, let one interval pass, then another, and assert a check at each; then a delay refusal and the extra check at `eligibleAt`. Likely suspects: a timer armed only after a check that never settles, a rejected promise that skips re-arming, an unref'd or garbage-collected timer, or a `setTimeout` longer than 2^31 − 1 ms. UP-01 to UP-04 below are those tests.
+- **Changed:** new capability `updates@1` ([updates.md](updates.md), [updates.ts](../../packages/engine-api/src/capabilities/updates.ts)):
+  - `GET /security` gains `ui.nextCheckAt` (when the next scheduled UI check is due, from the timer you armed), `update.checkedAt` and `update.command` (the one line that updates the engine the way it was installed, shown to copy). Each is `null` without the capability.
+  - `POST /updates/ui/check` (`checkForUiUpdate`, `settings.manage`): runs the scheduled UI check early and answers its `UiUpdateCheck`. Nothing is skipped and it never passes `mode: 'manual'` because a person asked; a running check is joined; 409 `update-policy-manual` under `manual`; 429 `update-check-too-soon` within 60 s (`UPDATE_CHECK_MIN_INTERVAL_MS`). Audit action `updates.ui-check`.
+  - Event `updates.changed { uiVersion }` after every UI check, to every member on the stream; the UI offers a reload when the served version differs.
+  - Conformance: `engine-api.updates.permissions`, `engine-api.updates.check-now`, `engine-api.updates.next-check-due` and `ui-loader.updates.check-now-respects-delay`, all skipping without the capability. Checklist ENG-128 to ENG-130.
+- **Version:** `ENGINE_API_VERSION` stays 1.15.0. Everything here is additive: the capability is off until you advertise it, and the new `GET /security` fields default to `null`, so an engine that has not re-vendored keeps working with the next UI release.
+- **Redo:**
+  1. Fix the timer with the fake-clock tests (UP-01 to UP-04). This matters with or without the capability: every engine on a server depends on it.
+  2. Re-vendor the contract and serve the new fields.
+  3. Advertise `updates@1` and implement check-now on top of your existing check (UP-05 to UP-13), `update.command` per installation (UP-14), then run the four checks and UP-15 on the demo server.
+- **Test cases** (UP-01 to UP-14 in the engine with a fake clock; UP-15 by hand). The table in [updates.md](updates.md#test-cases) has the expected results:
+  - **UP-01** Periodic checks at start and every interval; `nextCheckAt` follows.
+  - **UP-02** A check that throws still re-arms the periodic timer.
+  - **UP-03** A delay refusal arms the extra check at `eligibleAt`; it installs then; the periodic check goes on.
+  - **UP-04** After the process slept past both times, a check runs within a minute of waking.
+  - **UP-05** Check-now under `auto` with a release inside its delay: `refused` `delay-not-elapsed` with the same `eligibleAt`, nothing installed.
+  - **UP-06** Check-now under `pinned` installs the pinned version as the scheduled check would.
+  - **UP-07** Check-now under `manual`: 409 `update-policy-manual`, no check.
+  - **UP-08** Two requests within 60 s: the second is 429 `update-check-too-soon`; scheduled checks do not count.
+  - **UP-09** Check-now during a running check joins it.
+  - **UP-10** Without `settings.manage`: 403, no check, audited `denied`.
+  - **UP-11** Revoked, wrongly signed, unlogged, older and tampered releases are refused by check-now exactly as by the scheduled check.
+  - **UP-12** `ui.lastUpdateCheck` and `ui.nextCheckAt` (at most an hour after the last check) after each case.
+  - **UP-13** One `updates.changed` per check with the served `uiVersion`.
+  - **UP-14** `update.command` and `update.checkedAt` for the npm package, the VPS installer and Docker; `null` where unsure; never a secret or a line break.
+  - **UP-15** By hand on the demo server: a new UI release installs within 5 minutes plus one interval without a restart, and Settings → Updates shows it waiting, then installed.
+
 ### 2026-11-23: Live browser: permission loss, help message, more checks
 
 - **Changed** ([live-sessions.md](live-sessions.md#a-session-belongs-to-its-gateway-session), in place in `browser-tab@1`):

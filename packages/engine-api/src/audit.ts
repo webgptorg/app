@@ -53,6 +53,8 @@ export const AUDIT_ACTIONS = [
     'settings.update',
     'settings.update-policy',
     'settings.dashboard-removals',
+    /** `updates@1`: a member ran the UI update check early; the check's own outcome is in `GET /security`. */
+    'updates.ui-check',
     'wallet.record.save',
     'wallet.record.update',
     'wallet.record.delete',

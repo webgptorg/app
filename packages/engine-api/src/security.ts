@@ -7,6 +7,12 @@ import { openEnum, toTolerant } from './tolerant';
 
 const RekorLogIndex = z.int().min(0);
 
+/**
+ * The longest `update.command` an engine reports: one shell line the owner copies and runs on the host, such as
+ * `npm install --global ptbk@0.120.0`.
+ */
+export const MAX_UPDATE_COMMAND_LENGTH = 512;
+
 /** A Rekor entry UUID: 64 hex characters, prefixed by the 16-character tree ID on sharded logs. */
 export const RekorEntryUuid = z.string().regex(/^(?:[0-9a-f]{16})?[0-9a-f]{64}$/);
 
@@ -53,6 +59,17 @@ const uiUpdateCheckShape = {
 export const UiUpdateCheck = z.strictObject(uiUpdateCheckShape);
 export type UiUpdateCheck = z.infer<typeof UiUpdateCheck>;
 
+const uiUpdateCheckReaderShape = {
+    ...uiUpdateCheckShape,
+    outcome: openEnum(UI_UPDATE_OUTCOMES),
+    reason: openEnum(UI_REFUSAL_REASONS).nullable(),
+    revocationReason: openEnum(UI_REVOCATION_REASONS).nullable(),
+};
+
+/** A check as the client reads it: an outcome or reason a newer engine added reads as `unknown`. */
+export const UiUpdateCheckReader = toTolerant(z.strictObject(uiUpdateCheckReaderShape));
+export type ReadUiUpdateCheck = z.output<typeof UiUpdateCheckReader>;
+
 /** A certificate for one of the engine's hostnames that the engine did not request, found in CT logs. */
 export const UnexpectedCertificate = z.strictObject({
     sha256: Sha256Hex,
@@ -73,6 +90,12 @@ const uiStatusShape = {
     releaseLogEntryUuid: RekorEntryUuid.nullable().default(null),
     /** `null` until the loader has checked once (and from engines on API 1.2). */
     lastUpdateCheck: UiUpdateCheck.nullable().default(null),
+    /**
+     * `updates@1`: when the next scheduled check is due, at most `MAX_UI_CHECK_INTERVAL_MS` after the last one, or the
+     * extra check at a delayed release's `eligibleAt` if that comes first. A time in the past means the check is late.
+     * `null` under `manual` (nothing is scheduled), while the loader is off, and from engines without the capability.
+     */
+    nextCheckAt: Timestamp.nullable().default(null),
 };
 
 const hostnameShape = {
@@ -96,6 +119,23 @@ const securityOverviewShape = {
         pinnedVersion: SemVer.nullable(),
         availableVersion: SemVer.nullable(),
         eligibleAt: Timestamp.nullable(),
+        /**
+         * `updates@1`: when the engine last learned which engine version is the newest published one, so "no update"
+         * means it checked; `null` when it does not check (and from engines without the capability).
+         */
+        checkedAt: Timestamp.nullable().default(null),
+        /**
+         * `updates@1`: the one shell line the owner runs on the host to update the engine the way it was installed, at
+         * most `MAX_UPDATE_COMMAND_LENGTH` characters with no line breaks; `null` when the engine cannot tell. Shown as
+         * text to copy, never run by the UI.
+         */
+        command: z
+            .string()
+            .min(1)
+            .max(MAX_UPDATE_COMMAND_LENGTH)
+            .regex(/^[^\p{Cc}]+$/u)
+            .nullable()
+            .default(null),
     }),
     ui: z.strictObject(uiStatusShape),
     tls: z.strictObject({
@@ -153,15 +193,7 @@ export const SecurityOverviewReader = toTolerant(
         ...securityOverviewShape,
         ui: z.strictObject({
             ...uiStatusShape,
-            lastUpdateCheck: z
-                .strictObject({
-                    ...uiUpdateCheckShape,
-                    outcome: openEnum(UI_UPDATE_OUTCOMES),
-                    reason: openEnum(UI_REFUSAL_REASONS).nullable(),
-                    revocationReason: openEnum(UI_REVOCATION_REASONS).nullable(),
-                })
-                .nullable()
-                .default(null),
+            lastUpdateCheck: z.strictObject(uiUpdateCheckReaderShape).nullable().default(null),
         }),
         hostnames: z.array(
             z.strictObject({

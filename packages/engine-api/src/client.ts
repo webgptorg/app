@@ -439,6 +439,10 @@ export interface EngineApiClient {
     readonly security: {
         get(signal: AbortSignal): Result<'getSecurityOverview'>;
     };
+    /** `updates@1`: the UI loader's normal check, run now; its result, or why it did not run. */
+    readonly updates: {
+        checkUi(signal: AbortSignal): Result<'checkForUiUpdate'>;
+    };
     readonly audit: {
         list(query: Query<'listAuditEntries'>, signal: AbortSignal): Result<'listAuditEntries'>;
         verify(signal: AbortSignal): Result<'verifyAuditLog'>;
@@ -648,6 +652,7 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
             list: (query, signal) => call(R.listActivity, { query }, signal),
         },
         security: { get: (signal) => call(R.getSecurityOverview, {}, signal) },
+        updates: { checkUi: (signal) => call(R.checkForUiUpdate, {}, signal) },
         audit: {
             list: (query, signal) => call(R.listAuditEntries, { query }, signal),
             verify: (signal) => call(R.verifyAuditLog, {}, signal),

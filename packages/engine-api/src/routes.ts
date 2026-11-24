@@ -12,6 +12,7 @@ import { LIVE_ROUTES } from './capabilities/live';
 import { ONBOARDING_ROUTES } from './capabilities/onboarding';
 import { TEST_CHAT_ROUTES } from './capabilities/test-chat';
 import { TRIGGER_ROUTES } from './capabilities/triggers';
+import { UPDATES_ROUTES } from './capabilities/updates';
 import { VOICE_ROUTES } from './capabilities/voice';
 import { WALLET_ROUTES } from './capabilities/wallet';
 import { CHAT_ROUTES } from './chats';
@@ -55,6 +56,7 @@ export const ENGINE_API_ROUTES = {
     ...WALLET_ROUTES,
     ...VOICE_ROUTES,
     ...AI_TOOL_ROUTES,
+    ...UPDATES_ROUTES,
 } as const satisfies Readonly<Record<string, RouteDefinition>>;
 
 export type EngineApiRouteId = keyof typeof ENGINE_API_ROUTES;

@@ -10,6 +10,7 @@ import { BrowserHelpChangedEvent, BrowserTabChangedEvent } from './capabilities/
 import { RunChangedEvent, RunChangedEventReader } from './capabilities/runs';
 import { TaskChangedEvent, TaskChangedEventReader } from './capabilities/tasks';
 import { TriggerChangedEvent } from './capabilities/triggers';
+import { UpdatesChangedEvent } from './capabilities/updates';
 import { AgentId, ChatId, Timestamp } from './common';
 import { defineRoute } from './route';
 import { toTolerant } from './tolerant';
@@ -24,6 +25,7 @@ const coreEvents = [
     BrowserTabChangedEvent,
     BrowserHelpChangedEvent,
     AiToolChangedEvent,
+    UpdatesChangedEvent,
 ] as const;
 const CoreEngineEvent = z.discriminatedUnion('type', [...coreEvents, RunChangedEvent, TaskChangedEvent]);
 

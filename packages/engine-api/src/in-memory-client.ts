@@ -38,6 +38,7 @@ import {
     OpaqueId,
     OrgId,
     RevisionId,
+    SemVer,
     SessionId,
     Timestamp,
 } from './common';
@@ -49,6 +50,8 @@ import { Folder } from './folders';
 import { hashAuditEntry } from './in-memory/audit-chain';
 import { requestAccess, revokeDashboardMember } from './in-memory/access-requests';
 import { createOnboardingRecord, failHarnessCheck, onboardingState, settleHarnessLogin } from './in-memory/onboarding';
+import { createUpdatesRecord, runFakeUiCheck, uiUpdaterOf } from './in-memory/updates';
+import type { FakeUiRelease, UiUpdater } from './in-memory/updates';
 import { createVoiceRecord } from './in-memory/voice';
 import {
     createInMemoryAiTools,
@@ -146,6 +149,7 @@ import type { EngineApiStreamItem, ParsedRouteRequest, RouteBody, RouteDefinitio
 import { matchMediaType } from './media-type';
 import type { EngineApiRouteId } from './routes';
 import { SecurityOverview } from './security';
+import type { UiUpdateCheck } from './security';
 import { Session } from './sessions';
 import { Settings } from './settings';
 
@@ -392,6 +396,11 @@ export interface InMemoryEngineCoreOptions {
     readonly checks?: Partial<EngineChecks>;
     /** Upload limits per purpose (`GET /files/upload-policy`); by default any type up to `MAX_FILE_BYTES`. */
     readonly uploadPolicies?: FileUploadPolicies;
+    /**
+     * `updates@1`: the engine's real UI updater. Without it the core checks a fake release store that only the
+     * controller's levers change (`setUiRelease`, `failUiReleaseStore`).
+     */
+    readonly uiUpdater?: UiUpdater;
 }
 
 export interface InMemoryEngineApiOptions extends InMemoryEngineCoreOptions {
@@ -580,6 +589,20 @@ export interface InMemoryEngineController {
     failAiToolCheck(aiToolId: string, problem: Unbranded<AiToolProblem> | null): void;
     /** `ai-tools@1`: the provider answered the device login of the tool's open sign-in; throws when none waits. */
     settleAiToolSignIn(aiToolId: string, outcome: HarnessLoginOutcome, diagnostic?: string): void;
+    /**
+     * `updates@1`, fake store only: publishes one newer UI release, inside its delay until `eligibleAt`; `null` takes
+     * it down. Throws for a version that is not SemVer or a time that is not a timestamp.
+     */
+    setUiRelease(release: { readonly version: string; readonly eligibleAt?: string | null } | null): void;
+    /** `updates@1`, fake store only: every check from now on finds the store unreachable, until `false`. */
+    failUiReleaseStore(failing: boolean): void;
+    /**
+     * A scheduled UI check, or under `manual` the owner's approval on the host: no rate limit, and announced with
+     * `updates.changed` like every check. Uses the plugged-in updater when there is one.
+     */
+    runUiUpdateCheck(signal?: AbortSignal): Promise<UiUpdateCheck>;
+    /** Plugs in the engine's real UI updater once it exists, or unplugs it (`null`) to go back to the fake store. */
+    plugUiUpdater(updater: UiUpdater | null): void;
     /** Agent work needs a login it does not have; asking again for the same origin and account counts on one request. */
     requestWalletLogin(request: Unbranded<NewWalletRequest>): WalletRequest;
     /** E.g. the operator set the Wallet up or it locked on this host. */
@@ -881,6 +904,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
     state.aiTools.audit = (input) => {
         appendAudit(input);
     };
+    state.updates.updater = options.uiUpdater ?? null;
     const checks: EngineChecks = { ...DEFAULT_ENGINE_CHECKS, ...options.checks };
     const system: EngineContext = { state, checks, now, newId, publish, replies };
     const chatRecord = (chatId: string): ChatRecord => {
@@ -1017,6 +1041,25 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             if (!/^[0-9a-f]{64}$/.test(clipSha256)) throw new Error('Expected a lowercase hex SHA-256');
             state.voice.transcripts.set(clipSha256, text);
         },
+        setUiRelease: (release) => {
+            state.updates.release =
+                release === null
+                    ? null
+                    : ({
+                          version: SemVer.parse(release.version),
+                          eligibleAt: release.eligibleAt == null ? null : Timestamp.parse(release.eligibleAt),
+                      } satisfies FakeUiRelease);
+        },
+        failUiReleaseStore: (failing) => {
+            state.updates.storeFailing = failing;
+        },
+        plugUiUpdater: (updater) => {
+            state.updates.updater = updater;
+        },
+        runUiUpdateCheck: (signal = new AbortController().signal) =>
+            state.updates.updater === null
+                ? Promise.resolve(runFakeUiCheck(system))
+                : uiUpdaterOf(system).checkNow(signal),
         requestWalletLogin: (request) => requestWalletLogin(system, request as NewWalletRequest),
         setWalletState: (walletState, lockedRecords = 0) => {
             state.wallet.state = walletState;
@@ -1402,6 +1445,7 @@ const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
     revokeApiToken: { action: 'api-token.revoke', kind: 'api-token', param: 'apiTokenId' },
     updateSettings: { action: 'settings.update', kind: null },
     setUpdatePolicy: { action: 'settings.update-policy', kind: null },
+    checkForUiUpdate: { action: 'updates.ui-check', kind: null },
     revokePasskey: { action: 'passkey.revoke', kind: 'passkey', param: 'passkeyId' },
     revokeSession: { action: 'session.revoke', kind: 'session', param: 'sessionId' },
     revokeMyPasskey: { action: 'passkey.revoke', kind: 'passkey', param: 'passkeyId' },
@@ -1637,6 +1681,7 @@ function createState(
         invites: byId((seed.invites ?? []).map((record) => Invite.parse(record))),
         onboarding: createOnboardingRecord(seed.onboarding ?? 'completed'),
         voice: createVoiceRecord(),
+        updates: createUpdatesRecord(at),
         accessRequests: new Map(
             (seed.accessRequests ?? []).map(({ request, code, dashboardUserId }) => {
                 const parsed = AccessRequest.parse(request);

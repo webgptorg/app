@@ -82,6 +82,7 @@ const CAPABILITY_BY_PATH = [
     ['/onboarding', KNOWN_CAPABILITIES.onboarding],
     ['/wallet', KNOWN_CAPABILITIES.wallet],
     ['/ai-tools', KNOWN_CAPABILITIES.aiTools],
+    ['/updates', KNOWN_CAPABILITIES.updates],
 ] as const;
 
 /** Core features an engine may leave out: these routes share paths with core routes that stay, so they go by ID. */

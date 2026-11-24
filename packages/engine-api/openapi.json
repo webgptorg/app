@@ -22263,6 +22263,109 @@
           }
         }
       }
+    },
+    "/updates/ui/check": {
+      "post": {
+        "operationId": "checkForUiUpdate",
+        "summary": "Run the UI loader’s normal update check now, and answer its result",
+        "description": "Exactly the check the engine’s timer runs, only earlier: the same policy, verification, delay, revocation and downgrade rules, and never `mode: manual`, so a release still inside its delay is `refused` with `delay-not-elapsed` and its `eligibleAt`. A check already running is joined, not repeated. The engine answers once the check has ended and `GET /security` reports it as `ui.lastUpdateCheck`, then sends `updates.changed`. Under `manual` there is no scheduled check to run early: 409 `update-policy-manual`. More than one request per engine within `UPDATE_CHECK_MIN_INTERVAL_MS` is 429 `update-check-too-soon`. Audited as `updates.ui-check`.",
+        "tags": ["updates"],
+        "x-required-permission": "settings.manage",
+        "x-capability": {
+          "id": "updates",
+          "version": 1,
+          "label": "updates@1"
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UiUpdateCheck"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`.",
+            "x-problem-codes": ["capability-not-supported"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `update-policy-manual`.",
+            "x-problem-codes": ["update-policy-manual"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`, `update-check-too-soon`.",
+            "x-problem-codes": ["rate-limited", "update-check-too-soon"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -24415,6 +24518,7 @@
           "settings.update",
           "settings.update-policy",
           "settings.dashboard-removals",
+          "updates.ui-check",
           "wallet.record.save",
           "wallet.record.update",
           "wallet.record.delete",
@@ -25462,6 +25566,27 @@
               }
             },
             "required": ["type", "aiToolId"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "updates.changed"
+              },
+              "uiVersion": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SemVer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["type", "uiVersion"],
             "additionalProperties": false
           },
           {
@@ -26836,6 +26961,7 @@
               "message-not-speakable",
               "ai-tool-not-installed",
               "ai-tool-sign-in-stale",
+              "update-policy-manual",
               "payload-too-large",
               "unsupported-media-type",
               "invalid-book",
@@ -26846,6 +26972,7 @@
               "speech-too-long",
               "ai-tool-method-unsupported",
               "rate-limited",
+              "update-check-too-soon",
               "internal-error",
               "reply-failed",
               "transcription-failed",
@@ -28026,9 +28153,34 @@
                     "type": "null"
                   }
                 ]
+              },
+              "checkedAt": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Timestamp"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "command": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512,
+                    "pattern": "^[^\\p{Cc}]+$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
-            "required": ["status", "policy", "pinnedVersion", "availableVersion", "eligibleAt"],
+            "required": ["status", "policy", "pinnedVersion", "availableVersion", "eligibleAt", "checkedAt", "command"],
             "additionalProperties": false
           },
           "ui": {
@@ -28074,9 +28226,27 @@
                     "type": "null"
                   }
                 ]
+              },
+              "nextCheckAt": {
+                "default": null,
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Timestamp"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
-            "required": ["version", "bundleSha256", "releaseLogIndex", "releaseLogEntryUuid", "lastUpdateCheck"],
+            "required": [
+              "version",
+              "bundleSha256",
+              "releaseLogIndex",
+              "releaseLogEntryUuid",
+              "lastUpdateCheck",
+              "nextCheckAt"
+            ],
             "additionalProperties": false
           },
           "tls": {

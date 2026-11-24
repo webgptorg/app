@@ -56,6 +56,8 @@ export const PROBLEM_STATUS = {
     'ai-tool-not-installed': 409,
     /** The answer is to a sign-in prompt the engine has moved past; read the sign-in again. */
     'ai-tool-sign-in-stale': 409,
+    /** `updates@1`: under the `manual` policy nothing is scheduled, so there is no check to run early. */
+    'update-policy-manual': 409,
     'payload-too-large': 413,
     'unsupported-media-type': 415,
     'invalid-book': 422,
@@ -71,6 +73,8 @@ export const PROBLEM_STATUS = {
     /** The AI tool cannot be signed in this way from the browser; its `signInMethods` lists the ways it can. */
     'ai-tool-method-unsupported': 422,
     'rate-limited': 429,
+    /** `updates@1`: a check-now ran less than `UPDATE_CHECK_MIN_INTERVAL_MS` ago; the last result is still fresh. */
+    'update-check-too-soon': 429,
     'internal-error': 500,
     'reply-failed': 502,
     /** The engine or its provider could not transcribe this clip (unreadable audio included); recording again may help. */
