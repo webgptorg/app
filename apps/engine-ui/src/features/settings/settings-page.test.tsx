@@ -10,7 +10,7 @@ import { renderWithProviders } from '../../testing/render-with-providers';
 import { createFakePopups } from '../../testing/fake-popups';
 import { createMemoryStorage } from '../../testing/memory-storage';
 import { createSecurityEngine } from '../../testing/security-engine';
-import { problemResponse } from '../../testing/test-engine-api';
+import { TEST_NOW, problemResponse } from '../../testing/test-engine-api';
 
 const TIMEOUT_MS = 20_000;
 
@@ -207,5 +207,75 @@ describe('settings: updates', { timeout: TIMEOUT_MS }, () => {
         await screen.findByRole('combobox', { name: 'Theme' });
         expect(screen.queryByRole('heading', { name: 'Updates' })).toBeNull();
         expect(get).not.toHaveBeenCalled();
+    });
+});
+
+describe('settings: app updates (updates@1)', { timeout: TIMEOUT_MS }, () => {
+    const later = new Date(TEST_NOW.getTime() + 3_600_000).toISOString();
+
+    it('runs the regular check early and says in plain words why a release waits', async () => {
+        const { user, engine, container } = renderSettings();
+        engine.controller.setUiRelease({ version: '1.1.0', eligibleAt: later });
+        const checkNow = await screen.findByRole('button', { name: 'Check now' });
+        expect(screen.getByText(/waits out its full delay/)).toBeDefined();
+        await user.click(checkNow);
+        const waiting = /Version 1\.1\.0 is verified and waits until .+ so anyone can inspect them first\./;
+        expect((await screen.findAllByText(waiting)).length).toBeGreaterThan(0);
+        // Waiting changes nothing: the app version row still shows the served 1.0.0, with no reload offered.
+        expect(within(updatesCard()).queryByRole('button', { name: 'Reload' })).toBeNull();
+        await expectNoAxeViolations(container);
+
+        await user.click(screen.getByRole('button', { name: 'Check now' }));
+        expect(await screen.findByText('A check ran a moment ago. Try again in a minute.')).toBeDefined();
+    });
+
+    it('says the store could not be reached, without alarm', async () => {
+        const { user, engine } = renderSettings();
+        engine.controller.failUiReleaseStore(true);
+        await user.click(await screen.findByRole('button', { name: 'Check now' }));
+        expect(
+            await screen.findByText('The release store could not be reached. The project tries again on its own.'),
+        ).toBeDefined();
+    });
+
+    it('offers no check under manual, and none without settings.manage or the capability', async () => {
+        const manual = renderSettings();
+        const { update } = manual.engine.controller.updateSecurity({});
+        manual.engine.controller.updateSecurity({ update: { ...update, policy: 'manual' } });
+        expect(await screen.findByText('Only when an owner approves a release on the server')).toBeDefined();
+        expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
+        manual.unmount();
+
+        renderSettings({ permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'settings.manage') });
+        expect(await screen.findByText('Next check')).toBeDefined();
+        expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
+    });
+
+    it('shows the command that updates the project on its server, and a reload once it serves a newer app', async () => {
+        const { engine } = renderSettings();
+        const overview = engine.controller.updateSecurity({});
+        engine.controller.updateSecurity({
+            update: {
+                ...overview.update,
+                status: 'available',
+                availableVersion: '1.1.0',
+                command: 'npm install --global ptbk@1.1.0',
+            },
+            ui: { ...overview.ui, version: '1.2.0' },
+        });
+        expect(await screen.findByText('npm install --global ptbk@1.1.0')).toBeDefined();
+        expect(screen.getByRole('button', { name: 'Copy update command' })).toBeDefined();
+        expect(screen.getByText(/can't update itself from the browser/)).toBeDefined();
+        expect(screen.getByText('The project now serves version 1.2.0. Reload this page to use it.')).toBeDefined();
+        expect(within(updatesCard()).getByRole('button', { name: 'Reload' })).toBeDefined();
+    });
+
+    it('offers a reload on every page once a check installed another app version', async () => {
+        const { engine } = renderSettings();
+        await screen.findByRole('button', { name: 'Check now' });
+        engine.controller.emit({ type: 'updates.changed', uiVersion: '1.0.0' });
+        engine.controller.emit({ type: 'updates.changed', uiVersion: '2.0.0' });
+        expect(await screen.findByText('A new version of the app is ready')).toBeDefined();
+        expect(screen.getByText(/Reload to use version 2\.0\.0\./)).toBeDefined();
     });
 });

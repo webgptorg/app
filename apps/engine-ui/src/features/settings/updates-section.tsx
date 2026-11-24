@@ -1,6 +1,6 @@
 import { SemVer, UPDATE_POLICIES } from '@ptbk/engine-api';
 import type { ReadSecurityOverview, UpdatePolicy } from '@ptbk/engine-api';
-import { Button, Combobox, ErrorState, Input, Section, Skeleton, StatusPill, useLocale } from '@ptbk/ui';
+import { Button, CodeText, Combobox, ErrorState, Input, Section, Skeleton, StatusPill, useLocale } from '@ptbk/ui';
 import type { StatusTone } from '@ptbk/ui';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -14,6 +14,7 @@ import { securityKeys } from '../security/security-keys';
 import { updateStatusLabel } from '../security/security-labels';
 import { usePermissions } from '../session/use-permissions';
 import { PropertyList, PropertyRow } from './property-row';
+import { UiUpdateRows } from './ui-updates';
 
 type PolicyName = UpdatePolicy['policy'];
 
@@ -186,6 +187,12 @@ function UpdateFacts({ overview: { engine, update } }: { readonly overview: Read
                     </time>
                 </PropertyRow>
             )}
+            {/* Shown only with a newer version to install: the command is the engine's, copied and run by hand. */}
+            {update.command === null || update.availableVersion === null ? null : (
+                <PropertyRow label={m.updates_engine_command()} hint={m.updates_engine_command_hint()}>
+                    <CodeText value={update.command} copyable copyLabel={m.updates_copy_command()} />
+                </PropertyRow>
+            )}
         </>
     );
 }
@@ -215,6 +222,7 @@ export function UpdatesSection({ query }: { readonly query: UseQueryResult<ReadS
         content = (
             <PropertyList>
                 <UpdateFacts overview={overview} />
+                <UiUpdateRows overview={overview} />
                 {can('settings.manage') ? (
                     <PolicyForm
                         key={`${update.policy}:${update.pinnedVersion ?? ''}`}
