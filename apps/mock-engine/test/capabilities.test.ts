@@ -224,6 +224,7 @@ describe('capabilities through the mock HTTP server (contract)', () => {
         );
         await okFrom('cancelAiToolSignIn', owner.aiTools.cancelSignIn(tool.id, keySignIn.id, signal()));
         await okFrom('signOutAiTool', owner.aiTools.signOut(tool.id, signal()));
+        await okFrom('checkForUiUpdate', owner.updates.checkUi(signal()));
 
         const { members, apiTokens, audit, bookEditor, agentManagement } = KNOWN_CAPABILITIES;
         const coreFeatures = new Set<string>(

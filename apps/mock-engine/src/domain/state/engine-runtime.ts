@@ -1,3 +1,4 @@
+import { KNOWN_CAPABILITIES, supports } from '@ptbk/engine-api';
 import type { CapabilityRef, MemberId, Permission, SecurityOverview, SessionId, UiUpdateCheck } from '@ptbk/engine-api';
 import { createInMemoryEngineCore } from '@ptbk/engine-api/in-memory';
 import type {
@@ -6,6 +7,7 @@ import type {
     OnboardingSeed,
     ReplyScript,
     Sleep,
+    UiUpdater,
 } from '@ptbk/engine-api/in-memory';
 
 import { decideOwnership } from '../authorization/policy';
@@ -127,8 +129,13 @@ export interface EngineRuntime {
     setHeartbeat(heartbeat: HeartbeatInfo): void;
     /** The UI bundle the loader serves (M-05); `null` once none is, as before the first install. */
     setUi(ui: UiBundleInfo | null): void;
-    /** The UI loader's last update check (M-05). */
+    /** The UI loader's last update check (M-05); announced as `updates.changed` under `updates@1`. */
     setUiUpdateCheck(check: UiUpdateCheck): void;
+    /**
+     * The real UI loader behind `updates@1` (M-14), kept across resets. Until one is set, the core's fake release store
+     * answers, moved by its levers.
+     */
+    setUiUpdater(updater: UiUpdater | null): void;
     /** The certificate served for the default hostname, after every issue or renewal. */
     setTlsCertificate(certificate: TlsCertificateInfo): void;
 }
@@ -175,6 +182,9 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         heartbeat: { lastHeartbeat: null, clockSkew: null } as HeartbeatInfo,
         ui: null as UiBundleInfo | null,
         uiUpdateCheck: null as UiUpdateCheck | null,
+        uiUpdater: null as UiUpdater | null,
+        /** Once the loader reported anything, `ui` is its to set; before, the core's fake release store owns it. */
+        loaderReports: false,
         tls: null as TlsCertificateInfo | null,
     };
     // Each core's own placeholder, so it comes back when a revocation leaves no bundle active.
@@ -241,6 +251,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
                 probes: createSeededSequence(hashSeed(seedValue, scenario, 'probes')),
             }),
         });
+        core.controller.plugUiUpdater(sticky.uiUpdater);
         core.controller.updateSecurity({
             engine: { version: identity.version, releaseLogIndex: null },
             update: {
@@ -251,7 +262,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
                 eligibleAt: null,
             },
         });
-        applySecurity(core);
+        applySecurity(core, true);
         const liveBrowserTab =
             options.liveBrowser === true ? setUpLiveBrowser(core.controller, seed.chats?.[0]?.id).id : null;
         const simulation = createSimulation({
@@ -271,14 +282,15 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         return Date.parse(sticky.tls.notAfter) > clock.nowMs() ? 'valid' : 'expired';
     }
 
-    function applySecurity(core: InMemoryEngineCore): void {
+    /** Without a loader, `ui` is set once and then left to the core's fake release store (`updates@1`). */
+    function applySecurity(core: InMemoryEngineCore, initial = false): void {
         // Until a bundle is active the core's placeholder bundle stays, but a refused or failed check still shows.
         const overview = core.controller.updateSecurity({});
         if (!placeholderUi.has(core)) placeholderUi.set(core, overview.ui);
         const ui = sticky.ui ?? placeholderUi.get(core) ?? overview.ui;
         core.controller.updateSecurity({
             ...(sticky.tls === null ? {} : { tls: { ...overview.tls, ...sticky.tls } }),
-            ui: { ...ui, lastUpdateCheck: sticky.uiUpdateCheck },
+            ...(initial || sticky.loaderReports ? { ui: { ...ui, lastUpdateCheck: sticky.uiUpdateCheck } } : {}),
             lastHeartbeat: sticky.heartbeat.lastHeartbeat,
             clockSkew: sticky.heartbeat.clockSkew,
             relays: [...sticky.relays].map(([hostname, relay]) => ({ hostname, ...relay })),
@@ -335,11 +347,21 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         },
         setUi(ui) {
             sticky.ui = ui;
+            sticky.loaderReports = true;
             applySecurity(engine.core);
         },
         setUiUpdateCheck(check) {
             sticky.uiUpdateCheck = check;
+            sticky.loaderReports = true;
             applySecurity(engine.core);
+            if (supports({ capabilities: current.capabilities }, KNOWN_CAPABILITIES.updates)) {
+                engine.core.controller.emit({ type: 'updates.changed', uiVersion: sticky.ui?.version ?? null });
+            }
+        },
+        setUiUpdater(updater) {
+            sticky.uiUpdater = updater;
+            sticky.loaderReports = true;
+            engine.core.controller.plugUiUpdater(updater);
         },
         setTlsCertificate(certificate) {
             sticky.tls = certificate;

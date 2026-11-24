@@ -293,6 +293,7 @@ describe('control listener route table', () => {
                 'http GET /__mock/state',
                 'http GET /__mock/ui',
                 'http POST /__mock/ui/check',
+                'http POST /__mock/updates/check',
                 'http POST /__mock/wallet-requests',
                 'http POST /__mock/reset',
                 'http POST /__mock/sessions',
@@ -312,6 +313,7 @@ describe('control listener route table', () => {
                 'http POST /__mock/onboarding/harness-check',
                 'http POST /__mock/onboarding/harness-login',
                 'http PUT /__mock/faults',
+                'http PUT /__mock/updates',
             ].sort(),
         );
         for (const route of routes) {

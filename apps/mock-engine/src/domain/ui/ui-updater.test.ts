@@ -205,4 +205,50 @@ describe('createUiUpdater', () => {
         await updater.checkNow();
         expect(clock.pendingTimers()).toBe(0);
     });
+
+    describe('for updates@1', () => {
+        it('reports the next check: due at start, then an interval after each check, or earlier at eligibleAt', async () => {
+            const { clock, updater } = scripted([{ kind: 'up-to-date', version: VERSION }, delayed(10 * MINUTE)]);
+            expect(updater.nextCheckAtMs()).toBeNull();
+            updater.start();
+            expect(updater.nextCheckAtMs()).toBe(0);
+            await flush();
+            expect(updater.nextCheckAtMs()).toBe(HOUR);
+            clock.advance(5 * MINUTE);
+            await updater.checkEarly();
+            expect(updater.nextCheckAtMs()).toBe(10 * MINUTE);
+            await updater.stop();
+            expect(updater.nextCheckAtMs()).toBeNull();
+        });
+
+        it('schedules nothing under manual', () => {
+            const { updater } = setup({ automatic: false });
+            updater.start();
+            expect(updater.nextCheckAtMs()).toBeNull();
+        });
+
+        it('joins a check in flight instead of running a second one', async () => {
+            let release: (outcome: UiUpdateOutcome) => void = () => undefined;
+            let runs = 0;
+            const { updater } = setup({
+                check: () => {
+                    runs++;
+                    return new Promise((resolve) => {
+                        release = resolve;
+                    });
+                },
+            });
+            const first = updater.checkNow();
+            await flush();
+            const joined = updater.checkEarly();
+            release(installed);
+            expect(await joined).toBe(await first);
+            expect(runs).toBe(1);
+            const second = updater.checkEarly();
+            await flush();
+            release(installed);
+            await second;
+            expect(runs).toBe(2);
+        });
+    });
 });

@@ -376,6 +376,8 @@ describe('security panel and control listener', () => {
             bundleSha256: sha256,
             releaseLogIndex: 4242,
             releaseLogEntryUuid: null,
+            // The loader's own schedule, which depends on when its startup check ended.
+            nextCheckAt: overview.data.ui.nextCheckAt,
             lastUpdateCheck: {
                 at: new Date(NOW).toISOString().replace(/\.\d{3}Z$/, 'Z'),
                 outcome: 'installed',
@@ -429,7 +431,11 @@ describe('security panel and control listener', () => {
         expect(page.status).toBe(503);
         expect(await page.text()).toContain('The app is unavailable');
         const withdrawn = await panel();
-        expect(withdrawn).toEqual({ ...placeholder, lastUpdateCheck: withdrawn.lastUpdateCheck });
+        expect(withdrawn).toEqual({
+            ...placeholder,
+            nextCheckAt: withdrawn.nextCheckAt,
+            lastUpdateCheck: withdrawn.lastUpdateCheck,
+        });
         expect(withdrawn.lastUpdateCheck).toMatchObject({ outcome: 'refused', version: '1.0.0', reason: 'revoked' });
     });
 

@@ -60,6 +60,19 @@ const ScriptedRun = z.strictObject({
         .max(20),
 });
 
+/** At most 30 days: the production delay is 72 h, and a lever must not leave a release pending for ever. */
+const MAX_UI_RELEASE_DELAY_S = 30 * 24 * 3600;
+
+/** `updates@1` levers (M-14): the fake release store behind the UI check, and what the engine knows of its own updates. */
+const UpdatesLevers = z.strictObject({
+    uiRelease: z
+        .strictObject({ version: EngineVersion, delayS: z.int().min(0).max(MAX_UI_RELEASE_DELAY_S).default(0) })
+        .nullable()
+        .optional(),
+    uiStoreFailing: z.boolean().optional(),
+    engineLatest: EngineVersion.nullable().optional(),
+});
+
 const InboundEmail = z.strictObject({
     triggerId: TriggerId,
     from: z.email().max(254),
@@ -519,6 +532,57 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
             },
         }),
         control({
+            method: 'PUT',
+            path: '/__mock/updates',
+            body: { kind: 'json', schema: UpdatesLevers, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) => {
+                const controller = runtime.controller();
+                const fakeStore = body.uiRelease !== undefined || body.uiStoreFailing !== undefined;
+                if (fakeStore && deps.ui !== undefined) {
+                    return problemResponse({
+                        code: 'validation-failed',
+                        extras: {
+                            errors: [
+                                { path: 'body', message: 'The real release store is in use (PTBK_UI_RELEASE_URL).' },
+                            ],
+                        },
+                    });
+                }
+                if (body.uiRelease !== undefined) {
+                    const release = body.uiRelease;
+                    controller.setUiRelease(
+                        release === null
+                            ? null
+                            : {
+                                  version: release.version,
+                                  eligibleAt: wholeSeconds(runtime.clock.nowMs() + release.delayS * 1000),
+                              },
+                    );
+                }
+                if (body.uiStoreFailing !== undefined) controller.failUiReleaseStore(body.uiStoreFailing);
+                if (body.engineLatest !== undefined) {
+                    const latest = body.engineLatest;
+                    const { update } = controller.updateSecurity({});
+                    controller.updateSecurity({
+                        update: {
+                            ...update,
+                            status: latest === null ? 'none' : 'available',
+                            availableVersion: latest,
+                            checkedAt: wholeSeconds(runtime.clock.nowMs()),
+                            command: latest === null ? null : `npm install --global ptbk@${latest}`,
+                        },
+                    });
+                }
+                return new Response(null, { status: 204 });
+            },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/updates/check',
+            body: null,
+            handle: async () => Response.json(await runtime.controller().runUiUpdateCheck()),
+        }),
+        control({
             method: 'GET',
             path: '/__mock/members',
             body: null,
@@ -573,6 +637,10 @@ function bundleStatus(bundle: InstalledBundle | undefined) {
 }
 
 /** What the loader serves and what its last check decided; never file contents. */
+function wholeSeconds(ms: number): string {
+    return new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.000Z$/, 'Z');
+}
+
 function uiStatus(ui: UiLoader) {
     return {
         policy: ui.policy(),

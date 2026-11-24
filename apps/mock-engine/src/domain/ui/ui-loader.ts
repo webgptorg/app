@@ -47,6 +47,9 @@ export interface UiLoader {
     pin(version: EngineVersion): boolean;
     /** A check now; under `manual`, this is the owner's approval. */
     checkNow(): Promise<UiUpdateOutcome>;
+    /** The owner's check-now from the browser: the scheduled check run early, joining one in flight. */
+    checkEarly(): Promise<UiUpdateOutcome>;
+    nextCheckAtMs(): number | null;
     lastOutcome(): UiUpdateOutcome | null;
     start(): void;
     stop(): Promise<void>;
@@ -90,6 +93,8 @@ export function createUiLoader(options: UiLoaderOptions): UiLoader {
             return true;
         },
         checkNow: () => updater.checkNow(),
+        checkEarly: () => updater.checkEarly(),
+        nextCheckAtMs: () => updater.nextCheckAtMs(),
         lastOutcome: () => updater.lastOutcome(),
         start: () => {
             updater.start();

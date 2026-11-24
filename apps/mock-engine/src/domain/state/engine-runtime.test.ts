@@ -4,6 +4,7 @@ import {
     MemberId,
     OWNER_PERMISSIONS,
     SessionId,
+    Timestamp,
     UiUpdateCheck,
     KNOWN_CAPABILITIES,
     createEngineApiClient,
@@ -196,7 +197,33 @@ describe('engine runtime', () => {
             releaseLogIndex: 9,
             releaseLogEntryUuid: null,
             lastUpdateCheck: { ...refused, eligibleAt: null },
+            // No loader is plugged in here, so the core's own schedule: an hour after the last check.
+            nextCheckAt: '2026-10-20T09:00:00Z',
         });
+    });
+
+    it('announces every UI check as updates.changed with the bundle it serves, and plugs the real updater in', async () => {
+        const { runtime, client } = await start();
+        const events: unknown[] = [];
+        runtime.controller().onEvent((event) => events.push(event));
+        runtime.setUi({ version: '1.1.0', bundleSha256: 'c'.repeat(64), releaseLogIndex: 9 });
+        const check = UiUpdateCheck.parse({
+            at: '2026-10-20T08:00:00Z',
+            outcome: 'installed',
+            version: '1.1.0',
+            reason: null,
+            revocationReason: null,
+        });
+        runtime.setUiUpdateCheck(check);
+        expect(events).toEqual([{ type: 'updates.changed', uiVersion: '1.1.0' }]);
+        runtime.setUiUpdater({
+            policy: () => 'auto',
+            nextCheckAt: () => Timestamp.parse('2026-10-20T08:30:00Z'),
+            checkNow: () => Promise.resolve(check),
+        });
+        await runtime.reset({ seed: 3, scenario: 'empty' });
+        expect(ok(await client().security.get(signal())).ui.nextCheckAt).toBe('2026-10-20T08:30:00Z');
+        expect(ok(await client().updates.checkUi(signal()))).toEqual(check);
     });
 
     it('shows the placeholder bundle again once no bundle is active, as before the first install', async () => {

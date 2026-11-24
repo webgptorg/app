@@ -65,7 +65,7 @@ async function runAgainstMock(
         command: mockEngineCommand(
             `MOCK_SCENARIO=small-team MOCK_SEED=1 MOCK_VOICE=${voice} ` +
                 'MOCK_CAPABILITIES=runs,tasks,files,triggers,integrations,test-chat,access-requests,file-scanning,' +
-                'members,api-tokens,audit,book-editor,agent-management,onboarding,wallet,ai-tools',
+                'members,api-tokens,audit,book-editor,agent-management,onboarding,wallet,ai-tools,updates',
         ),
         suites: [ENGINE_API_PLATFORM_SUITE],
         targets,
