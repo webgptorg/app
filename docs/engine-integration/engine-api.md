@@ -230,7 +230,7 @@ The prompt kinds are a fixed vocabulary the UI ships first. The engine composes 
 - `canDefer`: `false` while the engine has no project; the UI then offers no "Skip for now" and says the answers are saved, and `POST /onboarding/defer` is 409 `onboarding-not-deferrable`.
 - Every prompt has `id` (new per presentation), `title`, `question`, `hint`, `error` (why the last answer was refused), `canGoBack`, `details` (`{ label, text }` facts shown with the question, e.g. the summary before "Create and start") and `alternatives` (other ways through the step, see below). The kinds:
   - `text`: single line or the long intent field; `attachments` means files may go with it.
-  - `choice`: one or many; opaque choice IDs, `initial` preselects.
+  - `choice`: the engine orders the options and preselects IDs in `initial`. Set an option's `featured` to `false` to put it behind Show more. Selected options stay visible. Omitting the field keeps the option visible for compatibility. The engine supplies per-option descriptions, including additional model disk space on its host.
   - `confirm`: `confirmLabel` and `declineLabel`; with `details`, it is the final review.
   - `upload`: files uploaded first through `files@1` with purpose `upload`, then named by ID.
   - `secret`: a value only the engine keeps, e.g. a provider API key; `label`, `placeholder`, `helpUrl` (where to get it). There is no `initial`: the engine never presents a secret back.

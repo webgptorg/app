@@ -16720,6 +16720,9 @@
                                       },
                                       "disabled": {
                                         "type": "boolean"
+                                      },
+                                      "featured": {
+                                        "type": "boolean"
                                       }
                                     },
                                     "required": ["id", "label", "description", "disabled"],
@@ -18028,6 +18031,9 @@
                                       },
                                       "disabled": {
                                         "type": "boolean"
+                                      },
+                                      "featured": {
+                                        "type": "boolean"
                                       }
                                     },
                                     "required": ["id", "label", "description", "disabled"],
@@ -19180,6 +19186,9 @@
                                         ]
                                       },
                                       "disabled": {
+                                        "type": "boolean"
+                                      },
+                                      "featured": {
                                         "type": "boolean"
                                       }
                                     },

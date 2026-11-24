@@ -74,6 +74,8 @@ export const OnboardingChoice = z.strictObject({
     label: ShortText,
     description: LongText.nullable(),
     disabled: z.boolean(),
+    /** Only an explicit false puts an unselected choice behind Show more. Array order comes from the engine. */
+    featured: z.boolean().optional(),
 });
 export type OnboardingChoice = z.infer<typeof OnboardingChoice>;
 

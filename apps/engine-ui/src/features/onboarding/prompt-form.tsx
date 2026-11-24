@@ -375,7 +375,11 @@ function ChoicePrompt({
     onAlternative,
 }: PromptFormProps<Extract<OnboardingPrompt, { kind: 'choice' }>>) {
     const [selected, setSelected] = useState<readonly string[]>(prompt.initial);
+    const [expanded, setExpanded] = useState(false);
     const name = useId();
+    const choices = expanded
+        ? prompt.choices
+        : prompt.choices.filter((choice) => choice.featured !== false || selected.includes(choice.id));
     const toggle = (id: string, checked: boolean) => {
         if (!prompt.multiple) setSelected([id]);
         else setSelected(checked ? [...selected, id] : selected.filter((other) => other !== id));
@@ -395,7 +399,7 @@ function ChoicePrompt({
                 <legend className="mb-1.5 text-base [overflow-wrap:anywhere]">{prompt.question}</legend>
                 {prompt.hint === null ? null : <p className="mb-1.5 text-sm text-text-muted">{prompt.hint}</p>}
                 <PromptDetails details={prompt.details} />
-                {prompt.choices.map((choice) => (
+                {choices.map((choice) => (
                     <label
                         key={choice.id}
                         className={cx(
@@ -424,6 +428,20 @@ function ChoicePrompt({
                         </span>
                     </label>
                 ))}
+                {expanded || choices.length < prompt.choices.length ? (
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="self-start"
+                        aria-expanded={expanded}
+                        onClick={() => {
+                            setExpanded(!expanded);
+                        }}
+                    >
+                        {expanded ? m.ui_show_less() : m.ui_show_more()}
+                    </Button>
+                ) : null}
             </fieldset>
         </Frame>
     );

@@ -24,6 +24,10 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-24: Show more in onboarding choices
+
+The engine orders choices and may send `featured: false` for secondary integrations. Send Local models last with its disk estimate and include detected selections in `initial`. Older engines may omit `featured`, so the signed UI keeps its existing minimum engine API version.
+
 ### 2026-11-23: PRIORITY: browser onboarding on a server is broken (0.119.0-132)
 
 - **Changed:** nothing in the contract. Seb ran the copied install command on a Hetzner Ubuntu 24.04 server with UI 0.2.4 and could not finish setup. Each item says whether a blank box hits it too. Line numbers are against `v0.119.0-132`. Fix them in this order:
