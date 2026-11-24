@@ -85,6 +85,10 @@ function linking(codes: readonly LinkCodeStatusView[], engines: readonly EngineV
     };
 }
 
+function commandText(expected: string) {
+    return (_text: string, element: Element | null) => element?.tagName === 'CODE' && element.textContent === expected;
+}
+
 function progress(): HTMLElement {
     const section = document.querySelector<HTMLElement>('section[data-link-state]');
     if (section === null) throw new Error('no link progress');
@@ -154,7 +158,7 @@ describe('new engine page', () => {
             expect(await screen.findByRole('heading', { name: 'Choose a plan to link your project' })).toBeTruthy();
             const start = await screen.findByRole('button', { name: 'Start your 14-day trial of Standard' });
             expect(start.textContent).toBe('Start your 14-day trial');
-            expect(screen.queryByText(/bun run dev:link/)).toBeNull();
+            expect(screen.queryByText(commandText(`bun run dev:link ${CODE}`))).toBeNull();
             expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
             await expectNoAxeViolations(app.container);
             await app.user.click(start);
@@ -222,7 +226,7 @@ describe('new engine page', () => {
             expect(screen.queryByRole('heading', { name: 'Choose a plan to link your project' })).toBeNull();
             expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
             await elapse(LINK_POLL_MS);
-            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(await screen.findByText(commandText(`bun run dev:link ${CODE}`))).toBeTruthy();
             expect(await screen.findByText('Thank you, your trial has started.')).toBeTruthy();
             expect(screen.queryByText('Thank you. Your plan is starting; this takes a moment.')).toBeNull();
             expect(steps()).toEqual(['plan:done', 'install:current', 'connect:ahead', 'finish:ahead']);
@@ -239,7 +243,7 @@ describe('new engine page', () => {
 
         it('goes straight to the command, with no plan step and no billing request', async () => {
             const app = renderApp({ path: '/engines/new', session: OFF_OWNER, script: linking([PENDING]) });
-            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(await screen.findByText(commandText(`bun run dev:link ${CODE}`))).toBeTruthy();
             expect(steps()).toEqual(['install:current', 'connect:ahead', 'finish:ahead']);
             expect(screen.queryByRole('heading', { name: 'Choose a plan to link your project' })).toBeNull();
             expect(app.api.callsTo(apiRoutes.getBilling)).toEqual([]);
@@ -264,7 +268,7 @@ describe('new engine page', () => {
                 session: OFF_OWNER,
                 script: linking([PENDING]),
             });
-            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(await screen.findByText(commandText(`bun run dev:link ${CODE}`))).toBeTruthy();
             expect(screen.queryByText(/Thank you/)).toBeNull();
             expect(steps()).toEqual(['install:current', 'connect:ahead', 'finish:ahead']);
             expect(app.api.callsTo(apiRoutes.getBilling)).toEqual([]);
@@ -274,7 +278,7 @@ describe('new engine page', () => {
     describe('install command', () => {
         it('issues the code on load, once, and keeps only its ID in the URL', async () => {
             const app = renderApp({ path: '/engines/new', session: OWNER, script: linking([PENDING]) });
-            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(await screen.findByText(commandText(`bun run dev:link ${CODE}`))).toBeTruthy();
             expect(screen.getByRole('button', { name: 'Copy command' }).textContent).toBe('Copy command');
             expect(screen.getByText(COMMAND_NOTE)).toBeTruthy();
             expect(screen.getByText('Run this on the server that will host Promptbook.')).toBeTruthy();
@@ -304,7 +308,7 @@ describe('new engine page', () => {
             expect(tabs.map((tab) => tab.textContent)).toEqual(TAB_NAMES);
             expect(tabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false']);
             const panel = screen.getByRole('tabpanel', { name: 'Linux server with Docker' });
-            expect(within(panel).getByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(within(panel).getByText(commandText(`bun run dev:link ${CODE}`))).toBeTruthy();
             expect(
                 within(panel)
                     .getByRole('link', { name: /^Requirements and proxies/ })
@@ -313,7 +317,7 @@ describe('new engine page', () => {
 
             await app.user.click(within(list).getByRole('tab', { name: 'Running project' }));
             const connect = screen.getByRole('tabpanel', { name: 'Running project' });
-            expect(within(connect).getByText(`ptbk connect --link ${CODE}`)).toBeTruthy();
+            expect(within(connect).getByText(commandText(`ptbk connect --link ${CODE}`))).toBeTruthy();
             expect(
                 within(connect)
                     .getByRole('link', { name: /^Moving an existing deployment/ })
@@ -341,7 +345,7 @@ describe('new engine page', () => {
                     scriptProgress(api, [PENDING], []);
                 },
             });
-            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(await screen.findByText(commandText(`bun run dev:link ${CODE}`))).toBeTruthy();
             expect(screen.queryByRole('button', { name: 'Copy address' })).toBeNull();
         });
 
@@ -409,7 +413,7 @@ describe('new engine page', () => {
 
         it('keeps the security explanation behind one link that opens in a new tab, so the command stays', async () => {
             renderApp({ path: '/engines/new', session: OWNER, script: linking([PENDING]) });
-            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(await screen.findByText(commandText(`bun run dev:link ${CODE}`))).toBeTruthy();
             const trust = screen.getByRole('link', { name: 'How Promptbook protects you, in a new tab' });
             expect(trust.getAttribute('href')).toBe('/trust');
             expect(trust.getAttribute('target')).toBe('_blank');
@@ -431,7 +435,7 @@ describe('new engine page', () => {
             expect(await screen.findByText('Too many attempts. Wait a minute and try again.')).toBeTruthy();
             expect(screen.queryByRole('link', { name: 'Go to billing' })).toBeNull();
             await app.user.click(await screen.findByRole('button', { name: 'Create link code' }));
-            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(await screen.findByText(commandText(`bun run dev:link ${CODE}`))).toBeTruthy();
         });
 
         it('shows the upgrade path when issuance is refused after all', async () => {
@@ -511,7 +515,7 @@ describe('new engine page', () => {
             await elapse(LINK_POLL_MS);
             expect(await screen.findByText('Project linked.', { selector: 'p.font-medium' })).toBeTruthy();
             expect(progress().dataset['linkState']).toBe('linked');
-            expect(screen.queryByText(`bun run dev:link ${CODE}`)).toBeNull();
+            expect(screen.queryByText(commandText(`bun run dev:link ${CODE}`))).toBeNull();
             expect(screen.queryByText(/shown only once/)).toBeNull();
             expect(steps()).toEqual(['install:done', 'connect:current', 'finish:ahead']);
             expect(screen.getByText(ENGINE_ID.slice(0, 8))).toBeTruthy();
@@ -723,7 +727,7 @@ describe('new engine page', () => {
             expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
             await expectNoAxeViolations(app.container);
             await app.user.click(screen.getByRole('button', { name: 'Create a new link code' }));
-            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(await screen.findByText(commandText(`bun run dev:link ${CODE}`))).toBeTruthy();
             await waitFor(() => {
                 expect(app.history.location.search).toBe(`?link=${OTHER_LINK_ID}`);
             });
@@ -829,7 +833,7 @@ describe('new engine page', () => {
             });
             expect(await screen.findByText('This link code is not known here')).toBeTruthy();
             await app.user.click(screen.getByRole('button', { name: 'Create a new link code' }));
-            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(await screen.findByText(commandText(`bun run dev:link ${CODE}`))).toBeTruthy();
         });
 
         it('drops a link parameter that is not a link-code ID', async () => {
@@ -838,7 +842,7 @@ describe('new engine page', () => {
                 session: OWNER,
                 script: linking([PENDING]),
             });
-            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(await screen.findByText(commandText(`bun run dev:link ${CODE}`))).toBeTruthy();
             expect(app.api.callsTo(apiRoutes.getLinkCode)[0]).toEqual({ params: { linkCodeId: LINK_ID } });
         });
     });
