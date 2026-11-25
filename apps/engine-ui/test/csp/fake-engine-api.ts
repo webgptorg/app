@@ -156,6 +156,7 @@ const BROWSER_ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])
 const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])[] = [
     ['GET', /^\/engine$/, 200, (api, _, __, ___, signal) => api.engine.get(signal)],
     ['GET', /^\/me$/, 200, (api, _, __, ___, signal) => api.me.get(signal)],
+    ['GET', /^\/ai-tools$/, 200, (api, _, __, ___, signal) => api.aiTools.list(signal)],
     ['GET', /^\/onboarding$/, 200, (api, _, __, ___, signal) => api.onboarding.get(signal)],
     ['POST', /^\/onboarding\/answer$/, 200, (api, _, __, body, signal) => api.onboarding.answer(body as never, signal)],
     ['POST', /^\/onboarding\/defer$/, 200, (api, _, __, ___, signal) => api.onboarding.defer(signal)],

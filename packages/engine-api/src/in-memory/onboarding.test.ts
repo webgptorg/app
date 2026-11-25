@@ -478,6 +478,14 @@ describe('OnboardingStateReader', () => {
         prompt: value,
     });
 
+    it('preserves optional choice visibility and accepts older engines that omit it', () => {
+        const choice = { id: 'one', label: 'One', description: null, disabled: false };
+        const choices = [choice, { ...choice, id: 'two', featured: false }, { ...choice, id: 'three', featured: true }];
+        const state = stateWith({ ...prompt, kind: 'choice', multiple: true, initial: ['one'], choices });
+        expect(OnboardingState.parse(state).prompt).toMatchObject({ choices });
+        expect(OnboardingStateReader.parse(state).prompt).toMatchObject({ choices });
+    });
+
     it('reads a prompt of a kind it does not know as unsupported, keeping its heading and question', () => {
         const read = OnboardingStateReader.parse(
             stateWith({ ...prompt, kind: 'terminal', rows: 24, details: 'whatever a newer engine sends' }),

@@ -248,14 +248,14 @@ test('the owner sets up a passkey through /setup#<secret>, then signs in with it
     expect(engine.operator.status().ownerSetUp).toBe(false);
 
     await page.goto(`${origin}/setup#${secret}`);
-    await expect(page.getByRole('heading', { name: 'Set up your engine' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Set up your project' })).toBeVisible();
     // Read once, then gone from the address bar and the history entry.
     expect(new URL(page.url()).hash).toBe('');
     await expect(page.getByText(engine.identity.engineId, { exact: true })).toBeVisible();
     await page.locator('button[data-action="create"]').click();
     await expect(page.getByRole('heading', { name: 'You are the owner' })).toBeVisible();
     await expect(page.getByText('Setup is done.', { exact: false })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Open your engine' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open your project' })).toBeVisible();
     expect(engine.operator.status().ownerSetUp).toBe(true);
     // The dashboard's tab waits on `members`: a beat goes out at once, well before the 60 s interval.
     const decoder = new TextDecoder();
@@ -273,7 +273,7 @@ test('the owner sets up a passkey through /setup#<secret>, then signs in with it
     // The link is dead now, whoever opens it.
     const reused = await context.newPage();
     await reused.goto(`${origin}/setup#${secret}`);
-    await expect(reused.getByRole('heading', { name: 'This engine already has an owner' })).toBeVisible();
+    await expect(reused.getByRole('heading', { name: 'This project already has an owner' })).toBeVisible();
     await reused.close();
 
     // A link from another site, like the dashboard's "Open engine": the Strict cookie stays behind, so the gateway
@@ -322,7 +322,7 @@ test('the owner sets up a passkey through /setup#<secret>, then signs in with it
     const strangerViolations = watchPolicy(stranger);
     await addVirtualAuthenticator(otherDevice, stranger);
     await stranger.goto(`${origin}/auth/sign-in`);
-    const ways = stranger.getByRole('heading', { name: 'No passkey for this engine on this device?' });
+    const ways = stranger.getByRole('heading', { name: 'No passkey for this project on this device?' });
     await expect(ways).toBeVisible();
     await screenshot(stranger, 'sign-in-ready');
     await stranger.locator('button[data-action="confirm"]').click();
@@ -373,7 +373,7 @@ test('an invited person joins with a ticket, reads out the code, and is signed i
     await expect(page.getByRole('heading', { name: `Join ${hostname}` })).toBeVisible();
     expect(new URL(page.url()).hash).toBe('');
     await expect(
-        page.getByText('This engine has its own secure address, so your browser asks for one more passkey here.'),
+        page.getByText('This project has its own secure address, so your browser asks for one more passkey here.'),
     ).toBeVisible();
     await screenshot(page, 'join');
 

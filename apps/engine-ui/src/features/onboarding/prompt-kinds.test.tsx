@@ -144,6 +144,48 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         ]);
     });
 
+    it('keeps the engine order and picked IDs when expanding and collapsing more choices', async () => {
+        const choices = [
+            { id: 'default', label: 'Alpha', description: null, disabled: false, featured: true },
+            { id: 'extra', label: 'Beta', description: null, disabled: false, featured: false },
+            { id: 'other', label: 'Gamma', description: null, disabled: false, featured: false },
+            {
+                id: 'last',
+                label: 'Delta',
+                description: 'About 14 GB on the engine host.',
+                disabled: false,
+                featured: true,
+            },
+        ];
+        const { client, answers } = scripted([
+            pending({
+                ...base,
+                id: 'picker',
+                kind: 'choice',
+                question: 'Pick tools',
+                multiple: true,
+                choices,
+                initial: ['default'],
+            }),
+            DONE,
+        ]);
+        const { user } = renderWithProviders({ path: '/onboarding', engineApi: client });
+        const initial = await screen.findByRole<HTMLInputElement>('checkbox', { name: 'Alpha' });
+        expect(initial.checked).toBe(true);
+        expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+        expect(screen.getByText('About 14 GB on the engine host.')).toBeDefined();
+        await user.click(screen.getByRole('button', { name: 'Show more', expanded: false }));
+        expect(screen.getAllByRole('checkbox').at(-1)).toEqual(screen.getByRole('checkbox', { name: /Delta/ }));
+        await user.click(screen.getByRole('checkbox', { name: 'Beta' }));
+        await user.click(screen.getByRole('button', { name: 'Show less', expanded: true }));
+        expect(screen.queryByRole('checkbox', { name: 'Gamma' })).toBeNull();
+        expect(screen.getByRole<HTMLInputElement>('checkbox', { name: 'Beta' }).checked).toBe(true);
+        await user.click(initial);
+        await user.click(screen.getByRole('button', { name: 'Continue' }));
+        await screen.findByRole('heading', { name: 'Your project is set up' });
+        expect(answers).toEqual([{ kind: 'choice', choiceIds: ['extra'] }]);
+    });
+
     it('is guided by the robot, keeps Enter for new lines in a long answer, and continues on Ctrl+Enter', async () => {
         const { client, answers } = scripted([
             pending({

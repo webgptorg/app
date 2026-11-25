@@ -314,6 +314,8 @@ describe('a live session when the engine is unreachable', () => {
             const engine = createLiveBrowserTestEngine();
             const tab = engine.controller.openAgentTab({ origin: SITE });
             const opened = ok(await engine.client.browser.watch(tab.id, signal()));
+            // The retry delay starts after the status read finishes.
+            vi.spyOn(engine.client.browser, 'getSession').mockResolvedValue({ kind: 'ok', data: opened });
             const session = createLiveSession(
                 { engineApi: engine.client, openChannel: engine.openLiveChannel },
                 opened,
@@ -322,7 +324,9 @@ describe('a live session when the engine is unreachable', () => {
             engine.drop();
             await vi.advanceTimersByTimeAsync(0);
             expect(session.getView().connection).toBe('reconnecting');
-            await vi.advanceTimersByTimeAsync(500);
+            await vi.advanceTimersByTimeAsync(499);
+            expect(engine.channels()).toBe(1);
+            await vi.advanceTimersByTimeAsync(1);
             expect(engine.channels()).toBe(2);
             engine.drop();
             await vi.advanceTimersByTimeAsync(0);
