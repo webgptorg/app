@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AgentId, ChatId, LiveSessionId, MemberId, RunId, TaskId, Timestamp } from '../common';
+import { WalletRecordId, WalletRequestId } from './wallet';
 import { defineRoute } from '../route';
 import { openEnum, toTolerant } from '../tolerant';
 import { KNOWN_CAPABILITIES, RESERVED_CAPABILITIES } from './capability';
@@ -118,10 +119,18 @@ export const BrowserOrigin = z.string().max(300).refine(isCanonicalHttpsOrigin, 
     message: 'Expected a canonical https origin: scheme and host, no path',
 });
 
+/** Binds manual sign-in to the selected account or the exact pending step on a wallet-sign-in engine. */
+export const WalletSignInTarget = z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('record'), id: WalletRecordId }),
+    z.strictObject({ kind: z.literal('request'), id: WalletRequestId, step: z.int().nonnegative() }),
+]);
+export type WalletSignInTarget = z.infer<typeof WalletSignInTarget>;
+
 /** `browser: null` is the engine's default browser. */
 export const OpenBrowserSignInBody = z.strictObject({
     browser: BrowserToolName.nullable(),
     origin: BrowserOrigin,
+    wallet: WalletSignInTarget.optional(),
 });
 export type OpenBrowserSignInBody = z.infer<typeof OpenBrowserSignInBody>;
 

@@ -256,3 +256,9 @@ Nothing here is in code yet. When phase 2 is planned, its task types these messa
 4. **Screencast settings.** Format (JPEG is the obvious first), quality and frame-rate defaults, and when to re-encode below 64 KiB.
 5. **A visible indicator** in the terminal dashboard for a remote session.
 6. Anything here that conflicts with Reborn's behaviour. The engine spec wins on behaviour; this page then changes.
+
+### Manual sign-in from Wallet
+
+An engine advertising `wallet-sign-in@1` implements the owner sign-in subset of the live browser. A Wallet record or pending request opens the signed viewer using `openBrowserSignIn` with its origin and a `wallet` target. A request carries its current step. The engine checks the target, origin, account context and browser on open. The ordinary session read, live channel, hand-back and end operations apply. General tab watching and help requests still require `browser-tab@1`. Clients communicating with a browser-tab-only engine omit the optional target.
+
+Password rejection describes one attempted method. Show **Sign in manually** beside the credential action in Wallet. An existing provider session, a popup, an identity-provider redirect or a second factor can complete the original sign-in. Keep account validation on the target service and resume matching work on explicit hand-back. Closing the viewer leaves work waiting. On a host advertising `computer-control@1`, the owner can explicitly open its same-origin `/computer` viewer for a native dialog and return to the tab to finish.
