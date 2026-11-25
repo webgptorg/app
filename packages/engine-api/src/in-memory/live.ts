@@ -1,3 +1,4 @@
+import { KNOWN_CAPABILITIES, supports } from '../capabilities/capability';
 import type { AuditAction, AuditActor, AuditDetails, AuditTarget } from '../audit';
 import {
     BROWSER_IDLE_MS,
@@ -504,6 +505,19 @@ export const LIVE_HANDLERS: Pick<Handlers, LiveRoute> = {
     openLiveAudioSession: () => fail('capability-not-supported'),
     openBrowserSignIn: swept(({ body }, ctx) => {
         const { browser } = ctx.state;
+        if (body.wallet !== undefined || !supports(ctx.state.engine, KNOWN_CAPABILITIES.browserTab)) {
+            if (ctx.member.role !== 'owner' || !ctx.actor.permissions.has('wallet.manage')) return fail('forbidden');
+            const target = body.wallet;
+            if (!target) return fail('browser-origin-refused');
+            const item =
+                target.kind === 'request'
+                    ? ctx.state.wallet.requests.get(target.id)
+                    : ctx.state.wallet.records.get(target.id);
+            if (!item) return notFound('wallet item');
+            if (item.origin !== body.origin) return fail('browser-origin-refused');
+            if (target.kind === 'request' && 'step' in item && item.step !== target.step)
+                return fail('wallet-request-moved');
+        }
         if (body.browser !== null && body.browser !== DEFAULT_BROWSER)
             return invalid('body.browser', 'No such browser.');
         if (!signInAllowlist(ctx).has(body.origin)) {

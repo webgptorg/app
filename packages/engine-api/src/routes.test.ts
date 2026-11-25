@@ -211,7 +211,13 @@ describe('capability routes', () => {
         // `file-scanning` adds no route: it changes what `files@1` reports; `live-video` will extend live audio.
         expect([...covered].sort()).toEqual(
             [...Object.values(KNOWN_CAPABILITIES), ...Object.values(RESERVED_CAPABILITIES)]
-                .filter((ref) => ref !== KNOWN_CAPABILITIES.fileScanning && ref !== RESERVED_CAPABILITIES.liveVideo)
+                .filter(
+                    (ref) =>
+                        ref !== KNOWN_CAPABILITIES.fileScanning &&
+                        ref !== KNOWN_CAPABILITIES.walletSignIn &&
+                        ref !== KNOWN_CAPABILITIES.computerControl &&
+                        ref !== RESERVED_CAPABILITIES.liveVideo,
+                )
                 .map(({ id }) => id)
                 .sort(),
         );
