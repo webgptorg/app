@@ -63,9 +63,11 @@ describe('structured installation choices', () => {
         try {
             for (const [name, button, value] of choices) {
                 await app.user.click(within(list).getByRole('tab', { name }));
-                const panel = within(screen.getByRole('tabpanel', { name }));
+                const tabPanel = screen.getByRole('tabpanel', { name });
+                const panel = within(tabPanel);
                 await app.user.click(await panel.findByRole('button', { name: button }));
                 expect(writeText).toHaveBeenLastCalledWith(value);
+                expect(tabPanel.querySelector('pre code')?.textContent).toBe(value);
                 expect(panel.queryByRole('tablist')).toBeNull();
                 if (name === 'Windows EXE') {
                     expect(panel.getByRole('link', { name: /Download Windows EXE/ }).getAttribute('href')).toBe(

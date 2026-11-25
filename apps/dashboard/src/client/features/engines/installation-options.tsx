@@ -43,16 +43,15 @@ export function installationTabs(
                 break;
             case 'ai': {
                 const prompts = option.prompts[locale.startsWith('cs') ? 'cs' : 'en'];
-                const label = m.engines_new_copy_prompt();
                 local.push({
                     id: 'ai',
                     label: m.engines_new_tab_ai(),
-                    panel: <InstallationCopyBlock label={label} value={prompts.local} />,
+                    panel: <InstallationCopyBlock prompt value={prompts.local} />,
                 });
                 remote.push({
                     id: 'ai-server',
                     label: m.engines_new_ai_server(),
-                    panel: <InstallationCopyBlock label={label} value={prompts.server} />,
+                    panel: <InstallationCopyBlock prompt value={prompts.server} />,
                 });
                 break;
             }
