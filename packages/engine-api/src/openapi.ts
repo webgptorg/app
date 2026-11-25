@@ -24,6 +24,7 @@ import {
     AuditVerification,
 } from './audit';
 import { Activity, ActivityActor, ActivityPage } from './capabilities/activity';
+import { AiTool, AiToolList, AiToolSignIn } from './capabilities/ai-tools';
 import { CapabilityRef, capabilityLabel } from './capabilities/capability';
 import {
     FileMetadata,
@@ -81,6 +82,8 @@ import {
     ActivityId,
     AgentId,
     AgentPermanentId,
+    AiToolId,
+    AiToolSignInId,
     ApiTokenId,
     AuditEntryId,
     ChatId,
@@ -262,6 +265,11 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, z.ZodType>> = {
     WalletRequest,
     WalletOverview,
     WalletSaved,
+    AiToolId,
+    AiToolSignInId,
+    AiTool,
+    AiToolList,
+    AiToolSignIn,
 };
 
 const JSON_SCHEMA_DIALECT = 'https://json-schema.org/draft/2020-12/schema';

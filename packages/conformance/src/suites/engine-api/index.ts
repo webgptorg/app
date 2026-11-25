@@ -2,6 +2,7 @@ import { ENGINE_API_ROUTES } from '@ptbk/engine-api';
 
 import type { ConformanceSuite } from '../../check';
 import { ACTIVITY_CHECKS } from './activity';
+import { AI_TOOL_CHECKS } from './ai-tools';
 import { EngineApi } from './api';
 import { AGENT_CHECKS } from './agents';
 import { AUDIT_CHECKS } from './audit';
@@ -24,6 +25,7 @@ import { SUITE } from './support';
 import { TASK_CHECKS } from './tasks';
 import { TEST_CHAT_CHECKS } from './test-chat';
 import { TRIGGER_CHECKS } from './triggers';
+import { UPDATES_CHECKS } from './updates';
 import { VOICE_CHECKS } from './voice';
 import { WALLET_CHECKS } from './wallet';
 
@@ -49,6 +51,8 @@ export const ENGINE_API_SUITE: ConformanceSuite = {
         ...LIVE_CHECKS,
         ...ONBOARDING_CHECKS,
         ...VOICE_CHECKS,
+        ...AI_TOOL_CHECKS,
+        ...UPDATES_CHECKS,
         ...ACTIVITY_CHECKS,
         ...AUDIT_CHECKS,
         ...PERMISSION_CHECKS,

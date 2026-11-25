@@ -218,6 +218,7 @@ describe('in-memory engine: rechecks', () => {
         const failed = ok(await client.chats.get(chatId, signal()));
         expect(failed.working).toEqual([]);
         expect(failed.recheck).toEqual({
+            aiToolId: null,
             cause: 'The reply failed.',
             nextAt: new Date(Date.parse(AT) + RECHECK_DELAY_MS).toISOString(),
             rounds: 1,
@@ -447,7 +448,7 @@ describe('in-memory engine: seeded activity', () => {
         const id = ChatId.parse('chat-seeded');
         const chat = ok(await client.chats.get(id, signal()));
         expect(chat.working).toEqual([{ startedAt: AT, messageId: null, author: ADA, steps: [toStep(STEPS[1])] }]);
-        expect(chat.recheck).toEqual({ cause: 'Overloaded.', nextAt: AT, rounds: 3 });
+        expect(chat.recheck).toEqual({ aiToolId: null, cause: 'Overloaded.', nextAt: AT, rounds: 3 });
         ok(await client.chats.retry(id, signal()));
         expect(prompts).toEqual(['Please check']);
     });

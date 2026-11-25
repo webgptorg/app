@@ -137,9 +137,13 @@ export class Bench {
         return this.#target;
     }
 
+    /** The engine API as the owner, on the engine started last. */
+    owner(ctx: BaseCheckContext): EngineApi {
+        return new EngineApi({ target: this.target(), signal: ctx.signal }, this.#owner);
+    }
+
     async security(ctx: BaseCheckContext): Promise<SecurityOverview> {
-        const api = new EngineApi({ target: this.target(), signal: ctx.signal }, this.#owner);
-        return api.ok(ENGINE_API_ROUTES.getSecurityOverview);
+        return this.owner(ctx).ok(ENGINE_API_ROUTES.getSecurityOverview);
     }
 
     /**

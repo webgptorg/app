@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AgentRunState } from './agents';
+import { AiToolChangedEvent } from './capabilities/ai-tools';
 import { ActivityEvent, parseActivity } from './capabilities/activity';
 import type { ActivityItem } from './capabilities/activity';
 import { FileChangedEvent } from './capabilities/files';
@@ -9,6 +10,7 @@ import { BrowserHelpChangedEvent, BrowserTabChangedEvent } from './capabilities/
 import { RunChangedEvent, RunChangedEventReader } from './capabilities/runs';
 import { TaskChangedEvent, TaskChangedEventReader } from './capabilities/tasks';
 import { TriggerChangedEvent } from './capabilities/triggers';
+import { UpdatesChangedEvent } from './capabilities/updates';
 import { AgentId, ChatId, Timestamp } from './common';
 import { defineRoute } from './route';
 import { toTolerant } from './tolerant';
@@ -22,6 +24,8 @@ const coreEvents = [
     IntegrationChangedEvent,
     BrowserTabChangedEvent,
     BrowserHelpChangedEvent,
+    AiToolChangedEvent,
+    UpdatesChangedEvent,
 ] as const;
 const CoreEngineEvent = z.discriminatedUnion('type', [...coreEvents, RunChangedEvent, TaskChangedEvent]);
 

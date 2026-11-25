@@ -53,6 +53,8 @@ export const AUDIT_ACTIONS = [
     'settings.update',
     'settings.update-policy',
     'settings.dashboard-removals',
+    /** `updates@1`: a member ran the UI update check early; the check's own outcome is in `GET /security`. */
+    'updates.ui-check',
     'wallet.record.save',
     'wallet.record.update',
     'wallet.record.delete',
@@ -79,6 +81,9 @@ export const AUDIT_ACTIONS = [
     'browser.session.end',
     'browser.channel.attach',
     'browser.help.dismiss',
+    'ai-tool.sign-in.start',
+    'ai-tool.sign-in.complete',
+    'ai-tool.sign-out',
     'engine.update.install',
     'ui.update.install',
 ] as const;
@@ -118,6 +123,7 @@ export const AUDIT_TARGET_KINDS = [
     'integration',
     'browser-session',
     'browser-help-request',
+    'ai-tool',
 ] as const;
 export const AuditTargetKind = z.enum(AUDIT_TARGET_KINDS);
 

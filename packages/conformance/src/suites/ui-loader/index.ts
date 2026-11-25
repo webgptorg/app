@@ -14,6 +14,7 @@ import {
     rollbackPersisted,
 } from './checks/revocations';
 import { dssePaeOnly, installPinnedValid, signatureThreshold, strictEd25519, strictPayload } from './checks/signatures';
+import { checkNowRespectsDelay } from './checks/updates';
 import type { UiLoaderLab } from './lab';
 
 /** In run order: the install and serving checks first, the ones that leave the engine without a bundle last. */
@@ -39,6 +40,7 @@ export const UI_LOADER_CHECKS: readonly UiLoaderCheck[] = [
     unavailableKeepsCurrent,
     delayTrustedTime,
     firstSeenPersisted,
+    checkNowRespectsDelay,
     policyHonoured,
     revokedCurrent,
 ];

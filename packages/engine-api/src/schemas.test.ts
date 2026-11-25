@@ -60,7 +60,14 @@ import { ENGINE_API_ROUTE_LIST } from './routes';
 import { Member } from './members';
 import { Passkey, PasskeyPageReader } from './passkeys';
 import { AddWalletRecordBody, WalletRecord } from './capabilities/wallet';
-import { RekorEntryUuid, SecurityOverview, SecurityOverviewReader, UiUpdateCheck } from './security';
+import {
+    MAX_UPDATE_COMMAND_LENGTH,
+    RekorEntryUuid,
+    SecurityOverview,
+    SecurityOverviewReader,
+    UiUpdateCheck,
+    UiUpdateCheckReader,
+} from './security';
 import { Session } from './sessions';
 import { SetUpdatePolicyBody } from './settings';
 
@@ -505,10 +512,15 @@ const securityV13 = {
     clockSkew: { seconds: -300, measuredAt: NOW },
 };
 
-/** What a 1.3 answer parses to since API 1.10 defaults `eligibleAt`. */
+/** What a 1.3 answer parses to since API 1.10 defaults `eligibleAt`, and the `updates@1` fields. */
 const securityV13Parsed = {
     ...securityV13,
-    ui: { ...securityV13.ui, lastUpdateCheck: { ...securityV13.ui.lastUpdateCheck, eligibleAt: null } },
+    update: { ...securityV13.update, checkedAt: null, command: null },
+    ui: {
+        ...securityV13.ui,
+        lastUpdateCheck: { ...securityV13.ui.lastUpdateCheck, eligibleAt: null },
+        nextCheckAt: null,
+    },
 };
 
 describe('SecurityOverview (API 1.3 fields)', () => {
@@ -1071,5 +1083,48 @@ describe('AgentProfile.illustration', () => {
         expect(AgentReader.parse(withIllustration(42)).profile.illustration).toBeNull();
         expect(AgentReader.parse(withIllustration('analyst')).profile.illustration).toBe('analyst');
         expect(AgentReader.parse(withIllustration('from-a-newer-ui')).profile.illustration).toBe('from-a-newer-ui');
+    });
+});
+
+describe('updates@1 fields of SecurityOverview', () => {
+    const withUpdates = {
+        ...securityV13,
+        update: {
+            ...securityV13.update,
+            status: 'available',
+            availableVersion: '1.5.0',
+            checkedAt: NOW,
+            command: 'npm install --global ptbk@1.5.0',
+        },
+        ui: { ...securityV13.ui, nextCheckAt: NOW },
+    };
+
+    it('carries the engine update command, when it last looked, and the next UI check', () => {
+        const overview = SecurityOverview.parse(withUpdates);
+        expect(overview.update).toMatchObject({ checkedAt: NOW, command: 'npm install --global ptbk@1.5.0' });
+        expect(overview.ui.nextCheckAt).toBe(NOW);
+        expect(SecurityOverviewReader.parse(withUpdates).ui.nextCheckAt).toBe(NOW);
+    });
+
+    it('refuses a command on more than one line, with control characters, empty or too long', () => {
+        for (const command of [
+            'npm i -g ptbk\nrm -rf ~',
+            'ptbk\u001b[2J',
+            '',
+            'x'.repeat(MAX_UPDATE_COMMAND_LENGTH + 1),
+        ]) {
+            const update = { ...withUpdates.update, command };
+            expect(SecurityOverview.safeParse({ ...withUpdates, update }).success).toBe(false);
+        }
+    });
+
+    it('reads a check-now answer tolerantly', () => {
+        const check = { at: NOW, outcome: 'postponed', version: null, reason: null, revocationReason: null };
+        expect(UiUpdateCheck.safeParse(check).success).toBe(false);
+        expect(UiUpdateCheckReader.parse({ ...check, extra: 1 })).toEqual({
+            ...check,
+            outcome: 'unknown',
+            eligibleAt: null,
+        });
     });
 });

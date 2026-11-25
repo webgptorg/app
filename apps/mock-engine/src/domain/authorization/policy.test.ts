@@ -11,11 +11,13 @@ describe('permissionsFor', () => {
         expect(sorted(permissionsFor({ role: 'owner' }, { permissions: null }))).toEqual([...PERMISSIONS].sort());
     });
 
-    it('gives an admin everything but settings.manage and browser.control', () => {
+    it('gives an admin everything but settings.manage, browser.control and ai-tools.manage', () => {
         const admin = permissionsFor({ role: 'admin' }, { permissions: null });
         expect(admin.has('settings.manage')).toBe(false);
         expect(admin.has('browser.control')).toBe(false);
-        expect(admin.size).toBe(PERMISSIONS.length - 2);
+        expect(admin.has('ai-tools.manage')).toBe(false);
+        expect(admin.has('ai-tools.read')).toBe(true);
+        expect(admin.size).toBe(PERMISSIONS.length - 3);
     });
 
     it('keeps members away from wallet.manage, members.manage and settings', () => {

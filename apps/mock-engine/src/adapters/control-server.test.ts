@@ -277,6 +277,10 @@ describe('control server', () => {
             'GET /__mock/members',
             'GET /__mock/state',
             'GET /__mock/ui',
+            'POST /__mock/ai-tools/check-failure',
+            'POST /__mock/ai-tools/device-login',
+            'POST /__mock/ai-tools/expire',
+            'POST /__mock/ai-tools/renew',
             'POST /__mock/inbound-email',
             'POST /__mock/live-browser/elapse',
             'POST /__mock/live-browser/help-requests',
@@ -291,8 +295,10 @@ describe('control server', () => {
             'POST /__mock/simulation/advance',
             'POST /__mock/step-up/expire',
             'POST /__mock/ui/check',
+            'POST /__mock/updates/check',
             'POST /__mock/wallet-requests',
             'PUT /__mock/faults',
+            'PUT /__mock/updates',
         ]);
         expect(logger.entries).toContainEqual(
             expect.objectContaining({ event: 'control.listening', fields: { host: '127.0.0.1', port: server.port } }),
@@ -433,5 +439,33 @@ describe('live browser levers', () => {
         expect((await elapse(watched.data.id, 'idle')).status).toBe(404);
         expect((await elapse('session-nowhere', 'expired')).status).toBe(404);
         expect((await elapse(watched.data.id, 'later')).status).toBe(400);
+    });
+});
+
+describe('updates@1 levers', () => {
+    it('publish a delayed UI release, fail the store and report a newer engine, deterministically', async () => {
+        const { server, runtime, post } = await start();
+        const put = (body: unknown) =>
+            fetch(`http://127.0.0.1:${String(server.port)}/__mock/updates`, {
+                method: 'PUT',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+        expect((await put({ uiRelease: { version: '9.0.0', delayS: 600 }, engineLatest: '0.2.0' })).status).toBe(204);
+        const refused = await post('/__mock/updates/check', undefined);
+        expect(refused.body).toMatchObject({ outcome: 'refused', reason: 'delay-not-elapsed', version: '9.0.0' });
+        // A relay changing state re-applies the panel without losing the fake store's check.
+        runtime.setRelayStatus('relay-a.engine.test', 'connected');
+        const security = await ownerClient(runtime).security.get(AbortSignal.timeout(5_000));
+        if (security.kind !== 'ok') throw new Error(security.problem.code);
+        expect(security.data.ui.lastUpdateCheck).toMatchObject({ reason: 'delay-not-elapsed' });
+        expect(security.data.update).toMatchObject({
+            status: 'available',
+            availableVersion: '0.2.0',
+            command: 'npm install --global ptbk@0.2.0',
+        });
+        expect((await put({ uiStoreFailing: true })).status).toBe(204);
+        expect((await post('/__mock/updates/check', undefined)).body).toMatchObject({ outcome: 'unavailable' });
+        expect((await put({ uiRelease: { version: 'nine' } })).status).toBe(400);
     });
 });

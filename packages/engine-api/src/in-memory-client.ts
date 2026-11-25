@@ -13,6 +13,8 @@ import type { FileScanStatus } from './capabilities/files';
 import { Integration } from './capabilities/integrations';
 import type { IntegrationStatus } from './capabilities/integrations';
 import type { OnboardingState } from './capabilities/onboarding';
+import { AiToolProblem } from './capabilities/ai-tools';
+import type { AiTool } from './capabilities/ai-tools';
 import { RunDetail } from './capabilities/runs';
 import { Task, TaskLink, TaskOccurrence } from './capabilities/tasks';
 import type { Run, RunStatus } from './capabilities/runs';
@@ -27,6 +29,7 @@ import type { EngineApiClient, EngineApiResponse, EngineApiTransport, EngineApiT
 import {
     AgentId,
     AgentPermanentId,
+    AiToolId,
     AuditEntryId,
     ClientInfo,
     DashboardUserId,
@@ -35,6 +38,7 @@ import {
     OpaqueId,
     OrgId,
     RevisionId,
+    SemVer,
     SessionId,
     Timestamp,
 } from './common';
@@ -46,7 +50,17 @@ import { Folder } from './folders';
 import { hashAuditEntry } from './in-memory/audit-chain';
 import { requestAccess, revokeDashboardMember } from './in-memory/access-requests';
 import { createOnboardingRecord, failHarnessCheck, onboardingState, settleHarnessLogin } from './in-memory/onboarding';
+import { createUpdatesRecord, runFakeUiCheck, uiUpdaterOf } from './in-memory/updates';
+import type { FakeUiRelease, UiUpdater } from './in-memory/updates';
 import { createVoiceRecord } from './in-memory/voice';
+import {
+    createInMemoryAiTools,
+    expireAiToolSignIn,
+    failAiToolCheck,
+    renewAiToolSignIn,
+    listAiTools,
+    settleAiToolSignIn,
+} from './in-memory/ai-tools';
 import type { VoiceFault } from './in-memory/voice';
 import type { HarnessLoginOutcome, OnboardingHarness, OnboardingSeed } from './in-memory/onboarding';
 import type { DashboardRevocationOutcome, NewAccessRequest } from './in-memory/access-requests';
@@ -135,6 +149,7 @@ import type { EngineApiStreamItem, ParsedRouteRequest, RouteBody, RouteDefinitio
 import { matchMediaType } from './media-type';
 import type { EngineApiRouteId } from './routes';
 import { SecurityOverview } from './security';
+import type { UiUpdateCheck } from './security';
 import { Session } from './sessions';
 import { Settings } from './settings';
 
@@ -312,6 +327,8 @@ export interface InMemorySeedChat {
         readonly nextAt: string;
         readonly rounds: number;
         readonly author?: ParticipantRef;
+        /** The AI tool the failure needs signed in again (`ai-tool-sign-in-required`). */
+        readonly aiToolId?: string;
     };
 }
 
@@ -379,6 +396,11 @@ export interface InMemoryEngineCoreOptions {
     readonly checks?: Partial<EngineChecks>;
     /** Upload limits per purpose (`GET /files/upload-policy`); by default any type up to `MAX_FILE_BYTES`. */
     readonly uploadPolicies?: FileUploadPolicies;
+    /**
+     * `updates@1`: the engine's real UI updater. Without it the core checks a fake release store that only the
+     * controller's levers change (`setUiRelease`, `failUiReleaseStore`).
+     */
+    readonly uiUpdater?: UiUpdater;
 }
 
 export interface InMemoryEngineApiOptions extends InMemoryEngineCoreOptions {
@@ -529,8 +551,11 @@ export interface InMemoryEngineController {
         agentId: string,
         reply: { readonly content: string; readonly choices?: readonly string[] },
     ): Message;
-    /** The turn failed before a reply: the thread gets a recheck, which the engine attempts at its `nextAt`. */
-    failReplyTurn(chatId: string, agentId: string, cause?: string): Chat;
+    /**
+     * The turn failed before a reply: the thread gets a recheck, which the engine attempts at its `nextAt`. With
+     * `aiToolId` it failed because that AI tool needs signing in again.
+     */
+    failReplyTurn(chatId: string, agentId: string, cause?: string, aiToolId?: string): Chat;
     /** The engine's own attempt at a thread's recheck when `nextAt` comes; throws when none waits. */
     recheckChat(chatId: string): Chat;
     /** The thread created or links a task: a `linked` entry and the task's live state in `tasks`. */
@@ -551,6 +576,33 @@ export interface InMemoryEngineController {
     failVoice(fault: VoiceFault | null): void;
     /** `voice-input@1`: the fake transcriber hears `text` in the clip with this SHA-256 (lowercase hex). */
     setVoiceTranscript(clipSha256: string, text: string): void;
+    /** `ai-tools@1`: the tools as the engine sees them now. */
+    aiTools(): readonly AiTool[];
+    /**
+     * `ai-tools@1`: the provider stops accepting the tool's sign-in; it reads `needs-sign-in`, and while it is the first
+     * installed tool, new chat turns fail with a recheck naming it. Throws for an unknown tool or one without one.
+     */
+    expireAiToolSignIn(aiToolId: string): AiTool;
+    /** `ai-tools@1`: the provider accepts the tool's sign-in again, as after signing in on the host. */
+    renewAiToolSignIn(aiToolId: string): AiTool;
+    /** `ai-tools@1`: every check and verification of the tool fails with `problem` from now on; `null` heals it. */
+    failAiToolCheck(aiToolId: string, problem: Unbranded<AiToolProblem> | null): void;
+    /** `ai-tools@1`: the provider answered the device login of the tool's open sign-in; throws when none waits. */
+    settleAiToolSignIn(aiToolId: string, outcome: HarnessLoginOutcome, diagnostic?: string): void;
+    /**
+     * `updates@1`, fake store only: publishes one newer UI release, inside its delay until `eligibleAt`; `null` takes
+     * it down. Throws for a version that is not SemVer or a time that is not a timestamp.
+     */
+    setUiRelease(release: { readonly version: string; readonly eligibleAt?: string | null } | null): void;
+    /** `updates@1`, fake store only: every check from now on finds the store unreachable, until `false`. */
+    failUiReleaseStore(failing: boolean): void;
+    /**
+     * A scheduled UI check, or under `manual` the owner's approval on the host: no rate limit, and announced with
+     * `updates.changed` like every check. Uses the plugged-in updater when there is one.
+     */
+    runUiUpdateCheck(signal?: AbortSignal): Promise<UiUpdateCheck>;
+    /** Plugs in the engine's real UI updater once it exists, or unplugs it (`null`) to go back to the fake store. */
+    plugUiUpdater(updater: UiUpdater | null): void;
     /** Agent work needs a login it does not have; asking again for the same origin and account counts on one request. */
     requestWalletLogin(request: Unbranded<NewWalletRequest>): WalletRequest;
     /** E.g. the operator set the Wallet up or it locked on this host. */
@@ -849,6 +901,10 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         appendAudit(input);
     };
     state.browser.permissionsOf = options.browserPermissions ?? (() => null);
+    state.aiTools.audit = (input) => {
+        appendAudit(input);
+    };
+    state.updates.updater = options.uiUpdater ?? null;
     const checks: EngineChecks = { ...DEFAULT_ENGINE_CHECKS, ...options.checks };
     const system: EngineContext = { state, checks, now, newId, publish, replies };
     const chatRecord = (chatId: string): ChatRecord => {
@@ -933,9 +989,13 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             touch(system, record);
             return message;
         },
-        failReplyTurn: (chatId, agentId, cause = REPLY_FAILED_CAUSE) => {
+        failReplyTurn: (chatId, agentId, cause = REPLY_FAILED_CAUSE, aiToolId) => {
             const record = chatRecord(chatId);
-            endTurn(system, record, workingRecord(record, agentId), { kind: 'failed', cause });
+            endTurn(system, record, workingRecord(record, agentId), {
+                kind: 'failed',
+                cause,
+                aiToolId: aiToolId === undefined ? null : AiToolId.parse(aiToolId),
+            });
             touch(system, record);
             return chatView(system, record, seedMember.id);
         },
@@ -968,10 +1028,38 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         failVoice: (fault) => {
             state.voice.fault = fault;
         },
+        aiTools: () => listAiTools(system),
+        expireAiToolSignIn: (aiToolId) => expireAiToolSignIn(system, aiToolId),
+        renewAiToolSignIn: (aiToolId) => renewAiToolSignIn(system, aiToolId),
+        failAiToolCheck: (aiToolId, problem) => {
+            failAiToolCheck(system, aiToolId, problem === null ? null : AiToolProblem.parse(problem));
+        },
+        settleAiToolSignIn: (aiToolId, outcome, diagnostic) => {
+            settleAiToolSignIn(system, aiToolId, outcome, diagnostic);
+        },
         setVoiceTranscript: (clipSha256, text) => {
             if (!/^[0-9a-f]{64}$/.test(clipSha256)) throw new Error('Expected a lowercase hex SHA-256');
             state.voice.transcripts.set(clipSha256, text);
         },
+        setUiRelease: (release) => {
+            state.updates.release =
+                release === null
+                    ? null
+                    : ({
+                          version: SemVer.parse(release.version),
+                          eligibleAt: release.eligibleAt == null ? null : Timestamp.parse(release.eligibleAt),
+                      } satisfies FakeUiRelease);
+        },
+        failUiReleaseStore: (failing) => {
+            state.updates.storeFailing = failing;
+        },
+        plugUiUpdater: (updater) => {
+            state.updates.updater = updater;
+        },
+        runUiUpdateCheck: (signal = new AbortController().signal) =>
+            state.updates.updater === null
+                ? Promise.resolve(runFakeUiCheck(system))
+                : uiUpdaterOf(system).checkNow(signal),
         requestWalletLogin: (request) => requestWalletLogin(system, request as NewWalletRequest),
         setWalletState: (walletState, lockedRecords = 0) => {
             state.wallet.state = walletState;
@@ -1357,6 +1445,7 @@ const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
     revokeApiToken: { action: 'api-token.revoke', kind: 'api-token', param: 'apiTokenId' },
     updateSettings: { action: 'settings.update', kind: null },
     setUpdatePolicy: { action: 'settings.update-policy', kind: null },
+    checkForUiUpdate: { action: 'updates.ui-check', kind: null },
     revokePasskey: { action: 'passkey.revoke', kind: 'passkey', param: 'passkeyId' },
     revokeSession: { action: 'session.revoke', kind: 'session', param: 'sessionId' },
     revokeMyPasskey: { action: 'passkey.revoke', kind: 'passkey', param: 'passkeyId' },
@@ -1389,6 +1478,8 @@ const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
     handBackBrowserTab: { action: 'browser.control.hand-back', kind: 'browser-session', param: 'sessionId' },
     endBrowserSession: { action: 'browser.session.end', kind: 'browser-session', param: 'sessionId' },
     dismissBrowserHelpRequest: { action: 'browser.help.dismiss', kind: 'browser-help-request', param: 'requestId' },
+    startAiToolSignIn: { action: 'ai-tool.sign-in.start', kind: 'ai-tool', param: 'aiToolId' },
+    signOutAiTool: { action: 'ai-tool.sign-out', kind: 'ai-tool', param: 'aiToolId' },
 };
 
 function auditTarget(state: InMemoryState, rule: AuditRule, params: unknown, created: unknown): AuditTarget | null {
@@ -1436,6 +1527,8 @@ function targetName(state: InMemoryState, kind: AuditTarget['kind'], id: string)
         }
         case 'browser-help-request':
             return state.browser.helpRequests.get(id)?.origin ?? null;
+        case 'ai-tool':
+            return state.aiTools.tools.get(id)?.fake.name;
         case 'message':
         case 'invite':
         case 'session':
@@ -1588,6 +1681,7 @@ function createState(
         invites: byId((seed.invites ?? []).map((record) => Invite.parse(record))),
         onboarding: createOnboardingRecord(seed.onboarding ?? 'completed'),
         voice: createVoiceRecord(),
+        updates: createUpdatesRecord(at),
         accessRequests: new Map(
             (seed.accessRequests ?? []).map(({ request, code, dashboardUserId }) => {
                 const parsed = AccessRequest.parse(request);
@@ -1617,6 +1711,7 @@ function createState(
             requests: byId((seed.wallet?.pending ?? []).map((record) => WalletRequest.parse(record))),
         },
         browser: createInMemoryBrowser(),
+        aiTools: createInMemoryAiTools(at),
         apiTokens: byId((seed.apiTokens ?? []).map((record) => ApiToken.parse(record))),
         passkeys: byId(
             (
@@ -1779,6 +1874,7 @@ function replayChat(ctx: EngineContext, seed: InMemorySeedChat): ChatRecord {
             rounds: seed.recheck.rounds,
             author: ParticipantRef.parse(author),
             prompt: lastUserMessage(clock, record),
+            aiToolId: seed.recheck.aiToolId === undefined ? null : AiToolId.parse(seed.recheck.aiToolId),
         };
     }
     if (record.placeholderTitle && record.title === '') {

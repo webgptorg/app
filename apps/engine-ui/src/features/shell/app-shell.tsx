@@ -11,6 +11,7 @@ import { FeatureEventSync } from './feature-event-sync';
 import { ShellEngineSwitcher } from './shell-engine-switcher';
 import { ShellLanguageSwitch } from './shell-language-switch';
 import { LiveBrowserSlot } from './live-browser-slot';
+import { UiReloadSlot } from './ui-reload-slot';
 import { LiveIndicator } from './live-indicator';
 import { NavScroller } from './nav-scroller';
 import { useSidebarState } from './sidebar-preference';
@@ -106,6 +107,7 @@ function FullShell() {
                 {/* Lists and tables use the screen; only very wide screens cap it, so rows stay scannable. Prose
                     keeps its own reading width (`Page`'s `width="reading"`, the chat column). */}
                 <div className={cx('mx-auto w-full max-w-page', fill && 'flex min-h-0 flex-1 flex-col')}>
+                    <UiReloadSlot />
                     <LiveBrowserSlot />
                     <Outlet />
                 </div>

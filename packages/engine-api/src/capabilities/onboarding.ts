@@ -187,7 +187,7 @@ export const ONBOARDING_PROMPT_KINDS = [
  * How a client reads a prompt of a kind this contract does not know yet: its heading and question survive, so the UI
  * can say the step needs a newer UI and keep polling instead of failing the whole state.
  */
-const UnsupportedPromptReader = z
+export const UnsupportedOnboardingPromptReader = z
     .object({
         id: OnboardingPromptId,
         kind: z
@@ -205,7 +205,7 @@ const UnsupportedPromptReader = z
         title,
         question,
     }));
-export type UnsupportedOnboardingPrompt = z.output<typeof UnsupportedPromptReader>;
+export type UnsupportedOnboardingPrompt = z.output<typeof UnsupportedOnboardingPromptReader>;
 
 export const ONBOARDING_ACTIVITY_STATUSES = ['running', 'done', 'failed', 'skipped'] as const;
 
@@ -250,10 +250,23 @@ export type OnboardingState = z.infer<typeof OnboardingState>;
 
 /** The client's reader: tolerant as usual, and a prompt of an unknown kind reads as `unsupported`. */
 export const OnboardingStateReader = toTolerant(
-    z.strictObject({ ...stateShape, prompt: z.union([OnboardingPrompt, UnsupportedPromptReader]).nullable() }),
+    z.strictObject({
+        ...stateShape,
+        prompt: z.union([OnboardingPrompt, UnsupportedOnboardingPromptReader]).nullable(),
+    }),
 );
 export type ReadOnboardingState = z.output<typeof OnboardingStateReader>;
 export type ReadOnboardingPrompt = NonNullable<ReadOnboardingState['prompt']>;
+
+export const OnboardingSecretAnswer = z.strictObject({
+    kind: z.literal('secret'),
+    value: z.string().min(1).max(MAX_ONBOARDING_SECRET_LENGTH),
+});
+/** `returnCode` for a `return-code` login; `null` asks the engine to start the sign-in again (retry). */
+export const OnboardingHarnessLoginAnswer = z.strictObject({
+    kind: z.literal('harness-login'),
+    returnCode: z.string().min(1).max(512).nullable(),
+});
 
 export const OnboardingAnswer = z.discriminatedUnion('kind', [
     z.strictObject({
@@ -264,9 +277,8 @@ export const OnboardingAnswer = z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('choice'), choiceIds: z.array(OpaqueId).max(MAX_ONBOARDING_CHOICES) }),
     z.strictObject({ kind: z.literal('confirm'), confirmed: z.boolean() }),
     z.strictObject({ kind: z.literal('upload'), fileIds: z.array(FileId).max(MAX_ONBOARDING_FILES) }),
-    z.strictObject({ kind: z.literal('secret'), value: z.string().min(1).max(MAX_ONBOARDING_SECRET_LENGTH) }),
-    /** `returnCode` for a `return-code` login; `null` asks the engine to start the sign-in again (retry). */
-    z.strictObject({ kind: z.literal('harness-login'), returnCode: z.string().min(1).max(512).nullable() }),
+    OnboardingSecretAnswer,
+    OnboardingHarnessLoginAnswer,
 ]);
 export type OnboardingAnswer = z.infer<typeof OnboardingAnswer>;
 

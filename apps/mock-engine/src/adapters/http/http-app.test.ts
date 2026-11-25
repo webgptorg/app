@@ -293,6 +293,7 @@ describe('control listener route table', () => {
                 'http GET /__mock/state',
                 'http GET /__mock/ui',
                 'http POST /__mock/ui/check',
+                'http POST /__mock/updates/check',
                 'http POST /__mock/wallet-requests',
                 'http POST /__mock/reset',
                 'http POST /__mock/sessions',
@@ -300,6 +301,10 @@ describe('control listener route table', () => {
                 'http POST /__mock/simulation/advance',
                 'http POST /__mock/step-up/expire',
                 'http POST /__mock/runs',
+                'http POST /__mock/ai-tools/check-failure',
+                'http POST /__mock/ai-tools/device-login',
+                'http POST /__mock/ai-tools/expire',
+                'http POST /__mock/ai-tools/renew',
                 'http POST /__mock/inbound-email',
                 'http POST /__mock/live-browser/elapse',
                 'http POST /__mock/live-browser/help-requests',
@@ -308,6 +313,7 @@ describe('control listener route table', () => {
                 'http POST /__mock/onboarding/harness-check',
                 'http POST /__mock/onboarding/harness-login',
                 'http PUT /__mock/faults',
+                'http PUT /__mock/updates',
             ].sort(),
         );
         for (const route of routes) {

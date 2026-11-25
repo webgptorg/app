@@ -19,7 +19,9 @@ import { TASK_HANDLERS } from './tasks';
 import { ACCESS_REQUEST_HANDLERS, activeOwnerCount, signOutEverywhere } from './access-requests';
 import { LIVE_HANDLERS } from './live';
 import { ONBOARDING_HANDLERS } from './onboarding';
+import { UPDATES_HANDLERS, securityView } from './updates';
 import { VOICE_HANDLERS } from './voice';
+import { AI_TOOL_HANDLERS } from './ai-tools';
 import { TEST_CHAT_HANDLERS } from './test-chat';
 import {
     USER,
@@ -577,7 +579,7 @@ export const HANDLERS: Handlers = {
     },
     revokeSession: ({ params }, ctx) => (ctx.state.sessions.delete(params.sessionId) ? ok(null) : notFound('session')),
 
-    getSecurityOverview: (_, ctx) => ok(ctx.state.security),
+    getSecurityOverview: (_, ctx) => ok(securityView(ctx)),
 
     listAuditEntries: ({ query }, ctx) => {
         const entries = ctx.state.audit.filter((entry) => {
@@ -598,6 +600,7 @@ export const HANDLERS: Handlers = {
     verifyAuditLog: async (_, ctx) => ok(await verifyAuditChain(ctx.state.audit, ctx.now())),
 
     ...ACTIVITY_HANDLERS,
+    ...UPDATES_HANDLERS,
     ...RUN_HANDLERS,
     ...TASK_HANDLERS,
     ...FILE_HANDLERS,
@@ -609,6 +612,7 @@ export const HANDLERS: Handlers = {
     ...ONBOARDING_HANDLERS,
     ...WALLET_HANDLERS,
     ...VOICE_HANDLERS,
+    ...AI_TOOL_HANDLERS,
 };
 
 function saveAgent(ctx: HandlerContext, agent: Agent): HandlerResult<Agent> {

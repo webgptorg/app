@@ -47,6 +47,13 @@ export const PERMISSIONS = [
      * dismissing a help request. Acting as the engine's accounts, so engine policy gives it to owners only.
      */
     'browser.control',
+    /** The engine's AI tools (`ai-tools@1`): their status, how they sign in (never a key) and "Check now". */
+    'ai-tools.read',
+    /**
+     * Signing an AI tool in again, giving it an API key and signing it out, behind step-up. The project's model
+     * accounts and their bills, so engine policy gives it to owners only.
+     */
+    'ai-tools.manage',
 ] as const;
 export const Permission = z.enum(PERMISSIONS);
 export type Permission = z.infer<typeof Permission>;

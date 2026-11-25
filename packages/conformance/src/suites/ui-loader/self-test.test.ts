@@ -67,6 +67,8 @@ const CAUGHT_BY: Record<UiLoaderDefect, readonly string[]> = {
     'serve-wrong-bytes': ['ui-loader.serve.listed-files-only'],
     // Refusing a malformed key in the trust policy at startup is allowed: the check still passes.
     'reject-malformed-keys': [],
+    'check-now-skips-delay': ['ui-loader.updates.check-now-respects-delay'],
+    'next-check-far': ['ui-loader.updates.check-now-respects-delay'],
 };
 
 describe('the ui-loader suite', () => {

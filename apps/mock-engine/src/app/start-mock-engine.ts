@@ -1,7 +1,7 @@
 import type { Duplex } from 'node:stream';
 
-import { KNOWN_CAPABILITIES, supports } from '@ptbk/engine-api';
-import type { InMemoryEngineCore } from '@ptbk/engine-api/in-memory';
+import { KNOWN_CAPABILITIES, Timestamp, supports } from '@ptbk/engine-api';
+import type { InMemoryEngineCore, UiUpdater } from '@ptbk/engine-api/in-memory';
 import type { Hostname } from '@ptbk/protocol';
 import {
     CLOSE_CODE,
@@ -242,6 +242,26 @@ function configuredUiLoader(
     });
 }
 
+/**
+ * The loader as `updates@1` sees it. Check-now runs the scheduled check early (`checkEarly`), never the owner's
+ * approval under `manual`, which the core refuses before it gets here; it answers what the panel now reports.
+ */
+function uiUpdaterOf(loader: UiLoader, runtime: EngineRuntime, clock: Clock): UiUpdater {
+    return {
+        policy: () => loader.policy().kind,
+        nextCheckAt() {
+            const atMs = loader.nextCheckAtMs();
+            return atMs === null ? null : Timestamp.parse(new Date(Math.ceil(atMs / 1000) * 1000).toISOString());
+        },
+        async checkNow() {
+            const outcome = await loader.checkEarly();
+            return (
+                runtime.controller().updateSecurity({}).ui.lastUpdateCheck ?? uiUpdateCheckOf(outcome, clock.nowMs())
+            );
+        },
+    };
+}
+
 /** `PTBK_RELAYS` when set (an operator override, and always in the M1 dev mode), else the registration's relays. */
 function relaysToDial(config: MockEngineConfig, registration: Registration | null): readonly RelayTarget[] {
     if (registration === null || config.relays.length > 0) return config.relays;
@@ -420,6 +440,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         });
     });
     const ui = configuredUiLoader(config, deps, runtime, progress);
+    if (ui !== null) runtime.setUiUpdater(uiUpdaterOf(ui, runtime, deps.clock));
     const server =
         deps.certificates === undefined
             ? null

@@ -70,6 +70,16 @@ export const KNOWN_CAPABILITIES = {
     voiceInput: { id: 'voice-input', version: 1 },
     /** Spoken replies: the engine reads a message aloud in a format the browser can play. */
     voiceOutput: { id: 'voice-output', version: 1 },
+    /**
+     * The AI tools the project runs on (Claude Code, Codex, …): their status, a real check, and signing one in again or
+     * with an API key from the browser, so a server never needs a terminal for it.
+     */
+    aiTools: { id: 'ai-tools', version: 1 },
+    /**
+     * Updates from the browser: the next UI check and the engine's update command in `GET /security`, and running the
+     * normal UI check early. Without it those fields are `null` and the UI offers no "Check now".
+     */
+    updates: { id: 'updates', version: 1 },
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export type KnownCapability = (typeof KNOWN_CAPABILITIES)[keyof typeof KNOWN_CAPABILITIES];

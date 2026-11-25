@@ -8,9 +8,11 @@ import { OWNER_PERMISSIONS } from '@ptbk/engine-api';
  */
 export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = Object.freeze({
     owner: OWNER_PERMISSIONS,
-    // Driving a browser tab signs in as the engine's own accounts, so it stays with owners.
+    // Driving a browser tab signs in as the engine's own accounts, and signing an AI tool in or giving it a key decides
+    // whose model account the project bills, so both stay with owners.
     admin: OWNER_PERMISSIONS.filter(
-        (permission) => permission !== 'settings.manage' && permission !== 'browser.control',
+        (permission) =>
+            permission !== 'settings.manage' && permission !== 'browser.control' && permission !== 'ai-tools.manage',
     ),
     member: [
         'agents.read',
