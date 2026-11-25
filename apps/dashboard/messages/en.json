@@ -789,6 +789,8 @@
   "user_menu_for": "Account menu for {email}",
   "engines_new_ai_server": "AI over SSH",
   "engines_new_checksum": "Installer SHA-256",
+  "engines_new_computer_access": "Agents use this computer’s permissions, files and signed-in services. Sharing project access can let colleagues work with them indirectly. You can use a dedicated computer or VPS.",
+  "engines_new_ubuntu": "Ubuntu 24.04 x64 with systemd. Run it as root or with sudo.",
   "engines_new_copy_prompt": "Copy prompt",
   "engines_new_download_windows": "Download Windows EXE · {version}",
   "engines_new_tab_ai": "Install with AI",

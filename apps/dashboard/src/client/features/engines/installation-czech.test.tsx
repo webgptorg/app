@@ -39,6 +39,13 @@ it('copies the Czech paired AI prompt from its top-level tab', async () => {
         expect(panel.querySelector('pre code')?.textContent).toBe(prompt);
         expect(screen.getByText(/Vyberte způsob instalace. Projekt se nejdřív připojí/)).toBeTruthy();
         expect(screen.getByRole('tab', { name: 'Již běžící projekt' })).toBeTruthy();
+        expect(screen.getByText(/^Agenti pracují s oprávněními, soubory a přihlášenými službami/)).toBeTruthy();
+        await app.user.click(screen.getByRole('tab', { name: 'Ubuntu VPS' }));
+        expect(
+            within(screen.getByRole('tabpanel', { name: 'Ubuntu VPS' })).getByText(
+                'Ubuntu 24.04 x64 se systemd. Spusťte ho jako root nebo přes sudo.',
+            ),
+        ).toBeTruthy();
         expect(document.body.textContent).not.toMatch(/engines_new_/);
     } finally {
         Reflect.deleteProperty(navigator, 'clipboard');

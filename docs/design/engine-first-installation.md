@@ -30,7 +30,7 @@ The Windows script downloads the exact published x64 EXE, checks its SHA-256 and
 
 The Ubuntu VPS script uses the upstream installer. It verifies the immutable script before elevation, passes the link on stdin and runs the engine as the dedicated `promptbook` user. All paths leave project placement and first access to the engine.
 
-The installation page opens the terminal command for the browser’s platform. The macOS/Linux, Windows PowerShell and Ubuntu VPS commands sit together at the start of one tab list, followed by the AI prompts, the Windows EXE and configured commands. Each command can be copied directly. The running-project tab also offers the pairing address when available.
+The installation page opens the terminal command for the browser’s platform. The macOS/Linux, Windows PowerShell and Ubuntu VPS commands sit together at the start of one tab list, followed by the AI prompts, the Windows EXE and configured commands. Each command can be copied directly. The running-project tab also offers the pairing address when available. The Ubuntu VPS command carries one muted line naming its requirements (Ubuntu 24.04 x64 with systemd, run as root or with sudo). Under the tabs, next to the expiry line, a muted note says agents act with the host’s permissions, files and signed-in services, and that sharing a project can give colleagues indirect access to them. Both are available in Czech and English.
 
 AI prompts carry the same one-line commands, preserve data/sign-ins and native approvals, and leave agenda/harness choices to the engine UI. No engine name is represented as a known project path. Dashboard and its payloads never know an owner setup secret.
 

@@ -37,6 +37,9 @@ describe('structured installation choices', () => {
         expect(screen.getByText(/Choose an installation method/)).toBeTruthy();
         expect(within(screen.getByRole('tabpanel')).queryByRole('list')).toBeNull();
         expect(screen.queryByRole('button', { name: 'Copy address' })).toBeNull();
+        expect(
+            screen.getByText(/^Agents use this computer’s permissions, files and signed-in services\./),
+        ).toBeTruthy();
 
         const commands = options.find((option) => option.kind === 'command')?.commands;
         const prompts = options.find((option) => option.kind === 'ai')?.prompts.en;
@@ -69,6 +72,9 @@ describe('structured installation choices', () => {
                 expect(writeText).toHaveBeenLastCalledWith(value);
                 expect(tabPanel.querySelector('pre code')?.textContent).toBe(value);
                 expect(panel.queryByRole('tablist')).toBeNull();
+                expect(panel.queryByText('Ubuntu 24.04 x64 with systemd. Run it as root or with sudo.') !== null).toBe(
+                    name === 'Ubuntu VPS',
+                );
                 if (name === 'Windows EXE') {
                     expect(panel.getByRole('link', { name: /Download Windows EXE/ }).getAttribute('href')).toBe(
                         download?.url,

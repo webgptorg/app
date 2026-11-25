@@ -94,7 +94,7 @@ AI prompts are localized, distinguish this computer from an existing VPS over SS
 
 `ENGINE_INSTALLATION` contains reviewed release metadata. Its optional `installationOptions` response is a discriminated union of command, AI and download payloads; long prompts never enter the 512-character legacy shell-template schema. `INSTALL_COMMANDS` and `INSTALL_GUIDE_URL` remain supported, with tabs for configured running-project and Compose commands. The running-project tab also offers the raw pairing URL when available. Older configurations keep their existing tabs. The generated Bash command is also retained in `installCommands` for the legacy presentation.
 
-The next step is the owner setup link printed by the engine, followed by passkey, brief/files and harness setup on that engine's origin. The dashboard never receives the owner setup secret or project content.
+The next step is the owner setup link printed by the engine, followed by passkey, brief/files and harness setup on that engine's origin. The dashboard never receives the owner setup secret or project content. A short muted note under the tabs explains host permissions and indirect access when sharing a project, with a dedicated computer or VPS as alternatives.
 
 Also built in [D-10](../plan/tasks/D-10-live-link-progress.md):
 

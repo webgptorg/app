@@ -283,6 +283,9 @@ function InstallCommand(props: {
                 <p className="text-sm text-text-muted" aria-live="off">
                     {m.engines_new_command_body({ time: locale.formatDateTime(new Date(props.view.expiresAt)) })}
                 </p>
+                {options === undefined ? null : (
+                    <p className="text-sm text-text-muted">{m.engines_new_computer_access()}</p>
+                )}
             </div>
         </Section>
     );

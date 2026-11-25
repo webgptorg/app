@@ -37,7 +37,12 @@ export function installationTabs(
                     {
                         id: 'ubuntu',
                         label: 'Ubuntu VPS',
-                        panel: <InstallationCopyBlock value={option.commands.ubuntu} />,
+                        panel: (
+                            <div className="flex flex-col gap-2">
+                                <InstallationCopyBlock value={option.commands.ubuntu} />
+                                <p className="text-sm text-text-muted">{m.engines_new_ubuntu()}</p>
+                            </div>
+                        ),
                     },
                 );
                 break;

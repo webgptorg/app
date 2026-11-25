@@ -795,6 +795,8 @@
   "user_menu_for": "Nabídka účtu {email}",
   "engines_new_ai_server": "AI přes SSH",
   "engines_new_checksum": "SHA-256 instalátoru",
+  "engines_new_computer_access": "Agenti pracují s oprávněními, soubory a přihlášenými službami tohoto počítače. Sdílením projektu mohou kolegové získat nepřímý přístup i k nim. Můžete použít vyhrazený počítač nebo VPS.",
+  "engines_new_ubuntu": "Ubuntu 24.04 x64 se systemd. Spusťte ho jako root nebo přes sudo.",
   "engines_new_copy_prompt": "Kopírovat prompt",
   "engines_new_download_windows": "Stáhnout Windows EXE · {version}",
   "engines_new_tab_ai": "Instalace pomocí AI",

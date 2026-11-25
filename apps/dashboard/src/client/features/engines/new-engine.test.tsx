@@ -409,6 +409,7 @@ describe('new engine page', () => {
             });
             expect((await screen.findAllByRole('tab')).map((tab) => tab.textContent)).toEqual([TAB_NAMES[0]]);
             expect(app.container.textContent).not.toMatch(/engines_new_/);
+            expect(screen.queryByText(/Agents use this computer’s permissions/)).toBeNull();
         });
 
         it('keeps the security explanation behind one link that opens in a new tab, so the command stays', async () => {
