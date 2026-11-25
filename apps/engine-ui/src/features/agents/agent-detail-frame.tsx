@@ -9,6 +9,7 @@ import { useEngineApi } from '../../app/engine-api-context';
 import { ButtonLink } from '../../app/link';
 import { AGENT_TABS } from '../../app/registry/feature';
 import type { AgentTabEntry } from '../../app/registry/feature';
+import { AgentBookDraftProvider } from '../book/agent-book-draft';
 import { m } from '../../paraglide/messages';
 import { useDocumentTitle } from '../shell/document-title';
 import { Breadcrumbs, Crumb } from '../shell/page';
@@ -152,27 +153,34 @@ export function AgentDetailFrame() {
                     </div>
                 </div>
             </header>
-            <Tabs
-                fill={fill}
-                label={m.agent_tabs_label({ name: agent.name })}
-                activation="manual"
-                selectedId={selected?.id ?? ''}
-                onSelect={(id) => {
-                    const tab = tabs.find((candidate) => candidate.id === id);
-                    if (tab !== undefined) void navigate({ to: tab.to, params: tabParams(agent) });
-                }}
-                tabs={tabs.map((tab) => ({
-                    id: tab.id,
-                    label: tab.label(),
-                    panel: tab.id === selected?.id ? <Outlet /> : null,
-                }))}
-                renderTab={(definition, props) => {
-                    const tab = tabs.find((candidate) => candidate.id === definition.id);
-                    return tab === undefined ? null : (
-                        <RouterLink to={tab.to} params={tabParams(agent)} activeOptions={{ exact: true }} {...props} />
-                    );
-                }}
-            />
+            <AgentBookDraftProvider key={agentId} agentId={agentId}>
+                <Tabs
+                    fill={fill}
+                    label={m.agent_tabs_label({ name: agent.name })}
+                    activation="manual"
+                    selectedId={selected?.id ?? ''}
+                    onSelect={(id) => {
+                        const tab = tabs.find((candidate) => candidate.id === id);
+                        if (tab !== undefined) void navigate({ to: tab.to, params: tabParams(agent) });
+                    }}
+                    tabs={tabs.map((tab) => ({
+                        id: tab.id,
+                        label: tab.label(),
+                        panel: tab.id === selected?.id ? <Outlet /> : null,
+                    }))}
+                    renderTab={(definition, props) => {
+                        const tab = tabs.find((candidate) => candidate.id === definition.id);
+                        return tab === undefined ? null : (
+                            <RouterLink
+                                to={tab.to}
+                                params={tabParams(agent)}
+                                activeOptions={{ exact: true }}
+                                {...props}
+                            />
+                        );
+                    }}
+                />
+            </AgentBookDraftProvider>
             {actions.dialogs}
         </section>
     );

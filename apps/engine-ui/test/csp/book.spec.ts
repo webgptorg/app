@@ -74,6 +74,30 @@ test.describe('the book editor under the engine CSP', () => {
     });
 });
 
+test('changes MODEL from Settings and saves the same legacy Book under strict CSP', async ({ page, visit }) => {
+    const consoleErrors = recordConsoleErrors(page);
+    await visit(`/agents/${BOOK_AGENT_ID}/settings`);
+    const section = page.getByRole('region', { name: 'Model', exact: true });
+    await section.getByRole('button', { name: 'Edit', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Model combination' });
+    await dialog.getByLabel('Harness', { exact: true }).selectOption('OPENAI_CODEX');
+    await dialog.getByLabel('Model ID').fill('custom-model-v2');
+    await dialog.getByLabel('Thinking level').selectOption('high');
+    await dialog.getByRole('button', { name: 'Apply' }).click();
+    await page.getByRole('tab', { name: 'Book', exact: true }).click();
+    const editor = page.getByTestId('book-editor');
+    await expect(editor.locator('.tok-heading')).toHaveText('Grace');
+    await expect(editor.getByRole('textbox')).toContainText(
+        'MODEL harness=OPENAI_CODEX model=custom-model-v2 thinking=high',
+    );
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+    await page.getByRole('tab', { name: 'Settings', exact: true }).click();
+    await expect(section).toContainText('OpenAI Codex · custom-model-v2 · high');
+    await expectNoOverflowAt360(page);
+    expect(await violations(page, consoleErrors)).toEqual([]);
+});
+
 test.describe("the book editor's test chat under the engine CSP", () => {
     test('streams a reply to the unsaved book, keeps it inert and fits a phone as a tab', async ({ page, visit }) => {
         const consoleErrors = recordConsoleErrors(page);
@@ -134,7 +158,7 @@ test.describe('the create-agent wizard under the engine CSP', () => {
         const heading = page.getByRole('heading', { level: 2, name: 'Write its book' });
         await expect(heading).toBeFocused();
         const editor = page.getByTestId('book-editor');
-        await expect(editor.locator('.tok-heading')).toHaveText('Iris');
+        await expect(editor.locator('.tok-heading')).toHaveText('AGENT Iris');
         await expect(editor.locator('.tok-keyword')).toHaveText('PERSONA');
         await appendLine(page, INVALID_LINE);
         await expect(editor.locator('.cm-lintRange-error')).toHaveText(INVALID_LINE);

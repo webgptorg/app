@@ -33,7 +33,8 @@ export function checkBook(source: string): BookCheck {
     const diagnostics: Diagnostic[] = [];
     const lines = source.split(/\r\n|\r|\n/);
     const nameIndex = lines.findIndex((line) => line.trim() !== '');
-    const name = nameIndex === -1 ? '' : (lines[nameIndex]?.trim().slice(0, 256) ?? '');
+    const header = lines[nameIndex]?.trim() ?? '';
+    const name = header.replace(/^AGENT[ \t]+/u, '').slice(0, 256);
     if (nameIndex === -1) {
         diagnostics.push(diagnostic('error', 'empty-book', 'The book is empty; its first line names the agent.', 1, 1));
     }

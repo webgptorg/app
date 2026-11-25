@@ -130,7 +130,7 @@ describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
         await app.user.type(screen.getByRole('textbox', { name: /^Name/ }), ' Two');
         await app.user.click(screen.getByRole('button', { name: 'Next' }));
         await screen.findByTestId('book-editor', {}, WAIT);
-        expect(bookText().split('\n')[0]).toBe('Iris Two');
+        expect(bookText().split('\n')[0]).toBe('AGENT Iris Two');
 
         replaceBook('Iris\nPERSONA Mine');
         await app.user.click(screen.getByRole('button', { name: 'Back' }));
@@ -268,9 +268,10 @@ describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
         });
     });
 
-    it('offers to finish later or delete the created agent, under its own name', async () => {
-        const app = setup();
+    it('creates and deletes through core routes without requesting book validation on Reborn', async () => {
+        const app = setup({ capabilities: [] });
         await createAgent(app);
+        expect(app.spies.validate).not.toHaveBeenCalled();
         const agentId = search(app)['agent'];
         expect(screen.getByRole('heading', { level: 1, name: 'Set up Iris' })).toBeDefined();
         expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();

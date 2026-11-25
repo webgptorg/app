@@ -1,4 +1,3 @@
-import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import { Bot } from 'lucide-react';
 
 import { AGENT_TABS, defineFeature } from '../../app/registry/feature';
@@ -19,7 +18,6 @@ export const agentsFeature = defineFeature({
             label: m.agent_tab_settings,
             to: '/agents/$agentId/settings',
             requires: {
-                capability: KNOWN_CAPABILITIES.agentManagement,
                 anyPermission: ['agents.write', 'agents.delete'],
             },
         },

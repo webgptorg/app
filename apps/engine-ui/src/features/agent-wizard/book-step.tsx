@@ -4,12 +4,16 @@ import { Button } from '@ptbk/ui';
 import { useCallback, useRef } from 'react';
 import type { Ref } from 'react';
 
+import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
+
+import { useAllows } from '../../app/registry/use-visible-features';
 import { classifyApiError, unwrap } from '../../app/api-errors';
 import type { ApiFailure } from '../../app/api-errors';
 import { useEngineApi } from '../../app/engine-api-context';
 import { useStepUpAwareMutation } from '../../app/mutations';
 import { m } from '../../paraglide/messages';
 import { agentKeys } from '../agents/agents-keys';
+import { ModelSettings } from '../book/model-settings';
 import { BookEditor } from '../book/editor/book-editor';
 import type { BookEditorHandle } from '../book/editor/book-editor';
 import { ProblemsList } from '../book/problems-list';
@@ -42,7 +46,8 @@ export interface BookStepProps {
 export function BookStep({ draft, onDraftChange, headingRef, onBack, onCreated, onServerErrors }: BookStepProps) {
     const engineApi = useEngineApi();
     const editor = useRef<BookEditorHandle>(null);
-    const validation = useBookValidation(draft, true);
+    const canValidate = useAllows({ capability: KNOWN_CAPABILITIES.bookEditor, permission: 'agents.write' });
+    const validation = useBookValidation(draft, canValidate);
     const inFlight = useRef(false);
     const create = useStepUpAwareMutation({
         mutationFn: async (source: string) =>
@@ -89,6 +94,19 @@ export function BookStep({ draft, onDraftChange, headingRef, onBack, onCreated, 
                 </>
             }
         >
+            <details className="mb-3">
+                <summary className="cursor-pointer text-sm font-medium">{m.model_settings_title()}</summary>
+                <div className="py-3">
+                    <ModelSettings
+                        source={draft}
+                        editable
+                        onChange={(source) => {
+                            onDraftChange(source);
+                            editor.current?.reset(source);
+                        }}
+                    />
+                </div>
+            </details>
             <BookEditor
                 ref={editor}
                 initialSource={draft}

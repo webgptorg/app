@@ -1,4 +1,4 @@
-import { AGENT_VISIBILITIES, AgentVisibility } from '@ptbk/engine-api';
+import { AGENT_VISIBILITIES, AgentVisibility, KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import { Button, Combobox, Field, Section } from '@ptbk/ui';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -6,9 +6,10 @@ import { BookOpen, Trash2 } from 'lucide-react';
 
 import { useEngineApi } from '../../app/engine-api-context';
 import { ButtonLink } from '../../app/link';
+import { AgentBookModelSettings } from '../book/agent-book-model-settings';
 import { AGENT_TABS } from '../../app/registry/feature';
 import { m } from '../../paraglide/messages';
-import { usePermissions } from '../session/use-permissions';
+import { useAllows } from '../../app/registry/use-visible-features';
 import { useAgentActions } from './agent-actions';
 import { VisibilityIcon, visibilityLabel } from './agent-badges';
 import { useAgentIdParam } from './agent-detail-route';
@@ -35,7 +36,8 @@ export function AgentSettings() {
     const agentId = useAgentIdParam();
     const { data: agent } = useSuspenseQuery(agentDetailQueryOptions(useEngineApi(), agentId));
     const navigate = useNavigate();
-    const canEditBook = usePermissions().can('agents.write');
+    const mayWrite = useAllows({ permission: 'agents.write' });
+    const canWriteBook = useAllows({ capability: KNOWN_CAPABILITIES.bookEditor, permission: 'agents.write' });
     const bookTab = useAgentTabs().find((tab) => tab.id === AGENT_TABS.book.id);
     const actions = useAgentActions({
         onDeleted: () => {
@@ -73,7 +75,7 @@ export function AgentSettings() {
                     </div>
                 </div>
             </Section>
-            {bookTab === undefined || !canEditBook ? null : (
+            {bookTab === undefined || !mayWrite || agent.origin === 'system' ? null : (
                 <Section
                     title={m.agent_settings_identity()}
                     description={m.agent_settings_identity_body({ name: agent.name })}
@@ -85,12 +87,13 @@ export function AgentSettings() {
                             size="sm"
                         >
                             <BookOpen aria-hidden className="size-4" />
-                            {m.agent_settings_identity_link()}
+                            {canWriteBook ? m.agent_settings_identity_link() : m.agent_tab_book()}
                         </ButtonLink>
                     }
                 />
             )}
-            {actions.canChangeVisibility ? (
+            {agent.origin !== 'system' && <AgentBookModelSettings />}
+            {agent.origin !== 'system' && actions.canChangeVisibility ? (
                 <Section title={m.agent_settings_visibility()}>
                     <Field
                         label={m.agents_column_visibility()}
@@ -116,7 +119,7 @@ export function AgentSettings() {
                     </Field>
                 </Section>
             ) : null}
-            {actions.canDelete ? (
+            {actions.canDelete(agent) ? (
                 <Section
                     title={m.agent_settings_danger()}
                     description={m.agent_delete_body({ name: agent.name })}

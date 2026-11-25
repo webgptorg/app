@@ -19,7 +19,7 @@ type PendingConfirmation =
 
 export interface AgentActions {
     readonly canChangeVisibility: boolean;
-    readonly canDelete: boolean;
+    readonly canDelete: (agent: Agent) => boolean;
     /** Making an agent public asks first: anyone with the link could then chat with it without signing in. */
     readonly changeVisibility: (agent: Agent, visibility: AgentVisibility) => void;
     readonly requestDelete: (agent: Agent) => void;
@@ -41,7 +41,8 @@ export function useAgentActions(options: AgentMutationOptions = {}): AgentAction
 
     const manages = useAllows({ capability: KNOWN_CAPABILITIES.agentManagement });
     const canChangeVisibility = manages && can('agents.write');
-    const canDelete = manages && can('agents.delete');
+    const canDelete = (agent: Agent) =>
+        can('agents.delete') && (agent.origin === 'content' || (manages && agent.origin === 'core'));
     const target = (agent: Agent) => ({ id: agent.id, name: agent.name });
 
     const changeVisibility = (agent: Agent, visibility: AgentVisibility) => {
@@ -76,7 +77,7 @@ export function useAgentActions(options: AgentMutationOptions = {}): AgentAction
                 },
             });
         }
-        if (canDelete) {
+        if (canDelete(agent)) {
             if (entries.length > 0) entries.push({ kind: 'separator', id: 'danger' });
             entries.push({
                 kind: 'item',

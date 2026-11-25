@@ -141,7 +141,7 @@ describe('app shell', () => {
         const commands = within(await screen.findByRole('group', { name: 'Commands' }))
             .getAllByRole('option')
             .map((option) => option.textContent);
-        expect(commands).not.toContain('New agent');
+        expect(commands).toContain('New agent');
         const destinations = within(screen.getByRole('group', { name: 'Go to' }))
             .getAllByRole('option')
             .map((option) => option.textContent);
@@ -150,13 +150,10 @@ describe('app shell', () => {
     });
 
     it.each([
-        '/audit',
-        '/onboarding',
-        '/agents/new',
-        '/agents/agent-001/book',
-        '/agents/agent-001/settings',
-        '/triggers',
-    ])('answers %s on a Reborn engine with "not available on this engine"', async (path) => {
+        ['/agents/new', 'Describe your agent'],
+        ['/agents/agent-001/book', 'You can read this book but not change it.'],
+        ['/agents/agent-001/settings', 'Model'],
+    ])('opens the core agent route %s on a Reborn engine', async (path, text) => {
         renderWithProviders({
             path,
             engineApi: createTestEngineApi({
@@ -164,6 +161,11 @@ describe('app shell', () => {
                 seed: { agents: [{ id: 'agent-001', source: 'Ada\nPERSONA Research' }] },
             }),
         });
+        expect(await screen.findByText(text)).toBeDefined();
+    });
+
+    it.each(['/audit', '/onboarding', '/triggers'])('hides the optional route %s on a Reborn engine', async (path) => {
+        renderWithProviders({ path, capabilities: [KNOWN_CAPABILITIES.files] });
         expect(await screen.findByRole('heading', { level: 1, name: 'Not available in this project' })).toBeDefined();
     });
 

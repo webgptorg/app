@@ -117,3 +117,5 @@ Code checks permissions (`usePermissions().can()`, `<Can>`, `requirePermission()
 The Sigstore verifier, the ustar codec and the pinned `trusted_root.json` live in [`@ptbk/release-tools`](../../packages/release-tools/README.md), because the mock engine's UI loader (M-05) runs the same code and apps cannot import each other.
 
 Plan: tasks U-01 to U-07, X-03.
+
+Agent Book and model settings share one in-memory draft and its original revision. The wizard and agent list use the core create, read and delete routes. Engines with `book-editor@1` also support validation, revision history and saving. The model controls use the public `Book` API in `ptbk` to edit the same source as the text editor.
