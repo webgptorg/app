@@ -4,6 +4,7 @@ import { Button } from '@ptbk/ui';
 
 import { useAccess } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
+import { ComputerControlLink } from './computer-control-link';
 import { signInOrigin, useOpenSignIn } from './use-browser-actions';
 
 /** Open the selected login in the project browser, keeping the request identity through a passkey step-up. */
@@ -17,12 +18,10 @@ export function ManualSignInButton({
     const access = useAccess();
     const open = useOpenSignIn();
     const bound = access.supports(KNOWN_CAPABILITIES.walletSignIn);
-    if (
-        (!bound && !access.supports(KNOWN_CAPABILITIES.browserTab)) ||
-        !access.can('browser.control') ||
-        signInOrigin(origin) === null
-    )
-        return null;
+    if (!access.can('browser.control')) return null;
+    if ((!bound && !access.supports(KNOWN_CAPABILITIES.browserTab)) || signInOrigin(origin) === null) {
+        return <ComputerControlLink />;
+    }
     return (
         <Button
             size="sm"

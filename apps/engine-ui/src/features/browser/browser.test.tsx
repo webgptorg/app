@@ -493,6 +493,35 @@ describe('the live browser', () => {
         expect(screen.getByRole('link', { name: 'Control the whole computer' }).getAttribute('href')).toBe('/computer');
     });
 
+    it.each([
+        { origin: SITE, capabilities: [KNOWN_CAPABILITIES.computerControl] },
+        {
+            origin: 'http://intranet.example',
+            capabilities: [KNOWN_CAPABILITIES.walletSignIn, KNOWN_CAPABILITIES.computerControl],
+        },
+    ])(
+        'offers the configured desktop directly when a sign-in tab cannot open for $origin',
+        async ({ origin, capabilities }) => {
+            const engine = createLiveBrowserTestEngine({ capabilities: [...DEFAULT_CAPABILITIES, ...capabilities] });
+            engine.controller.requestWalletLogin({
+                origin,
+                account: 'ada@example.test',
+                problem: 'rejected',
+                fields: [],
+                recordId: null,
+                reason: 'Complete sign-in.',
+                tasks: ['Publish'],
+                agents: ['Ada'],
+            });
+            render(engine, { path: '/wallet' });
+            const requests = await screen.findByRole('region', { name: 'Agents are waiting' });
+            expect(
+                within(requests).getByRole('link', { name: 'Control the whole computer' }).getAttribute('href'),
+            ).toBe('/computer');
+            expect(within(requests).queryByRole('button', { name: 'Sign in manually' })).toBeNull();
+        },
+    );
+
     it('reconnects within the session after the channel drops', async () => {
         const { engine } = engineWithHelp();
         await takeOverFromHome(engine);
