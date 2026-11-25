@@ -11,6 +11,9 @@ describe('reruns after a full-page step-up', () => {
         expect(RERUN.takeControl({ sessionId: 'live-1' })).toEqual({ sessionId: 'live-1' });
         expect(RERUN.takeControl({ sessionId: 7 })).toBeUndefined();
         expect(RERUN.signIn({ origin: 'https://github.com' })).toEqual({ origin: 'https://github.com' });
+        const target = { origin: 'https://github.com', wallet: { kind: 'request', id: 'r1', step: 2 } };
+        expect(RERUN.signIn(target)).toEqual(target);
+        expect(RERUN.signIn({ ...target, wallet: { ...target.wallet, step: -1 } })).toBeUndefined();
         expect(RERUN.signIn({ origin: 'https://github.com/login' })).toBeUndefined();
         expect(RERUN.signIn({ origin: 'javascript:alert(1)' })).toBeUndefined();
     });

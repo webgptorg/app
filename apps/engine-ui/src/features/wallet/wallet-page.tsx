@@ -17,7 +17,7 @@ import { Ban, Eye, Globe, KeyRound, Plus, Upload } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 
 import { cx } from '../../app/cx';
-import { useSignInItems } from '../browser/use-sign-in-item';
+import { ManualSignInButton } from '../browser/manual-sign-in-button';
 import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
 import { usePermissions } from '../session/use-permissions';
@@ -81,7 +81,6 @@ function LoginRow({
     readonly onRemove: () => void;
 }) {
     const look = verificationLook(record);
-    const signIn = useSignInItems(record.origin);
     const { title, site } = loginTitle(record.label, siteName(record.origin));
     // The site shows once: as the title, or beside a name the owner gave the login.
     const details = [
@@ -92,7 +91,7 @@ function LoginRow({
             : [m.wallet_fields({ labels: record.fields.map(({ label }) => label).join(', ') })]),
     ].join(' · ');
     return (
-        <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
+        <li id={'wallet-' + record.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
             <span
                 aria-hidden
                 className="flex size-8 shrink-0 items-center justify-center rounded-control bg-hover text-text-muted"
@@ -129,6 +128,7 @@ function LoginRow({
             </span>
             {canManage ? (
                 <span className="flex shrink-0 items-center gap-1">
+                    <ManualSignInButton origin={record.origin} wallet={{ kind: 'record', id: record.id }} />
                     <Button size="sm" onClick={onUpdate}>
                         {m.wallet_update()}
                     </Button>
@@ -137,7 +137,6 @@ function LoginRow({
                         variant="ghost"
                         size="sm"
                         items={[
-                            ...signIn,
                             {
                                 kind: 'item',
                                 id: 'remove',
@@ -206,9 +205,7 @@ function RequestItem({
     const canAnswer = canManage && ready && answerable(request);
     const seen = request.seenAt !== null;
     const agent = request.agents[0] ?? m.wallet_request_system_agent();
-    const signIn = useSignInItems(request.origin);
     const items: MenuEntry[] = [
-        ...signIn,
         ...(seen
             ? []
             : [
@@ -238,6 +235,7 @@ function RequestItem({
     ];
     return (
         <li
+            id={'wallet-' + request.id}
             className={cx(
                 'soft-surface flex flex-wrap items-start gap-x-3 gap-y-2 px-4 py-3',
                 STATUS_TINT_CLASSES[seen ? 'neutral' : 'warning'],
@@ -272,6 +270,10 @@ function RequestItem({
             {canManage ? (
                 // On phones the actions take their own line under the words, aligned with them.
                 <span className="flex shrink-0 basis-full items-center gap-1 ps-9 sm:ms-auto sm:basis-auto sm:self-center sm:ps-0">
+                    <ManualSignInButton
+                        origin={request.origin}
+                        wallet={{ kind: 'request', id: request.id, step: request.step }}
+                    />
                     {canAnswer ? (
                         <Button size="sm" onClick={onAnswer}>
                             {record === undefined ? m.wallet_add_login() : m.wallet_update()}

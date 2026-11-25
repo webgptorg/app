@@ -119,6 +119,7 @@ function LinkedWork({ tab, agentName }: { readonly tab: ReadBrowserTab; readonly
 }
 
 function ViewerActions({ session, view }: { readonly session: LiveSession; readonly view: LiveView }) {
+    const canDesktop = useAllows({ capability: KNOWN_CAPABILITIES.computerControl, permission: 'browser.control' });
     const canControl = useAllows(CONTROL_REQUIREMENT);
     const takeControl = useTakeControl();
     const handBack = useHandBack();
@@ -154,6 +155,11 @@ function ViewerActions({ session, view }: { readonly session: LiveSession; reado
     return (
         <div className="flex items-center gap-2">
             {primary}
+            {signIn && canDesktop ? (
+                <a className="text-sm underline" href="/computer" target="_blank" rel="noopener noreferrer">
+                    {m.browser_control_computer()}
+                </a>
+            ) : null}
             <ActionMenu
                 label={m.browser_more_actions()}
                 items={[
