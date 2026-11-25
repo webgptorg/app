@@ -14,7 +14,7 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-it('copies the Czech paired AI prompt and keeps a clear engine-origin continuation', async () => {
+it('copies the Czech paired AI prompt from its top-level tab', async () => {
     const options = testInstallationOptions(LINK_URL);
     const app = renderApp({
         path: '/engines/new',
@@ -32,13 +32,13 @@ it('copies the Czech paired AI prompt and keeps a clear engine-origin continuati
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     try {
-        await app.user.click(
-            within(await screen.findByRole('tabpanel', { name: 'Tento počítač' })).getByRole('button', {
-                name: 'Kopírovat prompt',
-            }),
-        );
-        expect(writeText).toHaveBeenLastCalledWith(options.find((option) => option.kind === 'ai')?.prompts.cs.local);
-        expect(screen.getByText(/Nejdřív se projekt připojí k této aplikaci/)).toBeTruthy();
+        const panel = await screen.findByRole('tabpanel', { name: 'Instalace pomocí AI' });
+        await app.user.click(within(panel).getByRole('button', { name: 'Kopírovat prompt' }));
+        const prompt = options.find((option) => option.kind === 'ai')?.prompts.cs.local;
+        expect(writeText).toHaveBeenLastCalledWith(prompt);
+        expect(panel.querySelector('pre code')?.textContent).toBe(prompt);
+        expect(screen.getByText(/Vyberte způsob instalace. Projekt se nejdřív připojí/)).toBeTruthy();
+        expect(screen.getByRole('tab', { name: 'Již běžící projekt' })).toBeTruthy();
         expect(document.body.textContent).not.toMatch(/engines_new_/);
     } finally {
         Reflect.deleteProperty(navigator, 'clipboard');

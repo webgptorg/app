@@ -99,9 +99,9 @@ describe('engines in Czech', () => {
             within(list)
                 .getAllByRole('tab')
                 .map((tab) => tab.textContent),
-        ).toEqual(['Linuxový server s Dockerem', 'Docker Compose', 'Promptbook už mám spuštěný']);
+        ).toEqual(['Linuxový server s Dockerem', 'Docker Compose', 'Již běžící projekt']);
         expect(screen.getByRole('link', { name: /^Požadavky a proxy/ })).toBeTruthy();
-        for (const name of ['Docker Compose', 'Promptbook už mám spuštěný']) {
+        for (const name of ['Docker Compose', 'Již běžící projekt']) {
             await app.user.click(within(list).getByRole('tab', { name }));
             expect(
                 within(screen.getByRole('tabpanel', { name })).getByRole('button', {

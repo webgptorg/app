@@ -26,13 +26,13 @@ const OWNER = session({ permissions: ['org.read', 'billing.read', 'billing.manag
 const LINK_ID = 'lllllllllllllllllllllllllq';
 const OTHER_LINK_ID = 'mmmmmmmmmmmmmmmmmmmmmmmmmq';
 const HOSTNAME = `${ENGINE_ID}.${ENGINE_DOMAIN}`;
-const TAB_NAMES = ['Linux server with Docker', 'Docker Compose', 'Already running Promptbook'];
+const TAB_NAMES = ['Linux server with Docker', 'Docker Compose', 'Running project'];
 const CHECKOUT_URL = 'https://checkout.stripe.com/c/pay/cs_test_example';
 
 const WAITING_TEXT = 'Waiting for your project to link. Run the command above; this page updates by itself.';
 const OWNER_TEXT =
     "Finish in the browser window that opened on the project's computer: create your passkey there. Nothing opened? Open the setup link the project's terminal shows, or run ptbk connect --setup-link on that computer for a new one (in the project folder if it already exists). This page updates when you're done.";
-const COMMAND_NOTE = `Copy it now: it is shown only once and works until ${createFormatters('en').formatDateTime(new Date(NOW + LINK_CODE_LIFETIME_MS))}.`;
+const COMMAND_NOTE = `This code is shown once and expires on ${createFormatters('en').formatDateTime(new Date(NOW + LINK_CODE_LIFETIME_MS))}.`;
 
 const PENDING: LinkCodeStatusView = { status: 'pending', expiresAt: NOW + LINK_CODE_LIFETIME_MS };
 const LINKED: LinkCodeStatusView = {
@@ -305,18 +305,15 @@ describe('new engine page', () => {
             expect(tabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false']);
             const panel = screen.getByRole('tabpanel', { name: 'Linux server with Docker' });
             expect(within(panel).getByText(`bun run dev:link ${CODE}`)).toBeTruthy();
-            expect(within(panel).getByText(/It needs outbound HTTPS \(port 443\) and nothing inbound\./)).toBeTruthy();
             expect(
                 within(panel)
                     .getByRole('link', { name: /^Requirements and proxies/ })
                     .getAttribute('href'),
             ).toBe(`${INSTALL_GUIDE_URL}#1-the-installer-recommended`);
-            expect(within(panel).queryByText(/Moving from an existing Promptbook server/)).toBeNull();
 
-            await app.user.click(within(list).getByRole('tab', { name: 'Already running Promptbook' }));
-            const connect = screen.getByRole('tabpanel', { name: 'Already running Promptbook' });
+            await app.user.click(within(list).getByRole('tab', { name: 'Running project' }));
+            const connect = screen.getByRole('tabpanel', { name: 'Running project' });
             expect(within(connect).getByText(`ptbk connect --link ${CODE}`)).toBeTruthy();
-            expect(within(connect).getByText(/Moving from an existing Promptbook server\?/)).toBeTruthy();
             expect(
                 within(connect)
                     .getByRole('link', { name: /^Moving an existing deployment/ })
@@ -329,7 +326,7 @@ describe('new engine page', () => {
         it('shows the link URL with its own copy button, outside the tabs', async () => {
             renderApp({ path: '/engines/new', session: OWNER, script: linking([PENDING]) });
             expect(await screen.findByText(LINK_URL)).toBeTruthy();
-            expect(screen.getByText("Or give this address to your project's connect command.")).toBeTruthy();
+            expect(screen.getByText('Pairing address')).toBeTruthy();
             expect(screen.getByRole('button', { name: 'Copy address' })).toBeTruthy();
             expect(within(screen.getByRole('tabpanel')).queryByText(LINK_URL)).toBeNull();
         });
@@ -364,15 +361,11 @@ describe('new engine page', () => {
             expect(code?.textContent).toBe(linkCode().installCommands[1]?.command);
             expect(code?.textContent).toContain('\n');
             await app.user.keyboard('{End}');
-            expect(screen.getByRole('tab', { name: 'Already running Promptbook' }).getAttribute('aria-selected')).toBe(
-                'true',
-            );
+            expect(screen.getByRole('tab', { name: 'Running project' }).getAttribute('aria-selected')).toBe('true');
             await app.user.keyboard('{Home}');
             expect(first.getAttribute('aria-selected')).toBe('true');
             await app.user.keyboard('{ArrowLeft}');
-            expect(screen.getByRole('tab', { name: 'Already running Promptbook' }).getAttribute('aria-selected')).toBe(
-                'true',
-            );
+            expect(screen.getByRole('tab', { name: 'Running project' }).getAttribute('aria-selected')).toBe('true');
         });
 
         it('copies the command of the selected tab', async () => {
@@ -411,7 +404,6 @@ describe('new engine page', () => {
                 },
             });
             expect((await screen.findAllByRole('tab')).map((tab) => tab.textContent)).toEqual([TAB_NAMES[0]]);
-            expect(screen.queryByText(/Put the Compose file/)).toBeNull();
             expect(app.container.textContent).not.toMatch(/engines_new_/);
         });
 
