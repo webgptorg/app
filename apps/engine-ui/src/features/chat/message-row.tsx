@@ -1,3 +1,4 @@
+import { AgentId } from '@ptbk/engine-api';
 import { Badge, Button, Spinner } from '@ptbk/ui';
 import { useState } from 'react';
 import type { ReactNode, Ref } from 'react';
@@ -5,12 +6,15 @@ import type { ReactNode, Ref } from 'react';
 import { cx } from '../../app/cx';
 import { m } from '../../paraglide/messages';
 import { AgentCreator } from '../agents/agent-creator';
+import { AgentLink } from '../entities/entity-chip';
 import type { MessageState, MessageView, StepsView, ThreadView } from './message-views';
 import { MessageMarkdown } from './render/lazy-markdown';
 import { PlainText } from './render/plain-text';
 import { tintStyle } from './references/agent-color';
+import { threadAgentHere } from './references/agent-hovercard';
 import { ReferenceAvatar } from './references/reference-avatar';
-import { useReferenceAgent } from './references/thread-references';
+import { useReferenceAgent, useThreadReferences } from './references/thread-references';
+import type { ReferenceAgent } from './references/thread-references';
 import { RecheckCard, WaitingCard } from './reply-status-card';
 import { StepsCard } from './steps-card';
 import { TaskCard } from './task-card';
@@ -98,6 +102,49 @@ function Choices({
 }
 
 /**
+ * Who speaks: in a thread, a link to the agent with the card every agent reference opens; a turn that only continues
+ * says it to screen readers, so it has nothing to focus.
+ */
+function TurnAuthor({
+    agent,
+    name,
+    shown,
+}: {
+    readonly agent: ReferenceAgent;
+    readonly name: string;
+    readonly shown: boolean;
+}) {
+    const references = useThreadReferences();
+    const content = (
+        <>
+            <ReferenceAvatar agent={agent} size="xs" />
+            <span className="text-tint">{name}</span>
+        </>
+    );
+    if (!shown || references === null) return content;
+    const onMention = references.onMention;
+    return (
+        <AgentLink
+            id={AgentId.safeParse(agent.key).data ?? null}
+            name={agent.name}
+            canOpen={references.canOpenAgents}
+            here={threadAgentHere(
+                agent,
+                references,
+                onMention === undefined
+                    ? undefined
+                    : () => {
+                          onMention(agent);
+                      },
+            )}
+            className="inline-flex items-center gap-2"
+        >
+            {content}
+        </AgentLink>
+    );
+}
+
+/**
  * An agent's turn: its avatar, name in its colour and time on top, then its words or steps beside a thin rail in the
  * same colour. A row that continues the turn shows only the rail; screen readers still hear who speaks.
  */
@@ -116,8 +163,7 @@ function AgentTurn({
     return (
         <div className="flex w-full min-w-0 flex-col items-start gap-1.5" style={tintStyle(agent.color)}>
             <header className={cx('flex items-center gap-2 text-sm font-medium', !showAuthor && 'sr-only')}>
-                <ReferenceAvatar agent={agent} size="xs" />
-                <span className="text-tint">{view.authorName}</span>
+                <TurnAuthor agent={agent} name={view.authorName} shown={showAuthor} />
                 {at === null ? null : <TurnTime at={at} />}
             </header>
             <div

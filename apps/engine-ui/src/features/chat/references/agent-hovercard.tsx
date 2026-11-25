@@ -1,11 +1,12 @@
-import { Button, PeekCard, useHovercardHide } from '@ptbk/ui';
-import { Link } from '@tanstack/react-router';
+import { AgentId } from '@ptbk/engine-api';
+import { Button, useHovercardHide } from '@ptbk/ui';
 import { AtSign } from 'lucide-react';
 
 import { m } from '../../../paraglide/messages';
+import { agentHovercard } from '../../entities/entity-chip';
+import type { AgentCardHere } from '../../entities/entity-cards';
 import { formatClock, useElapsedMs } from './elapsed';
 import { TaskChip } from './task-chip';
-import { ReferenceAvatar } from './reference-avatar';
 import type { ReadChatTask, ReadChatWorking, ReferenceAgent, ThreadReferences } from './thread-references';
 
 type Step = ReadChatWorking['steps'][number];
@@ -59,61 +60,55 @@ function activityOf(agent: ReferenceAgent, references: ThreadReferences) {
     return task === undefined ? null : ({ kind: 'task', task } as const);
 }
 
-/**
- * Who an agent is and what it does here now, with Open agent and Mention. Its name, role and steps are agent data
- * and render as text only.
- */
-export function AgentHovercard({
-    agent,
-    references,
-    onMention,
-}: {
-    readonly agent: ReferenceAgent;
-    readonly references: ThreadReferences;
-    /** Addresses the agent in the composer; absent where the member cannot write. */
-    readonly onMention?: (() => void) | undefined;
-}) {
-    const activity = activityOf(agent, references);
+function MentionButton({ onMention }: { readonly onMention: () => void }) {
     const hide = useHovercardHide();
     return (
-        <PeekCard
-            kind={m.chat_ref_kind_agent()}
-            icon={<ReferenceAvatar agent={agent} size="xs" />}
-            status={
-                activity === null
-                    ? { tone: 'neutral', label: m.chat_ref_status_idle() }
-                    : { tone: 'live', label: m.chat_ref_status_working() }
-            }
-            title={agent.name}
-            description={agent.description ?? undefined}
-            tint={agent.color}
-            action={{
-                label: m.chat_ref_open_agent(),
-                render: (props) => <Link to="/agents/$agentId" params={{ agentId: agent.key }} {...props} />,
+        <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+                hide();
+                onMention();
             }}
-            secondary={
-                onMention === undefined ? undefined : (
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => {
-                            hide();
-                            onMention();
-                        }}
-                    >
-                        <AtSign aria-hidden className="size-3.5" />
-                        {m.chat_ref_mention()}
-                    </Button>
-                )
-            }
         >
-            {activity === null ? (
+            <AtSign aria-hidden className="size-3.5" />
+            {m.chat_ref_mention()}
+        </Button>
+    );
+}
+
+/** What a thread adds to the agent's card: what it does here now, and Mention where the member can write. */
+export function threadAgentHere(
+    agent: ReferenceAgent,
+    references: ThreadReferences,
+    onMention: (() => void) | undefined,
+): AgentCardHere {
+    const activity = activityOf(agent, references);
+    return {
+        working: activity?.kind === 'working',
+        detail:
+            activity === null ? (
                 <span className="text-xs text-text-muted">{m.chat_ref_idle()}</span>
             ) : activity.kind === 'working' ? (
                 <WorkingNow working={activity.working} />
             ) : (
                 <OnTask task={activity.task} />
-            )}
-        </PeekCard>
-    );
+            ),
+        secondary: onMention === undefined ? undefined : <MentionButton onMention={onMention} />,
+    };
+}
+
+/**
+ * The agent's card, the same one every agent reference in the app opens, with what it does in this thread now and
+ * Mention. `null` for a participant key that is not an agent ID, which has no card to show. Its name and steps are
+ * agent data and render as text only.
+ */
+export function threadAgentHovercard(
+    agent: ReferenceAgent,
+    references: ThreadReferences,
+    onMention?: () => void,
+): ReturnType<typeof agentHovercard> | null {
+    const agentId = AgentId.safeParse(agent.key).data;
+    if (agentId === undefined) return null;
+    return agentHovercard(agentId, agent.name, threadAgentHere(agent, references, onMention));
 }

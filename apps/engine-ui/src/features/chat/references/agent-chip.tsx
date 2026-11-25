@@ -1,6 +1,6 @@
 import { EntityChip } from '@ptbk/ui';
 
-import { AgentHovercard } from './agent-hovercard';
+import { threadAgentHovercard } from './agent-hovercard';
 import { useReferenceAgent, useThreadReferences } from './thread-references';
 
 export interface AgentChipProps {
@@ -16,8 +16,9 @@ export interface AgentChipProps {
 }
 
 /**
- * `@Name` in the agent's colour. In a thread, hovering or focusing it shows who the agent is and what it is doing;
- * clicking it addresses the agent in the composer. The name is a text node, never markup or a link.
+ * `@Name` in the agent's colour. In a thread, hovering or focusing it opens the agent's card, the same one as
+ * everywhere, with what the agent does here; clicking it addresses the agent in the composer. The name is a text node,
+ * never markup or a link.
  */
 export function AgentChip({ agentKey, name, label: written, interactive = true, className }: AgentChipProps) {
     const references = useThreadReferences();
@@ -29,21 +30,16 @@ export function AgentChip({ agentKey, name, label: written, interactive = true, 
             : () => {
                   onMention(agent);
               };
+    const hovercard =
+        references === null || !references.canOpenAgents ? null : threadAgentHovercard(agent, references, mention);
     return (
         <EntityChip
             wrap
             tone="agent"
             label={written ?? `@${agent.name}`}
             tint={agent.color}
-            interactive={references !== null && interactive}
-            hovercard={
-                references === null
-                    ? undefined
-                    : {
-                          label: agent.name,
-                          content: <AgentHovercard agent={agent} references={references} onMention={mention} />,
-                      }
-            }
+            interactive={interactive && (hovercard !== null || mention !== undefined)}
+            hovercard={hovercard ?? undefined}
             onClick={(event, card) => {
                 if (mention === undefined) card.show(event.currentTarget);
                 else {
