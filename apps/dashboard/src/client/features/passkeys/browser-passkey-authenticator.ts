@@ -74,13 +74,17 @@ export function createBrowserPasskeyAuthenticator(): PasskeyAuthenticator {
                 return false;
             }
         },
-        // The library aborts this request itself when a modal ceremony starts (its WebAuthnAbortService).
-        autofill: (options) =>
-            run(authenticationResponseSchema, (webAuthn) =>
-                webAuthn.startAuthentication({
-                    optionsJSON: options as Parameters<typeof WebAuthnBrowser.startAuthentication>[0]['optionsJSON'],
-                    useBrowserAutofill: true,
-                }),
+        autofill: (options, signal) =>
+            run(
+                authenticationResponseSchema,
+                (webAuthn) =>
+                    webAuthn.startAuthentication({
+                        optionsJSON: options as Parameters<
+                            typeof WebAuthnBrowser.startAuthentication
+                        >[0]['optionsJSON'],
+                        useBrowserAutofill: true,
+                    }),
+                signal,
             ),
     };
 }

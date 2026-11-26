@@ -41,7 +41,7 @@ export interface PasskeyAuthenticator {
      * Waits, without a prompt, until the person picks a passkey from the autofill of the field marked
      * `autocomplete="username webauthn"`. Any other ceremony started meanwhile aborts it, as `cancelled`.
      */
-    autofill(options: AuthenticationOptions): Promise<PasskeyOutcome<AuthenticationResponse>>;
+    autofill(options: AuthenticationOptions, signal?: AbortSignal): Promise<PasskeyOutcome<AuthenticationResponse>>;
 }
 
 const BY_LIBRARY_CODE: Readonly<Record<string, PasskeyFailure>> = {

@@ -77,13 +77,20 @@ export async function registerWithEmailToken(
  */
 export async function signInWithPasskey(
     deps: CeremonyDeps,
-    mode: 'prompt' | 'autofill' = 'prompt',
+    autofill?: AbortSignal,
 ): Promise<CeremonyResult<SessionView>> {
     const asserted = await requestCredential(
-        () => deps.api.call(apiRoutes.signinOptions, {}),
-        mode === 'prompt' ? deps.passkeys.authenticate.bind(deps.passkeys) : deps.passkeys.autofill.bind(deps.passkeys),
-        mode === 'prompt' ? deps.waitForPrompt : undefined,
+        () => deps.api.call(apiRoutes.signinOptions, {}, autofill),
+        autofill === undefined
+            ? deps.passkeys.authenticate.bind(deps.passkeys)
+            : async (options) =>
+                  autofill.aborted
+                      ? { kind: 'failed', reason: 'cancelled' }
+                      : deps.passkeys.autofill(options, autofill),
+        autofill === undefined ? deps.waitForPrompt : undefined,
     );
+    // An extension may resolve a cancelled autofill request after the person has opened the explicit picker.
+    if (autofill?.aborted) return passkeyFailure('cancelled');
     if (asserted.kind === 'failed') return asserted;
     const verified = await deps.api.call(apiRoutes.signinVerify, { body: { response: asserted.value } });
     return verified.kind === 'ok' ? { kind: 'ok', value: verified.data } : apiFailure(verified);

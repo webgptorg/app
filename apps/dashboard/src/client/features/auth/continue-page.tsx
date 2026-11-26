@@ -31,8 +31,6 @@ export function ContinuePage(props: { readonly returnTo: string | undefined }) {
     const [failure, setFailure] = useState<CeremonyFailure | null>(null);
     const [prompting, setPrompting] = useState(false);
     const { waitForPrompt, reopen } = usePasskeyPrompt();
-    // The picker aborts the autofill request; a new key arms a fresh one once the picker is closed.
-    const [autofillRound, setAutofillRound] = useState(0);
     const promptForPasskey = async (): Promise<void> => {
         setPrompting(true);
         setFailure(null);
@@ -43,7 +41,6 @@ export function ContinuePage(props: { readonly returnTo: string | undefined }) {
         }
         setPrompting(false);
         setFailure(result.failure);
-        setAutofillRound((round) => round + 1);
     };
 
     return (
@@ -70,7 +67,7 @@ export function ContinuePage(props: { readonly returnTo: string | undefined }) {
                             {ceremonyFailureMessage(failure, 'authenticate')}
                         </Banner>
                     )}
-                    <PasskeyAutofill key={autofillRound} onSignedIn={signedIn} onFailed={setFailure} />
+                    {prompting ? null : <PasskeyAutofill onSignedIn={signedIn} onFailed={setFailure} />}
                 </>
             }
             secondaryAction={
@@ -109,14 +106,13 @@ function PasskeyAutofill(props: {
     const { passkeys } = useBrowser();
     const { onSignedIn, onFailed } = props;
     useEffect(() => {
-        let active = true;
-        // A function, so the checks after each await read the variable anew instead of a narrowed copy.
-        const unmounted = () => !active;
+        const lifetime = new AbortController();
+        const unmounted = () => lifetime.signal.aborted;
         async function arm(): Promise<void> {
             if (!(await passkeys.supportsAutofill()) || unmounted()) {
                 return;
             }
-            const result = await signInWithPasskey({ api, passkeys }, 'autofill');
+            const result = await signInWithPasskey({ api, passkeys }, lifetime.signal);
             if (unmounted()) {
                 return;
             }
@@ -136,7 +132,7 @@ function PasskeyAutofill(props: {
         }
         void arm();
         return () => {
-            active = false;
+            lifetime.abort();
         };
     }, [api, passkeys, onSignedIn, onFailed]);
     return null;
