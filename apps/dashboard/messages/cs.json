@@ -1,4 +1,6 @@
 {
+  "vps_declined": "DigitalOcean požadavek odmítl. U nového účtu zkontrolujte platební údaje.",
+  "vps_billing": "Otevřít platby na DigitalOcean",
   "vps_start": "Spustit na {provider}",
   "vps_new_account": "Nový účet DigitalOcean",
   "vps_storage": "Přihlášení se nepodařilo spustit. Zkontrolujte připojení a povolte úložiště prohlížeče.",

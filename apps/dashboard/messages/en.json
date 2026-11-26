@@ -1,4 +1,6 @@
 {
+  "vps_declined": "DigitalOcean declined the request. For a new account, check your payment method.",
+  "vps_billing": "Open DigitalOcean billing",
   "vps_start": "Launch on {provider}",
   "vps_new_account": "New DigitalOcean account",
   "vps_storage": "Could not start authorization. Check your connection and allow browser storage, then try again.",

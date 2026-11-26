@@ -120,7 +120,7 @@ function ConfirmVps({ org }: { readonly org: string }) {
         }
     });
     const [busy, setBusy] = useState(false);
-    const [error, setError] = useState(false);
+    const [error, setError] = useState<'declined' | 'unconfirmed' | null>(null);
     const sending = useRef(false);
     useEffect(() => {
         // Replace the OAuth URL after the grant was captured, including on denial or mismatch.
@@ -146,7 +146,9 @@ function ConfirmVps({ org }: { readonly org: string }) {
                 navigate(progress);
                 return;
             }
-            setError(true);
+            setError(result.kind === 'problem' && result.code === 'provider-rejected' ? 'declined' : 'unconfirmed');
+        } catch {
+            setError('unconfirmed');
         } finally {
             setBusy(false);
             sending.current = false;
@@ -163,7 +165,12 @@ function ConfirmVps({ org }: { readonly org: string }) {
                 </div>
             ) : (
                 <div className="flex flex-col items-start gap-3">
-                    <p role="alert">{error ? m.vps_failed() : m.vps_cancelled()}</p>
+                    <p role="alert">
+                        {error === 'declined' ? m.vps_declined() : error ? m.vps_failed() : m.vps_cancelled()}
+                    </p>
+                    {error === 'declined' && attempt ? (
+                        <ExternalLink href={VPS_PROVIDERS[attempt.provider].billingUrl}>{m.vps_billing()}</ExternalLink>
+                    ) : null}
                     <Button
                         variant="secondary"
                         onClick={() => {

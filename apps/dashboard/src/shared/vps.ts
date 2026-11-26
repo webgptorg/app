@@ -9,6 +9,7 @@ export const DIGITALOCEAN = {
     image: 'ubuntu-24-04-x64',
     monthlyUsd: 24,
     hourlyUsd: 0.03571,
+    billingUrl: 'https://cloud.digitalocean.com/account/billing',
     resourcesUrl: 'https://cloud.digitalocean.com/droplets',
     authorize: 'https://cloud.digitalocean.com/v1/oauth/authorize',
     scopes: 'droplet:create droplet:read regions:read sizes:read actions:read image:read snapshot:read vpc:read',
