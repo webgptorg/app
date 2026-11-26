@@ -285,7 +285,7 @@ function InstallCommand(props: {
                     {m.engines_new_command_body({ time: locale.formatDateTime(new Date(props.view.expiresAt)) })}
                 </p>
                 {options === undefined ? null : (
-                    <p className="max-w-2xl text-sm text-text-muted">{m.engines_new_computer_access()}</p>
+                    <p className="text-sm text-text-muted">{m.engines_new_computer_access()}</p>
                 )}
             </div>
         </Section>
@@ -514,7 +514,7 @@ function NewEngineContent(props: { readonly search: NewEngineSearch }) {
         // Only a team without an engine is linked here, so the trail leads back to the list, not to an engine.
         <Page
             title={m.engines_new_title()}
-            width={props.search.link === undefined ? 'narrow' : 'full'}
+            width="narrow"
             breadcrumbs={[
                 <Crumb key="engines" to="/engines">
                     {m.nav_teams()}
