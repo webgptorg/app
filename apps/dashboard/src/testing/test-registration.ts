@@ -38,9 +38,7 @@ export function createTestRegistration(
     const entitlements = createFakeEntitlements();
     const policy = createEngineCreationPolicy({
         entitlements,
-        linkCodes: stores.linkCodes,
         engines: stores.engines,
-        clock,
     });
     const signal = new AbortController().signal;
     const deps: RegisterEngineDeps = {

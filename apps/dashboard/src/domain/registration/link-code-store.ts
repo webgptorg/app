@@ -13,6 +13,8 @@ export interface LinkCodeRecord {
     readonly expiresAt: number;
 }
 
+export type LinkCodeInsertOutcome = 'inserted' | 'link-code-limit' | 'rate-limited';
+
 /** What a re-registration of an active engine changes: the signed mode and version. */
 export interface EngineRefresh {
     readonly engineId: EngineId;
@@ -48,10 +50,8 @@ export type Redemption = 'redeemed' | 'conflict';
  * transaction, so a database error never burns a code and two registrations racing for one code cannot both win.
  */
 export interface LinkCodeStore {
-    insert(record: LinkCodeRecord): Promise<void>;
-    /** Codes of the organization still redeemable at `now`. */
-    countActive(orgId: OrgId, now: number): Promise<number>;
-    countIssuedSince(orgId: OrgId, since: number): Promise<number>;
+    /** Checks both organization quotas and inserts the code in one transaction. */
+    insert(record: LinkCodeRecord): Promise<LinkCodeInsertOutcome>;
     /** The organization's codes still redeemable at `now`, newest first. */
     listPending(orgId: OrgId, now: number): Promise<readonly PendingLinkCode[]>;
     /**
@@ -63,8 +63,8 @@ export interface LinkCodeStore {
     findState(orgId: OrgId, id: LinkCodeId, now: number): Promise<LinkCodeState | null>;
     /** The organization a redeemable code belongs to: how registration learns the organization. */
     findRedeemable(codeHash: string, now: number): Promise<OrgId | null>;
-    /** Only if the code is still redeemable for `engine.orgId` at `engine.createdAt` and no engine has that ID. */
-    redeemForNewEngine(codeHash: string, engine: EngineRecord): Promise<Redemption>;
+    /** Consumes the code only if the engine is new and its organization still has capacity. */
+    redeemForNewEngine(codeHash: string, engine: EngineRecord, maxActiveEngines: number | null): Promise<Redemption>;
     /** Only if the code is still redeemable for `refresh.orgId` and the engine is active in that organization. */
     redeemForExistingEngine(codeHash: string, refresh: EngineRefresh): Promise<Redemption>;
 }

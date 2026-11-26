@@ -167,7 +167,7 @@
                 // below, and put both Stripe secrets (ADR 0017, deploy.md). Production always charges.
                 "BILLING_OFF_PLAN": {
                     "features": ["engines.create"],
-                    "quotas": { "engines.max": 10, "custom-domains.max": 0 },
+                    "quotas": { "engines.max": 20, "custom-domains.max": 0 },
                 },
                 // Test-mode Stripe IDs; secrets via `wrangler secret put STRIPE_SECRET_KEY --env staging` (and
                 // STRIPE_WEBHOOK_SECRET). Quotas are placeholders until pricing is decided.

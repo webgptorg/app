@@ -4,8 +4,8 @@ import { sha256Hex } from '../auth/secrets';
 import { newLinkCodeId, type LinkCodeId, type OrgId, type UserId } from '../ids';
 import type { Clock } from '../ports/clock';
 import type { Random } from '../ports/random';
-import type { EngineCreationPolicy, LinkCodeDenial } from './engine-creation-policy';
-import type { LinkCodeStore } from './link-code-store';
+import type { EngineCreationPolicy, EntitlementDenial } from './engine-creation-policy';
+import type { LinkCodeInsertOutcome, LinkCodeStore } from './link-code-store';
 
 /**
  * The default and the longest a deployment may configure (`LINK_CODE_TTL_S`): 30 days, because people install the
@@ -15,7 +15,7 @@ export const LINK_CODE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface IssueLinkCodeDeps {
     readonly linkCodes: Pick<LinkCodeStore, 'insert'>;
-    readonly policy: Pick<EngineCreationPolicy, 'checkLinkCode'>;
+    readonly policy: Pick<EngineCreationPolicy, 'checkEligibility'>;
     readonly random: Random;
     readonly clock: Clock;
     readonly linkCodeTtlMs: number;
@@ -28,7 +28,7 @@ export type IssueLinkCodeOutcome =
           readonly linkCode: LinkCode;
           readonly expiresAt: number;
       }
-    | { readonly kind: 'denied'; readonly reason: LinkCodeDenial };
+    | { readonly kind: 'denied'; readonly reason: EntitlementDenial | Exclude<LinkCodeInsertOutcome, 'inserted'> };
 
 /** The plaintext code exists only in this answer; the store keeps its SHA-256. */
 export async function issueLinkCode(
@@ -36,7 +36,7 @@ export async function issueLinkCode(
     issuer: { readonly orgId: OrgId; readonly userId: UserId },
     signal: AbortSignal,
 ): Promise<IssueLinkCodeOutcome> {
-    const decision = await deps.policy.checkLinkCode(issuer.orgId, signal);
+    const decision = await deps.policy.checkEligibility(issuer.orgId, signal);
     if (decision.kind === 'denied') {
         return decision;
     }
@@ -45,7 +45,7 @@ export async function issueLinkCode(
     const now = deps.clock.nowMs();
     const expiresAt = now + deps.linkCodeTtlMs;
     const linkCodeId = newLinkCodeId(deps.random);
-    await deps.linkCodes.insert({
+    const inserted = await deps.linkCodes.insert({
         id: linkCodeId,
         codeHash: await sha256Hex(linkCode),
         orgId: issuer.orgId,
@@ -53,5 +53,6 @@ export async function issueLinkCode(
         createdAt: now,
         expiresAt,
     });
+    if (inserted !== 'inserted') return { kind: 'denied', reason: inserted };
     return { kind: 'issued', linkCodeId, linkCode, expiresAt };
 }

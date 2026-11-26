@@ -115,19 +115,23 @@ async function attempt(
         return { kind: decision.reason };
     }
     const hostname = defaultHostname(engineId, deps.engineDomain);
-    const created = await deps.linkCodes.redeemForNewEngine(codeHash, {
-        engineId,
-        orgId,
-        publicKey: request.enginePublicKey,
-        hostname,
-        mode: request.mode,
-        engineVersion: request.engineVersion,
-        status: 'active',
-        statusReason: null,
-        createdAt: now,
-        updatedAt: now,
-        label: null,
-    });
+    const created = await deps.linkCodes.redeemForNewEngine(
+        codeHash,
+        {
+            engineId,
+            orgId,
+            publicKey: request.enginePublicKey,
+            hostname,
+            mode: request.mode,
+            engineVersion: request.engineVersion,
+            status: 'active',
+            statusReason: null,
+            createdAt: now,
+            updatedAt: now,
+            label: null,
+        },
+        decision.maxActiveEngines,
+    );
     if (created === 'conflict') {
         return 'conflict';
     }

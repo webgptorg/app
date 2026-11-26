@@ -90,7 +90,7 @@ Errors are RFC 9457 problem+json (`ProblemDetails`, read with `TolerantProblemDe
 | `engine-suspended`  | 403    | The engine is suspended or revoked by its owner                            | Tell the owner; do not retry                                    |
 | `engine-limit`      | 403    | The account has no room for another engine                                 | Tell the owner                                                  |
 | `not-entitled`      | 403    | The account's plan does not include engines; the code stays unused         | Tell the owner, like `engine-limit`                             |
-| `rate-limited`      | 429    | Too many attempts from this address (20 per hour)                          | Retry later with backoff while the link code can still be valid |
+| `rate-limited`      | 429    | Too many attempts from this address (100 per hour)                         | Retry later with backoff while the link code can still be valid |
 
 The dashboard (D-03) also answers 400 `invalid-request` (the body fails the strict schema) and 413 `too-large` (over `REGISTER_REQUEST_MAX_BYTES`), which are bugs on the engine's side. Codes are only ever added to `REGISTRATION_ERROR_CODE`: handle a code you do not know like a 5xx.
 

@@ -216,13 +216,13 @@ describe('registerEngine', () => {
         const t = setup({
             wrapLinkCodes: (store, stores) => ({
                 ...store,
-                async redeemForNewEngine(codeHash, engine) {
+                async redeemForNewEngine(codeHash, engine, maxActiveEngines) {
                     if (!raced) {
                         raced = true;
                         stores.state.engines.set(engine.engineId, engine);
                         return 'conflict';
                     }
-                    return store.redeemForNewEngine(codeHash, engine);
+                    return store.redeemForNewEngine(codeHash, engine, maxActiveEngines);
                 },
             }),
         });

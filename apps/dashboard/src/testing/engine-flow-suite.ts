@@ -250,13 +250,37 @@ export function describeEngineFlows(
             await expectRegistered(await register(await second.register(spare)), second);
         });
 
+        it('keeps a spare code usable when two new engines compete for the final project slot', async () => {
+            const { browser } = await owner();
+            const first = await createTestEngine();
+            await expectRegistered(await register(await first.register(await linkCode(browser))), first);
+            const requests: RegisterEngineRequest[] = [];
+            for (let i = 0; i < 2; i++) {
+                const engine = await createTestEngine();
+                requests.push(await engine.register(await linkCode(browser)));
+            }
+            const results = await Promise.all(
+                requests.map(async (request) => ({ request, response: await register(request) })),
+            );
+            expect(results.map(({ response }) => response.status).sort()).toEqual([200, 403]);
+            const denied = results.find(({ response }) => response.status === 403);
+            if (denied === undefined) throw new Error('expected one registration to reach the project limit');
+            expectProblem(denied.response, 403, 'engine-limit');
+            await revoke(harness, first.engineId);
+            expect((await register(denied.request)).status).toBe(200);
+        });
+
         it('limits active link codes per organization until one is cancelled', async () => {
             const { browser } = await owner();
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 99; i++) {
                 await linkCode(browser);
             }
+            const last = await Promise.all([browser.request('POST', LINK_CODES), browser.request('POST', LINK_CODES)]);
+            expect(last.map((response) => response.status).sort()).toEqual([200, 409]);
+            expect((await pending(browser)).linkCodes).toHaveLength(100);
             const limited = await browser.request('POST', LINK_CODES);
             expect([limited.status, problemCode(limited)]).toEqual([409, 'link-code-limit']);
+            expect((await browser.request('GET', LINK_ELIGIBILITY)).body).toMatchObject({ eligibility: 'allowed' });
             const [oldest] = (await pending(browser)).linkCodes.slice(-1);
             expect((await browser.request('POST', `${LINK_CODES}/${oldest?.linkCodeId ?? ''}/cancel`)).status).toBe(
                 204,
@@ -368,12 +392,6 @@ export function describeEngineFlows(
                     await expectRegistered(await register(await engine.register(await linkCode(browser))), engine);
                 }
                 expect((await eligibility(browser)).eligibility).toBe('engine-limit');
-                const busy = await owner();
-                for (let i = 0; i < 5; i++) {
-                    await linkCode(busy.browser);
-                }
-                // The rate limit is issuance's answer, not the plan step's.
-                expect((await eligibility(busy.browser)).eligibility).toBe('allowed');
             });
 
             it('follows a code from pending to expired, or to linked with the engine, without the code', async () => {

@@ -25,6 +25,7 @@ import {
     quotaSchema,
 } from '../billing';
 import { engineLabelSchema } from '../engine-label';
+import { LINK_CODE_LIMITS } from '../link-code-limits';
 import { teamNameSchema } from '../team-name';
 import { environmentSchema } from '../environment';
 import { docsAnchorSchema, installPathIdSchema, installPathLabelKeySchema } from '../install-paths';
@@ -203,7 +204,7 @@ export type LinkEligibilityView = z.infer<typeof linkEligibilityViewSchema>;
 export const pendingLinkCodesViewSchema = z.strictObject({
     linkCodes: z
         .array(z.strictObject({ linkCodeId: idSchema, createdAt: timestampSchema, expiresAt: timestampSchema }))
-        .max(100),
+        .max(LINK_CODE_LIMITS.active),
 });
 export type PendingLinkCodesView = z.infer<typeof pendingLinkCodesViewSchema>;
 
@@ -909,7 +910,7 @@ export const apiRoutes = {
         rateLimit: null,
         input: NO_INPUT,
         output: linkCodeViewSchema,
-        // `link-code-limit` (409): 5 unused codes at most, freed by cancelling one; `rate-limited` (429): 10 per hour.
+        // A full pending list returns 409. Exhausting the hourly issuance budget returns 429.
         errorCodes: ['not-entitled', 'engine-limit', 'link-code-limit'],
     }),
     /** The organization's codes still waiting for an engine, so an owner can see and cancel them. */

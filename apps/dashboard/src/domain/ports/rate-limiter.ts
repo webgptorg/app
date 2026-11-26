@@ -26,7 +26,7 @@ export const RATE_LIMITS = {
     // The website handoff (D-30): its start, its return, which calls the website, and the pending link's read.
     'website-access-ip': { limit: 60, windowMs: HOUR_MS },
     // Engine registration (D-03): link codes are 128-bit, single-use and short-lived, so this caps load, not guessing.
-    'registration-ip': { limit: 20, windowMs: HOUR_MS },
+    'registration-ip': { limit: 100, windowMs: HOUR_MS },
     // Stripe webhooks: generous, since Stripe sends bursts from few addresses and retries anything refused.
     'webhook-ip': { limit: 600, windowMs: MINUTE_MS },
     // Registry reads (D-04): each relay re-reads every connected engine once per 5-minute TTL, plus new tunnels.

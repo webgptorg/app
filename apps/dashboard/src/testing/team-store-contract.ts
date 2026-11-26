@@ -83,7 +83,9 @@ export function describeTeamStoreContract(suite: string, makeFixture: () => Team
             if (teamId !== null) {
                 expect(await fixture.teams.attachLinkCode(orgId, id, teamId, NOW)).toBe('attached');
             }
-            expect(await fixture.linkCodes.redeemForNewEngine(codeHash, engineRecord(engine, orgId))).toBe('redeemed');
+            expect(await fixture.linkCodes.redeemForNewEngine(codeHash, engineRecord(engine, orgId), null)).toBe(
+                'redeemed',
+            );
             await fixture.teams.bindNewEngine(engine.engineId, {
                 teamId: newTeamId(cryptoRandom),
                 name: name('engine.example.test'),

@@ -9,12 +9,14 @@ import {
     gt,
     isNotNull,
     isNull,
+    lt,
     ne,
     notExists,
     or,
     sql,
     type SQL,
 } from 'drizzle-orm';
+import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 import { z } from 'zod';
 
 import type { AdminAuditEntry } from '../../domain/auth/records';
@@ -28,6 +30,7 @@ import {
 } from '../../domain/registration/engine-store';
 import type { LinkCodeStore } from '../../domain/registration/link-code-store';
 import { engineLabelSchema } from '../../shared/engine-label';
+import { LINK_CODE_LIMITS } from '../../shared/link-code-limits';
 import type { Database } from './client';
 import { adminAuditLog, engines, linkCodes, orgAuditLog } from './schema';
 
@@ -68,6 +71,7 @@ function redeemedBy(codeHash: string, engineId: EngineId, now: number) {
  * on that update, so a lost race changes neither table and an error rolls both back.
  */
 export function createD1LinkCodeStore(db: Database): LinkCodeStore {
+    const dialect = new SQLiteSyncDialect();
     const engineExists = (engineId: EngineId) =>
         db
             .select({ one: sql`1` })
@@ -76,25 +80,26 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
 
     return {
         async insert(record) {
-            await db.insert(linkCodes).values(record);
-        },
-
-        async countActive(orgId, now) {
-            const row = await db
-                .select({ total: count() })
-                .from(linkCodes)
-                .where(and(eq(linkCodes.orgId, orgId), isNull(linkCodes.usedAt), gt(linkCodes.expiresAt, now)))
-                .get();
-            return row?.total ?? 0;
-        },
-
-        async countIssuedSince(orgId, since) {
-            const row = await db
-                .select({ total: count() })
-                .from(linkCodes)
-                .where(and(eq(linkCodes.orgId, orgId), gt(linkCodes.createdAt, since)))
-                .get();
-            return row?.total ?? 0;
+            const { orgId, createdAt } = record;
+            const org = eq(linkCodes.orgId, orgId);
+            const active = db.$count(linkCodes, and(org, isNull(linkCodes.usedAt), gt(linkCodes.expiresAt, createdAt)));
+            const recent = db.$count(
+                linkCodes,
+                and(org, gt(linkCodes.createdAt, createdAt - LINK_CODE_LIMITS.windowMs)),
+            );
+            // One transaction decides which quota refused the code and writes only when both have room.
+            const statements = [
+                sql`SELECT 1 WHERE ${active} >= ${LINK_CODE_LIMITS.active}`,
+                sql`INSERT INTO ${linkCodes} (id, code_hash, org_id, created_by_user_id, created_at, expires_at)
+                    SELECT ${record.id}, ${record.codeHash}, ${orgId}, ${record.createdByUserId}, ${createdAt}, ${record.expiresAt}
+                    WHERE ${active} < ${LINK_CODE_LIMITS.active} AND ${recent} < ${LINK_CODE_LIMITS.perHour}`,
+            ].map((statement) => {
+                const query = dialect.sqlToQuery(statement);
+                return db.$client.prepare(query.sql).bind(...query.params);
+            });
+            const [full, insertion] = await db.$client.batch(statements);
+            if (full?.results.length === 1) return 'link-code-limit';
+            return insertion?.meta.changes === 1 ? 'inserted' : 'rate-limited';
         },
 
         async listPending(orgId, now) {
@@ -158,13 +163,26 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
             return row === undefined ? null : orgIdSchema.parse(row.orgId);
         },
 
-        async redeemForNewEngine(codeHash, engine) {
+        async redeemForNewEngine(codeHash, engine, maxActiveEngines) {
             const now = engine.createdAt;
+            const capacity =
+                maxActiveEngines === null
+                    ? undefined
+                    : lt(
+                          db.$count(engines, and(eq(engines.orgId, engine.orgId), eq(engines.status, 'active'))),
+                          maxActiveEngines,
+                      );
             const [consumed] = await db.batch([
                 db
                     .update(linkCodes)
                     .set({ usedAt: now, engineId: engine.engineId })
-                    .where(and(redeemable(codeHash, engine.orgId, now), notExists(engineExists(engine.engineId))))
+                    .where(
+                        and(
+                            redeemable(codeHash, engine.orgId, now),
+                            notExists(engineExists(engine.engineId)),
+                            capacity,
+                        ),
+                    )
                     .returning({ codeHash: linkCodes.codeHash }),
                 db.insert(engines).select((qb) =>
                     qb

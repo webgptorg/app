@@ -194,7 +194,12 @@ export const linkCodes = sqliteTable(
         // The team the new engine joins (teams spec); null links a team of its own, named after the engine.
         teamId: text('team_id'),
     },
-    (t) => [index('link_codes_org_id_created_at_idx').on(t.orgId, t.createdAt)],
+    (t) => [
+        index('link_codes_org_id_created_at_idx').on(t.orgId, t.createdAt),
+        index('link_codes_pending_expiry_idx')
+            .on(t.orgId, t.expiresAt)
+            .where(sql`${t.usedAt} is null`),
+    ],
 );
 
 export const engines = sqliteTable(

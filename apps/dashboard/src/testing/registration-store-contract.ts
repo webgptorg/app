@@ -79,7 +79,7 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
             const code = codeRecord(orgId);
             await fixture.linkCodes.insert(code);
             const row = engineRecord(engine, orgId, { createdAt: at, updatedAt: at });
-            expect(await fixture.linkCodes.redeemForNewEngine(code.codeHash, row)).toBe('redeemed');
+            expect(await fixture.linkCodes.redeemForNewEngine(code.codeHash, row, null)).toBe('redeemed');
             return { code, row };
         }
 
@@ -124,16 +124,16 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
             expect(await fixture.linkCodes.findState(orgB, code.id, NOW + 2)).toBeNull();
         });
 
-        it('counts active and recently issued codes per organization only', async () => {
-            await fixture.linkCodes.insert(codeRecord(orgA));
-            await fixture.linkCodes.insert(codeRecord(orgA, { createdAt: NOW - TTL, expiresAt: NOW }));
-            await fixture.linkCodes.insert(codeRecord(orgB));
-            await created(orgA);
-            expect(await fixture.linkCodes.countActive(orgA, NOW)).toBe(1);
-            expect(await fixture.linkCodes.countActive(orgB, NOW)).toBe(1);
-            expect(await fixture.linkCodes.countIssuedSince(orgA, NOW - TTL - 1)).toBe(3);
-            expect(await fixture.linkCodes.countIssuedSince(orgA, NOW - TTL)).toBe(2);
-            expect(await fixture.linkCodes.countIssuedSince(orgB, NOW - TTL - 1)).toBe(1);
+        it('allows only one concurrent insert into the last hourly slot, independently for each organization', async () => {
+            const cancelled = () => codeRecord(orgA, { expiresAt: NOW });
+            await Promise.all(Array.from({ length: 199 }, () => fixture.linkCodes.insert(cancelled())));
+            const issue = () => fixture.linkCodes.insert(codeRecord(orgA));
+            expect((await Promise.all([issue(), issue()])).sort()).toEqual(['inserted', 'rate-limited']);
+            expect(await fixture.linkCodes.insert(codeRecord(orgB))).toBe('inserted');
+            const nextHour = NOW + 60 * 60 * 1000;
+            expect(
+                await fixture.linkCodes.insert(codeRecord(orgA, { createdAt: nextHour, expiresAt: nextHour + TTL })),
+            ).toBe('inserted');
         });
 
         it('lists the organization’s redeemable codes, newest first, and only those', async () => {
@@ -167,6 +167,7 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
                 await fixture.linkCodes.redeemForNewEngine(
                     code.codeHash,
                     engineRecord(engine, orgA, { createdAt: NOW + 1 }),
+                    null,
                 ),
             ).toBe('conflict');
 
@@ -190,6 +191,7 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
                 await fixture.linkCodes.redeemForNewEngine(
                     code.codeHash,
                     engineRecord(other, orgA, { createdAt: NOW + 2 }),
+                    null,
                 ),
             ).toBe('conflict');
             expect(await fixture.engines.findForRegistration(other.engineId)).toBeNull();
@@ -202,6 +204,7 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
                 await fixture.linkCodes.redeemForNewEngine(
                     expired.codeHash,
                     engineRecord(engine, orgA, { createdAt: NOW }),
+                    null,
                 ),
             ).toBe('conflict');
             const foreign = codeRecord(orgB);
@@ -210,6 +213,7 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
                 await fixture.linkCodes.redeemForNewEngine(
                     foreign.codeHash,
                     engineRecord(engine, orgA, { createdAt: NOW }),
+                    null,
                 ),
             ).toBe('conflict');
             expect(await fixture.engines.findForRegistration(engine.engineId)).toBeNull();
@@ -220,6 +224,7 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
                 await fixture.linkCodes.redeemForNewEngine(
                     again.codeHash,
                     engineRecord(engine, orgA, { createdAt: NOW + 5 }),
+                    null,
                 ),
             ).toBe('conflict');
             expect(await fixture.linkCodes.findRedeemable(again.codeHash, NOW + 5)).toBe(orgA);

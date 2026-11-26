@@ -1,0 +1,1 @@
+CREATE INDEX `link_codes_pending_expiry_idx` ON `link_codes` (`org_id`,`expires_at`) WHERE "link_codes"."used_at" is null;
