@@ -534,6 +534,7 @@
   "passkey_remove_named": "Remove {name}",
   "passkey_remove_title": "Remove this passkey?",
   "passkey_removed": "Passkey removed",
+  "passkey_reopen_prompt": "Reopen passkey prompt",
   "passkey_try_again": "Try again",
   "passkey_what_is": "A passkey stays on your device or in your password manager. It cannot be phished, and we never see it.",
   "passkeys_body": "Each passkey can sign in to this account. Keep at least two, on different devices.",

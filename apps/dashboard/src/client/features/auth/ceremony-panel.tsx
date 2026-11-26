@@ -15,6 +15,7 @@ export function CeremonyPanel(props: {
     readonly kind: CeremonyKind;
     readonly state: CeremonyState;
     readonly onStart: () => void;
+    readonly reopen: (() => void) | null;
     readonly footer?: ReactNode;
     /** A calm picture above the title, e.g. the brand robot on sign-in. Decorative. */
     readonly illustration?: ReactNode;
@@ -38,9 +39,18 @@ export function CeremonyPanel(props: {
             ) : null}
             {/* The page's one action: large and centred, still the soft primary wash (docs/design/ui.md, Buttons). */}
             <div className="flex justify-center py-2">
-                <Button variant="primary" size="lg" loading={props.state.kind === 'running'} onClick={props.onStart}>
+                <Button
+                    variant="primary"
+                    size="lg"
+                    loading={props.state.kind === 'running' && props.reopen === null}
+                    onClick={props.reopen ?? props.onStart}
+                >
                     <KeyRound aria-hidden className="size-4" />
-                    {failed ? m.passkey_try_again() : props.actionLabel}
+                    {props.reopen !== null
+                        ? m.passkey_reopen_prompt()
+                        : failed
+                          ? m.passkey_try_again()
+                          : props.actionLabel}
                 </Button>
             </div>
             {props.footer}

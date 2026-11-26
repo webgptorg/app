@@ -536,6 +536,7 @@
   "passkey_remove_named": "Odebrat {name}",
   "passkey_remove_title": "Odebrat tento klíč?",
   "passkey_removed": "Přístupový klíč odebrán",
+  "passkey_reopen_prompt": "Znovu otevřít výzvu",
   "passkey_try_again": "Zkusit znovu",
   "passkey_what_is": "Přístupový klíč zůstává ve Vašem zařízení nebo ve správci hesel. Nedá se vylákat a my ho nikdy nevidíme.",
   "passkeys_body": "Každým klíčem se lze přihlásit k tomuto účtu. Mějte alespoň dva, na různých zařízeních.",

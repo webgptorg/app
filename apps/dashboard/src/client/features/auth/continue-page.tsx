@@ -5,6 +5,7 @@ import { m } from '../../../paraglide/messages';
 import type { SessionView } from '../../../shared/api/routes';
 import { useApiClient } from '../../api/api-client-context';
 import { useBrowser } from '../../core/browser';
+import { usePasskeyPrompt } from '../passkeys/use-passkey-prompt';
 import { Link } from '../../core/link';
 import type { CeremonyFailure } from '../passkeys/ceremonies';
 import { signInWithPasskey } from '../passkeys/ceremonies';
@@ -29,12 +30,13 @@ export function ContinuePage(props: { readonly returnTo: string | undefined }) {
     );
     const [failure, setFailure] = useState<CeremonyFailure | null>(null);
     const [prompting, setPrompting] = useState(false);
+    const { waitForPrompt, reopen } = usePasskeyPrompt();
     // The picker aborts the autofill request; a new key arms a fresh one once the picker is closed.
     const [autofillRound, setAutofillRound] = useState(0);
     const promptForPasskey = async (): Promise<void> => {
         setPrompting(true);
         setFailure(null);
-        const result = await signInWithPasskey({ api, passkeys });
+        const result = await signInWithPasskey({ api, passkeys, waitForPrompt });
         if (result.kind === 'ok') {
             await signedIn(result.value);
             return;
@@ -75,12 +77,15 @@ export function ContinuePage(props: { readonly returnTo: string | undefined }) {
                 <Button
                     variant="ghost"
                     size="lg"
-                    loading={prompting}
-                    onClick={() => {
-                        void promptForPasskey();
-                    }}
+                    loading={prompting && reopen === null}
+                    onClick={
+                        reopen ??
+                        (() => {
+                            void promptForPasskey();
+                        })
+                    }
                 >
-                    {m.continue_use_passkey()}
+                    {reopen === null ? m.continue_use_passkey() : m.passkey_reopen_prompt()}
                 </Button>
             }
             footer={

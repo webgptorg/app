@@ -1,4 +1,4 @@
-import { ActionMenu, ConfirmDialog } from '@ptbk/ui';
+import { ActionMenu, Button, ConfirmDialog } from '@ptbk/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -8,6 +8,7 @@ import { engineLabel, shortEngineId } from '../../../shared/engine-label';
 import { useApiClient } from '../../api/api-client-context';
 import { dataOrThrow, queryKeys } from '../../api/queries';
 import { useAppMutation } from '../../core/mutations';
+import { usePasskeyPrompt } from '../passkeys/use-passkey-prompt';
 import { ceremonyFailureMessage } from '../passkeys/ceremony-messages';
 import { StepUpFailedError, useStepUp } from '../step-up/step-up';
 
@@ -23,13 +24,14 @@ export function EngineActionMenu(props: { readonly engine: EngineView; readonly 
     const queryClient = useQueryClient();
     const { needsStepUp, stepUpInPlace } = useStepUp();
     const [open, setOpen] = useState(false);
+    const { waitForPrompt, reopen } = usePasskeyPrompt(open);
     const { engineId } = props.engine;
     const shortId = shortEngineId(engineId);
     const revoke = useAppMutation({
-        stepUp: 'in-place',
+        stepUp: { inPlace: waitForPrompt },
         mutationFn: async () => {
             if (needsStepUp()) {
-                await stepUpInPlace();
+                await stepUpInPlace(waitForPrompt);
             }
             return dataOrThrow(await api.call(apiRoutes.revokeEngine, { params: { engineId } })).engine;
         },
@@ -80,6 +82,7 @@ export function EngineActionMenu(props: { readonly engine: EngineView; readonly 
                     <li>{m.engine_revoke_dialog_address()}</li>
                     <li>{m.engine_revoke_dialog_recover()}</li>
                 </ul>
+                {reopen === null ? null : <Button onClick={reopen}>{m.passkey_reopen_prompt()}</Button>}
             </ConfirmDialog>
         </>
     );

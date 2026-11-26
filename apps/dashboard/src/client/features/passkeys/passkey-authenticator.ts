@@ -26,10 +26,15 @@ export type PasskeyFailure =
 export type PasskeyOutcome<Response> =
     { readonly kind: 'ok'; readonly response: Response } | { readonly kind: 'failed'; readonly reason: PasskeyFailure };
 
+/** The user may replace a modal prompt while the browser is waiting for a credential. */
+export type WaitForPasskey = <T>(
+    open: (signal: AbortSignal) => Promise<PasskeyOutcome<T>>,
+) => Promise<PasskeyOutcome<T> | 'reopen'>;
+
 /** The browser's side of WebAuthn: `@simplewebauthn/browser` in the app, a scripted fake in tests. */
 export interface PasskeyAuthenticator {
-    register(options: RegistrationOptions): Promise<PasskeyOutcome<RegistrationResponse>>;
-    authenticate(options: AuthenticationOptions): Promise<PasskeyOutcome<AuthenticationResponse>>;
+    register(options: RegistrationOptions, signal?: AbortSignal): Promise<PasskeyOutcome<RegistrationResponse>>;
+    authenticate(options: AuthenticationOptions, signal?: AbortSignal): Promise<PasskeyOutcome<AuthenticationResponse>>;
     /** Whether the browser can offer passkeys in an email field's autofill (WebAuthn conditional mediation). */
     supportsAutofill(): Promise<boolean>;
     /**

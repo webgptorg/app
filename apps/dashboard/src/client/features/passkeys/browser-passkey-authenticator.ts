@@ -22,13 +22,23 @@ function toOutcome<S extends z.ZodType>(schema: S, value: unknown): PasskeyOutco
 async function run<S extends z.ZodType>(
     schema: S,
     ceremony: (webAuthn: typeof WebAuthnBrowser) => Promise<unknown>,
+    signal?: AbortSignal,
 ): Promise<PasskeyOutcome<z.output<S>>> {
     try {
         const webAuthn = await import('@simplewebauthn/browser');
         if (!webAuthn.browserSupportsWebAuthn()) {
             return { kind: 'failed', reason: 'unsupported' };
         }
-        return toOutcome(schema, await ceremony(webAuthn));
+        if (signal?.aborted) return { kind: 'failed', reason: 'cancelled' };
+        const cancel = () => {
+            webAuthn.WebAuthnAbortService.cancelCeremony();
+        };
+        signal?.addEventListener('abort', cancel, { once: true });
+        try {
+            return toOutcome(schema, await ceremony(webAuthn));
+        } finally {
+            signal?.removeEventListener('abort', cancel);
+        }
     } catch (error) {
         return { kind: 'failed', reason: classifyPasskeyError(error) };
     }
@@ -36,17 +46,25 @@ async function run<S extends z.ZodType>(
 
 export function createBrowserPasskeyAuthenticator(): PasskeyAuthenticator {
     return {
-        register: (options) =>
-            run(registrationResponseSchema, (webAuthn) =>
-                webAuthn.startRegistration({
-                    optionsJSON: options as Parameters<typeof WebAuthnBrowser.startRegistration>[0]['optionsJSON'],
-                }),
+        register: (options, signal) =>
+            run(
+                registrationResponseSchema,
+                (webAuthn) =>
+                    webAuthn.startRegistration({
+                        optionsJSON: options as Parameters<typeof WebAuthnBrowser.startRegistration>[0]['optionsJSON'],
+                    }),
+                signal,
             ),
-        authenticate: (options) =>
-            run(authenticationResponseSchema, (webAuthn) =>
-                webAuthn.startAuthentication({
-                    optionsJSON: options as Parameters<typeof WebAuthnBrowser.startAuthentication>[0]['optionsJSON'],
-                }),
+        authenticate: (options, signal) =>
+            run(
+                authenticationResponseSchema,
+                (webAuthn) =>
+                    webAuthn.startAuthentication({
+                        optionsJSON: options as Parameters<
+                            typeof WebAuthnBrowser.startAuthentication
+                        >[0]['optionsJSON'],
+                    }),
+                signal,
             ),
         supportsAutofill: async () => {
             try {

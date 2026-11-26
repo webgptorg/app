@@ -29,6 +29,7 @@ import type { TeamName } from '../../../shared/team-name';
 import { useApiClient } from '../../api/api-client-context';
 import { dataOrThrow, enginesQuery, problemCode, queryKeys } from '../../api/queries';
 import { ButtonLink } from '../../core/link';
+import { usePasskeyPrompt } from '../passkeys/use-passkey-prompt';
 import { useAppMutation } from '../../core/mutations';
 import { engineDisplayName, EngineMark } from '../engines/engine-identity';
 import { EngineStatusPill } from '../engines/engine-status-pill';
@@ -191,6 +192,7 @@ function TeamMenu(props: { readonly team: TeamView }) {
     const queryClient = useQueryClient();
     const [renaming, setRenaming] = useState(false);
     const [deleting, setDeleting] = useState(false);
+    const { waitForPrompt, reopen } = usePasskeyPrompt(deleting);
     const { teamId } = props.team;
     const rename = useAppMutation({
         mutationFn: async (name: TeamName) =>
@@ -203,10 +205,10 @@ function TeamMenu(props: { readonly team: TeamView }) {
     });
     const { needsStepUp, stepUpInPlace } = useStepUp();
     const remove = useAppMutation({
-        stepUp: 'in-place',
+        stepUp: { inPlace: waitForPrompt },
         mutationFn: async () => {
             if (needsStepUp()) {
-                await stepUpInPlace();
+                await stepUpInPlace(waitForPrompt);
             }
             dataOrThrow(await api.call(apiRoutes.deleteTeam, { params: { teamId } }));
         },
@@ -280,7 +282,9 @@ function TeamMenu(props: { readonly team: TeamView }) {
                 tone="danger"
                 confirmPhrase={props.team.name}
                 loading={remove.isPending}
-            />
+            >
+                {reopen === null ? null : <Button onClick={reopen}>{m.passkey_reopen_prompt()}</Button>}
+            </ConfirmDialog>
         </>
     );
 }
