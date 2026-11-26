@@ -175,11 +175,20 @@ export const stripeEvents = sqliteTable(
 
 // Engine registration (D-03): routing and billing metadata only, never engine content.
 
+/** Provider-issued public identifiers only. The redirect URI also separates staging from production. */
+export const vpsOauthClients = sqliteTable('vps_oauth_clients', {
+    callback: text('callback').primaryKey(),
+    clientId: text('client_id').notNull(),
+});
+
 export const linkCodes = sqliteTable(
     'link_codes',
     {
         // SHA-256 of the link code; the code itself is shown once and never stored.
         codeHash: text('code_hash').primaryKey(),
+        // A reservation precedes any billable create. Its absence permits a new attempt.
+        vpsProvider: text('vps_provider', { enum: ['digitalocean'] }),
+        vpsResourceId: text('vps_resource_id'),
         // Random, not derived from the code: what the link page polls the code's state by (D-10). Null only for codes
         // issued before it existed, which expired within 30 minutes of the migration.
         id: text('id').unique(),

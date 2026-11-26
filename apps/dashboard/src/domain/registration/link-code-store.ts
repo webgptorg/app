@@ -49,7 +49,21 @@ export type Redemption = 'redeemed' | 'conflict';
  * redeemable while it is unused and `now < expiresAt`. Redemption marks the code used and writes the engine in one
  * transaction, so a database error never burns a code and two registrations racing for one code cannot both win.
  */
+export interface VpsReservation {
+    readonly orgId: OrgId;
+    readonly userId: UserId;
+    readonly id: LinkCodeId;
+    readonly provider: 'digitalocean';
+    readonly codeHash: string;
+    readonly now: number;
+}
+
 export interface LinkCodeStore {
+    /** Rotates the pairing code and reserves this launch atomically. Team assignment stays on the row. */
+    reserveVps(input: VpsReservation): Promise<boolean>;
+    /** Null releases a definitely rejected create. Ambiguous writes keep their reservation. */
+    finishVps(input: VpsReservation, resourceId: string | null): Promise<void>;
+    vpsStatus(orgId: OrgId, id: LinkCodeId): Promise<{ provider: 'digitalocean'; resourceId: string | null } | null>;
     /** Checks both organization quotas and inserts the code in one transaction. */
     insert(record: LinkCodeRecord): Promise<LinkCodeInsertOutcome>;
     /** The organization's codes still redeemable at `now`, newest first. */

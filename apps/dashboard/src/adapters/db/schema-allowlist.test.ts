@@ -52,6 +52,7 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     ],
     // One-time link codes: the code only as SHA-256, who issued it for which organization, a 30-minute lifetime, the
     // engine that redeemed it and the team that engine joins.
+    vps_oauth_clients: ['callback', 'client_id'],
     link_codes: [
         'code_hash',
         'org_id',
@@ -62,6 +63,8 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'engine_id',
         'id',
         'team_id',
+        'vps_provider',
+        'vps_resource_id',
     ],
     // Teams (ADR 0018): a name the organization typed, and who is in it. No engine content.
     teams: ['id', 'org_id', 'name', 'created_at', 'deleted_at'],

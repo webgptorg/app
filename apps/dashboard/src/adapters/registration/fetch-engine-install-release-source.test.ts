@@ -61,9 +61,18 @@ describe('published engine installation releases', () => {
             const fallback = { ...TEST_ENGINE_INSTALLATION, version: '0.119.0-119' };
             const { releases, calls } = source([Response.json({ name: 'ptbk', version })]);
             expect(await releases.current(fallback, signal)).toBe(fallback);
-            expect(calls).toHaveLength(1);
+            expect(calls).toHaveLength(version === fallback.version ? 1 : 2);
         },
     );
+
+    it('picks up browser ownership on a pinned prerelease ahead of the latest tag', async () => {
+        const pinned = { ...TEST_ENGINE_INSTALLATION, version: VERSION };
+        const { releases } = source([
+            Response.json({ name: 'ptbk', version: TEST_ENGINE_INSTALLATION.version }),
+            Response.json({ name: 'ptbk', version: VERSION, promptbookVps: ['digitalocean-owner-v1'] }),
+        ]);
+        expect(await releases.current(pinned, signal)).toEqual({ ...pinned, digitalOceanOwner: true });
+    });
 
     it.each(['0.119.0', '0.120.0-1', '0.120.0', '1.0.0'])(
         'follows later stable and prerelease lines without a Dashboard version bump (%s)',

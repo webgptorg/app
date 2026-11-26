@@ -6,7 +6,11 @@ import { engineInstallReleaseSchema } from '../../shared/engine-installation';
 import { readCapped } from '../read-capped';
 
 const METADATA_LIMIT = 512 * 1024;
-const npmReleaseSchema = z.object({ name: z.literal('ptbk'), version: engineInstallReleaseSchema.shape.version });
+const npmReleaseSchema = z.object({
+    name: z.literal('ptbk'),
+    version: engineInstallReleaseSchema.shape.version,
+    promptbookVps: z.array(z.string().max(64)).max(16).optional(),
+});
 const githubReleaseSchema = z.object({
     tag_name: z.string().max(64),
     draft: z.literal(false),
@@ -52,13 +56,23 @@ export function createFetchEngineInstallReleaseSource(deps: {
             };
             try {
                 const candidate = npmReleaseSchema.parse(await metadata('https://registry.npmjs.org/ptbk/latest'));
+                const supports = candidate.promptbookVps?.includes('digitalocean-owner-v1') === true;
+                if (candidate.version === fallback.version)
+                    return supports ? { ...fallback, digitalOceanOwner: true } : fallback;
                 if (
                     compareEngineVersions(
                         EngineVersion.parse(candidate.version),
                         EngineVersion.parse(fallback.version),
-                    ) <= 0
+                    ) < 0
                 ) {
-                    return fallback;
+                    if (fallback.digitalOceanOwner) return fallback;
+                    const pinned = npmReleaseSchema.parse(
+                        await metadata('https://registry.npmjs.org/ptbk/' + fallback.version),
+                    );
+                    return pinned.version === fallback.version &&
+                        pinned.promptbookVps?.includes('digitalocean-owner-v1')
+                        ? { ...fallback, digitalOceanOwner: true }
+                        : fallback;
                 }
                 const release = githubReleaseSchema.parse(
                     await metadata(
@@ -81,6 +95,7 @@ export function createFetchEngineInstallReleaseSource(deps: {
                 }
                 return engineInstallReleaseSchema.parse({
                     ...fallback,
+                    digitalOceanOwner: supports ? true : undefined,
                     version: candidate.version,
                     windowsSha256: digest.slice('sha256:'.length),
                 });

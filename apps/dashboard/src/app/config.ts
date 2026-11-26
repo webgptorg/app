@@ -17,6 +17,7 @@ import { LINK_CODE_TTL_MS } from '../domain/registration/issue-link-code';
 import type { HeartbeatTiming } from '../domain/status/engine-status';
 import { DEFAULT_THRESHOLDS, thresholdsSchema, type AlertThresholds } from '../domain/monitoring/alert-rules';
 import { environmentSchema, type Environment } from '../shared/environment';
+import { digitalOceanConfig } from '../shared/vps';
 import { engineInstallReleaseSchema, type EngineInstallRelease } from '../shared/engine-installation';
 import {
     docsAnchorSchema,
@@ -291,6 +292,7 @@ const varsSchema = z
         INSTALL_COMMANDS: installCommandsSchema.optional(),
         /** Reviewed published artifacts for engine-first command, AI and Windows installation. */
         ENGINE_INSTALLATION: engineInstallReleaseSchema.optional(),
+        VPS_DIGITALOCEAN: digitalOceanConfig.optional(),
         /** D-03's single command; read only without `INSTALL_COMMANDS`, for one release. */
         INSTALL_COMMAND: installCommandSchema.optional(),
         INSTALL_GUIDE_URL: installGuideUrlSchema,
@@ -475,6 +477,7 @@ export interface DashboardConfig {
     readonly relays: readonly Readonly<RelayConfig>[];
     /** The tabs of `/engines/new`, in order; each template contains one placeholder exactly once. */
     readonly installCommands: readonly InstallCommandConfig[];
+    readonly digitalOcean?: Readonly<z.infer<typeof digitalOceanConfig>>;
     readonly engineInstallation?: Readonly<EngineInstallRelease>;
     /** The public install guide, without a fragment. */
     readonly installGuideUrl: string;
@@ -617,6 +620,7 @@ export function parseConfig(env: object): DashboardConfig {
         ...(parsed.ENGINE_INSTALLATION === undefined
             ? {}
             : { engineInstallation: Object.freeze({ ...parsed.ENGINE_INSTALLATION }) }),
+        ...(parsed.VPS_DIGITALOCEAN === undefined ? {} : { digitalOcean: Object.freeze(parsed.VPS_DIGITALOCEAN) }),
         installGuideUrl: parsed.INSTALL_GUIDE_URL,
         adapters: Object.freeze({ ...parsed.ADAPTERS }),
         emailFrom: parsed.EMAIL_FROM,

@@ -102,6 +102,43 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
             return insertion?.meta.changes === 1 ? 'inserted' : 'rate-limited';
         },
 
+        async reserveVps(input) {
+            const rows = await db
+                .update(linkCodes)
+                .set({ codeHash: input.codeHash, vpsProvider: input.provider })
+                .where(
+                    and(
+                        eq(linkCodes.id, input.id),
+                        eq(linkCodes.orgId, input.orgId),
+                        eq(linkCodes.createdByUserId, input.userId),
+                        isNull(linkCodes.usedAt),
+                        gt(linkCodes.expiresAt, input.now),
+                        isNull(linkCodes.vpsProvider),
+                    ),
+                )
+                .returning({ id: linkCodes.id });
+            return rows.length === 1;
+        },
+        async finishVps(input, resourceId) {
+            await db
+                .update(linkCodes)
+                .set({ vpsProvider: resourceId === null ? null : input.provider, vpsResourceId: resourceId })
+                .where(
+                    and(
+                        eq(linkCodes.orgId, input.orgId),
+                        eq(linkCodes.id, input.id),
+                        eq(linkCodes.codeHash, input.codeHash),
+                    ),
+                );
+        },
+        async vpsStatus(orgId, id) {
+            const row = await db
+                .select({ provider: linkCodes.vpsProvider, resourceId: linkCodes.vpsResourceId })
+                .from(linkCodes)
+                .where(and(eq(linkCodes.id, id), eq(linkCodes.orgId, orgId)))
+                .get();
+            return row?.provider ? { provider: row.provider, resourceId: row.resourceId } : null;
+        },
         async listPending(orgId, now) {
             const rows = await db
                 .select({ id: linkCodes.id, createdAt: linkCodes.createdAt, expiresAt: linkCodes.expiresAt })

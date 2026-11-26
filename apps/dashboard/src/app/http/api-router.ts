@@ -13,6 +13,7 @@ import { bindEngineRoutes } from './engine-routes';
 import { bindLicensingRoutes } from './licensing-routes';
 import type { RouteBinder } from './bind-route';
 import { crossSiteRequestGuard } from './csrf';
+import { bindVpsRoutes } from './vps-routes';
 import { bindTeamRoutes } from './team-routes';
 
 export const API_MOUNT = '/api';
@@ -48,6 +49,7 @@ export function createApiRouter(
         bindLicensingRoutes(router, API_MOUNT, { ...deps, website, licensing, licenses });
     }
     bindEngineRoutes(router, API_MOUNT, deps);
+    bindVpsRoutes(router, API_MOUNT, deps);
     bindTeamRoutes(router, API_MOUNT, deps);
     bindAdminEngineRoutes(router, API_MOUNT, deps);
     bindAdminHostnameRoutes(router, API_MOUNT, deps);

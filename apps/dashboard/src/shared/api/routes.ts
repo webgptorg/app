@@ -24,6 +24,7 @@ import {
     problemStatusSchema,
     quotaSchema,
 } from '../billing';
+import { cloudOffer, providerId, DIGITALOCEAN } from '../vps';
 import { engineLabelSchema } from '../engine-label';
 import { LINK_CODE_LIMITS } from '../link-code-limits';
 import { teamNameSchema } from '../team-name';
@@ -158,6 +159,7 @@ export type ProblemOrganization = z.infer<typeof problemOrganizationSchema>;
 export const linkCodeViewSchema = z.strictObject({
     /** Not a secret and grants nothing: the link page polls the code's state by it, and keeps it in its URL. */
     linkCodeId: idSchema,
+    vpsProviders: z.array(cloudOffer).optional(),
     linkCode: LinkCode,
     /**
      * `<dashboard origin>/link#<code>`, which `connect --link` takes in place of the code and a dashboard setting. Null
@@ -912,6 +914,62 @@ export const apiRoutes = {
         output: linkCodeViewSchema,
         // A full pending list returns 409. Exhausting the hourly issuance budget returns 429.
         errorCodes: ['not-entitled', 'engine-limit', 'link-code-limit'],
+    }),
+    getVpsLaunch: defineRoute({
+        method: 'GET',
+        path: '/api/engines/link-codes/:linkCodeId/vps',
+        auth: 'session',
+        permission: 'engine.link',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: z.strictObject({ linkCodeId: idSchema }) },
+        output: z.strictObject({
+            offer: cloudOffer.nullable(),
+            reservation: z
+                .strictObject({
+                    provider: providerId,
+                    resourceId: z
+                        .string()
+                        .regex(/^[0-9]{1,16}$/)
+                        .nullable(),
+                })
+                .nullable(),
+        }),
+        errorCodes: [],
+    }),
+    authorizeVps: defineRoute({
+        method: 'POST',
+        path: '/api/engines/link-codes/:linkCodeId/vps/authorize',
+        auth: 'session',
+        permission: 'engine.link',
+        rateLimit: null,
+        input: {
+            ...NO_INPUT,
+            params: z.strictObject({ linkCodeId: idSchema }),
+            maxBodyBytes: 256,
+            body: z.strictObject({ provider: providerId }),
+        },
+        output: z.strictObject({ clientId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/) }),
+        errorCodes: ['vps-unavailable'],
+    }),
+    launchVps: defineRoute({
+        method: 'POST',
+        path: '/api/engines/link-codes/:linkCodeId/vps',
+        auth: 'session',
+        permission: 'engine.link',
+        rateLimit: null,
+        input: {
+            ...NO_INPUT,
+            params: z.strictObject({ linkCodeId: idSchema }),
+            maxBodyBytes: 2048,
+            body: z.strictObject({
+                provider: providerId,
+                monthlyUsd: z.literal(DIGITALOCEAN.monthlyUsd),
+                code: z.string().min(1).max(512),
+                verifier: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+            }),
+        },
+        output: z.strictObject({ submitted: z.literal(true) }),
+        errorCodes: ['vps-unavailable', 'provider-rejected', 'engine-limit', 'not-entitled'],
     }),
     /** The organization's codes still waiting for an engine, so an owner can see and cancel them. */
     listLinkCodes: defineRoute({

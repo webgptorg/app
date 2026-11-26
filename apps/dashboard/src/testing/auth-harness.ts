@@ -205,6 +205,7 @@ export function createAuthHarness(options: {
     readonly relays?: readonly string[];
     /** Where usage events go instead of `usage`, e.g. a store that fails. */
     readonly usageStore?: Pick<UsageStore, 'insertEvents'>;
+    readonly vpsProviders?: NonNullable<DashboardDeps['vpsProviders']>;
     readonly engineInstallation?: EngineInstallRelease;
     readonly installReleases?: EngineInstallReleaseSource;
 }): AuthHarness {
@@ -299,6 +300,7 @@ export function createAuthHarness(options: {
     const relayPresence = options.relayPresence ?? createMemoryRelayPresenceStore();
     const deps: DashboardDeps = {
         config,
+        ...(options.vpsProviders ? { vpsProviders: options.vpsProviders } : {}),
         installReleases: options.installReleases ?? createConfiguredEngineInstallReleaseSource(),
         clock,
         random: cryptoRandom,

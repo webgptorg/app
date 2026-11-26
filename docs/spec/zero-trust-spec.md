@@ -158,7 +158,7 @@ The engine alone decides who may use it. People sign in to the engine with passk
 3. The engine's terminal prints a setup link and QR code, and on a local desktop opens it in the browser: `https://<engine>.<domain>/setup#<secret>`. The secret is in the URL fragment, which the browser never sends over the network; only the engine's own page reads it, over TLS that ends on the engine.
 4. The user opens the link and registers a passkey as owner. The engine marks setup complete and rejects the secret from then on.
 
-We never see the setup secret, so we cannot claim the owner seat. Only someone at the engine's computer can.
+We never see the setup secret, so we cannot claim the owner seat. On a manually installed engine, the operator gets it at the engine's computer. For a new cloud-provisioned engine, the VM bootstrap binds that engine to the commissioning cloud account. On DigitalOcean, the engine verifies the same user and team directly with the provider and checks their access to the instance from guest metadata before issuing its ordinary setup link on its own origin. This first-owner path closes permanently after enrollment.
 
 **Devices, members and recovery**
 

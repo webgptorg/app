@@ -16,6 +16,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import { apiRoutes, type LinkCodeView, type SessionView } from '../../../shared/api/routes';
+import { isVpsProvider, type VpsProviderId } from '../../../shared/vps';
 import type { InstallPathLabelKey } from '../../../shared/install-paths';
 import { useApiClient } from '../../api/api-client-context';
 import { billingQuery, dataOrThrow, problemCode } from '../../api/queries';
@@ -44,6 +45,9 @@ const LicenseCheckNotice = lazy(async () => ({
     default: (await import('../licensing/license-check-notice')).LicenseCheckNotice,
 }));
 
+const VpsButtons = lazy(async () => ({ default: (await import('./vps-launch')).VpsButtons }));
+const VpsProgress = lazy(async () => ({ default: (await import('./vps-launch')).VpsProgress }));
+
 const LINK_PERMISSION = 'engine.link';
 const BILLING_PERMISSION = 'billing.manage';
 const SECOND_MS = 1000;
@@ -64,6 +68,7 @@ export interface NewEngineSearch {
     /** A link code's ID (not the code): the page shows that code's progress, after a reload too. */
     readonly link?: string;
     readonly checkout?: CheckoutReturn;
+    readonly vps?: VpsProviderId;
     /** The team the new engine joins (ADR 0018); without it the engine gets a team of its own. */
     readonly team?: string;
 }
@@ -72,10 +77,11 @@ const LINK_CODE_ID = /^[a-z2-7]{26}$/;
 
 /** `link` is a link code's ID from issuance; `checkout` is set by the Checkout return URLs. Anything else is dropped. */
 export function parseNewEngineSearch(search: Readonly<Record<string, unknown>>): NewEngineSearch {
-    const { link, checkout, team } = search;
+    const { link, checkout, team, vps } = search;
     return {
         ...(typeof link === 'string' && LINK_CODE_ID.test(link) ? { link } : {}),
         ...(typeof team === 'string' && LINK_CODE_ID.test(team) ? { team } : {}),
+        ...(isVpsProvider(vps) ? { vps } : {}),
         ...(checkout === 'success' || checkout === 'cancel' ? { checkout } : {}),
     };
 }
@@ -263,31 +269,38 @@ function InstallCommand(props: {
         }));
 
     return (
-        <Section
-            title={m.engines_new_command_title()}
-            divided={false}
-            description={options === undefined ? m.engines_new_intro() : m.engines_new_install_intro()}
-        >
-            <div className="flex flex-col gap-3">
-                <Tabs
-                    label={m.engines_new_tabs_label()}
-                    selectedId={selectedId}
-                    onSelect={setSelectedId}
-                    tabs={
-                        options === undefined
-                            ? configuredTabs
-                            : installationTabs(options, configuredTabs, locale.locale)
-                    }
-                />
-                {!linkInConnectTab && props.view.linkUrl !== null ? <LinkUrl url={props.view.linkUrl} /> : null}
-                <p className="text-sm text-text-muted" aria-live="off">
-                    {m.engines_new_command_body({ time: locale.formatDateTime(new Date(props.view.expiresAt)) })}
-                </p>
-                {options === undefined ? null : (
-                    <p className="text-sm text-text-muted">{m.engines_new_computer_access()}</p>
-                )}
-            </div>
-        </Section>
+        <>
+            {props.view.vpsProviders?.length ? (
+                <Suspense fallback={null}>
+                    <VpsButtons offers={props.view.vpsProviders} link={props.view.linkCodeId} />
+                </Suspense>
+            ) : null}
+            <Section
+                title={m.engines_new_command_title()}
+                divided={false}
+                description={options === undefined ? m.engines_new_intro() : m.engines_new_install_intro()}
+            >
+                <div className="flex flex-col gap-3">
+                    <Tabs
+                        label={m.engines_new_tabs_label()}
+                        selectedId={selectedId}
+                        onSelect={setSelectedId}
+                        tabs={
+                            options === undefined
+                                ? configuredTabs
+                                : installationTabs(options, configuredTabs, locale.locale)
+                        }
+                    />
+                    {!linkInConnectTab && props.view.linkUrl !== null ? <LinkUrl url={props.view.linkUrl} /> : null}
+                    <p className="text-sm text-text-muted" aria-live="off">
+                        {m.engines_new_command_body({ time: locale.formatDateTime(new Date(props.view.expiresAt)) })}
+                    </p>
+                    {options === undefined ? null : (
+                        <p className="text-sm text-text-muted">{m.engines_new_computer_access()}</p>
+                    )}
+                </div>
+            </Section>
+        </>
     );
 }
 
@@ -427,6 +440,13 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
             />
         );
 
+    if (linkCodeId !== undefined && props.search.vps) {
+        return (
+            <Suspense fallback={<Skeleton className="h-16 w-full" />}>
+                <VpsProgress link={linkCodeId} provider={props.search.vps} />
+            </Suspense>
+        );
+    }
     if (linkCodeId !== undefined) {
         return (
             <>
@@ -502,8 +522,12 @@ export function NewEnginePage(props: { readonly search: NewEngineSearch }) {
 }
 
 /** With billing off nothing returns from Checkout, so a `checkout` in the address thanks nobody and waits for nothing. */
-function withoutCheckout({ link, team }: NewEngineSearch): NewEngineSearch {
-    return { ...(link === undefined ? {} : { link }), ...(team === undefined ? {} : { team }) };
+function withoutCheckout({ link, team, vps }: NewEngineSearch): NewEngineSearch {
+    return {
+        ...(link === undefined ? {} : { link }),
+        ...(team === undefined ? {} : { team }),
+        ...(vps === undefined ? {} : { vps }),
+    };
 }
 
 function NewEngineContent(props: { readonly search: NewEngineSearch }) {
