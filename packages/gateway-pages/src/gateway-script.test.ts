@@ -47,6 +47,7 @@ function fakeEngine(routes: Record<string, Route | Route[]>) {
 function fakeWebAuthn(overrides: Partial<Record<'supported' | 'register' | 'authenticate', unknown>> = {}) {
     const webauthn = {
         browserSupportsWebAuthn: vi.fn(() => overrides.supported ?? true),
+        WebAuthnAbortService: { cancelCeremony: vi.fn() },
         startRegistration: vi.fn(() =>
             'register' in overrides ? Promise.reject(overrides.register as Error) : Promise.resolve(CREDENTIAL),
         ),
@@ -95,6 +96,63 @@ afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+});
+
+describe('reopening a pending passkey prompt', () => {
+    const ticket = `${'a'.repeat(40)}.${'b'.repeat(86)}`;
+    it.each([
+        ['setup.html', '/setup', `#${SECRET}`, 'valid', 'create', 'startRegistration'],
+        ['join.html', '/auth/join', `#${ticket}`, 'valid', 'create', 'startRegistration'],
+        ['sign-in.html', '/auth/sign-in', '?next=%2Fchat', 'ready', 'confirm', 'startAuthentication'],
+        ['step-up.html', '/auth/step-up', '?returnTo=%2Fchat', 'ready', 'confirm', 'startAuthentication'],
+    ] as const)(
+        'reopens %s with fresh options and ignores the old answer',
+        async (page, base, suffix, ready, action, method) => {
+            const fresh = { ...OPTIONS, challenge: 'bmV3' };
+            const requests = fakeEngine({
+                '/api/v1/me': { status: 401 },
+                [`${base}/options`]: [
+                    { status: 200, body: { options: OPTIONS } },
+                    { status: 200, body: { options: fresh } },
+                ],
+                [`${base}/verify`]:
+                    base === '/auth/join'
+                        ? { status: 201, body: { request: 'join-request', code: '123456' } }
+                        : { status: 200, body: {} },
+                '/auth/join/status': { status: 200, body: { state: 'approved' } },
+            });
+            const webauthn = fakeWebAuthn();
+            const old = Promise.withResolvers<typeof CREDENTIAL>();
+            const current = Promise.withResolvers<typeof CREDENTIAL>();
+            webauthn[method].mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise);
+            await open(page, base + suffix, { owner: page === 'setup.html' ? 'none' : 'set' });
+            await expectState(ready);
+            click(action);
+            await expectState('prompt');
+            const reopen = document.querySelector<HTMLButtonElement>(
+                'section[data-state="prompt"] button[data-action="reopen"]',
+            );
+            if (reopen === null) throw new Error('missing prompt action');
+            expect(reopen.textContent).toContain('Znovu otevřít výzvu');
+            reopen.click();
+            reopen.click();
+            await vi.waitFor(() => {
+                expect(webauthn[method]).toHaveBeenCalledTimes(2);
+            });
+            expect(webauthn.WebAuthnAbortService.cancelCeremony).toHaveBeenCalledTimes(1);
+            expect(webauthn[method]).toHaveBeenLastCalledWith({ optionsJSON: fresh });
+
+            old.resolve({ ...CREDENTIAL, id: 'superseded' });
+            await old.promise;
+            expect(shownStates()).toEqual(['prompt']);
+            expect(requests.filter(({ path }) => path.endsWith('/verify'))).toHaveLength(0);
+            current.resolve(CREDENTIAL);
+            await expectState('done');
+            const verification = requests.filter(({ path }) => path.endsWith('/verify'));
+            expect(verification).toHaveLength(1);
+            expect(verification[0]?.body).toMatchObject({ response: CREDENTIAL });
+        },
+    );
 });
 
 describe('setup page', () => {
@@ -241,8 +299,6 @@ describe('setup page', () => {
         click('create');
         await expectState('cancelled');
         click('retry');
-        await expectState('valid');
-        click('create');
         await expectState('cancelled');
         expect(requests.map(({ path }) => path)).toEqual(['/setup/options', '/setup/options']);
         expect(webauthn.startRegistration).toHaveBeenLastCalledWith({
@@ -443,7 +499,7 @@ describe('sign-in page', () => {
         click('confirm');
         await expectState('cancelled');
         click('retry');
-        await expectState('ready');
+        await expectState('cancelled');
     });
 
     it('shows the ways forward under the button and after a failed prompt, never while it is open', async () => {
@@ -463,8 +519,6 @@ describe('sign-in page', () => {
 
         webauthn.startAuthentication.mockRejectedValueOnce(new Error('broken authenticator'));
         click('retry');
-        await expectState('ready');
-        click('confirm');
         await expectState('failed');
         expect(waysShown()).toBe(true);
     });
