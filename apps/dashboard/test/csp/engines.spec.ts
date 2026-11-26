@@ -52,6 +52,11 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     const progress = page.locator('section[data-link-state]');
     await expect(progress).toHaveAttribute('data-link-state', 'waiting');
     await checkScreen('/engines/new install command');
+    const desktop = page.viewportSize();
+    await page.setViewportSize({ width: 360, height: 740 });
+    const tablist = page.getByRole('tablist', { name: 'How to install' });
+    expect(await tablist.evaluate((list) => list.scrollWidth - list.clientWidth)).toBe(0);
+    if (desktop !== null) await page.setViewportSize(desktop);
     await expect(page.getByRole('link', { name: /^How Promptbook protects you/ })).toHaveAttribute('href', '/trust');
     for (const tab of ['Docker Compose', 'Running project']) {
         await page.getByRole('tab', { name: tab }).click();
@@ -114,7 +119,6 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     await checkScreen('/engines/new ready');
 
     // On a phone the fingerprint code wraps under the seal; both stay centred in the panel.
-    const desktop = page.viewportSize();
     await page.setViewportSize({ width: 375, height: 812 });
     const panelBox = await page.locator('[data-link-ready]').boundingBox();
     const sealBox = await page.locator('[data-link-ready] svg[data-state]').boundingBox();

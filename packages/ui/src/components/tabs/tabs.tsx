@@ -37,6 +37,8 @@ export interface TabsProps {
     /** Controlled, so apps can keep the selected tab in the URL. */
     readonly onSelect: (id: string) => void;
     readonly tabs: readonly TabDefinition[];
+    /** Keep all choices visible by wrapping the list onto additional rows when needed. */
+    readonly wrap?: boolean;
     /** `automatic` selects on arrow keys; `manual` only moves focus until Enter or Space. */
     readonly activation?: 'automatic' | 'manual';
     /**
@@ -55,6 +57,7 @@ export function Tabs({
     selectedId,
     onSelect,
     tabs,
+    wrap = false,
     activation = 'automatic',
     renderTab,
     fill = false,
@@ -111,6 +114,7 @@ export function Tabs({
                 aria-label={label}
                 className={cx(
                     'flex shrink-0 gap-1 overflow-x-auto border-b border-(--tabs-border) [scrollbar-width:thin]',
+                    wrap && 'flex-wrap',
                     fade !== null && FADE_CLASSES[fade],
                 )}
             >

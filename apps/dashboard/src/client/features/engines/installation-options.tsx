@@ -9,10 +9,7 @@ const WindowsInstallerOption = lazy(async () => ({
     default: (await import('./installation-extra-options')).WindowsInstallerOption,
 }));
 
-/**
- * The three one-line commands come first and together, so the server command stays in view on a narrow page where the
- * tab list scrolls; then AI, the EXE, configured paths and the AI prompt for a server.
- */
+/** Keep the three terminal commands together at the start, and the AI prompt for a server last. */
 export function installationTabs(
     options: readonly InstallationOption[],
     configuredTabs: readonly TabDefinition[],
