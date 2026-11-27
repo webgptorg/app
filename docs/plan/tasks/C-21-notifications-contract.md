@@ -18,6 +18,8 @@ The engine side of ADR 0027 as a contract: the engine keeps an inbox with conten
 
 ## Decisions (2026-11-27)
 
+- **On by default, off in strict mode** (Seb, as ADR 0027): the owner switches it off in the engine's settings, and the engine UI shows which it is.
+- **No engine content can reach app.ptbk.io** (Seb). `HeartbeatAttention` is a strict object of `to`, `kind` and `count` only: no item text, titles, names, item IDs or URLs fit, and unknown fields fail the whole heartbeat. Conformance asserts that every `attention` entry carries only those keys and that the heartbeat body holds none of the items' text or IDs. Item content travels only between the engine and its own UI.
 - **12 KiB, not ADR 0027's 8 KiB.** 64 entries beside 32 acks fit 8 KiB only with the dashboard's own 26- and 43-character IDs; with every ID at the 64 characters the schema allows the body is about 10.9 KB. The cap must hold for every valid body.
 - **One entry per `to` and `kind`.** The dashboard keeps one row per person, project and kind; two entries would make the count ambiguous, so the schema refuses them.
 - **Present but empty while on.** `attention: []` says the owner shares counts and nothing waits; absent says the owner switched it off.
