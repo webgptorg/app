@@ -13,6 +13,7 @@ import {
     ed25519SignatureToBytes,
 } from './ids';
 import { DashboardIssuedId, SIGNED_MEMBER_MESSAGE_MAX_LENGTH } from './member-access';
+import { OwnerHandoff } from './owner-handoff';
 import { SIGNING_CONTEXT, signingInput } from './signing-input';
 
 export const HEARTBEAT_SIGNATURE_HEADER = 'Ptbk-Signature';
@@ -57,6 +58,8 @@ const heartbeatShape = {
     agents: Count,
     members: Count,
     setup: SetupState.optional(),
+    /** `ready` while the pairing tab may send the owner to the setup page (ADR 0023); see `OwnerHandoff`. */
+    ownerHandoff: OwnerHandoff.optional(),
 };
 
 export const Heartbeat = z.strictObject({ v: z.literal(1), ...heartbeatShape });
@@ -166,6 +169,7 @@ function heartbeatFields(input: HeartbeatInput) {
         agents: input.agents,
         members: input.members,
         ...(input.setup === undefined ? {} : { setup: input.setup }),
+        ...(input.ownerHandoff === undefined ? {} : { ownerHandoff: input.ownerHandoff }),
     };
 }
 

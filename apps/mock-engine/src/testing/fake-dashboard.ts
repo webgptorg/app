@@ -152,6 +152,7 @@ export function createFakeDashboard(options: FakeDashboardOptions): FakeDashboar
             hostname: defaultHostname(engineId, options.engineDomain),
             relays: [...options.relays],
             memberKey: options.memberKey ?? null,
+            ownerSetupCommitment: null,
         };
         return { status: 200, body: response };
     }

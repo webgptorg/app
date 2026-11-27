@@ -4,7 +4,7 @@ import type { EngineApiEndpoint, EngineTargetFactory } from '../harness/platform
 import { runPlatformConformance } from '../harness/run-platform';
 import { createMockEngineTargetFactory } from '../targets/mock-engine';
 import { fakeEngineCommand, mockEngineCommand } from '../testing/engines';
-import { MEMBER_ACCESS_SUITE } from '../index';
+import { MEMBER_ACCESS_SUITE, OWNER_HANDOFF_SUITE } from '../index';
 import { DASHBOARD_SUITES, EXPECTATIONS, WITHOUT_ENGINE_API, notPassing, run } from '../testing/self-test';
 
 /** The mock's sessions, behind an engine API whose security panel lies about the clock skew in the given way. */
@@ -35,6 +35,21 @@ describe('the member-access suite', () => {
             MEMBER_ACCESS_SUITE,
         ]);
         expect(notPassing(results)).toEqual({});
+    }, 300_000);
+});
+
+describe('the owner-handoff suite', () => {
+    it('skips against an engine that never signals, which never signals without a commitment either', async () => {
+        const results = await run(mockEngineCommand(), undefined, {}, createMockEngineTargetFactory(), [
+            OWNER_HANDOFF_SUITE,
+        ]);
+        const skipped = expect.stringMatching(/^skip: no heartbeat carried ownerHandoff/) as unknown;
+        expect(notPassing(results)).toEqual({
+            'owner-handoff.signal.prompt': skipped,
+            'owner-handoff.setup.secret-accepted': skipped,
+            'owner-handoff.setup.owner-spends-slot': skipped,
+            'owner-handoff.setup.audited': skipped,
+        });
     }, 300_000);
 });
 

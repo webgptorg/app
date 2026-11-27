@@ -62,6 +62,7 @@ The engine must:
 - Store the registration (engine ID, hostname, relay list) in `PTBK_DATA_DIR` and use `relays` (1 to `MAX_RELAYS`) as its relay list.
 - Never write the link code to disk or a log, and drop it from memory after the request.
 - Pin `memberKey` from the response with the registration (since teams, [ADR 0018](../adr/0018-teams-and-member-access.md)). It is the only key that may sign access tickets and member revocations for this engine. `null` means a dashboard without teams: refuse every ticket and revocation, and keep heartbeat v1.
+- Keep `ownerSetupCommitment`, when it is not `null`, as a second setup slot for `OWNER_HANDOFF_LIFETIME_MS` (30 minutes) from registration, never in the stored registration ([ADR 0023](../adr/0023-owner-setup-handoff.md), [installation.md](installation.md#the-setup-link)). It is `base64url(SHA-256(S))` over the text of the pairing tab's secret `S`, so compare it with the digest you already keep of your own setup secret. Ignore it when the engine has an owner or runs with the handoff off.
 
 ### Link URL
 
