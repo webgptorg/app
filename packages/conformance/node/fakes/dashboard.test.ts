@@ -1,4 +1,4 @@
-import type { EngineId, HeartbeatAck, LinkCode } from '@ptbk/protocol';
+import type { EngineId, HeartbeatAck, LinkCode, OwnerSetupCommitment } from '@ptbk/protocol';
 import {
     HEARTBEAT_SIGNATURE_HEADER,
     REGISTER_PATH,
@@ -109,9 +109,15 @@ describe('the fake dashboard', () => {
             hostname: `${engineId}.engine.localhost`,
             relays: ['relay-a.conformance.invalid'],
             memberKey: encodeBase64Url(target.memberSigner.publicKey()),
+            ownerSetupCommitment: null,
         });
-        const linkCode = target.issueLinkCode();
-        expect((await register(target, key, linkCode)).status).toBe(200);
+        const commitment = 'q83vEjRWeJCrze8SNFZ4kKvN7xI0VniQq83vEjRWeJA' as OwnerSetupCommitment;
+        const linkCode = target.issueLinkCode(undefined, commitment);
+        const relinked = await register(target, key, linkCode);
+        expect([
+            relinked.status,
+            (JSON.parse(relinked.body) as { ownerSetupCommitment?: unknown }).ownerSetupCommitment,
+        ]).toEqual([200, commitment]);
         const reused = await register(target, key, linkCode);
         expect([reused.status, code(reused.body), reused.contentType]).toEqual([
             401,
