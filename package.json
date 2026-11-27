@@ -16,7 +16,7 @@
     "catalog": {
       "@axe-core/playwright": "4.14.0",
       "@inlang/paraglide-js": "2.29.2",
-      "@inlang/plugin-message-format": "4.5.5",
+      "@inlang/plugin-message-format": "4.6.0",
       "@noble/curves": "2.4.0",
       "@noble/hashes": "2.4.0",
       "@peculiar/asn1-schema": "2.11.1",
@@ -43,7 +43,7 @@
       "@types/react-dom": "19.3.0",
       "@types/ws": "8.18.2",
       "@vitejs/plugin-react": "6.1.2",
-      "axe-core": "4.13.0",
+      "axe-core": "4.14.0",
       "eslint": "10.13.0",
       "fast-check": "4.10.2",
       "hono": "4.13.14",
@@ -52,7 +52,7 @@
       "react": "19.3.0",
       "react-dom": "19.3.0",
       "sigstore": "5.0.0",
-      "stripe": "22.6.2",
+      "stripe": "23.1.0",
       "tailwindcss": "4.3.3",
       "tsdown": "0.23.1",
       "tsx": "4.23.15",
@@ -105,12 +105,12 @@
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-jsx-a11y": "6.10.2",
     "eslint-plugin-react-hooks": "7.1.1",
-    "globals": "17.13.0",
+    "globals": "17.14.0",
     "husky": "9.1.7",
     "lint-staged": "17.6.0",
-    "prettier": "3.9.10",
+    "prettier": "3.10.1",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.72.0",
+    "typescript-eslint": "8.72.2",
     "vitest": "4.1.12"
   },
   "funding": [
@@ -123,7 +123,7 @@
       "url": "https://github.com/webgptorg/app/blob/main/README.md#%EF%B8%8F-contributing"
     }
   ],
-  "description": "The commercial, private half of the Promptbook zero-trust interface: the relay that carries encrypted traffic to engines, the dashboard at app.ptbk.io, and the engine UI that engines download as a signed bundle and serve themselves.",
+  "description": "",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/webgptorg/app.git"

@@ -87,6 +87,9 @@ export default defineConfig(async () => {
                     test: {
                         name: 'client',
                         environment: 'jsdom',
+                        // Above the setup file's 5 s wait budget, so a wait that misses reports Testing Library's DOM
+                        // dump instead of a bare test timeout.
+                        testTimeout: 10_000,
                         include: ['src/client/**/*.test.{ts,tsx}'],
                         setupFiles: ['./src/client/testing/setup.ts'],
                     },

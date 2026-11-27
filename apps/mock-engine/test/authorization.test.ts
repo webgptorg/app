@@ -12,6 +12,7 @@ import { ROLE_PERMISSIONS } from '../src/domain/authorization/policy';
 import { SESSION_COOKIE_NAME } from '../src/domain/gateway/sessions';
 import type { ApiHarness } from '../src/testing/api-harness';
 import { HARNESS_ORIGIN, createApiHarness } from '../src/testing/api-harness';
+import { silentWav } from '../src/testing/wav';
 
 const ROLES = ['owner', 'admin', 'member', 'viewer'] as const;
 const FUTURE = '2030-01-01T00:00:00Z';
@@ -82,8 +83,16 @@ function validBody(route: RouteDefinition): unknown {
             return { enabled: true };
         case 'answerOnboarding':
             return { promptId: 'matrix-prompt', action: 'back' };
+        case 'openBrowserSignIn':
+            return { browser: null, origin: 'https://accounts.example' };
+        case 'speakChatMessage':
+            return { formats: ['audio/wav'] };
         case 'testAgentDraft':
             return { book: 'Matrix', messages: [{ role: 'user', content: 'hello' }] };
+        case 'startAiToolSignIn':
+            return { method: 'account' };
+        case 'answerAiToolSignIn':
+            return { promptId: 'matrix-prompt', action: 'alternative', alternativeId: 'api-key' };
         default:
             return undefined;
     }
@@ -105,6 +114,8 @@ async function call(
     if (route.body?.kind === 'json') {
         init.headers['content-type'] = 'application/json';
         init.body = JSON.stringify(body);
+    } else if (route.body?.kind === 'binary') {
+        init.body = silentWav(320);
     } else if (route.body?.kind === 'multipart') {
         const form = new FormData();
         form.set('file', new Blob(['matrix']), 'matrix.txt');
@@ -158,7 +169,12 @@ const memberOf = (role: (typeof ROLES)[number]): string => {
 };
 
 beforeAll(async () => {
-    harness = await createApiHarness({ rateLimiter: { consume: () => ({ kind: 'allowed' }) } });
+    // With the live browser and voice too, so their routes are in the matrix.
+    harness = await createApiHarness({
+        rateLimiter: { consume: () => ({ kind: 'allowed' }) },
+        liveBrowser: true,
+        voice: true,
+    });
 });
 
 afterAll(async () => {

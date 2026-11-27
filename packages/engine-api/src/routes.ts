@@ -2,6 +2,7 @@ import { AGENT_ROUTES } from './agents';
 import { API_TOKEN_ROUTES } from './api-tokens';
 import { AUDIT_ROUTES } from './audit';
 import { ACTIVITY_ROUTES } from './capabilities/activity';
+import { AI_TOOL_ROUTES } from './capabilities/ai-tools';
 import { FILE_ROUTES } from './capabilities/files';
 import { INTEGRATION_ROUTES } from './capabilities/integrations';
 import { RUN_ROUTES } from './capabilities/runs';
@@ -11,6 +12,8 @@ import { LIVE_ROUTES } from './capabilities/live';
 import { ONBOARDING_ROUTES } from './capabilities/onboarding';
 import { TEST_CHAT_ROUTES } from './capabilities/test-chat';
 import { TRIGGER_ROUTES } from './capabilities/triggers';
+import { UPDATES_ROUTES } from './capabilities/updates';
+import { VOICE_ROUTES } from './capabilities/voice';
 import { WALLET_ROUTES } from './capabilities/wallet';
 import { CHAT_ROUTES } from './chats';
 import { ENGINE_ROUTES } from './engine';
@@ -51,6 +54,9 @@ export const ENGINE_API_ROUTES = {
     ...LIVE_ROUTES,
     ...ONBOARDING_ROUTES,
     ...WALLET_ROUTES,
+    ...VOICE_ROUTES,
+    ...AI_TOOL_ROUTES,
+    ...UPDATES_ROUTES,
 } as const satisfies Readonly<Record<string, RouteDefinition>>;
 
 export type EngineApiRouteId = keyof typeof ENGINE_API_ROUTES;

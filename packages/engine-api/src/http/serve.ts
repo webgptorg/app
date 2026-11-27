@@ -1,6 +1,7 @@
 import type { EngineApiResponse, EngineApiTransport } from '../client';
 import type { ProblemDetails } from '../common';
 import { ENGINE_API_PREFIX } from '../constants';
+import { matchMediaType } from '../media-type';
 import { createProblem } from '../problem';
 import type { EngineApiStreamItem, RouteDefinition, RouteResponse } from '../route';
 import { ENGINE_API_ROUTE_LIST } from '../routes';
@@ -128,6 +129,13 @@ async function readBody(route: RouteDefinition, request: Request): Promise<BodyR
                 };
             }
         }
+        case 'binary': {
+            const type = matchMediaType(request.headers.get('content-type'), route.body.mediaTypes);
+            if (type === null) return { kind: 'problem', problem: createProblem('unsupported-media-type') };
+            const bytes = await readCapped(request, route.body.maxBytes);
+            if (bytes === null) return { kind: 'problem', problem: createProblem('payload-too-large') };
+            return { kind: 'ok', value: new Blob([bytes], { type }) };
+        }
         case 'multipart': {
             let form: FormData;
             try {
@@ -140,6 +148,45 @@ async function readBody(route: RouteDefinition, request: Request): Promise<BodyR
             return { kind: 'ok', value };
         }
     }
+}
+
+/** The body, or `null` as soon as it is known to exceed `maxBytes`: from `Content-Length`, else while reading. */
+async function readCapped(request: Request, maxBytes: number): Promise<Uint8Array<ArrayBuffer> | null> {
+    const declared = Number(request.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > maxBytes) {
+        release(request.body?.cancel());
+        return null;
+    }
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    if (request.body !== null) {
+        const reader = request.body.getReader();
+        for (;;) {
+            const next = await reader.read();
+            if (next.done) break;
+            size += next.value.byteLength;
+            if (size > maxBytes) {
+                release(reader.cancel());
+                return null;
+            }
+            chunks.push(next.value);
+        }
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    return bytes;
+}
+
+/**
+ * Stops reading without waiting: a tee'd body (a cloned `Request`) settles its cancel only once every branch cancels,
+ * so awaiting it would hang the refusal.
+ */
+function release(cancelled: Promise<void> | undefined): void {
+    cancelled?.catch(() => undefined);
 }
 
 function writeResult(route: RouteDefinition, result: EngineApiResponse<unknown>): Response {
@@ -160,7 +207,7 @@ function writeResult(route: RouteDefinition, result: EngineApiResponse<unknown>)
             return new Response(result.data as Blob, {
                 status,
                 headers: {
-                    'content-type': 'application/octet-stream',
+                    'content-type': binaryType(route, success, result.data as Blob),
                     'content-disposition': 'attachment',
                     'x-content-type-options': 'nosniff',
                     'cache-control': 'no-store',
@@ -172,6 +219,14 @@ function writeResult(route: RouteDefinition, result: EngineApiResponse<unknown>)
                 headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-store' },
             });
     }
+}
+
+/** A download is always opaque bytes; a typed answer carries the declared format its transport chose. */
+function binaryType(route: RouteDefinition, success: Extract<RouteResponse, { kind: 'binary' }>, data: Blob): string {
+    if (success.mediaTypes === undefined) return 'application/octet-stream';
+    const type = matchMediaType(data.type, success.mediaTypes);
+    if (type === null) throw new Error(`Route ${route.id} answered in an undeclared format`);
+    return type;
 }
 
 function sseBody(items: AsyncIterable<EngineApiStreamItem<{ readonly type: string }>>): ReadableStream<Uint8Array> {

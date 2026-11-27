@@ -246,6 +246,41 @@ export interface EngineApiClient {
             signal: AbortSignal,
         ): Result<'rejectWalletRequest'>;
     };
+    /**
+     * `browser-tab@1` (draft): watch and take over agents' tabs, sign in in a fresh tab, help requests. The frames and
+     * input flow over the session's channel (`LIVE_CHANNEL_PATH`), a WebSocket the client opens itself.
+     */
+    readonly browser: {
+        openSignIn(body: Body<'openBrowserSignIn'>, signal: AbortSignal): Result<'openBrowserSignIn'>;
+        listTabs(query: Query<'listBrowserTabs'>, signal: AbortSignal): Result<'listBrowserTabs'>;
+        watch(tabId: Param<'watchBrowserTab', 'tabId'>, signal: AbortSignal): Result<'watchBrowserTab'>;
+        control(tabId: Param<'controlBrowserTab', 'tabId'>, signal: AbortSignal): Result<'controlBrowserTab'>;
+        getSession(
+            sessionId: Param<'getBrowserSession', 'sessionId'>,
+            signal: AbortSignal,
+        ): Result<'getBrowserSession'>;
+        takeControl(
+            sessionId: Param<'takeBrowserControl', 'sessionId'>,
+            signal: AbortSignal,
+        ): Result<'takeBrowserControl'>;
+        handBack(
+            sessionId: Param<'handBackBrowserTab', 'sessionId'>,
+            signal: AbortSignal,
+        ): Result<'handBackBrowserTab'>;
+        end(sessionId: Param<'endBrowserSession', 'sessionId'>, signal: AbortSignal): Result<'endBrowserSession'>;
+        listHelpRequests(
+            query: Query<'listBrowserHelpRequests'>,
+            signal: AbortSignal,
+        ): Result<'listBrowserHelpRequests'>;
+        getHelpRequest(
+            requestId: Param<'getBrowserHelpRequest', 'requestId'>,
+            signal: AbortSignal,
+        ): Result<'getBrowserHelpRequest'>;
+        dismissHelpRequest(
+            requestId: Param<'dismissBrowserHelpRequest', 'requestId'>,
+            signal: AbortSignal,
+        ): Result<'dismissBrowserHelpRequest'>;
+    };
     /** `files@1`; every capability group answers 404 `capability-not-supported` unless `GET /engine` advertises it. */
     readonly files: {
         list(query: Query<'listFiles'>, signal: AbortSignal): Result<'listFiles'>;
@@ -346,12 +381,67 @@ export interface EngineApiClient {
         answer(body: Body<'answerOnboarding'>, signal: AbortSignal): Result<'answerOnboarding'>;
         defer(signal: AbortSignal): Result<'deferOnboarding'>;
     };
+    /**
+     * `voice-input@1` and `voice-output@1`, each on its own. A transcript is a draft for the composer; only
+     * `chats.sendMessage` puts anything in the chat.
+     */
+    readonly voice: {
+        /** The clip's `type` is sent as its `Content-Type` and must be one of `VOICE_CLIP_FORMATS`. */
+        transcribe(
+            chatId: Param<'transcribeVoiceClip', 'chatId'>,
+            clip: Blob,
+            query: Query<'transcribeVoiceClip'>,
+            signal: AbortSignal,
+        ): Result<'transcribeVoiceClip'>;
+        /** Resolves with the audio; its `type` is the one of `body.formats` the engine chose. */
+        speak(
+            chatId: Param<'speakChatMessage', 'chatId'>,
+            messageId: Param<'speakChatMessage', 'messageId'>,
+            body: Body<'speakChatMessage'>,
+            signal: AbortSignal,
+        ): Result<'speakChatMessage'>;
+    };
+    /**
+     * `ai-tools@1`: the project's AI tools. A sign-in belongs to the session that started it; poll `getSignIn` while
+     * it is `working` or its login waits. A key goes in `answerSignIn` only, and comes back nowhere.
+     */
+    readonly aiTools: {
+        list(signal: AbortSignal): Result<'listAiTools'>;
+        get(aiToolId: Param<'getAiTool', 'aiToolId'>, signal: AbortSignal): Result<'getAiTool'>;
+        check(aiToolId: Param<'checkAiTool', 'aiToolId'>, signal: AbortSignal): Result<'checkAiTool'>;
+        startSignIn(
+            aiToolId: Param<'startAiToolSignIn', 'aiToolId'>,
+            body: Body<'startAiToolSignIn'>,
+            signal: AbortSignal,
+        ): Result<'startAiToolSignIn'>;
+        getSignIn(
+            aiToolId: Param<'getAiToolSignIn', 'aiToolId'>,
+            signInId: Param<'getAiToolSignIn', 'signInId'>,
+            signal: AbortSignal,
+        ): Result<'getAiToolSignIn'>;
+        answerSignIn(
+            aiToolId: Param<'answerAiToolSignIn', 'aiToolId'>,
+            signInId: Param<'answerAiToolSignIn', 'signInId'>,
+            body: Body<'answerAiToolSignIn'>,
+            signal: AbortSignal,
+        ): Result<'answerAiToolSignIn'>;
+        cancelSignIn(
+            aiToolId: Param<'cancelAiToolSignIn', 'aiToolId'>,
+            signInId: Param<'cancelAiToolSignIn', 'signInId'>,
+            signal: AbortSignal,
+        ): Result<'cancelAiToolSignIn'>;
+        signOut(aiToolId: Param<'signOutAiTool', 'aiToolId'>, signal: AbortSignal): Result<'signOutAiTool'>;
+    };
     /** Items of unknown kinds read as `{ kind: 'unknown' }`; items without a valid base are dropped and counted. */
     readonly activity: {
         list(query: Query<'listActivity'>, signal: AbortSignal): Result<'listActivity'>;
     };
     readonly security: {
         get(signal: AbortSignal): Result<'getSecurityOverview'>;
+    };
+    /** `updates@1`: the UI loader's normal check, run now; its result, or why it did not run. */
+    readonly updates: {
+        checkUi(signal: AbortSignal): Result<'checkForUiUpdate'>;
     };
     readonly audit: {
         list(query: Query<'listAuditEntries'>, signal: AbortSignal): Result<'listAuditEntries'>;
@@ -470,6 +560,20 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
                 call(R.markWalletRequestSeen, { params: { requestId }, body }, signal),
             reject: (requestId, body, signal) => call(R.rejectWalletRequest, { params: { requestId }, body }, signal),
         },
+        browser: {
+            openSignIn: (body, signal) => call(R.openBrowserSignIn, { body }, signal),
+            listTabs: (query, signal) => call(R.listBrowserTabs, { query }, signal),
+            watch: (tabId, signal) => call(R.watchBrowserTab, { params: { tabId } }, signal),
+            control: (tabId, signal) => call(R.controlBrowserTab, { params: { tabId } }, signal),
+            getSession: (sessionId, signal) => call(R.getBrowserSession, { params: { sessionId } }, signal),
+            takeControl: (sessionId, signal) => call(R.takeBrowserControl, { params: { sessionId } }, signal),
+            handBack: (sessionId, signal) => call(R.handBackBrowserTab, { params: { sessionId } }, signal),
+            end: (sessionId, signal) => call(R.endBrowserSession, { params: { sessionId } }, signal),
+            listHelpRequests: (query, signal) => call(R.listBrowserHelpRequests, { query }, signal),
+            getHelpRequest: (requestId, signal) => call(R.getBrowserHelpRequest, { params: { requestId } }, signal),
+            dismissHelpRequest: (requestId, signal) =>
+                call(R.dismissBrowserHelpRequest, { params: { requestId } }, signal),
+        },
         files: {
             list: (query, signal) => call(R.listFiles, { query }, signal),
             stats: (query, signal) => call(R.getFileStats, { query }, signal),
@@ -525,10 +629,30 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
             answer: (body, signal) => call(R.answerOnboarding, { body }, signal),
             defer: (signal) => call(R.deferOnboarding, {}, signal),
         },
+        voice: {
+            transcribe: (chatId, clip, query, signal) =>
+                call(R.transcribeVoiceClip, { params: { chatId }, query, body: clip }, signal),
+            speak: (chatId, messageId, body, signal) =>
+                call(R.speakChatMessage, { params: { chatId, messageId }, body }, signal),
+        },
+        aiTools: {
+            list: (signal) => call(R.listAiTools, {}, signal),
+            get: (aiToolId, signal) => call(R.getAiTool, { params: { aiToolId } }, signal),
+            check: (aiToolId, signal) => call(R.checkAiTool, { params: { aiToolId } }, signal),
+            startSignIn: (aiToolId, body, signal) => call(R.startAiToolSignIn, { params: { aiToolId }, body }, signal),
+            getSignIn: (aiToolId, signInId, signal) =>
+                call(R.getAiToolSignIn, { params: { aiToolId, signInId } }, signal),
+            answerSignIn: (aiToolId, signInId, body, signal) =>
+                call(R.answerAiToolSignIn, { params: { aiToolId, signInId }, body }, signal),
+            cancelSignIn: (aiToolId, signInId, signal) =>
+                call(R.cancelAiToolSignIn, { params: { aiToolId, signInId } }, signal),
+            signOut: (aiToolId, signal) => call(R.signOutAiTool, { params: { aiToolId } }, signal),
+        },
         activity: {
             list: (query, signal) => call(R.listActivity, { query }, signal),
         },
         security: { get: (signal) => call(R.getSecurityOverview, {}, signal) },
+        updates: { checkUi: (signal) => call(R.checkForUiUpdate, {}, signal) },
         audit: {
             list: (query, signal) => call(R.listAuditEntries, { query }, signal),
             verify: (signal) => call(R.verifyAuditLog, {}, signal),

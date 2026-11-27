@@ -69,6 +69,10 @@ const integration: Probe = async (owner, request) => {
     return { name, config, status };
 };
 
+/** Only the credentials: a check or the engine's own monitoring may move `checkedAt` and the status meanwhile. */
+const aiTool: Probe = async (owner, request) =>
+    (await owner.ok(R.getAiTool, { params: { aiToolId: param(request, 'aiToolId') } })).auth;
+
 const PROBES: Partial<Record<EngineApiRouteId, Probe>> = {
     createAgent: (owner, request) =>
         ids(owner, R.listAgents, { q: firstLine(bodyField(request, 'source')), deleted: 'include' }),
@@ -113,6 +117,8 @@ const PROBES: Partial<Record<EngineApiRouteId, Probe>> = {
     deleteIntegration: integration,
     enableIntegration: integration,
     disableIntegration: integration,
+    startAiToolSignIn: aiTool,
+    signOutAiTool: aiTool,
     checkIntegration: async (owner, request) =>
         (await owner.ok(R.getIntegration, { params: { integrationId: param(request, 'integrationId') } })).name,
 };

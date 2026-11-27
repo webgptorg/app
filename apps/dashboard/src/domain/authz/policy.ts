@@ -52,6 +52,10 @@ export const DASHBOARD_POLICY = {
     'engine.remove': { scope: 'org', orgRoles: MANAGERS, ...SENSITIVE },
     'engine.hostnames.manage': { scope: 'org', orgRoles: MANAGERS, ...SENSITIVE },
     'billing.owner.change': { scope: 'org', orgRoles: ['owner'], ...SENSITIVE },
+    // Website licences (D-30, ADR 0021): advisory coverage, so whoever links engines may see it.
+    'license.read': { scope: 'org', orgRoles: MANAGERS, ...PLAIN },
+    // Binds the organization to a website account; a hijacked account must not rebind it during the cooldown.
+    'license.link': { scope: 'org', orgRoles: MANAGERS, ...SENSITIVE },
 } as const satisfies PolicyTable<string>;
 
 export type DashboardAction = keyof typeof DASHBOARD_POLICY;

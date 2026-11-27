@@ -3,7 +3,7 @@ import type { TLSSocket } from 'node:tls';
 import { checkServerIdentity, connect } from 'node:tls';
 
 import type { EngineApiClient } from '@ptbk/engine-api';
-import { createFetchEngineApiClient } from '@ptbk/engine-api';
+import { KNOWN_CAPABILITIES, createFetchEngineApiClient, supports } from '@ptbk/engine-api';
 import type { InMemoryEngineCore } from '@ptbk/engine-api/in-memory';
 import { createCryptoRandom } from '@ptbk/protocol';
 
@@ -78,6 +78,10 @@ export interface ApiHarnessOptions {
     readonly onboarding?: { readonly ceremonies?: PasskeyCeremonies };
     /** `MOCK_PASSKEYS`; `none` by default with onboarding, so the setup link works. */
     readonly passkeys?: 'seeded' | 'none';
+    /** `MOCK_LIVE_BROWSER`: off by default, as in a started mock. */
+    readonly liveBrowser?: boolean;
+    /** `MOCK_VOICE`: off by default, as in a started mock. */
+    readonly voice?: boolean;
 }
 
 /** The onboarding side of the harness, for tests that drive the setup link and passkeys. */
@@ -180,6 +184,7 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
     const clock = options.clock ?? systemClock;
     const logger = createMemoryLogger();
     const faults = createFaultSettings(options.faults ?? NO_FAULTS);
+    let sessionStore: SessionStore | null = null;
     const runtime =
         options.core === undefined
             ? await createEngineRuntime({
@@ -196,6 +201,9 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
                   capabilities: capabilitiesFor(options.capabilities ?? FULL_CAPABILITY_NAMES),
                   simulation: options.simulation ?? { mode: 'paused', speed: 1 },
                   passkeys: options.passkeys ?? (options.onboarding === undefined ? 'seeded' : 'none'),
+                  liveBrowser: options.liveBrowser ?? false,
+                  voice: options.voice ?? false,
+                  browserPermissions: (memberId, sessionId) => sessionStore?.permissionsOf(memberId, sessionId) ?? null,
                   faults: () => faults.plan(),
                   onSimulationError: (error) => {
                       logger.error('simulation.error', { problem: error instanceof Error ? error.message : 'unknown' });
@@ -208,6 +216,7 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
         clock,
         random: options.random ?? createCryptoRandom(),
     });
+    sessionStore = sessions;
     runtime?.onReset(() => {
         sessions.clear();
     });
@@ -228,6 +237,7 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
         engineId: HARNESS_ENGINE_ID,
         certificates,
         core,
+        ...(runtime === null ? {} : { microphone: () => supports(runtime.current(), KNOWN_CAPABILITIES.voiceInput) }),
         sessions,
         faults,
         seed: options.seed ?? 42,

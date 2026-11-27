@@ -29,7 +29,7 @@ test('without the triggers capability the UI offers no triggers and the API refu
     await expect(page.getByRole('tab', { name: 'Triggers' })).toHaveCount(0);
 
     await page.goto(appUrl('/triggers'));
-    await expect(page.getByRole('heading', { name: 'Not available on this engine' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Not available in this project' })).toBeVisible();
     const answer = await apiCall<{ code?: string }>(page, 'GET', '/triggers');
     expect(answer.status).toBe(404);
     expect(answer.body.code).toBe('capability-not-supported');

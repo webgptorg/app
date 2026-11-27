@@ -1,3 +1,5 @@
+import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
+
 import type { EngineStatsSource } from '../domain/heartbeat/engine-stats-source';
 import { membersWhoCanSignIn } from '../domain/onboarding/owner';
 import type { EngineRuntime } from '../domain/state/engine-runtime';
@@ -5,7 +7,7 @@ import type { EngineRuntime } from '../domain/state/engine-runtime';
 /**
  * Counts from the engine API's state (M-04): agents not in the trash, as the agent list shows them by default, and
  * active members who hold a passkey, so the dashboard can tell an engine still waiting for its owner. The update state
- * stays `none` until the UI loader (M-05) reports one.
+ * stays `none` until the UI loader (M-05) reports one. `setup` follows `onboarding@1` when the engine advertises it.
  */
 export function createRuntimeEngineStats(runtime: EngineRuntime): EngineStatsSource {
     return {
@@ -17,5 +19,10 @@ export function createRuntimeEngineStats(runtime: EngineRuntime): EngineStatsSou
             };
         },
         updateState: () => 'none',
+        setup() {
+            const { id } = KNOWN_CAPABILITIES.onboarding;
+            if (!runtime.current().capabilities.some((capability) => capability.id === id)) return null;
+            return runtime.controller().onboarding().status === 'completed' ? 'done' : 'pending';
+        },
     };
 }

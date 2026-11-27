@@ -158,7 +158,7 @@ The engine alone decides who may use it. People sign in to the engine with passk
 3. The engine's terminal prints a setup link and QR code, and on a local desktop opens it in the browser: `https://<engine>.<domain>/setup#<secret>`. The secret is in the URL fragment, which the browser never sends over the network; only the engine's own page reads it, over TLS that ends on the engine.
 4. The user opens the link and registers a passkey as owner. The engine marks setup complete and rejects the secret from then on.
 
-We never see the setup secret, so we cannot claim the owner seat. Only someone at the engine's computer can.
+We never see the engine's setup secret. By default the dashboard tab that showed the install command also makes a second one-time secret, keeps it only in that tab and gives the engine just its SHA-256 through us; once the engine is reachable, that tab opens the setup page itself, so an owner on a server copies nothing out of SSH ([ADR 0023](../adr/0023-owner-setup-handoff.md)). Our servers still never see a secret that grants anything. What changes: for the 30 minutes after pairing, code we serve on the dashboard could claim the owner seat, but only of an engine paired from that page, only while it has no owner, and visibly (the real owner is locked out, the engine audits the setup as a handoff and says so in its terminal). That code already renders the command you paste into a root shell, so it gains nothing it could not take already. With strict mode or the engine's handoff setting off, only someone at the engine's computer can claim the owner seat.
 
 **Devices, members and recovery**
 
@@ -166,7 +166,7 @@ We never see the setup secret, so we cannot claim the owner seat. Only someone a
 - **Revoke:** remove a passkey in the engine UI or with the engine CLI. All of its sessions end.
 - **Lose every device:** run `engine owner --reset` on the server. It revokes all passkeys and prints a fresh setup link. Nothing is lost, because the data never left the engine.
 - **Engine key compromised:** engine keys cannot rotate in place, because the engine ID is the key's hash. The owner revokes the engine in the dashboard, which suspends it so relays cut its tunnels, then sets it up again with a new identity.
-- **Members:** the owner creates an invite link in the engine UI, or an organization invites people to a team and someone on the engine approves their access request ([teams](teams.md)). Either way the invitee registers their own passkey on the engine, and roles live on the engine.
+- **Members:** an organization invites people to a team and someone on the engine approves their access request ([teams](teams.md)); engines without a dashboard use the engine's own invite link (`POST /invites`), which the engine UI no longer creates. Either way the invitee registers their own passkey on the engine, and roles live on the engine.
 
 **Devices without a built-in passkey**
 

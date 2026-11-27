@@ -1,4 +1,4 @@
-import type { EngineId } from '@ptbk/protocol';
+import { OwnerSetupCommitment, type EngineId } from '@ptbk/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { cryptoRandom } from '../adapters/crypto-random';
@@ -33,6 +33,8 @@ export interface TeamStoreFixture {
     revocations(orgId: OrgId): Promise<readonly { readonly engineId: string; readonly userId: string }[]>;
     /** The organization's `org_audit_log` actions, oldest first. */
     auditActions(orgId: OrgId): Promise<readonly string[]>;
+    /** A code's stored owner setup commitment (ADR 0023). */
+    storedCommitment(codeHash: string): Promise<string | null>;
 }
 
 const name = (value: string) => teamNameSchema.parse(value);
@@ -79,11 +81,14 @@ export function describeTeamStoreContract(suite: string, makeFixture: () => Team
                 createdByUserId: owner.userId,
                 createdAt: NOW,
                 expiresAt: NOW + DAY,
+                ownerSetupCommitment: null,
             });
             if (teamId !== null) {
                 expect(await fixture.teams.attachLinkCode(orgId, id, teamId, NOW)).toBe('attached');
             }
-            expect(await fixture.linkCodes.redeemForNewEngine(codeHash, engineRecord(engine, orgId))).toBe('redeemed');
+            expect(await fixture.linkCodes.redeemForNewEngine(codeHash, engineRecord(engine, orgId), null)).toBe(
+                'redeemed',
+            );
             await fixture.teams.bindNewEngine(engine.engineId, {
                 teamId: newTeamId(cryptoRandom),
                 name: name('engine.example.test'),
@@ -174,6 +179,7 @@ export function describeTeamStoreContract(suite: string, makeFixture: () => Team
                 createdByUserId: owner.userId,
                 createdAt: NOW,
                 expiresAt: NOW + DAY,
+                ownerSetupCommitment: null,
             });
             expect(await fixture.teams.attachLinkCode(owner.orgId, code.id, a, NOW)).toBe('not-found');
             expect(await fixture.teams.attachLinkCode(other.orgId, code.id, empty, NOW)).toBe('not-found');
@@ -196,6 +202,7 @@ export function describeTeamStoreContract(suite: string, makeFixture: () => Team
                     createdByUserId: owner.userId,
                     createdAt: NOW,
                     expiresAt: NOW + DAY,
+                    ownerSetupCommitment: OwnerSetupCommitment.parse(toBase64Url(cryptoRandom.bytes(32))),
                 });
                 expect(await fixture.teams.attachLinkCode(owner.orgId, id, teamId, NOW + 1)).toBe('attached');
                 return { id, codeHash };
@@ -205,8 +212,10 @@ export function describeTeamStoreContract(suite: string, makeFixture: () => Team
             const second = await code(a);
             expect(await fixture.linkCodes.findState(owner.orgId, first.id, NOW + 1)).toEqual({ kind: 'expired' });
             expect(await fixture.linkCodes.findRedeemable(first.codeHash, NOW + 1)).toBeNull();
+            expect(await fixture.storedCommitment(first.codeHash)).toBeNull();
+            expect(await fixture.storedCommitment(second.codeHash)).not.toBeNull();
             for (const kept of [second, elsewhere]) {
-                expect(await fixture.linkCodes.findRedeemable(kept.codeHash, NOW + 1)).toBe(owner.orgId);
+                expect((await fixture.linkCodes.findRedeemable(kept.codeHash, NOW + 1))?.orgId).toBe(owner.orgId);
             }
         });
 
@@ -327,6 +336,27 @@ export function describeTeamStoreContract(suite: string, makeFixture: () => Team
             ).toEqual({
                 kind: 'invalid',
             });
+        });
+
+        it('lists the pending invitations to one address across organizations, newest first, with who sent them', async () => {
+            const a = await team();
+            const email = `invited-${crypto.randomUUID()}@example.test`;
+            const older = invite({ email, teamIds: [a] });
+            const newer = invite({ email, orgId: other.orgId, invitedByUserId: other.userId, createdAt: NOW + 1 });
+            const revoked = invite({ email });
+            const used = invite({ email });
+            for (const record of [older, newer, revoked, used, invite({ email, expiresAt: NOW }), invite()]) {
+                await fixture.teams.insertInvite(record, entry(record.invitedByUserId));
+            }
+            await fixture.teams.revokeInvite(owner.orgId, revoked.id, entry(owner.userId));
+            await fixture.teams.acceptInvite(used.tokenHash, member.id, { id: entry(member.id).id, at: NOW });
+
+            expect(await fixture.teams.listInvitesForEmail(email, NOW)).toEqual([
+                { invite: newer, orgName: null, teamNames: [], inviterEmail: other.user.email },
+                { invite: older, orgName: null, teamNames: ['Client A'], inviterEmail: owner.user.email },
+            ]);
+            expect(await fixture.teams.listInvitesForEmail(email, NOW + 7 * DAY)).toEqual([]);
+            expect(await fixture.teams.listInvitesForEmail('nobody@example.test', NOW)).toEqual([]);
         });
 
         it('accepts an invitation once: membership with its role, the teams that still exist, no second use', async () => {

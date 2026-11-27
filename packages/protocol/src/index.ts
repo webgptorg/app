@@ -33,6 +33,7 @@ export {
     MAX_HEARTBEAT_ACKS,
     MAX_HEARTBEAT_COUNT,
     MAX_HEARTBEAT_REVOCATIONS,
+    SetupState,
     TolerantHeartbeatReply,
     UpdateState,
     buildHeartbeat,
@@ -87,6 +88,17 @@ export { LINK_PATH, formatLinkUrl, parseLinkArgument, parseLinkUrl } from './lin
 export type { LinkArgumentParse, LinkUrlParse, LinkUrlProblem } from './link-url';
 export { PROBLEM_DETAILS_MAX_BYTES, ProblemDetails, REGISTRATION_ERROR_CODE, TolerantProblemDetails } from './problem';
 export type { RegistrationErrorCode } from './problem';
+export {
+    OWNER_HANDOFF_LIFETIME_MS,
+    OWNER_SETUP_COMMITMENT_BYTES,
+    OWNER_SETUP_SECRET_BYTES,
+    OwnerHandoff,
+    OwnerSetupCommitment,
+    OwnerSetupSecret,
+    newOwnerSetupSecret,
+    ownerSetupCommitment,
+    ownerSetupCommitmentDigest,
+} from './owner-handoff';
 export { createCryptoRandom } from './random';
 export type { Random } from './random';
 export {

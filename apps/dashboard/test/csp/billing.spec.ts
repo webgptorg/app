@@ -9,12 +9,13 @@ test('subscribe through the fake Checkout and open the portal under the producti
 }) => {
     await authenticators.add();
     const email = uniqueEmail('billing');
-    await page.goto('/signup');
+    await page.goto('/continue');
     await page.getByLabel('Email').fill(email);
-    await page.getByRole('button', { name: 'Send the link' }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
     await page.goto(await outboxLink(page.request, email, 'signup-link'));
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
 
     await page.getByRole('link', { name: 'Billing' }).click();
     await expect(page.getByRole('heading', { name: 'Billing', level: 1 })).toBeVisible();

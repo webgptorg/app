@@ -92,6 +92,7 @@ function click(action: string) {
 const nextLinks = () => [...document.querySelectorAll('a[data-next-link]')].map((a) => a.getAttribute('href'));
 
 afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
 });
@@ -283,7 +284,7 @@ describe('setup page', () => {
         });
         await expectState('valid');
         expect(document.activeElement).toBe(elsewhere);
-        expect(document.querySelector('[data-announcer]')?.textContent).toBe('Nastavte svůj engine');
+        expect(document.querySelector('[data-announcer]')?.textContent).toBe('Nastavte svůj projekt');
     });
 });
 
@@ -445,6 +446,50 @@ describe('sign-in page', () => {
         await expectState('ready');
     });
 
+    it('shows the ways forward under the button and after a failed prompt, never while it is open', async () => {
+        fakeEngine({ '/api/v1/me': signedOut, '/auth/sign-in/options': ready });
+        const webauthn = fakeWebAuthn({ authenticate: new DOMException('closed', 'NotAllowedError') });
+        const waysShown = () => document.querySelector<HTMLElement>('.ways')?.hidden === false;
+        await open('sign-in.html', '/auth/sign-in', { owner: 'set' });
+        await expectState('ready');
+        expect(waysShown()).toBe(true);
+        expect(webauthn.startAuthentication).not.toHaveBeenCalled();
+        click('confirm');
+        expect(shownStates()).toEqual(['prompt']);
+        expect(waysShown()).toBe(false);
+        await expectState('cancelled');
+        expect(waysShown()).toBe(true);
+        expect(document.activeElement).toBe(document.querySelector('section[data-state="cancelled"] h1'));
+
+        webauthn.startAuthentication.mockRejectedValueOnce(new Error('broken authenticator'));
+        click('retry');
+        await expectState('ready');
+        click('confirm');
+        await expectState('failed');
+        expect(waysShown()).toBe(true);
+    });
+
+    it.each([
+        [{ status: 401, body: { code: 'passkey-not-recognised' } }, 'not-recognised', true],
+        [{ status: 429 }, 'rate-limited', false],
+    ] as const)('after a verify answer %j shows %s with the ways forward: %s', async (reply, state, shown) => {
+        fakeEngine({ '/api/v1/me': signedOut, '/auth/sign-in/options': ready, '/auth/sign-in/verify': reply });
+        fakeWebAuthn();
+        await open('sign-in.html', '/auth/sign-in', { owner: 'set' });
+        await expectState('ready');
+        click('confirm');
+        await expectState(state);
+        expect(document.querySelector<HTMLElement>('.ways')?.hidden).toBe(!shown);
+    });
+
+    it('keeps the ways forward hidden for an engine without an owner', async () => {
+        fakeEngine({});
+        fakeWebAuthn();
+        await open('sign-in.html', '/auth/sign-in', { owner: 'none' });
+        await expectState('no-owner');
+        expect(document.querySelector<HTMLElement>('.ways')?.hidden).toBe(true);
+    });
+
     it('says when the browser cannot use passkeys', async () => {
         fakeEngine({ '/api/v1/me': signedOut, '/auth/sign-in/options': ready });
         fakeWebAuthn({ supported: false });
@@ -506,6 +551,112 @@ describe('step-up page', () => {
         expect(nextLinks()).toEqual(['/', '/']);
         expect(document.querySelector('a[data-sign-in-link]')?.getAttribute('href')).toBe('/auth/sign-in');
     });
+
+    describe('in a popup', () => {
+        const NONCE = 'n0nce-from-the-opener_1';
+        const popupUrl = (nonce = NONCE) => `/auth/step-up?mode=popup&nonce=${nonce}&returnTo=%2Fwallet`;
+
+        function listen() {
+            const heard: unknown[] = [];
+            const channel = new BroadcastChannel('ptbk-step-up');
+            channel.onmessage = (event: MessageEvent) => heard.push(event.data);
+            return {
+                heard,
+                close: () => {
+                    channel.close();
+                },
+            };
+        }
+
+        it('starts the prompt at once, answers the opener on the channel and closes, without navigating', async () => {
+            const requests = fakeEngine({
+                '/auth/step-up/options': ready,
+                '/auth/step-up/verify': { status: 200, body: { next: '/wallet' } },
+            });
+            const webauthn = fakeWebAuthn();
+            const close = vi.spyOn(window, 'close').mockImplementation(() => undefined);
+            const channel = listen();
+            await open('step-up.html', popupUrl(), { owner: 'set' });
+            await expectState('confirmed');
+            expect(webauthn.startAuthentication).toHaveBeenCalledOnce();
+            expect(requests[1]?.body).toEqual({ response: CREDENTIAL, next: '/wallet' });
+            expect(close).toHaveBeenCalledOnce();
+            expect(location.pathname).toBe('/auth/step-up');
+            await vi.waitFor(() => {
+                expect(channel.heard).toEqual([{ type: 'step-up-confirmed', nonce: NONCE }]);
+            });
+            channel.close();
+        });
+
+        it('offers the button when the browser refuses a prompt the page started itself', async () => {
+            fakeEngine({
+                '/auth/step-up/options': ready,
+                '/auth/step-up/verify': { status: 200, body: {} },
+            });
+            const webauthn = fakeWebAuthn();
+            webauthn.startAuthentication.mockImplementationOnce(() =>
+                Promise.reject(Object.assign(new Error('needs a gesture'), { name: 'NotAllowedError' })),
+            );
+            vi.spyOn(window, 'close').mockImplementation(() => undefined);
+            await open('step-up.html', popupUrl(), { owner: 'set' });
+            await expectState('ready');
+            expect(document.querySelector('section[data-state="ready"] [data-if-popup]')?.hasAttribute('hidden')).toBe(
+                false,
+            );
+            expect(
+                document.querySelector('section[data-state="ready"] [data-unless-popup]')?.hasAttribute('hidden'),
+            ).toBe(true);
+            click('confirm');
+            await expectState('confirmed');
+        });
+
+        it('closes on Cancel and tells the opener nothing', async () => {
+            fakeEngine({ '/auth/step-up/options': ready });
+            const webauthn = fakeWebAuthn({ authenticate: Object.assign(new Error('x'), { name: 'NotAllowedError' }) });
+            const close = vi.spyOn(window, 'close').mockImplementation(() => undefined);
+            const channel = listen();
+            await open('step-up.html', popupUrl(), { owner: 'set' });
+            await expectState('ready');
+            expect(webauthn.startAuthentication).toHaveBeenCalledOnce();
+            click('close');
+            await vi.waitFor(() => {
+                expect(close).toHaveBeenCalledOnce();
+            });
+            expect(channel.heard).toEqual([]);
+            channel.close();
+        });
+
+        it('answers the opener from a confirmation page a gateway rendered itself', async () => {
+            const close = vi.spyOn(window, 'close').mockImplementation(() => undefined);
+            const channel = listen();
+            const html = `<!doctype html><html lang="en"><body data-page="step-up-confirmed">
+                <section data-state="confirmed" hidden><h1 tabindex="-1">Confirmed</h1></section></body></html>`;
+            const parsed = new DOMParser().parseFromString(html, 'text/html');
+            document.replaceChild(document.importNode(parsed.documentElement, true), document.documentElement);
+            history.replaceState(null, '', popupUrl());
+            vi.resetModules();
+            await import(GATEWAY_SCRIPT);
+            await expectState('confirmed');
+            expect(close).toHaveBeenCalledOnce();
+            await vi.waitFor(() => {
+                expect(channel.heard).toEqual([{ type: 'step-up-confirmed', nonce: NONCE }]);
+            });
+            channel.close();
+        });
+
+        it('stays an ordinary step-up page without a well-formed nonce', async () => {
+            fakeEngine({
+                '/auth/step-up/options': ready,
+                '/auth/step-up/verify': { status: 200, body: { next: '/wallet' } },
+            });
+            const webauthn = fakeWebAuthn();
+            await open('step-up.html', popupUrl('short'), { owner: 'set' });
+            await expectState('ready');
+            expect(webauthn.startAuthentication).not.toHaveBeenCalled();
+            click('confirm');
+            await expectState('done');
+        });
+    });
 });
 
 describe('join page', () => {
@@ -536,7 +687,11 @@ describe('join page', () => {
         },
     );
 
-    it('registers the passkey, shows the code, waits and goes on when approved', async () => {
+    const statusRequests = (requests: readonly Request[]) =>
+        requests.filter(({ path }) => path === '/auth/join/status').length;
+
+    it('registers the passkey, shows the code, asks every few seconds and goes on when approved', async () => {
+        vi.useFakeTimers();
         const requests = fakeEngine({
             '/auth/join/options': options,
             '/auth/join/verify': created,
@@ -546,6 +701,13 @@ describe('join page', () => {
         await openJoin();
         await expectState('valid');
         click('create');
+        await expectState('waiting');
+        expect(document.querySelector('[data-join-code]')?.textContent).toBe('123 456');
+        expect(statusRequests(requests)).toBe(1);
+        // An engine that answers at once is not asked again before the interval is over.
+        await vi.advanceTimersByTimeAsync(2_900);
+        expect(statusRequests(requests)).toBe(1);
+        await vi.advanceTimersByTimeAsync(100);
         await expectState('done');
         expect(webauthn.startRegistration).toHaveBeenCalledWith({ optionsJSON: OPTIONS });
         expect(requests.map(({ path, body }) => [path, body])).toEqual([
@@ -554,9 +716,69 @@ describe('join page', () => {
             ['/auth/join/status', { request: 'req_1' }],
             ['/auth/join/status', { request: 'req_1' }],
         ]);
-        expect(document.querySelector('[data-join-code]')?.textContent).toBe('123 456');
         expect(nextLinks()).toEqual(['/agents']);
         expect(document.documentElement.outerHTML).not.toContain(TICKET);
+    });
+
+    it('asks again at once when a held answer took the whole interval', async () => {
+        vi.useFakeTimers();
+        let held = true;
+        const requests: string[] = [];
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((path: string) => {
+                requests.push(path);
+                if (path === '/auth/join/options') return Promise.resolve(Response.json(options.body));
+                if (path === '/auth/join/verify') return Promise.resolve(Response.json(created.body, { status: 201 }));
+                if (held) {
+                    held = false;
+                    return new Promise((resolve) => {
+                        setTimeout(() => {
+                            resolve(Response.json(pending.body));
+                        }, 10_000);
+                    });
+                }
+                return Promise.resolve(Response.json({ state: 'declined' }));
+            }),
+        );
+        fakeWebAuthn();
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState('waiting');
+        await vi.advanceTimersByTimeAsync(10_000);
+        await expectState('declined');
+        expect(requests.filter((path) => path === '/auth/join/status')).toHaveLength(2);
+    });
+
+    it('keeps waiting through passing failures, pausing longer after each', async () => {
+        vi.useFakeTimers();
+        const requests = fakeEngine({
+            '/auth/join/options': options,
+            '/auth/join/verify': created,
+            '/auth/join/status': [
+                'network-error',
+                { status: 503, body: { code: 'unavailable' } },
+                { ...pending },
+                { status: 200, body: { state: 'approved' } },
+            ],
+        });
+        fakeWebAuthn();
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState('waiting');
+        await vi.advanceTimersByTimeAsync(5_900);
+        expect(statusRequests(requests)).toBe(1);
+        await vi.advanceTimersByTimeAsync(100);
+        expect(statusRequests(requests)).toBe(2);
+        expect(shownStates()).toEqual(['waiting']);
+        await vi.advanceTimersByTimeAsync(9_000);
+        expect(statusRequests(requests)).toBe(3);
+        expect(shownStates()).toEqual(['waiting']);
+        await vi.advanceTimersByTimeAsync(3_000);
+        await expectState('done');
+        expect(nextLinks()).toEqual(['/']);
     });
 
     it('shows the declined state when the owner declines', async () => {
@@ -585,17 +807,26 @@ describe('join page', () => {
         await expectState('declined');
     });
 
-    it('picks the waiting up again after a network failure, without a second passkey', async () => {
+    it('says it is offline after failures in a row, and picks the waiting up again without a second passkey', async () => {
+        vi.useFakeTimers();
         const requests = fakeEngine({
             '/auth/join/options': options,
             '/auth/join/verify': created,
-            '/auth/join/status': ['network-error', { status: 200, body: { state: 'declined' } }],
+            '/auth/join/status': [
+                'network-error',
+                'network-error',
+                'network-error',
+                { status: 200, body: { state: 'declined' } },
+            ],
         });
         const webauthn = fakeWebAuthn();
         await openJoin();
         await expectState('valid');
         click('create');
+        await expectState('waiting');
+        await vi.advanceTimersByTimeAsync(15_000);
         await expectState('offline');
+        expect(statusRequests(requests)).toBe(3);
         click('retry');
         await expectState('declined');
         expect(webauthn.startRegistration).toHaveBeenCalledTimes(1);
@@ -642,7 +873,22 @@ describe('join page', () => {
         await expectState(state);
     });
 
-    it('stops on a status request the engine refuses', async () => {
+    it('stops at once on a status request the engine refuses', async () => {
+        const requests = fakeEngine({
+            '/auth/join/options': options,
+            '/auth/join/verify': created,
+            '/auth/join/status': { status: 400, body: { code: 'validation-failed' } },
+        });
+        fakeWebAuthn();
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState('error');
+        expect(statusRequests(requests)).toBe(1);
+    });
+
+    it('says there were too many attempts when the engine keeps rate-limiting the status', async () => {
+        vi.useFakeTimers();
         fakeEngine({
             '/auth/join/options': options,
             '/auth/join/verify': created,
@@ -652,6 +898,8 @@ describe('join page', () => {
         await openJoin();
         await expectState('valid');
         click('create');
+        await expectState('waiting');
+        await vi.advanceTimersByTimeAsync(15_000);
         await expectState('rate-limited');
     });
 

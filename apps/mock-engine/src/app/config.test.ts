@@ -580,6 +580,7 @@ describe('parseIdentityConfig', () => {
             ['MOCK_DEV_LOGIN', 'yes'],
             ['MOCK_PASSKEYS', 'some'],
             ['MOCK_CONTROL', 'on'],
+            ['MOCK_LIVE_BROWSER', 'yes'],
             ['MOCK_CONTROL_HOST', 'not a host'],
             ['MOCK_CONTROL_PORT', '70000'],
         ])('refuses %s=%s without echoing the value', (name, text) => {
@@ -592,6 +593,13 @@ describe('parseIdentityConfig', () => {
         it('starts without passkeys, like a fresh engine, unless told to keep the seeded owner (M-08)', () => {
             expect(parseMockEngineConfig(BASE).passkeys).toBe('none');
             expect(parseMockEngineConfig({ ...BASE, MOCK_PASSKEYS: 'seeded' }).passkeys).toBe('seeded');
+        });
+
+        it('leaves the setup state to the engine unless MOCK_ONBOARDING picks one (M-10)', () => {
+            expect(parseMockEngineConfig(BASE).onboarding).toBeNull();
+            for (const onboarding of ['no-project', 'pending', 'completed'] as const) {
+                expect(parseMockEngineConfig({ ...BASE, MOCK_ONBOARDING: onboarding }).onboarding).toBe(onboarding);
+            }
         });
 
         it('reads the capabilities and the simulation settings (M-07)', () => {
@@ -614,6 +622,8 @@ describe('parseIdentityConfig', () => {
                 'agent-management',
                 'onboarding',
                 'wallet',
+                'ai-tools',
+                'updates',
             ]);
             expect(
                 parseMockEngineConfig({ ...BASE, MOCK_PROFILE: 'full', MOCK_CAPABILITIES: 'runs' }).capabilities,
@@ -644,6 +654,15 @@ describe('parseIdentityConfig', () => {
             expect(problems.every((problem) => problem.startsWith(`${name}: `))).toBe(true);
         });
 
+        it('serves voice only with MOCK_VOICE=enabled, and never in production', () => {
+            expect(parseMockEngineConfig(BASE).voice).toBe(false);
+            expect(parseMockEngineConfig({ ...BASE, MOCK_VOICE: 'enabled' }).voice).toBe(true);
+            expect(problemsOf({ ...BASE, MOCK_VOICE: 'on' })).toEqual(['MOCK_VOICE: must be enabled or disabled']);
+            expect(problemsOf({ ...BASE, NODE_ENV: 'production', MOCK_VOICE: 'enabled' })).toEqual([
+                'MOCK_VOICE: must not be enabled in production',
+            ]);
+        });
+
         it('refuses the control listener and dev login in production', () => {
             expect(
                 problemsOf({ ...BASE, NODE_ENV: 'production', MOCK_CONTROL: 'enabled', MOCK_DEV_LOGIN: 'enabled' }),
@@ -655,6 +674,15 @@ describe('parseIdentityConfig', () => {
             expect(
                 parseMockEngineConfig({ ...BASE, NODE_ENV: 'development', MOCK_CONTROL: 'enabled' }).control,
             ).not.toBeNull();
+        });
+
+        it('switches the live browser on only when asked, and never in production', () => {
+            expect(parseMockEngineConfig(BASE).liveBrowser).toBe(false);
+            expect(parseMockEngineConfig({ ...BASE, MOCK_LIVE_BROWSER: 'disabled' }).liveBrowser).toBe(false);
+            expect(parseMockEngineConfig({ ...BASE, MOCK_LIVE_BROWSER: 'enabled' }).liveBrowser).toBe(true);
+            expect(problemsOf({ ...BASE, NODE_ENV: 'production', MOCK_LIVE_BROWSER: 'enabled' })).toEqual([
+                'MOCK_LIVE_BROWSER: must not be enabled in production',
+            ]);
         });
     });
     describe('UI loader', () => {

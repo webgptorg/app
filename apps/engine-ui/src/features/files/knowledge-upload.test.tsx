@@ -95,7 +95,7 @@ describe('knowledge upload', { timeout: TIMEOUT_MS }, () => {
         const image = new File(['x'], 'photo.png', { type: 'image/png' });
         const zone = screen.getByText('Drop files here, or').parentElement as HTMLElement;
         fireEvent.drop(zone, { dataTransfer: { files: [large, image] } });
-        expect(await screen.findByText('Too large: the engine accepts up to 1 kB. Not uploaded.')).toBeDefined();
+        expect(await screen.findByText('Too large: the project accepts up to 1 kB. Not uploaded.')).toBeDefined();
         expect(screen.getByText('This type of file is not accepted as knowledge. Not uploaded.')).toBeDefined();
         expect(engine.spies.upload).not.toHaveBeenCalled();
     });

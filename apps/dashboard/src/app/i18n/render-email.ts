@@ -67,6 +67,18 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
                 subject: m.email_recovery_link_subject({}, options),
                 text: m.email_recovery_link_body({ link: message.link }, options),
             };
+        case 'invite-passkey-link': {
+            const org = message.orgName;
+            return org === null
+                ? {
+                      subject: m.email_invite_passkey_subject_unnamed({}, options),
+                      text: m.email_invite_passkey_body_unnamed({ link: message.link }, options),
+                  }
+                : {
+                      subject: m.email_invite_passkey_subject({ org }, options),
+                      text: m.email_invite_passkey_body({ org, link: message.link }, options),
+                  };
+        }
         case 'recovery-notice':
             return {
                 subject: m.email_recovery_notice_subject({}, options),
@@ -146,18 +158,21 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
         case 'access-waiting':
             return {
                 subject: m.email_access_waiting_subject(
-                    { requester: message.requesterEmail, team: message.teamName },
+                    { requester: message.requesterEmail, engine: message.teamName },
                     options,
                 ),
                 text: m.email_access_waiting_body(
-                    { requester: message.requesterEmail, team: message.teamName, link: message.link },
+                    { requester: message.requesterEmail, engine: message.teamName, link: message.link },
                     options,
                 ),
             };
         case 'access-granted':
             return {
-                subject: m.email_access_granted_subject({ team: message.teamName }, options),
-                text: m.email_access_granted_body({ team: message.teamName, link: message.link }, options),
+                subject: m.email_access_granted_subject({ engine: message.teamName }, options),
+                text: m.email_access_granted_body(
+                    { engine: message.teamName, hostname: message.hostname, link: message.link },
+                    options,
+                ),
             };
         case 'ops-alert':
             return renderOpsAlert(message);

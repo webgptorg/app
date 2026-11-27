@@ -73,6 +73,11 @@ describe('supports', () => {
             'agent-management@1',
             'onboarding@1',
             'wallet@1',
+            'browser-tab@1',
+            'voice-input@1',
+            'voice-output@1',
+            'ai-tools@1',
+            'updates@1',
         ]);
     });
 });

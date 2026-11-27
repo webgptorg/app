@@ -65,6 +65,8 @@ export const AUDIT_EXPECTATIONS: Partial<
     enableIntegration: { action: 'integration.enable', kind: 'integration', param: 'integrationId' },
     disableIntegration: { action: 'integration.disable', kind: 'integration', param: 'integrationId' },
     deleteIntegration: { action: 'integration.delete', kind: 'integration', param: 'integrationId' },
+    startAiToolSignIn: { action: 'ai-tool.sign-in.start', kind: 'ai-tool', param: 'aiToolId' },
+    signOutAiTool: { action: 'ai-tool.sign-out', kind: 'ai-tool', param: 'aiToolId' },
 };
 
 export interface ExpectedEntry {

@@ -20,6 +20,8 @@ const MOCK_CAPABILITIES = {
     'agent-management': KNOWN_CAPABILITIES.agentManagement,
     onboarding: KNOWN_CAPABILITIES.onboarding,
     wallet: KNOWN_CAPABILITIES.wallet,
+    'ai-tools': KNOWN_CAPABILITIES.aiTools,
+    updates: KNOWN_CAPABILITIES.updates,
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export const MockCapabilityName = z.enum(
@@ -47,6 +49,12 @@ export const PROFILE_CAPABILITY_NAMES: Readonly<Record<MockProfile, readonly Moc
     reborn: REBORN_CAPABILITY_NAMES,
     full: FULL_CAPABILITY_NAMES,
 };
+
+/** `MOCK_VOICE`: both voice capabilities on top of `capabilities`, each once. */
+export function withVoice(capabilities: readonly CapabilityRef[]): readonly CapabilityRef[] {
+    const voice = [KNOWN_CAPABILITIES.voiceInput, KNOWN_CAPABILITIES.voiceOutput];
+    return [...capabilities.filter((ref) => !voice.some(({ id }) => id === ref.id)), ...voice];
+}
 
 export function capabilitiesFor(names: readonly MockCapabilityName[]): readonly CapabilityRef[] {
     return [...new Set(names)].map((name) => MOCK_CAPABILITIES[name]);

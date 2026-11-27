@@ -24,6 +24,299 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-27: Owner setup handoff from the pairing tab (ADR 0023)
+
+- **Changed:** additive, no version bump ([ADR 0023](../adr/0023-owner-setup-handoff.md)). The dashboard tab that showed the install command draws its own setup secret `S` and gives you only `ownerSetupCommitment = base64url(SHA-256(S))` in `RegisterEngineResponse` (`null` from tabs and dashboards without it). Once your heartbeat says `ownerHandoff: "ready"`, that tab sends the owner to `https://<hostname>/setup#S`, so a server install ends at the passkey prompt with nothing copied from SSH. Reference: `PTBK_OWNER_HANDOFF` in the mock engine ([setup-secret.ts](../../apps/mock-engine/src/domain/onboarding/setup-secret.ts), [passkey-gateway.ts](../../apps/mock-engine/src/domain/gateway/passkey-gateway.ts), [heartbeat-loop.ts](../../apps/mock-engine/src/domain/heartbeat/heartbeat-loop.ts)); checklist ENG-131; the `owner-handoff` conformance suite.
+- **Redo:**
+  1. **Second slot.** On a fresh registration whose answer carries a commitment, while the engine has no owner and the handoff is on, keep it next to your own setup secret: the decoded digest as the same hex SHA-256 you store for yours, and an expiry 30 minutes from registration (`OWNER_HANDOFF_LIFETIME_MS`). Never in the stored registration, never logged. With an owner, or with the handoff off, ignore it.
+  2. **Either slot.** `/setup/options` and `/setup/verify` accept a secret that matches either slot; wrong, expired and spent secrets keep their one answer (`setup-link-invalid`). The first owner passkey spends both slots. `--setup-link` replaces only your own slot; `--reset-owner` drops the handoff slot too.
+  3. **Signal.** While the handoff slot is live, there is no owner and the address serves `/setup` (relay connected, certificate valid), send `ownerHandoff: "ready"` in heartbeat v1 or v2, and send a heartbeat as soon as that starts rather than at the next interval (the suite allows 10 s). Leave it out otherwise, and always when no dashboard gave you a commitment.
+  4. **Setting.** An engine setting turns the handoff off, and strict mode turns it off by default; then only the terminal link sets up the owner. The mock calls it `PTBK_OWNER_HANDOFF=off`; use that name if it is an environment variable.
+  5. **Audit and terminal.** Audit the owner's first passkey through the handoff as `passkey.register` with `details: { "via": "owner-handoff" }` and the client IP, and say on the terminal that the owner was set up from the dashboard tab, naming `ptbk connect --reset-owner`.
+  6. **No auto-open.** On a local desktop, while the handoff slot is live, do not open your own setup link in the browser (two setup pages would race); still print it with its QR code.
+  - Then run `ptbk-conformance --suite owner-handoff`: it skips until your heartbeat signals, then checks the timing, both slots, the spent secret after setup and a restart, the audit entry, and no signal without a commitment. It cannot move your clock, so test the 30-minute expiry and the ignored commitment with an owner yourself.
+
+### 2026-11-24: Show more in onboarding choices
+
+The engine orders choices and may send `featured: false` for secondary integrations. Send Local models last with its disk estimate and include detected selections in `initial`. Older engines may omit `featured`, so the signed UI keeps its existing minimum engine API version.
+
+### 2026-11-23: PRIORITY: browser onboarding on a server is broken (0.119.0-132)
+
+- **Changed:** nothing in the contract. Seb ran the copied install command on a Hetzner Ubuntu 24.04 server with UI 0.2.4 and could not finish setup. Each item says whether a blank box hits it too. Line numbers are against `v0.119.0-132`. Fix them in this order:
+  1. **Claude sign-in link is never found (blank box too).** `returnChallenge` (`claude-code/index.ts:33-44`) strips only CSI. claude 2.1.330 prints the URL inside an OSC-8 hyperlink (`\e]8;;https://claude.ai/oauth/authorize?…\a…\e]8;;\a`), so a control character follows the URL, not whitespace, and `session.ts:450` reports "The native CLI did not provide a supported authorization link" after 25 s. Strip OSC sequences (`/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g`) before matching and add a test with the real 2.1.330 output. Once this works, a server never needs the terminal: our UI already renders `harness-login` with `method: 'return-code'` (open the link, paste the code).
+  2. **No API key option for Claude Code (blank box too).** The plugin has `apiKeyVariable` but no `setupApiKey`, so `session.ts:369-378` never offers "Use an API key instead". Add it (Anthropic API key, `https://console.anthropic.com/settings/keys`), with a test that the key reaches `ANTHROPIC_API_KEY`. Consider also accepting a `claude setup-token` token (it needs an auth mode that keeps `CLAUDE_CODE_OAUTH_TOKEN`).
+  3. **The harness choice falls behind (blank box too).**
+     - `noteActivity` (`session.ts:478-485`) never removes entries, and an aborted job returns at `:534` without updating its entry, so "Check Claude Code — running" stays after Claude Code is deselected.
+     - `drive()` does nothing while an old job exists (`:528`), and its `finally` clears `this.job` without checking it is the same job (`:543-545`).
+     - The final `next('harnesses', {error})` (`:611`) writes back whatever harnesses the draft holds by then. Seb's draft ended as `harnesses: ["opencode"]` with Gemini's error and no OpenCode check.
+     - `returnCodeSignIn` checks `combined.aborted` only at the top of its loop, so after `await terminal.command(read)` it can still set `this.login` for a harness that was just deselected.
+     - Fix: give each job an identity and let a job clear only itself; re-drive when the step is `prepare` and no job runs; have the final write check the step and harness list it started with; reset activity on a new answer. Add a test that answers, changes the answer mid-check and deselects.
+  4. **A failed check hides the sign-in (Gemini here).** `gemini/index.ts:37` treats `selectedType: "gemini-api-key"` in `~/.gemini/settings.json` as signed in even for a NATIVE check, whose environment blanks `GEMINI_API_KEY`. `session.ts:573` then skips the sign-in prompt and fails at `:591` with "the engine could not verify a real response". A NATIVE check must not count an API-type selection. On any failed check, show the CLI's own diagnostic and fall through to the sign-in/API key prompt instead of a dead end.
+  5. **Provider sign-in expires and there is no way back (blank box too).**
+     - Without `accountProfile`, every project of one OS user shares `~/.claude` (`harnesses.ts:74`). Concurrent `claude` processes then race on refresh-token rotation. Seb's project failed 3 minutes after signing in with "OAuth session expired and could not be refreshed".
+     - Give each project its own `CLAUDE_CONFIG_DIR`, or serialize refreshes.
+     - After setup there is no browser path to sign in again: the harness terminal is mounted only while initialization is pending (`onboarding-page.ts:10`). Our UI already shows the setup notice and the `harness-login` form whenever onboarding is `pending`, so the quickest path is to reopen onboarding with a `harness-login` step when a provider sign-in expires. Otherwise, tell us and we add a problem code or capability for "this AI tool needs signing in again". Until then, the chat error must name `ptbk tool enable <name>`. **Superseded by the 2026-11-24 entry: build `ai-tools@1` instead of reopening onboarding.**
+  6. **The terminal page asks "This link could potentially be dangerous" (blank box too).** `harness-terminal-browser.ts:40` creates the xterm `Terminal` without a `linkHandler`, so xterm 6 falls back to its `confirm()`. Pass a `linkHandler` that opens `https:` links with `window.open(uri, '_blank', 'noopener,noreferrer')`.
+  7. **Wallet on a fresh Ubuntu 24.04 as non-root.** `host-unlock.ts:116-139` fails: systemd 255 has no `--user` for `systemd-creds`, and the host secret is root-only with no TPM. Setup continues without the Wallet (`wallet.ts:999-1003`), so this isn't fatal, but most VPSes look like this. Fall back to a key file sealed under the engine user, or say clearly what is lost.
+  8. **Stopping takes 90 s and ends in SIGKILL.** `ServiceHost.shutdown` (`host.ts:553-586`) runs about 12 steps, each allowed 10 s, and `cli.ts:47` only sets `process.exitCode`. Add an overall shutdown deadline and exit after a foreground shutdown.
+- **Platform side (ours, in progress):** the install script reuses only a `ptbk` from its own prefix (Seb's run picked up an unrelated wrapper on `PATH`), enables linger so a user unit survives reboots, and shrinks to one line. The UI fixes a stale selection in the choice form and gives the setup screens a step timeline.
+- **Redo:** items 1 to 6, then 8. Item 7 when you can. Publish, and tell us the version so we can repeat the run on a blank Hetzner box.
+
+### 2026-11-24: AI tools management (ai-tools@1)
+
+- **Why:** after setup there is no browser path to see or fix the AI tools a project runs on. When a Claude sign-in expires (item 5 of the 2026-11-23 PRIORITY entry), a project on a server is dead until someone SSHes in. Owners who never use a terminal must be able to do all of it from the browser.
+- **Supersedes** the "reopen onboarding with a `harness-login` step" stopgap of 2026-11-23 item 5. Do not build that; build this. Items 1, 2 and 5 of that entry (the OSC-8 link, `setupApiKey`, one `CLAUDE_CONFIG_DIR` per project) are still needed: this capability drives the same code.
+- **Changed** ([ai-tools.md](ai-tools.md), [engine-api.md, AI tools](engine-api.md#ai-tools), [ai-tools.ts](../../packages/engine-api/src/capabilities/ai-tools.ts)):
+  - `KNOWN_CAPABILITIES.aiTools` (`ai-tools@1`) and permissions `ai-tools.read` (who oversees the project: owners and admins) and `ai-tools.manage` (owners only, like `browser.control`).
+  - `GET /ai-tools`, `GET /ai-tools/{aiToolId}`, `POST /ai-tools/{aiToolId}/check` (202, `checking` until the call ends).
+  - `POST /ai-tools/{aiToolId}/sign-ins` (step-up) with `{ method: 'account' | 'api-key' }`, then `GET`, `POST …/answer` and `DELETE /ai-tools/{aiToolId}/sign-ins/{signInId}`. The prompts and answers are onboarding's `harness-login` and `secret` ones, unchanged; `canGoBack` is `false`.
+  - `DELETE /ai-tools/{aiToolId}/credentials` (step-up): sign out.
+  - Event `ai-tool.changed { aiToolId }`; problems `ai-tool-not-installed` (409), `ai-tool-sign-in-stale` (409), `ai-tool-method-unsupported` (422) and `ai-tool-sign-in-required` (503, extension `aiToolId`); `ChatRecheck.aiToolId`; audit actions `ai-tool.sign-in.start`, `ai-tool.sign-in.complete`, `ai-tool.sign-out` on target kind `ai-tool`.
+  - Conformance `engine-api.ai-tools.check`, `.permissions`, `.sign-in-flow`, `.secret-never-echoed` and `.sign-in-required` (the last needs the test-mode levers `ConformanceTarget.aiTools`: expire and renew the sign-in of the tool chats run on). Checklist ENG-126 and ENG-127.
+  - The UI ships it in the next release: Settings › AI tools, "Sign in again" on a failed chat reply, a line on Home while a tool needs signing in.
+- **Version:** `ENGINE_API_VERSION` stays 1.15.0. Everything here is additive: the capability is off until you advertise it, and `ChatRecheck.aiToolId` defaults to `null`, so an engine that has not re-vendored keeps working with the next UI release.
+- **Redo:** re-vendor the contract. Then, after items 1 to 6 of the 2026-11-23 entry:
+  1. **Map your harnesses to tools.** One `AiTool` per harness the project knows, in the order agents prefer them; installed ones from your harness registry, the rest `not-installed` with `signInMethods: []`. IDs as proposed in [ai-tools.md, Open](ai-tools.md#open-for-the-engine-team): `claude-code`, `codex`, `gemini-cli`, `opencode`. `auth.account` from what the CLI reports (`claude auth status`, `~/.codex/auth.json`'s plan); never the key, never a token.
+  2. **Status from a real call.** Keep the outcome of each harness check (the same check setup runs in `session.ts`) per project: `checkedAt`, and on failure a `problem` whose `code` you map from the CLI's error (an expired or refused OAuth session is `sign-in-expired`, a refused key `key-rejected`, a quota or billing error `quota-exceeded`, a network or 5xx `provider-unavailable`, else `check-failed`) and whose `message` is the CLI's own diagnostic, with ANSI and OSC sequences stripped and secrets redacted. Run a check in the background on `POST …/check` and when a harness call fails in real work; send `ai-tool.changed` on every change.
+  3. **Sign-in by account** reuses the onboarding sign-in session: `returnCodeSignIn` (Claude Code, `return-code`) and the device login (Codex, `device-code`) in `session.ts`, now callable outside initialization and per project. Write the new credentials into the project's own profile (`accountProfile`, `CLAUDE_CONFIG_DIR` from 2026-11-23 item 5, `harnesses.ts:74`), not the OS user's shared one, and switch over only after the verifying call answers. The harness terminal page (`onboarding-page.ts:10`) is not needed for this.
+  4. **Sign-in by API key** reuses `setupApiKey` (2026-11-23 item 2) and the Wallet's secret store (`wallet.ts`): verify the key with one real call, then store it for the project and point the harness at it (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` through the harness's `apiKeyVariable`). Refusals are a fixed text plus the provider's reason, never the key.
+  5. **Chat turns.** When a turn cannot start or fails because its harness needs a sign-in, end it with a recheck carrying `aiToolId` (or a reply stream `failed` with `ai-tool-sign-in-required` and `aiToolId`). Do not keep rechecking while the tool still needs signing in; once it is signed in again, run the waiting recheck. Replace the "run `ptbk tool enable <name>`" chat error of 2026-11-23 item 5 with this.
+  6. **Test-mode levers** in your conformance target module: `aiTools.expireSignIn()` (make the provider refuse the sign-in of the tool chats run on, e.g. by corrupting the test profile's token; answer its ID) and `aiTools.renewSignIn(id)`.
+  7. Advertise `ai-tools@1` once AT-01 to AT-14 pass, then run the `engine-api.ai-tools.*` checks and AT-15 and AT-16.
+- **Test cases** (AT-01 to AT-14 unit-level in the engine, AT-15 and AT-16 on a real server):
+  - **AT-01** `GET /ai-tools` lists every known harness once, in preference order; one not on the host is `not-installed` with `signInMethods: []`, `auth: null` and problem `not-installed`.
+  - **AT-02** A tool has `problem` exactly when it is not `signed-in`; the response never contains a key, token, refresh token or login code (search the serialized JSON for the test key and token).
+  - **AT-03** `POST /ai-tools/{id}/check` answers 202; while the call runs `checking` is `true`; when it ends `checkedAt` moved, `checking` is `false`, the status matches the outcome, and one `ai-tool.changed` was sent. A second check while one runs starts no second call. A `not-installed` tool is 409 `ai-tool-not-installed`.
+  - **AT-04** A Claude session whose refresh failed ("OAuth session expired and could not be refreshed") reads `needs-sign-in` with `sign-in-expired` and the CLI's message, ANSI and OSC stripped.
+  - **AT-05** Without `ai-tools.read`: 403 on list, get and check. With it but without `ai-tools.manage`: 403 `forbidden` naming `ai-tools.manage` on start and sign-out, audited `denied`, nothing changed. A member never gets `ai-tool.changed` without `ai-tools.read`.
+  - **AT-06** Start and sign-out without a fresh step-up are 401 `step-up-required`; the answer, read and cancel routes need none.
+  - **AT-07** Starting an `account` sign-in for Claude Code answers 201 with a `harness-login` prompt, `method: 'return-code'`, the claude.ai URL from the OSC-8 link (2026-11-23 item 1), `canGoBack: false`, and the alternative `api-key`. For Codex it is `device-code` with `userCode`, and the sign-in completes by itself once the provider confirms.
+  - **AT-08** A pasted code the CLI refuses comes back as a new prompt (new `id`) with `error` or `status: 'failed'` and the CLI's diagnostic; retry (`returnCode: null`) starts a new login. The tool's old credentials keep working throughout.
+  - **AT-09** A correct code: `status` goes `working` then `completed`; the credentials are written to the project's own profile only, a real call answered before the switch, the tool reads `signed-in`, audit has `ai-tool.sign-in.complete` with `details: { method: 'account' }` and no code.
+  - **AT-10** `api-key`: a key the provider refuses comes back as a new `secret` prompt with a fixed error plus the provider's reason; no file, log line, audit entry, heartbeat, chat or error contains the key. A valid key completes, `auth` reads `{ method: 'api-key', account: null }`, and the harness uses the key from the store.
+  - **AT-11** An answer with a `promptId` that is not current is 409 `ai-tool-sign-in-stale` and changes nothing; an answer of the other kind, or an alternative the prompt does not offer, is 400 `validation-failed`.
+  - **AT-12** Another gateway session, the same owner's included, gets 404 for the sign-in on read, answer and cancel. Starting a second sign-in for the tool ends the first (404 afterwards). An unfinished sign-in is forgotten at `expiresAt`.
+  - **AT-13** `DELETE /ai-tools/{id}/credentials` removes the project's sign-in or key (not another project's), reads `needs-sign-in` with `not-signed-in`, is idempotent and audited `ai-tool.sign-out`.
+  - **AT-14** Two projects of one OS user: signing one in or out does not change the other (each its own profile), and concurrent turns in both no longer race on token refresh.
+  - **AT-15** On a Hetzner box: expire the Claude sign-in, send a chat message; the turn fails with `recheck.aiToolId: 'claude-code'`, the UI's "Sign in again" completes the sign-in in the browser, and the waiting recheck answers. No SSH involved.
+  - **AT-16** Same box: switch Claude Code to an API key from Settings › AI tools, then back to the account, with the chat working after each switch.
+
+### 2026-11-24: Updates (updates@1) and the missing periodic UI check
+
+- **Bug first (0.119.0-132, the demo server, staging policy).** The periodic UI check did not run for about 15 hours. The UI state's `firstSeenAt` for 0.2.5 was written only on a manual restart at 2026-11-24T07:30:48Z, and that check refused it with `delay-not-elapsed`. The extra check at `eligibleAt` ([ENG-120](checklist.md#ui-loader-interface-5)) did not install it either; a second restart did. So neither timer fired. Find the bug with a test on a fake clock before changing anything: start under `auto`, let one interval pass, then another, and assert a check at each; then a delay refusal and the extra check at `eligibleAt`. Likely suspects: a timer armed only after a check that never settles, a rejected promise that skips re-arming, an unref'd or garbage-collected timer, or a `setTimeout` longer than 2^31 − 1 ms. UP-01 to UP-04 below are those tests.
+- **Changed:** new capability `updates@1` ([updates.md](updates.md), [updates.ts](../../packages/engine-api/src/capabilities/updates.ts)):
+  - `GET /security` gains `ui.nextCheckAt` (when the next scheduled UI check is due, from the timer you armed), `update.checkedAt` and `update.command` (the one line that updates the engine the way it was installed, shown to copy). Each is `null` without the capability.
+  - `POST /updates/ui/check` (`checkForUiUpdate`, `settings.manage`): runs the scheduled UI check early and answers its `UiUpdateCheck`. Nothing is skipped and it never passes `mode: 'manual'` because a person asked; a running check is joined; 409 `update-policy-manual` under `manual`; 429 `update-check-too-soon` within 60 s (`UPDATE_CHECK_MIN_INTERVAL_MS`). Audit action `updates.ui-check`.
+  - Event `updates.changed { uiVersion }` after every UI check, to every member on the stream; the UI offers a reload when the served version differs.
+  - Conformance: `engine-api.updates.permissions`, `engine-api.updates.check-now`, `engine-api.updates.next-check-due` and `ui-loader.updates.check-now-respects-delay`, all skipping without the capability. Checklist ENG-128 to ENG-130.
+- **Version:** `ENGINE_API_VERSION` stays 1.15.0. Everything here is additive: the capability is off until you advertise it, and the new `GET /security` fields default to `null`, so an engine that has not re-vendored keeps working with the next UI release.
+- **Redo:**
+  1. Fix the timer with the fake-clock tests (UP-01 to UP-04). This matters with or without the capability: every engine on a server depends on it.
+  2. Re-vendor the contract and serve the new fields.
+  3. Advertise `updates@1` and implement check-now on top of your existing check (UP-05 to UP-13), `update.command` per installation (UP-14), then run the four checks and UP-15 on the demo server.
+- **Test cases** (UP-01 to UP-14 in the engine with a fake clock; UP-15 by hand). The table in [updates.md](updates.md#test-cases) has the expected results:
+  - **UP-01** Periodic checks at start and every interval; `nextCheckAt` follows.
+  - **UP-02** A check that throws still re-arms the periodic timer.
+  - **UP-03** A delay refusal arms the extra check at `eligibleAt`; it installs then; the periodic check goes on.
+  - **UP-04** After the process slept past both times, a check runs within a minute of waking.
+  - **UP-05** Check-now under `auto` with a release inside its delay: `refused` `delay-not-elapsed` with the same `eligibleAt`, nothing installed.
+  - **UP-06** Check-now under `pinned` installs the pinned version as the scheduled check would.
+  - **UP-07** Check-now under `manual`: 409 `update-policy-manual`, no check.
+  - **UP-08** Two requests within 60 s: the second is 429 `update-check-too-soon`; scheduled checks do not count.
+  - **UP-09** Check-now during a running check joins it.
+  - **UP-10** Without `settings.manage`: 403, no check, audited `denied`.
+  - **UP-11** Revoked, wrongly signed, unlogged, older and tampered releases are refused by check-now exactly as by the scheduled check.
+  - **UP-12** `ui.lastUpdateCheck` and `ui.nextCheckAt` (at most an hour after the last check) after each case.
+  - **UP-13** One `updates.changed` per check with the served `uiVersion`.
+  - **UP-14** `update.command` and `update.checkedAt` for the npm package, the VPS installer and Docker; `null` where unsure; never a secret or a line break.
+  - **UP-15** By hand on the demo server: a new UI release installs within 5 minutes plus one interval without a restart, and Settings → Updates shows it waiting, then installed.
+
+### 2026-11-23: Live browser: permission loss, help message, more checks
+
+- **Changed** ([live-sessions.md](live-sessions.md#a-session-belongs-to-its-gateway-session), in place in `browser-tab@1`):
+  - A browser session ends with `revoked` as soon as its member no longer holds what it needs: `browser.watch` with sight of the tab's work, and `browser.control` while controlling. A role change counts, without waiting for the member's next request.
+  - The channel upgrade needs `browser.watch` (403 before the session is looked up). `browser.control` alone no longer attaches.
+  - The attach is audited once the WebSocket handshake completed; a failed handshake is `failed`.
+  - `BrowserHelpRequest.message` refuses control characters (line breaks and tabs included) and bidi embeddings, overrides and isolates. `toBrowserHelpMessage` folds model output into an accepted line.
+  - New checks: `engine-api.browser-tab.permissions` (403 on every browser route and the channel), `engine-api.browser-tab.origin-refused`, `engine-api.browser-tab.revoked`, `engine-api.browser-tab.watcher-blocked`.
+- **Redo:** require `browser.watch` on the channel upgrade, end sessions on permission loss and audit the real attach outcome (LB-03, LB-08, LB-14 and LB-15 changed), pass the message through `toBrowserHelpMessage` or the same rule, then re-run the `engine-api.browser-tab.*` checks.
+
+### 2026-11-23: Gateway pages print complete `ptbk` commands; local-stack findings
+
+- **Changed:**
+  - **Gateway pages:** the recovery hints on setup, sign-in and step-up now render whole commands (#353, [gateway-pages README](../../packages/gateway-pages/README.md)). New values `{{setupLinkCommand}}`, `{{resetOwnerCommand}}` and `{{statusCommand}}`. For `command: 'ptbk'` they default to `ptbk connect --setup-link`, `ptbk connect --reset-owner` and `ptbk status`.
+  - **Local stack:** the platform's local stack can now run your conformance build (#342, [testing-against-the-platform.md](testing-against-the-platform.md)). Running it turned up the items under "Worth fixing".
+- **Redo:**
+  - Re-vendor `setup.html`, `sign-in.html`, `step-up.html` **and** `render-page.ts`. While initialization is pending, pass `setupLinkCommand: 'ptbk connect --onboarding <engine-id> --setup-link'`, `resetOwnerCommand: 'ptbk connect --onboarding <engine-id> --reset-owner'` and `statusCommand: 'ptbk onboarding --id <engine-id> --json'`. Installed engines only see the new hints after a release.
+  - Worth fixing, none blocking:
+    1. The conformance build's daemons start the release build (`engineModule()` resolves `<root>/dist`); our image has to install `dist-conformance/` as `dist/`. Consider starting the build that launched them.
+    2. A pending engine (`init --prepare-only`) runs only as a detached background service. A foreground mode would fit containers better.
+    3. `--json` prints JSON over several lines, which is unusual for machine output. Consider one compact line per result.
+
+### 2026-11-20: PRIORITY: our UI out of the box, with a staging build of `ptbk`
+
+- **Goal:** the owner types two things into a terminal, and that is the last time they use it:
+  1. `npm install --global ptbk@<version>`.
+  2. The `ptbk init --prepare-only --link …` command shown on app.ptbk.io → Engines → New engine.
+
+  From there:
+  - **Paired at once.** The engine pairs immediately, before it is initialized. The terminal asks nothing more and only prints the setup link.
+  - **Setup in the browser.** The owner opens the engine and finishes setup in our signed UI on the engine's origin, end to end encrypted through the relay: the brief, the AI tools and their sign-in, the project and its folder. The terminal is offered only as a fallback link.
+  - **Controlled from the web.** Afterwards everything runs in that UI, and the engine keeps running as a service across reboots.
+  - **No configuration.** No setting or `PTBK_*` variable is needed anywhere.
+
+  The work comes in this order:
+  1. This entry: the engine serves our UI with no configuration.
+  2. The 2026-11-19 entry: setup in the browser.
+  3. Then the platform releases engine-ui 0.2.4 with the setup screens, and together we run STG-20 to STG-24 on a clean machine.
+
+- **Changed:** Decided 2026-11-20, described in [ui-loader.md, Staging builds](ui-loader.md#staging-builds), until the key ceremony:
+  - The published `ptbk` is a staging build. Its build profile is fixed at build time and never read at runtime.
+  - It embeds the platform's staging trust policy and the staging defaults (`https://ui.ptbk.link/`, `engines.ptbk.link`).
+  - For the trust policy it is not production, whatever `NODE_ENV` says. Like a production build, it refuses `PTBK_CONFORMANCE_TRUST_FILE`.
+  - `ptbk init --prepare-only --link` approves the first UI bundle by hand, so our UI is the first page without the 5-minute wait.
+  - New checklist item ENG-121, with test cases STG-01 to STG-24. ENG-59, ENG-116, [installation.md, Configuration](installation.md#configuration) and [staging.md, Settings](staging.md#settings) follow.
+- **Redo:**
+  - **Do this first, before the 2026-11-19 entry.** Without it, an engine installed with `npm install` and one command serves only the plain engine page, so the owner never reaches setup in the browser.
+  - Add the build-time profile. Embed `trust-policy.staging.json` from a pinned platform commit, check its SHA-256 at build, and default the release URL and engine domain in staging builds. Publish the npm package as a staging build.
+  - Let the profile, not `NODE_ENV`, decide the trust policy in a staging build. The installed service keeps `NODE_ENV=production`, and production builds keep refusing staging policies.
+  - Treat `ptbk init --prepare-only --link` as the installer for the first bundle: `mode: 'manual'` for that bundle only, with every other check.
+  - Write the engine tests STG-01 to STG-14, then run STG-20 to STG-24 on a clean machine. Done when a clean install from the block on app.ptbk.io passes `ptbk-conformance staging` with no `PTBK_*` variable set anywhere.
+
+### 2026-11-20: Voice phase 1: push-to-talk and spoken replies (lower priority)
+
+- **Priority:** lower than every other open entry. Finish the staging build (2026-11-20, PRIORITY), setup in the browser (2026-11-19) and the live browser (2026-11-20) first. Nothing breaks if you skip this: no UI uses it yet, and an engine that advertises neither capability passes conformance as before.
+- **Goal:** a member speaks to an agent and hears it answer, in the chat, with the speech work done by your harness or its provider and never by our services. Two capabilities, each on its own:
+  - `voice-input@1`, push-to-talk: the browser records up to a minute, you transcribe it, and the UI puts the text into the composer for the member to edit and send as an ordinary message.
+  - `voice-output@1`, spoken replies: you read one chat message aloud in a format the browser can play.
+- **Changed:** [voice.md](voice.md), [engine-api.md, Voice](engine-api.md#voice), [voice.ts](../../packages/engine-api/src/capabilities/voice.ts):
+  - `KNOWN_CAPABILITIES.voiceInput` and `voiceOutput`.
+  - `POST /chats/{chatId}/transcriptions` (`transcribeVoiceClip`, `chats.write`): a **raw binary body**, the first in the API (`RouteBody` kind `binary`). Its `Content-Type` is one of `VOICE_CLIP_FORMATS` after `normalizeMediaType`; at most `MAX_VOICE_CLIP_BYTES` (2 MiB) and `MAX_VOICE_CLIP_MS` (60 s); optional `?language=`. Answers 200 `TranscriptDraft { text, language, confidence, durationMs }`. It adds nothing to the chat.
+  - `POST /chats/{chatId}/messages/{messageId}/speech` (`speakChatMessage`, `chats.read`): body `{ formats }` from `SPEECH_FORMATS`, answers the audio in the first one you can make (a typed binary response) or 415.
+  - Problem codes `voice-clip-too-long` (422), `transcription-failed` (502), `speech-too-long` (422), `message-not-speakable` (409), `speech-failed` (502), `voice-unavailable` (503).
+  - `Permissions-Policy` sends `microphone=(self)` while `voice-input@1` is advertised ([gateway.md](gateway.md#security-headers)).
+  - Conformance: `engine-api.voice.transcription-caps`, `engine-api.voice.transcription-draft`, `engine-api.voice.speech`, `engine-api.voice.permissions` (skip without the capability) and `engine-api.voice.permissions-policy` (runs on every engine with a gateway, so it checks `microphone=()` today). Checklist ENG-123 to ENG-125.
+  - Phase 2, full-duplex over the live channel, is designed in [live-sessions.md](live-sessions.md#live-audio-phase-2) only; `live-audio@1` stays reserved.
+- **Redo:**
+  1. Now, whatever your priority: re-vendor the contract and keep `Permissions-Policy` at `microphone=()`; `engine-api.voice.permissions-policy` checks it on your engine today.
+  2. Tell us what your harnesses can do (questions below) before building.
+  3. When you build it: serve both routes from the route table, with the raw body read under its cap before anything else, the clip decoded to measure its length, handed to the provider and dropped. Advertise each capability only when a provider for it is configured; answer 503 `voice-unavailable` when it cannot serve right now. Switch `microphone=(self)` with `voice-input@1`. Write VO-01 to VO-12, run the voice conformance checks, then VO-13 and VO-14 by hand.
+- **Test cases** (VO-01 to VO-12 unit-level in the engine, VO-13 and VO-14 by hand):
+  - **VO-01** Each of `audio/webm;codecs=opus`, `audio/ogg; codecs="opus"` (Firefox's spelling) and `audio/wav` is accepted; `audio/mpeg`, `text/plain`, a missing `Content-Type` and `audio/webm` without codecs are 415, before the body is read.
+  - **VO-02** A `Content-Length` over 2 MiB is 413 without reading the body; a chunked body that passes 2 MiB is cut off at the cap with 413.
+  - **VO-03** The duration comes from decoding, not a header: a `MediaRecorder` WebM with no `Duration` element gives the right `durationMs`; a 61 s WAV under 2 MiB is 422 `voice-clip-too-long`, and the provider is never called for it.
+  - **VO-04** An undecodable clip (random bytes typed `audio/ogg;codecs=opus`) is 502 `transcription-failed` with a generic `detail`.
+  - **VO-05** After a transcription, successful or not, no file in the data directory, temp directory or cache holds the clip, and no log line or audit entry contains the audio, its base64 or the transcript text.
+  - **VO-06** A transcription adds no chat entry, emits no `chat.changed` and starts no turn; sending the draft afterwards is an ordinary message with the member as author.
+  - **VO-07** Silence gives 200 with `text: ""`; `language` is the asked one or the detected one or `null`; `confidence` within 0 to 1 or `null`.
+  - **VO-08** With the harness signed out or the provider down, both routes answer 503 `voice-unavailable` while `GET /engine` still advertises the capability; with no provider configured at all, neither capability is advertised and the routes answer 404 `capability-not-supported`.
+  - **VO-09** Speech: `{ formats: ['audio/mpeg'] }` is 200 `audio/mpeg` (or 415 if you cannot make MP3); the answer's type is always the first offered format you can make; none of them is 415; `Cache-Control: no-store`, `nosniff`, attachment.
+  - **VO-10** Speech of a streaming, failed, cancelled or empty message is 409 `message-not-speakable`; of a message over 4,000 UTF-16 code units 422 `speech-too-long`, without calling the provider.
+  - **VO-11** A member without `chats.write` gets 403 on transcriptions, without `chats.read` 403 on speech; a chat or message they cannot see, or a message of another chat, is 404.
+  - **VO-12** `Permissions-Policy` has `microphone=()` on every response while `voice-input@1` is not advertised, `microphone=(self)` on every response (API, UI files, gateway pages, errors) while it is, and the rest of the header unchanged.
+  - **VO-13** By hand in Safari: record through the UI's WAV fallback (or upload a 16 kHz mono PCM16 WAV with curl) and get a draft in the composer.
+  - **VO-14** By hand in Chrome and Firefox: a real recording of a sentence gives a sensible draft in the spoken language; a reply read aloud plays.
+- **Questions for you** (answer in [voice.md, Open for the engine team](voice.md#open-for-the-engine-team)):
+  1. What can each harness do for speech-to-text and text-to-speech: Codex with a ChatGPT login, Claude Code, an OpenAI or other API key, a local model?
+  2. Which formats do they take and return, and where would you transcode?
+  3. Which languages, and do they detect the language themselves?
+  4. Which per-member and per-engine limits fit the cost?
+
+### 2026-11-19: Setup in the browser after pairing: new input kinds
+
+- **Changed:** `onboarding@1` gains what the App flow needs so the owner never goes back to the terminal after pairing ([engine-api.md, Onboarding](engine-api.md#onboarding), [onboarding.ts](../../packages/engine-api/src/capabilities/onboarding.ts)). The prompt kinds are now a fixed vocabulary the UI ships first; you compose and reorder steps from them freely. New: a `secret` prompt kind and answer (API keys; never presented back, logged or kept in the draft); `details` and `alternatives` on every prompt, with `{ action: alternative, alternativeId }` (an alternative with `href` is a same-origin link the UI opens, not an answer); `activity` on the state (each install or check `running`, `done`, `failed` with its reason, or `skipped`); `canDefer` with problem `onboarding-not-deferrable`. The heartbeat gains optional `setup: pending | done` ([heartbeat.md](heartbeat.md)). The platform's signed UI renders setup on a pending engine; it reads unknown prompt kinds as unsupported and points at `ptbk onboarding`.
+- **Redo:**
+  - Serve the approved signed UI while initialization is pending, with the passkey gateway in front as for any engine; keep the built-in onboarding page only for when no approved bundle is available. A pending engine advertises `onboarding@1` and `files@1` and may leave out every other capability.
+  - Send `canDefer: false` until the project exists, and `setup: pending` in every heartbeat from pairing until setup completes.
+  - Move the API-key path into the contract. On the sign-in step, offer "Use an API key instead" as an alternative without `href`, then present a `secret` prompt (`helpUrl` = the provider's key page). Verify the key with a real call and refuse it with `error` on the same kind of prompt. Drop the `api-key` action from `/_ptbk/harness-terminal`.
+  - Keep the native terminal as a fallback: an alternative with `href: "/_ptbk/harness-terminal"`, next to a `confirm` "Check sign-in". Prefer `return-code` for Claude Code (paste the code back) and `device-code` for Codex and Copilot, so the terminal is the exception.
+  - Report the harness installs and real checks as `activity` while `working`, and keep failed additional harnesses in it on the next prompt. Put the final summary (project, folder, harnesses) in the review prompt's `details`.
+  - Fill the new fields with defaults where there is nothing to say: `details: []`, `alternatives: []`, `activity: []`, `canDefer: true`. Re-run the onboarding conformance checks.
+
+### 2026-11-20: Live browser: contract ready
+
+**Lower priority than the 2026-11-20 PRIORITY entry and the 2026-11-19 setup entry. Finish both first.** Nothing here is rolled out: keep `browser-tab@1` unadvertised by default.
+
+- **Goal:** a member watches the tab an agent works in, live, from our UI on the engine's origin; the owner takes it over with one click and a passkey when the agent is stuck (a captcha, a login, a confirmation), then hands it back and the agent carries on; the owner can also open a fresh tab to sign in to a site by hand. Frames and input stay inside the engine's TLS: no relay, tunnel or CSP change.
+- **Changed:** `browser-tab@1` moves from reserved to a known draft capability ([live-sessions.md](live-sessions.md), [ADR 0019](../adr/0019-live-sessions-inside-the-tunnel.md) Accepted with revisions):
+  - Routes ([live.ts](../../packages/engine-api/src/capabilities/live.ts)): `POST /browser-sessions` (sign-in tab; replaces the reserved `POST /browser-tab-sessions`), `GET /browser-tabs`, `POST /browser-tabs/{tabId}/watch` and `/control`, `GET /browser-sessions/{sessionId}`, `POST /browser-sessions/{sessionId}/control`, `/hand-back`, `/end`, `GET /browser-help-requests` and `/{requestId}`, `POST /browser-help-requests/{requestId}/dismiss`. Events `browser-tab.changed` and `browser-help.changed`.
+  - New permission `browser.watch`, beside the owner-only `browser.control`. Step-up on opening a sign-in tab and on taking control. New problem codes `browser-tab-controlled`, `browser-tab-full`, `browser-busy`, `browser-session-ended`, `browser-help-resolved`, `live-channel-attached` (409) and `browser-origin-refused` (422). New audit actions `browser.*` and targets `browser-session`, `browser-help-request`.
+  - The channel format is fixed ([live-channel.ts](../../packages/engine-api/src/capabilities/live-channel.ts)): `hello`, `view`, `frame-ack`, `input`, `end` in; `hello`, `state`, `navigated`, `blocked`, `input-refused`, `end` out; a closed set of pointer, wheel and key events; media as a 13-byte header plus one image, 64 KiB at most.
+  - Reference behaviour: the in-memory engine ([in-memory/live.ts](../../packages/engine-api/src/in-memory/live.ts) and its tests). Conformance: the `engine-api.browser-tab.*` checks replace "must not be advertised" for this capability; `live-audio@1` and `live-video@1` stay reserved.
+- **Redo:**
+  1. Keep it off: advertise `browser-tab@1` only when an engine setting or test mode turns it on, and only while the browser tool runs. Everything else stays as it is until the platform asks to roll out.
+  2. Serve the routes through your route table with their permissions and step-up, and the WebSocket at `/api/v1/live-sessions/{sessionId}/channel` behind the gateway: session cookie, `Origin` equal to the engine's own origin, subprotocol `ptbk-live`, nothing in the URL.
+  3. Frames: CDP `Page.startScreencast` on the one tab (format JPEG, `maxWidth`/`maxHeight` from the viewer's `view`, a quality that keeps each frame under 64 KiB with the header), each `Page.screencastFrame` sent as `encodeLiveMedia({ kind: 'tab-frame-jpeg', … })`, `Page.screencastFrameAck` only once the viewer's `frame-ack` frees credit (at most 2 unacknowledged). `Page.stopScreencast` while the view is hidden or the page is blocked.
+  4. Input: replay each `LiveInputEvent` with `Input.dispatchMouseEvent` (pointer and wheel) and `Input.dispatchKeyEvent` (named keys as `key`/`code`, a character with `text`), modifiers Shift only. Nothing else from the client reaches CDP. While a human controls a tab, cancel file choosers (`Page.setInterceptFileChooserDialog`) and deny downloads (`Browser.setDownloadBehavior`).
+  5. Blocking: watch `Page.frameNavigated` and the target's URL; send `navigated { origin }` or `blocked { reason }` and stop frames and input on `chrome://`, `about:`, `devtools:`, extension, `file:` and `view-source:` pages, the password manager and settings, the Wallet's protected entry, and, while a human controls the tab, any origin outside the tab's origin at takeover plus the sign-in allowlist.
+  6. Pause and resume: taking control marks the agent's tab paused; the agent's browser tool waits at its next action instead of acting (the run keeps running, nothing is cancelled). When control ends (hand back, end, expiry, idle, revocation, protocol error) the tool resumes and gets the outcome `{ outcome, origin }` as a tool result: `handed-back`, `ended`, `expired`, `idle`, `blocked-origin` (control ended on a page the session could not show), `revoked`, or `cancelled`.
+  7. Help requests: let the agent's browser tool raise one (reason `login`, `captcha`, `confirmation`, `blocked` or `other`, and a short message of at most 500 characters), one open per tab, and wait for its resolution as above; `dismissed` when the owner declines.
+  8. Limits: one controller per tab, 5 sessions per tab, one sign-in session per engine, `endsAt` 10 minutes after opening, `attachBy` 30 s, 2 minutes without input ends a controller's session, more than 120 input events a second is a protocol error. A session is bound to the gateway session that opened it; revoking that session or the member ends it.
+  9. Audit metadata only (session, origin, outcome, reason, duration). Never log frames, input or typed text.
+  10. Write the engine tests LB-01 to LB-17, then run LB-20 to LB-25 by hand. Done when the `engine-api.browser-tab.*` checks pass against your engine in test mode and the by-hand cases pass on a headless VPS.
+- **Test cases (engine, unit level):**
+  - LB-01 Without the setting, `GET /engine` lacks `browser-tab@1` and every route answers 404 `capability-not-supported`.
+  - LB-02 A session opened by one gateway session is 404 to every other one, the same member's included, on every route and on the channel.
+  - LB-03 The channel upgrade without a cookie is 401, with another `Origin` or without `browser.watch` 403, without `ptbk-live` refused, a second attach 409 `live-channel-attached`; after a drop the same gateway session attaches again. A handshake that fails after the engine accepted the upgrade is audited as `failed`.
+  - LB-04 `POST /browser-sessions`, `POST /browser-tabs/{id}/control` and `POST /browser-sessions/{id}/control` answer 401 `step-up-required` without a fresh assertion, 403 without `browser.control`.
+  - LB-05 A watcher's `input` is answered `input-refused { reason: 'not-controlling' }` and nothing reaches `Input.dispatch*`.
+  - LB-06 A second controller gets 409 `browser-tab-controlled`; watchers keep their frames.
+  - LB-07 Taking control pauses the agent's browser tool at its next action; handing back resumes it with `handed-back`.
+  - LB-08 On a `chrome://` page, the password manager and the Wallet's entry page, no frame is forwarded to anyone, watchers included, input is refused `blocked`, and `blocked` carries no origin. A watcher follows the agent to any web origin, but while someone controls the tab gets no frame off the controller's origins.
+  - LB-09 A sign-in at an origin outside the allowlist or at the engine's own origin is 422 `browser-origin-refused`; while controlled, a link to another origin stops frames until the tab returns.
+  - LB-10 Every `LiveInputEvent` maps to one `Input.dispatchMouseEvent` or `Input.dispatchKeyEvent` with Shift as the only modifier; file choosers and downloads are refused while controlled.
+  - LB-11 An unknown message, a message over 4 KiB, a binary message from the browser, or anything before `hello` ends the channel with `end { reason: 'protocol-error' }` and close 1008.
+  - LB-12 Every media message decodes with `decodeLiveMedia`, is at most 64 KiB, and no third frame is sent before an ack.
+  - LB-13 With a fake clock: no attach in 30 s, after opening or after a drop, ends with `not-attached` (a controlled tab goes back to the agent), `endsAt` with `expired`, 2 minutes without a controller's input with `idle`; watchers are not idle-ended.
+  - LB-14 Revoking the gateway session, removing the member, or a policy or role change that takes `browser.watch` (or sight of the tab's work) ends their sessions with `revoked`; one that takes `browser.control` ends a controller's session, and its help request resolves `revoked`. Without waiting for the member's next request.
+  - LB-15 A help request goes `pending` (tab `waiting`), `in-progress` on control, `resolved` with `handed-back`, `dismissed`, `blocked-origin` or `cancelled` (the agent's work closed the tab); its `message` is stored as one line of plain text: the model's line breaks, tabs, control characters and bidi controls folded away (`toBrowserHelpMessage`).
+  - LB-16 After a session in which `hunter2` was typed, the audit log holds the `browser.*` entries and neither the typed text nor a URL path.
+  - LB-17 `browser-tab.changed` and `browser-help.changed` go out, IDs only, to members with `browser.watch` only.
+- **Test cases (by hand, on a headless VPS engine with the setting on):**
+  - LB-20 An agent task browses a site; a member watches it from the engine UI and sees it move; the relay's packet capture shows only TLS.
+  - LB-21 The agent hits a captcha and raises a help request; the owner gets it in the UI, takes control in one click with a passkey, solves it, hands back, and the agent carries on and mentions the outcome.
+  - LB-22 The owner opens a sign-in tab at a Wallet login's origin, signs in, ends it; the agent's next task is signed in.
+  - LB-23 During control, opening the browser's settings or the Wallet's entry stops the frames until the tab leaves it.
+  - LB-24 Leaving a controlled tab alone for 2 minutes ends the session as `idle` and the agent resumes.
+  - LB-25 `ptbk-conformance` runs the `engine-api.browser-tab.*` checks with the engine's test-mode levers ([conformance.md](conformance.md#writing-a-target)) and none fails.
+
+### 2026-11-18: Sign-in shows ways forward without a passkey
+
+- **Changed:** [`sign-in.html`, `gateway.js` and `gateway.css`](../../packages/gateway-pages/pages/) in `@ptbk/gateway-pages`. Under the sign-in button, and after a cancelled, failed or unrecognised passkey, the page says what to do without a passkey for this engine on this device: use the phone option in the browser's prompt, use a synced passkey or the device that has it, or open the engine from the Promptbook dashboard to join. The copy sits once after the sections in an element with `data-shown-in="<states>"`, which `gateway.js` shows only in those states. The button still opens the prompt only on a click. Endpoints, placeholders and CSP are unchanged ([gateway.md, Sessions](gateway.md#sessions)).
+- **Redo:** copy `sign-in.html`, `gateway.js` and `gateway.css` from `packages/gateway-pages/pages/` again. Nothing changes on the server.
+
+### 2026-11-17: Step-up confirmed in a popup, then the action goes on
+
+- **Changed:** [`step-up.html` and `gateway.js`](../../packages/gateway-pages/pages/) in `@ptbk/gateway-pages` support `mode=popup`. The engine UI opens `STEP_UP_PATH?mode=popup&nonce=<16–64 base64url characters>&returnTo=…` in a small window. The page starts the passkey prompt at once and, after verify succeeds, posts `{ type: 'step-up-confirmed', nonce }` on `BroadcastChannel('ptbk-step-up')` and to `window.opener` (same origin), then closes itself. The UI sends the original request again with the input still in memory (a Wallet password included). If the popup is blocked, the UI falls back to the full-page redirect as before ([gateway.md, Step-up](gateway.md#step-up)).
+- **Redo:**
+  1. Copy `step-up.html` and `gateway.js` from `packages/gateway-pages/pages/` again.
+  2. Make the step-up page accept `mode=popup` and `nonce` in its query next to `returnTo`; if your gateway parses page queries strictly, it must not refuse them.
+  3. Nothing else changes on the server: options and verify answer as before, and a popup step-up confirms the same session.
+
+### 2026-11-16: Smoother join: waiting page signs in, tries left, UI invites in the dashboard
+
+- **Changed:**
+  - [`join.html`, `gateway.js` and `gateway.css`](../../packages/gateway-pages/pages/) in `@ptbk/gateway-pages`. The join page explains the second passkey in one line. The waiting page shows the code large ("482 913") with "Tell this code to the person approving you". It asks `JOIN_STATUS_PATH` at most every 3 s, retries a network failure, 429 or 5xx quietly (the third in a row shows the error) and, on `approved`, shows "You're in" and goes to `next` ([gateway.md, Access requests](gateway.md#access-requests)).
+  - `ProblemDetails.attemptsRemaining` in [`common.ts`](../../packages/engine-api/src/common.ts): optional, on 422 `access-code-mismatch` from `POST /access-requests/{id}/approve`, the wrong codes the request still survives (`0` when this one deleted it) ([engine-api.md, Access requests](engine-api.md#access-requests)). The UI says "N tries left" with it and a general warning without it. `ENGINE_API_VERSION` stays 1.15.0.
+  - The engine UI opens `/members?request=<accessRequestId>` on that request's approval dialog; the dashboard's approver email links there. Home lists each waiting person with the same link.
+  - The engine UI no longer creates invite links: "Invite in the dashboard" replaces "Invite member". `POST /invites`, `GET /invites` and `DELETE /invites/{id}` stay in the contract; the UI still lists and revokes existing links.
+- **Redo:**
+  1. Copy `join.html`, `gateway.js` and `gateway.css` from `packages/gateway-pages/pages/` again.
+  2. Check that the status answer reporting `approved` sets the session cookie and returns a safe `next`, so the waiting page signs in by itself, and that an unknown or deleted request answers 404 (the page shows it as declined). Holding the status answer is now optional; if you hold it, stay under the page's 15 s timeout.
+  3. Re-vendor the contract and add `attemptsRemaining` to the `access-code-mismatch` problem.
+  4. `/members?request=<id>` is a UI route: nothing to do unless your gateway intercepts `/members`. An anonymous request for it must still redirect to sign-in with the path and query in `next`.
+  5. Keep serving invite creation (`POST /invites`): the UI no longer offers it, but engines without a dashboard and existing links rely on it. Nothing to change.
+
+### 2026-11-16: Gateway pages carry the Promptbook brand kit
+
+- **Changed:** [`gateway.css`](../../packages/gateway-pages/pages/gateway.css) takes the brand kit's ink blue for links and focus, Exo 2 for headings (system fallback, no font file), and the pages' masthead shows the official lockup as inline SVG. Endpoints, script and CSP are unchanged.
+- **Redo:** optional. Copy `pages/` again if you want the same look.
+
+### 2026-11-16: UI loader checks again when a delayed release becomes eligible
+
+- **Changed:** [ui-loader.md, Fetch](ui-loader.md#what-the-engine-must-do): after a `delay-not-elapsed` refusal, the engine schedules one extra check at `eligibleAt` plus a few seconds of jitter, on top of the periodic check (at most 1 hour apart). Each check replaces the pending one; it is not persisted. Checklist ENG-120. No conformance check: the harness triggers checks by restarting the engine.
+- **Redo:** in `src/app/web/ui-loader.ts`, in the `delay-not-elapsed` branch where `verdict.eligibleAt` is known, set one timer for `eligibleAt` plus jitter that calls `this.check()`; clear it at the start of every check and on stop. Keep the hourly interval.
+
 ### 2026-11-16: Gateway pages follow the new visual identity
 
 - **Changed:** [`gateway.css`](../../packages/gateway-pages/pages/gateway.css) now carries the new design tokens (Inter, graphite) and soft buttons, hairline borders and teal only for links. The HTML, script, endpoints and CSP are unchanged.
@@ -112,6 +405,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
       Keep the live steps in a separate part of the digest, and remember per chat when you last emitted for them. If only that part changed less than 1 s after the last emit, keep the previous value of that part and arm a wake at last emit + 1 s, so the change goes out then. Any other change emits at once.
 
   11. Re-run the `engine-api` suite; the three new checks and `engine-api.schemas.responses-strict` must pass. Then open the demo project's copywriter thread (`chats/2026-11-13-1201-chatter-new-chat.book`) through the UI. It should show Chatter's steps (`Glob …`, `Read …`, `mcp__ptbk__create_task …`), the task card with commit `67b252ca` and no bullet lists of tool calls. The in-memory engine's `chat-copywriter` demo thread is the reference.
+
+### 2026-11-11: Certificate transparency watch
+
+- **Changed:** the hourly check of the public certificate logs, which warns the owner about a certificate for the engine's address that someone else made, is now tracked. The dashboard's trust page will promise it once engines ship it. The spec always asked for it ([Residual risks](../spec/zero-trust-spec.md#residual-risks-certificates-and-engine-updates), item 1); it is now tracked as ENG-122 in the [checklist](checklist.md#tunnel-interfaces-2-and-3).
+- **Redo:** implement it per the spec: every hour, check the CT logs for each of the engine's hostnames, and warn the owner (UI, email, push) about any certificate whose key is not the engine's.
 
 ### 2026-11-11: Where a release build gets its trust policy, and live staging
 
@@ -266,7 +564,7 @@ The engine is done when all of these hold. Run them on a **conformance build** o
 
    Run it without any heartbeat interval override, so `heartbeat.cadence.interval` proves the production 60 s. It exits 0 only when no check failed.
 
-2. **The local dev stack works** with your engine in place of the mock (`testing-against-the-platform.md`, section "(b) The local dev stack"). Link it with a link code, see it online in the dashboard, open it through the relay and sign in with a passkey, with no CSP violation in the browser console. The UI part of this check waits for the platform's task E-03, which re-signs the stack's UI releases for a conformance build.
+2. **The local dev stack works** with your engine in place of the mock (`testing-against-the-platform.md`, section "(b) The local dev stack"). Link it with a link code, see it online in the dashboard, open it through the relay and sign in with a passkey, with no CSP violation in the browser console. For the UI part, `bun run dev:stack up --no-system --engine real` runs your conformance build with a UI release signed for it.
 3. **Your engine works on live staging** (`staging.md`): linked on `app.ptbk.io`, a Let's Encrypt certificate through the relay, our signed UI installed with the staging trust policy, and `ptbk-conformance staging --engine https://<engineId>.engines.ptbk.link` with no failure.
 4. **No skips except these:** `capability-not-advertised` for capabilities you chose not to ship, and `engine-api.cross-member.private-resources`, which needs a target module (`testing-against-the-platform.md`, section "Against a running engine").
 5. **Every `ENG-xx` row** in `checklist.md` is implemented, or is marked in the plan as not required yet.

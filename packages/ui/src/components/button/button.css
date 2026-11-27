@@ -3,7 +3,8 @@
     --button-primary-bg: var(--color-wash-strong);
     --button-primary-bg-hover: var(--color-wash-strong-hover);
     --button-primary-bg-active: var(--color-wash-strong-active);
-    --button-primary-border: var(--color-divider);
+    /* A line of the wash's own ink blue, so the main action reads as one beside a secondary's grey hairline. */
+    --button-primary-border: color-mix(in oklab, var(--color-brand) 30%, transparent);
     --button-primary-text: var(--color-text);
     --button-secondary-bg-hover: var(--color-hover);
     --button-secondary-bg-active: var(--color-selected);
@@ -25,4 +26,15 @@
     --button-danger-solid-text: var(--color-on-danger-fill);
     --button-disabled-text: var(--color-text-muted);
     --button-disabled-border: var(--color-hairline);
+}
+
+/*
+ * On graphite the light theme's wash all but vanishes (U-23: the main action of a setup step was not findable), so dark
+ * mode washes deeper and draws a stronger line. Still a wash, never a fill.
+ */
+.dark {
+    --button-primary-bg: color-mix(in oklab, var(--color-brand) 16%, transparent);
+    --button-primary-bg-hover: color-mix(in oklab, var(--color-brand) 21%, transparent);
+    --button-primary-bg-active: color-mix(in oklab, var(--color-brand) 26%, transparent);
+    --button-primary-border: color-mix(in oklab, var(--color-brand) 45%, transparent);
 }

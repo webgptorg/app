@@ -94,7 +94,7 @@ test('a finished run shows usage, cost and the project change with the truncated
     await expect(outputs.getByRole('table', { name: `Files changed in ${change.projectName}` })).toContainText(
         firstFile.path,
     );
-    await expect(outputs.getByText(/The engine truncated this diff/)).toBeVisible();
+    await expect(outputs.getByText(/The project truncated this diff/)).toBeVisible();
     await expect(outputs.getByRole('region', { name: `Diff of ${change.projectName}` })).toBeVisible();
 });
 

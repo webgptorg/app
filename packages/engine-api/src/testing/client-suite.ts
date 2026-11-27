@@ -965,6 +965,15 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
         });
     });
 
+    it('runs the UI update check early and reports it in the security panel (updates@1)', async () => {
+        const engine = makeEngine({});
+        const check = ok(await engine.client.updates.checkUi(signal()));
+        expect(check.outcome).toBe('up-to-date');
+        expect(ok(await engine.client.security.get(signal())).ui.lastUpdateCheck).toEqual(check);
+        const again = await engine.client.updates.checkUi(signal());
+        expect(again.kind === 'problem' && again.problem.code).toBe('update-check-too-soon');
+    });
+
     it('reports every security panel field the engine sets, exactly as set', async () => {
         const at = '2026-10-19T08:00:00Z';
         const sha = 'e'.repeat(64);
@@ -1006,7 +1015,8 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
             outboundDestinations: ['https://app.ptbk.io', 'https://api.openai.com'],
         });
         const read = ok(await engine.client.security.get(signal()));
-        expect(read).toEqual(set);
+        // `nextCheckAt` is the updater's at the moment of the request: an hour after the last check here.
+        expect(read).toEqual({ ...set, ui: { ...set.ui, nextCheckAt: '2026-10-19T09:00:00Z' } });
         expect(read.lastHeartbeat?.body).toBe(body);
     });
     describe('capabilities', () => {
@@ -1108,6 +1118,8 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                 { id: 'agent-management', version: 1 },
                 { id: 'onboarding', version: 1 },
                 { id: 'wallet', version: 1 },
+                { id: 'ai-tools', version: 1 },
+                { id: 'updates', version: 1 },
             ]);
             expect(info.engineId).toMatch(/^[a-z2-7]{26}$/);
             const first = ok(

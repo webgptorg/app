@@ -13,17 +13,18 @@ import {
 } from '@ptbk/ui';
 import type { MenuEntry, StatusTone } from '@ptbk/ui';
 import { getRouteApi } from '@tanstack/react-router';
-import { Ban, Eye, Globe, KeyRound, Plus } from 'lucide-react';
+import { Ban, Eye, Globe, KeyRound, Plus, Upload } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 
 import { cx } from '../../app/cx';
+import { useSignInItems } from '../browser/use-sign-in-item';
 import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
 import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
 import type { LoginDialogTarget } from './login-dialog';
 import { useResumedStepUp } from '../step-up/step-up';
-import { REMOVE_LOGIN_ACTION, SAVE_LOGIN_ACTION, useWalletMutations } from './use-wallet-mutations';
+import { SAVE_LOGIN_ACTION, useWalletMutations } from './use-wallet-mutations';
 import type { WalletMutations } from './use-wallet-mutations';
 import { loginTitle } from './login-title';
 import { useAgentLookByName } from './use-agent-look-by-name';
@@ -35,6 +36,9 @@ const route = getRouteApi('/wallet');
 
 // The dialog brings the form layer, so it loads when first opened rather than with the page.
 const LoginDialog = lazy(() => import('./login-dialog').then((module) => ({ default: module.LoginDialog })));
+const WalletImportDialog = lazy(() =>
+    import('./wallet-import-dialog').then((module) => ({ default: module.WalletImportDialog })),
+);
 
 function verificationLook(record: ReadWalletRecord): { readonly label: string; readonly tone: StatusTone } {
     switch (record.verification?.state) {
@@ -77,6 +81,7 @@ function LoginRow({
     readonly onRemove: () => void;
 }) {
     const look = verificationLook(record);
+    const signIn = useSignInItems(record.origin);
     const { title, site } = loginTitle(record.label, siteName(record.origin));
     // The site shows once: as the title, or beside a name the owner gave the login.
     const details = [
@@ -132,6 +137,7 @@ function LoginRow({
                         variant="ghost"
                         size="sm"
                         items={[
+                            ...signIn,
                             {
                                 kind: 'item',
                                 id: 'remove',
@@ -174,7 +180,7 @@ function answerable(request: ReadWalletRequest): boolean {
 
 function RequestAvatar({ name }: { readonly name: string }) {
     const look = useAgentLookByName(name);
-    return <AgentAvatar name={name} agentKey={look.key} profile={look.profile} size="xs" />;
+    return <AgentAvatar name={name} agentKey={look.key} profile={look.profile} origin={look.origin} size="xs" />;
 }
 
 /**
@@ -200,7 +206,9 @@ function RequestItem({
     const canAnswer = canManage && ready && answerable(request);
     const seen = request.seenAt !== null;
     const agent = request.agents[0] ?? m.wallet_request_system_agent();
+    const signIn = useSignInItems(request.origin);
     const items: MenuEntry[] = [
+        ...signIn,
         ...(seen
             ? []
             : [
@@ -306,17 +314,12 @@ function parseResumedSave(data: unknown): ResumedSave | undefined {
     };
 }
 
-function parseResumedRemove(data: unknown): string | undefined {
-    return typeof data === 'object' && data !== null
-        ? optionalId((data as Record<string, unknown>)['recordId'])
-        : undefined;
-}
-
 const withRecord = (record: ReadWalletRecord | undefined) => (record === undefined ? {} : { record });
 const withRequest = (request: ReadWalletRequest | undefined) => (request === undefined ? {} : { request });
 
 type Pending =
     | { readonly kind: 'login'; readonly target: LoginDialogTarget }
+    | { readonly kind: 'import' }
     | { readonly kind: 'remove'; readonly record: ReadWalletRecord };
 
 /**
@@ -340,7 +343,6 @@ export function WalletPage() {
         }
     };
     const resumedSave = useResumedStepUp(SAVE_LOGIN_ACTION, parseResumedSave);
-    const resumedRemove = useResumedStepUp(REMOVE_LOGIN_ACTION, parseResumedRemove);
     const [resumeDone, setResumeDone] = useState(false);
     const records = wallet.data?.records ?? NO_RECORDS;
     const resumedTarget: LoginDialogTarget | null =
@@ -351,31 +353,42 @@ export function WalletPage() {
                   ...withRequest(wallet.data?.pending.find(({ id }) => id === resumedSave.requestId)),
                   resumed: resumedSave.values,
               };
-    const resumedRecord =
-        resumedRemove === undefined || resumeDone || !canManage
-            ? undefined
-            : records.find(({ id }) => id === resumedRemove);
     const loginTarget: LoginDialogTarget | null =
         pending?.kind === 'login'
             ? pending.target
             : (resumedTarget ?? (search.dialog === 'new' && canManage && ready ? {} : null));
-    const removing = pending?.kind === 'remove' ? pending.record : resumedRecord;
+    const removing = pending?.kind === 'remove' ? pending.record : undefined;
 
     const addLogin =
         canManage && ready ? (
-            <Button
-                variant="primary"
-                onClick={() => {
-                    setPending({ kind: 'login', target: {} });
-                }}
-            >
-                <Plus aria-hidden className="size-4" />
-                {m.wallet_add_login()}
-            </Button>
+            <>
+                <Button
+                    onClick={() => {
+                        setPending({ kind: 'import' });
+                    }}
+                >
+                    <Upload aria-hidden className="size-4" />
+                    {m.wallet_import_title()}
+                </Button>
+                <Button
+                    variant="primary"
+                    onClick={() => {
+                        setPending({ kind: 'login', target: {} });
+                    }}
+                >
+                    <Plus aria-hidden className="size-4" />
+                    {m.wallet_add_login()}
+                </Button>
+            </>
         ) : null;
 
     return (
         <Page title={m.wallet_title()} description={m.wallet_description()} actions={addLogin}>
+            {pending?.kind === 'import' && canManage && ready ? (
+                <Suspense fallback={null}>
+                    <WalletImportDialog records={records} onClose={close} />
+                </Suspense>
+            ) : null}
             {wallet.isPending ? (
                 <Skeleton shape="block" className="h-40 w-full" />
             ) : wallet.isError ? (

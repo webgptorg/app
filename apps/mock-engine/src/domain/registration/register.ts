@@ -1,4 +1,4 @@
-import type { EngineVersion, Hostname, LinkCode, RegistrationErrorCode } from '@ptbk/protocol';
+import type { EngineVersion, Hostname, LinkCode, OwnerSetupCommitment, RegistrationErrorCode } from '@ptbk/protocol';
 import { REGISTRATION_ERROR_CODE, checkRegistrationResponse, signRegistration } from '@ptbk/protocol';
 
 import type { DashboardApi } from '../dashboard/dashboard-api';
@@ -8,7 +8,12 @@ import type { Logger } from '../logger';
 import type { Registration, RegistrationStore } from './registration';
 
 export type RegistrationOutcome =
-    | { readonly kind: 'registered'; readonly registration: Registration }
+    | {
+          readonly kind: 'registered';
+          readonly registration: Registration;
+          /** The pairing tab's commitment (ADR 0023), handed over once and never stored with the registration. */
+          readonly ownerSetupCommitment: OwnerSetupCommitment | null;
+      }
     | { readonly kind: 'already-registered'; readonly registration: Registration }
     | { readonly kind: 'rejected'; readonly reason: RegistrationRejection }
     | {
@@ -123,7 +128,7 @@ export async function registerEngine(deps: RegisterEngineDeps): Promise<Registra
                 memberKey: call.response.memberKey,
             });
             await deps.store.save(registration);
-            return { kind: 'registered', registration };
+            return { kind: 'registered', registration, ownerSetupCommitment: call.response.ownerSetupCommitment };
         }
     }
 }

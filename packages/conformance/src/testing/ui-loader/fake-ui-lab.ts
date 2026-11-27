@@ -1,7 +1,9 @@
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { bytesToNumberLE } from '@noble/curves/utils.js';
-import type { SecurityOverview, UiRefusalReason } from '@ptbk/engine-api';
+import type { EngineInfo, SecurityOverview, UiRefusalReason } from '@ptbk/engine-api';
 import {
+    EngineInfo as EngineInfoSchema,
+    KNOWN_CAPABILITIES,
     ENGINE_API_VERSION,
     ENGINE_RESERVED_PATHS,
     ENGINE_UI_CSP,
@@ -81,6 +83,8 @@ export const UI_LOADER_DEFECTS = [
     'never-installs',
     'serve-wrong-bytes',
     'reject-malformed-keys',
+    'check-now-skips-delay',
+    'next-check-far',
 ] as const;
 export type UiLoaderDefect = (typeof UI_LOADER_DEFECTS)[number];
 
@@ -222,7 +226,7 @@ export function createFakeUiLab(defect?: UiLoaderDefect): UiLoaderLab & { readon
         return JSON.parse(decode(answer.bytes));
     }
 
-    async function check(current: EngineSettings): Promise<void> {
+    async function check(current: EngineSettings, early = false): Promise<void> {
         checks += 1;
         const { update } = current;
         if (update.policy === 'manual' && !has('manual-installs')) return;
@@ -268,7 +272,7 @@ export function createFakeUiLab(defect?: UiLoaderDefect): UiLoaderLab & { readon
                 revocations,
                 lastAcceptedRevocationIssuedAt: disk.lastAccepted === null ? null : new Date(disk.lastAccepted),
                 policy,
-                mode: update.policy === 'auto' ? 'auto' : 'manual',
+                mode: update.policy === 'auto' && !(early && has('check-now-skips-delay')) ? 'auto' : 'manual',
                 installedVersion: has('allow-downgrade')
                     ? null
                     : ((disk.active?.version ?? null) as EngineVersion | null),
@@ -448,6 +452,12 @@ export function createFakeUiLab(defect?: UiLoaderDefect): UiLoaderLab & { readon
         return null;
     }
 
+    function nextCheckAt(): string | null {
+        if (settings?.update.policy === 'manual' || lastCheck === null) return null;
+        const hours = has('next-check-far') ? 72 : 1;
+        return second(Date.parse(lastCheck.at) + hours * 3_600_000);
+    }
+
     function security(): SecurityOverview {
         const at = second(Date.now());
         const zeros = '0'.repeat(64);
@@ -461,6 +471,7 @@ export function createFakeUiLab(defect?: UiLoaderDefect): UiLoaderLab & { readon
                 releaseLogIndex: has('panel-wrong-bundle') ? null : (active?.logIndex ?? null),
                 releaseLogEntryUuid: null,
                 lastUpdateCheck: lastCheck,
+                nextCheckAt: nextCheckAt(),
             },
             tls: { certificateSha256: zeros, notAfter: at, lastCtCheck: null },
             relays: [],
@@ -473,16 +484,32 @@ export function createFakeUiLab(defect?: UiLoaderDefect): UiLoaderLab & { readon
         });
     }
 
+    function engineInfo(): EngineInfo {
+        return EngineInfoSchema.parse({
+            engineId: 'a'.repeat(26),
+            name: 'Fake UI lab',
+            hostname: 'engine.test',
+            dashboardUrl: null,
+            mode: 'local',
+            capabilities: [KNOWN_CAPABILITIES.updates],
+        });
+    }
+
     function respond(status: number, body: BodyInit | null, type: string, csp = ENGINE_UI_CSP): Response {
         const headers = new Headers({ ...SECURITY_HEADERS, 'Content-Type': type });
         headers.set('Content-Security-Policy', csp);
         return new Response(body, { status, headers });
     }
 
-    function handle(request: Request): Response {
+    async function handle(request: Request): Promise<Response> {
         if (request.headers.get('Cookie') !== COOKIE) return respond(401, 'sign in', 'text/plain');
         const url = new URL(request.url);
         if (url.pathname === '/api/v1/security') return respond(200, JSON.stringify(security()), 'application/json');
+        if (url.pathname === '/api/v1/engine') return respond(200, JSON.stringify(engineInfo()), 'application/json');
+        if (url.pathname === '/api/v1/updates/ui/check' && request.method === 'POST' && settings !== null) {
+            await check(settings, true);
+            return respond(200, JSON.stringify(lastCheck), 'application/json');
+        }
         const active = disk.active;
         if (active === null) return respond(503, 'The UI is unavailable.', 'text/plain');
         const csp = has('manifest-csp') ? active.csp : ENGINE_UI_CSP;
@@ -502,7 +529,7 @@ export function createFakeUiLab(defect?: UiLoaderDefect): UiLoaderLab & { readon
 
     const target: ConformanceTarget = {
         baseUrl: ENGINE_URL,
-        fetch: (input, init) => Promise.resolve(handle(new Request(input, init))),
+        fetch: (input, init) => handle(new Request(input, init)),
         session: (subject) => Promise.resolve(subject.kind === 'owner' ? { cookie: COOKIE } : null),
     };
 

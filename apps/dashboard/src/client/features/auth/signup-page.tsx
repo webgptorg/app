@@ -1,71 +1,51 @@
 import { Button, EmptyState } from '@ptbk/ui';
 import { Link2Off } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { Navigate, useNavigate } from '@tanstack/react-router';
+import { useCallback } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import type { SessionView } from '../../../shared/api/routes';
 import { useApiClient } from '../../api/api-client-context';
 import { useBrowser } from '../../core/browser';
-import { Link } from '../../core/link';
 import { registerWithEmailToken } from '../passkeys/ceremonies';
 import { useCeremony } from '../passkeys/use-ceremony';
+import { afterSignUp } from '../licensing/website-link-marker';
 import { useCompleteSignIn } from '../session/end-session';
 import { CeremonyPanel } from './ceremony-panel';
-import { EmailStep } from './email-step';
 import type { FragmentToken } from './fragment-token';
 
-/** `/signup`: the email step, or with an emailed token (taken from the fragment by the route) the passkey step. */
+/**
+ * `/signup`: with an emailed token (taken from the fragment by the route) the passkey step that creates the account.
+ * Without one there is nothing to do here: accounts start on Continue, and a malformed link offers the way back there.
+ */
 export function SignUpPage(props: { readonly initialToken: FragmentToken }) {
-    const [token, setToken] = useState(props.initialToken);
-    switch (token.kind) {
+    const navigate = useNavigate();
+    const restart = useCallback(() => {
+        void navigate({ to: '/continue', replace: true });
+    }, [navigate]);
+    switch (props.initialToken.kind) {
         case 'none':
-            return (
-                <EmailStep
-                    purpose="signup"
-                    title={m.signup_title()}
-                    intro={
-                        <>
-                            <p className="font-medium">{m.signup_value()}</p>
-                            <p className="text-text-muted">{m.signup_body()}</p>
-                        </>
-                    }
-                    submitLabel={m.signup_email_action()}
-                    footer={
-                        <p className="border-t border-hairline pt-5 text-sm text-text-muted">
-                            {m.signup_have_account()} <Link to="/signin">{m.signup_sign_in()}</Link>
-                        </p>
-                    }
-                />
-            );
+            return <Navigate to="/continue" replace />;
         case 'malformed':
-            return (
-                <LinkExpired
-                    onRestart={() => {
-                        setToken({ kind: 'none' });
-                    }}
-                />
-            );
+            return <LinkExpired onRestart={restart} />;
         case 'token':
-            return (
-                <SignUpPasskeyStep
-                    token={token.token}
-                    onRestart={() => {
-                        setToken({ kind: 'none' });
-                    }}
-                />
-            );
+            return <SignUpPasskeyStep token={props.initialToken.token} onRestart={restart} />;
     }
 }
 
 function SignUpPasskeyStep(props: { readonly token: string; readonly onRestart: () => void }) {
     const api = useApiClient();
-    const { passkeys } = useBrowser();
+    const { passkeys, storage, now } = useBrowser();
     const completeSignIn = useCompleteSignIn();
     const ceremony = useCallback(
         () => registerWithEmailToken({ api, passkeys }, 'signup', props.token),
         [api, passkeys, props.token],
     );
-    const onRegistered = useCallback((session: SessionView) => completeSignIn(session, '/'), [completeSignIn]);
+    // Back to the ptbk.io link when this sign-up started there, even from the emailed link in a new tab.
+    const onRegistered = useCallback(
+        (session: SessionView) => completeSignIn(session, afterSignUp(storage, now()) ?? '/'),
+        [completeSignIn, storage, now],
+    );
     const { state, start } = useCeremony(ceremony, onRegistered);
     if (state.kind === 'failed' && state.failure.kind === 'api' && state.failure.code === 'token-invalid') {
         return <LinkExpired onRestart={props.onRestart} />;

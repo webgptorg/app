@@ -1,9 +1,12 @@
 import {
+    createCryptoRandom,
     defaultHostname,
     Hostname,
     deriveEngineId,
     ed25519PublicKeyToBytes,
     EngineVersion,
+    newOwnerSetupSecret,
+    ownerSetupCommitment,
     RegisterEngineResponse,
     type LinkCode,
     type RegisterEngineRequest,
@@ -22,7 +25,17 @@ import { LINK_CODE_TTL_MS } from './issue-link-code';
 
 async function expectedResponse(engine: TestEngine): Promise<RegisterEngineResponse> {
     const engineId = await deriveEngineId(ed25519PublicKeyToBytes(engine.publicKey));
-    return { engineId, hostname: defaultHostname(engineId, TEST_ENGINE_DOMAIN), relays: RELAYS, memberKey: null };
+    return {
+        engineId,
+        hostname: defaultHostname(engineId, TEST_ENGINE_DOMAIN),
+        relays: RELAYS,
+        memberKey: null,
+        ownerSetupCommitment: null,
+    };
+}
+
+function newCommitment() {
+    return ownerSetupCommitment(newOwnerSetupSecret(createCryptoRandom()));
 }
 
 describe('registerEngine', () => {
@@ -32,7 +45,12 @@ describe('registerEngine', () => {
         const engine = await createTestEngine();
         const code = await t.issue(org);
         const outcome = await t.register(await engine.register(code, { engineVersion: '1.2.3', mode: 'direct' }));
-        expect(outcome).toEqual({ kind: 'registered', response: await expectedResponse(engine) });
+        expect(outcome).toEqual({
+            kind: 'registered',
+            response: await expectedResponse(engine),
+            orgId: org,
+            relinked: false,
+        });
         expect(RegisterEngineResponse.parse(outcome.kind === 'registered' ? outcome.response : null)).toBeTruthy();
         expect(t.stores.state.engines.get(engine.engineId)).toMatchObject({
             orgId: org,
@@ -88,6 +106,56 @@ describe('registerEngine', () => {
         const logged = JSON.stringify(t.logger.entries);
         expect(logged).not.toContain(code);
         expect(logged).not.toContain(await sha256Hex(code));
+    });
+
+    describe('owner setup commitment (ADR 0023)', () => {
+        it('answers the code’s commitment once, to the engine that redeemed it', async () => {
+            const t = setup();
+            const commitment = await newCommitment();
+            const code = await t.issue(testOrgId(), commitment);
+            const engine = await createTestEngine();
+            const first = await t.register(await engine.register(code));
+            expect(first).toMatchObject({ kind: 'registered', response: { ownerSetupCommitment: commitment } });
+            expect(await t.register(await engine.register(code))).toEqual({ kind: 'invalid-link-code' });
+            const other = await createTestEngine();
+            expect(await t.register(await other.register(code))).toEqual({ kind: 'invalid-link-code' });
+            expect(JSON.stringify(t.logger.entries)).not.toContain(commitment);
+        });
+
+        it('gives a re-linking engine the new code’s commitment, or null when that code has none', async () => {
+            const t = setup();
+            const org = testOrgId();
+            const engine = await createTestEngine();
+            await t.register(await engine.register(await t.issue(org, await newCommitment())));
+            const commitment = await newCommitment();
+            expect(await t.register(await engine.register(await t.issue(org, commitment)))).toMatchObject({
+                relinked: true,
+                response: { ownerSetupCommitment: commitment },
+            });
+            expect(await t.register(await engine.register(await t.issue(org)))).toMatchObject({
+                relinked: true,
+                response: { ownerSetupCommitment: null },
+            });
+        });
+
+        it('hands out nothing for an expired or a cancelled code', async () => {
+            const t = setup();
+            const org = testOrgId();
+            const engine = await createTestEngine();
+            const expired = await t.tryIssue(org, await newCommitment());
+            t.clock.advance(LINK_CODE_TTL_MS);
+            if (expired.kind !== 'issued') throw new Error('expected a code');
+            expect(await t.register(await engine.register(expired.linkCode))).toEqual({ kind: 'invalid-link-code' });
+
+            const cancelled = await t.tryIssue(org, await newCommitment());
+            if (cancelled.kind !== 'issued') throw new Error('expected a code');
+            await t.stores.linkCodes.cancel(org, cancelled.linkCodeId, t.clock.nowMs());
+            expect(await t.register(await engine.register(cancelled.linkCode))).toEqual({ kind: 'invalid-link-code' });
+            expect(
+                [...t.stores.state.linkCodes.values()].find((code) => code.id === cancelled.linkCodeId)
+                    ?.ownerSetupCommitment,
+            ).toBeNull();
+        });
     });
 
     it('refuses an expired code 30 days and 1 second after issuance', async () => {
@@ -147,7 +215,8 @@ describe('registerEngine', () => {
         t.clock.advance(1000);
         const code = await t.issue(org);
         const second = await t.register(await engine.register(code, { engineVersion: '2.0.0', mode: 'direct' }));
-        expect(second).toEqual(first);
+        expect(second).toEqual({ ...first, relinked: true });
+        expect(first).toMatchObject({ relinked: false });
         expect(t.stores.state.engines.size).toBe(1);
         expect(t.stores.state.engines.get(engine.engineId)).toMatchObject({
             orgId: org,
@@ -210,21 +279,24 @@ describe('registerEngine', () => {
         const t = setup({
             wrapLinkCodes: (store, stores) => ({
                 ...store,
-                async redeemForNewEngine(codeHash, engine) {
+                async redeemForNewEngine(codeHash, engine, maxActiveEngines) {
                     if (!raced) {
                         raced = true;
                         stores.state.engines.set(engine.engineId, engine);
                         return 'conflict';
                     }
-                    return store.redeemForNewEngine(codeHash, engine);
+                    return store.redeemForNewEngine(codeHash, engine, maxActiveEngines);
                 },
             }),
         });
         const engine = await createTestEngine();
-        const code = await t.issue(testOrgId());
+        const org = testOrgId();
+        const code = await t.issue(org);
         expect(await t.register(await engine.register(code))).toEqual({
             kind: 'registered',
             response: await expectedResponse(engine),
+            orgId: org,
+            relinked: true,
         });
         expect(await t.unused(code)).toBe(false);
     });

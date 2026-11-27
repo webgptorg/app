@@ -17,6 +17,9 @@ import type { FeatureDefinition } from '../app/registry/feature';
 import { createAppQueryClient } from '../app/query-client';
 import { createAppRouter } from '../app/router';
 import type { AppRouter } from '../app/router';
+import type { OpenLiveChannel } from '../features/browser/live-channel';
+import type { FrameDrawer } from '../features/browser/live-session';
+import type { StepUpPopups } from '../features/step-up/step-up-popup';
 import { createFakeLocation } from './fake-location';
 import type { FakeLocation } from './fake-location';
 import { createFakeMatchMedia } from './fake-match-media';
@@ -29,6 +32,12 @@ import { createTestEngineApi, TEST_NOW } from './test-engine-api';
 export interface RenderWithProvidersOptions {
     /** The URL to start at; defaults to `/`. */
     readonly path?: string;
+    /** The step-up's window; without it the step-up takes the full-page round trip, as with a blocked popup. */
+    readonly popups?: StepUpPopups;
+    /** Live browser channels, e.g. `inMemoryLiveChannels()` bound to the test's engine. */
+    readonly openLiveChannel?: OpenLiveChannel;
+    /** Stands in for drawing live frames, which jsdom cannot decode. */
+    readonly frameDrawer?: (canvas: HTMLCanvasElement) => FrameDrawer;
     /** Defaults to `createTestEngineApi()`. */
     readonly engineApi?: EngineApiClient;
     /** Stored before rendering, as if chosen on an earlier visit. */
@@ -102,12 +111,16 @@ export function renderWithProviders(options: RenderWithProvidersOptions = {}): R
             engineApi={engineApi}
             queryClient={queryClient}
             router={router}
+            onUnauthenticated={onUnauthenticated}
             browser={{
                 storage,
                 matchMedia: media.matchMedia,
                 location,
                 fetch,
                 timeZone: options.timeZone ?? TEST_TIME_ZONE,
+                popups: options.popups,
+                openLiveChannel: options.openLiveChannel,
+                frameDrawer: options.frameDrawer,
             }}
             ticker={ticker}
         />,

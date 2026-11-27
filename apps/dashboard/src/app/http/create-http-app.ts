@@ -3,11 +3,14 @@ import { Hono } from 'hono';
 import { createAccountFlows } from '../../domain/auth/account';
 import { authenticateRelay } from '../../domain/registry/authenticate-relay';
 import { createEngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
+import { createLicenseService, OPEN_LICENSE_GATE } from '../../domain/licensing/license-service';
 import { toBase64Url } from '../../domain/auth/secrets';
+import { INSTALL_SCRIPT_PATHS } from '../../domain/registration/installation-options';
 import type { RouteContract } from '../../shared/api/contract';
 import type { DashboardDeps } from '../deps';
 import { API_MOUNT, createApiRouter } from './api-router';
 import { createRouteBinder } from './bind-route';
+import { bindInstallScriptRoutes } from './install-script-routes';
 import { createInternalRouter, INTERNAL_MOUNT } from './internal-router';
 import { problemResponse } from './problem';
 import { securityHeaders, withHeaders } from './security-headers';
@@ -22,7 +25,15 @@ export interface HttpAppDeps extends DashboardDeps {
     readonly viteDevServer: boolean;
 }
 
-const MACHINE_AND_API_MOUNTS = [API_MOUNT, V1_MOUNT, INTERNAL_MOUNT, WEBHOOKS_MOUNT, WELL_KNOWN_MOUNT] as const;
+const MACHINE_AND_API_MOUNTS = [
+    API_MOUNT,
+    V1_MOUNT,
+    INTERNAL_MOUNT,
+    WEBHOOKS_MOUNT,
+    WELL_KNOWN_MOUNT,
+    // Exact paths: a missing install script must be a problem, never the SPA shell, and never cached.
+    ...Object.values(INSTALL_SCRIPT_PATHS),
+] as const;
 
 const KNOWN_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
 
@@ -76,9 +87,22 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
             },
         },
     });
-    const policy = createEngineCreationPolicy(deps);
+    const { licensing } = deps;
+    const licenses =
+        licensing === null || deps.config.billing.adapter !== 'website'
+            ? null
+            : createLicenseService({
+                  mode: deps.config.billing.enforcement,
+                  api: licensing.licenses,
+                  store: licensing.store,
+                  engines: deps.engines,
+                  teams: deps.teams,
+                  clock: deps.clock,
+              });
+    const licenseGate = licenses?.gate ?? OPEN_LICENSE_GATE;
+    const policy = createEngineCreationPolicy({ ...deps, licenseGate });
     const routers = [
-        [API_MOUNT, createApiRouter({ ...deps, policy, routes })],
+        [API_MOUNT, createApiRouter({ ...deps, policy, routes, licenses, licenseGate })],
         [V1_MOUNT, createV1Router({ ...deps, policy, routes })],
         [INTERNAL_MOUNT, createInternalRouter({ ...deps, routes })],
         [WEBHOOKS_MOUNT, createWebhooksRouter({ billing: deps.billing, routes })],
@@ -88,6 +112,11 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         // An unknown path under an API prefix is a problem, never the SPA shell.
         router.all('*', () => problemResponse(404, 'not-found'));
         app.route(mount, router);
+    }
+    bindInstallScriptRoutes(app, { ...deps, routes });
+    for (const path of Object.values(INSTALL_SCRIPT_PATHS)) {
+        // Strict routing leaves `/install.sh/` to the SPA fallback, and bash runs piped HTML line by line.
+        app.all(`${path}/*`, () => problemResponse(404, 'not-found'));
     }
 
     app.on(['GET', 'HEAD'], '*', (context) => deps.assets.fetch(context.req.raw));

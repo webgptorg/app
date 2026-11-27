@@ -9,6 +9,8 @@ declare global {
         readonly VITE_ENGINE_PROFILE?: string;
         /** `pending` starts the in-memory engine before its setup, to work on onboarding. */
         readonly VITE_ENGINE_ONBOARDING?: string;
+        /** `fresh` starts the in-memory engine empty, as a new engine is: to work on Home's next steps. */
+        readonly VITE_ENGINE_SEED?: string;
         /** `1` in the `test:csp` build only: mounts `@ptbk/ui`'s gallery at `/__gallery`. */
         readonly VITE_UI_GALLERY?: string;
     }

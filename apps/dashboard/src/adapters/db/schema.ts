@@ -193,8 +193,16 @@ export const linkCodes = sqliteTable(
         engineId: text('engine_id'),
         // The team the new engine joins (teams spec); null links a team of its own, named after the engine.
         teamId: text('team_id'),
+        // base64url(SHA-256) of the pairing tab's owner setup secret (ADR 0023), never the secret. Handed to the engine
+        // once, at registration; nulled when the code is redeemed or cancelled, and never read once it has expired.
+        ownerSetupCommitment: text('owner_setup_commitment'),
     },
-    (t) => [index('link_codes_org_id_created_at_idx').on(t.orgId, t.createdAt)],
+    (t) => [
+        index('link_codes_org_id_created_at_idx').on(t.orgId, t.createdAt),
+        index('link_codes_pending_expiry_idx')
+            .on(t.orgId, t.expiresAt)
+            .where(sql`${t.usedAt} is null`),
+    ],
 );
 
 export const engines = sqliteTable(
@@ -461,4 +469,123 @@ export const relayPresence = sqliteTable(
         // The engine list counts relays per engine.
         index('relay_presence_engine_id_idx').on(t.engineId),
     ],
+);
+
+// Usage data (ADR 0022): what the product's funnel and activity look like, from metadata the dashboard already holds.
+// IDs, closed enums and counts only: no names, emails, addresses, user agents, tokens or engine content. Rows go with
+// their organization; a deleted account's events stay anonymous and its daily rows go (ON DELETE).
+
+/** Append-only: the repository inserts and prunes, never updates. Kept 13 months. */
+export const usageEvents = sqliteTable(
+    'usage_events',
+    {
+        id: text('id').primaryKey(),
+        occurredAt: integer('occurred_at').notNull(),
+        // A closed list in `src/domain/usage/usage-event.ts`; no CHECK, so a new event needs no table rebuild.
+        event: text('event').notNull(),
+        orgId: text('org_id')
+            .notNull()
+            .references(() => organizations.id, { onDelete: 'cascade' }),
+        userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+        engineId: text('engine_id'),
+        // JSON of numbers, booleans and closed enums, validated per event before it is written.
+        props: text('props').notNull(),
+    },
+    (t) => [
+        index('usage_events_occurred_at_idx').on(t.occurredAt),
+        index('usage_events_event_occurred_at_idx').on(t.event, t.occurredAt),
+        index('usage_events_org_id_idx').on(t.orgId),
+        index('usage_events_user_id_idx').on(t.userId),
+    ],
+);
+
+/** One row per engine and UTC day it heartbeat, from its status object's counters. Kept 25 months. */
+export const usageDailyEngines = sqliteTable(
+    'usage_daily_engines',
+    {
+        day: text('day').notNull(),
+        engineId: text('engine_id').notNull(),
+        orgId: text('org_id')
+            .notNull()
+            .references(() => organizations.id, { onDelete: 'cascade' }),
+        // Accepted heartbeats that day; one a minute, so also the engine's online minutes.
+        beats: integer('beats').notNull(),
+        firstBeatAt: integer('first_beat_at').notNull(),
+        lastBeatAt: integer('last_beat_at').notNull(),
+        // The rest are from the day's last heartbeat.
+        engineVersion: text('engine_version').notNull(),
+        agents: integer('agents').notNull(),
+        members: integer('members').notNull(),
+        // `pending` or `done`; null from engines without browser setup.
+        setup: text('setup'),
+        updateState: text('update_state').notNull(),
+        cpuLoad: text('cpu_load').notNull(),
+    },
+    (t) => [primaryKey({ columns: [t.day, t.engineId] }), index('usage_daily_engines_org_id_idx').on(t.orgId)],
+);
+
+/** One row per person, organization and UTC day they had a session in use, from `sessions.last_seen_at`. Kept 25 months. */
+export const usageDailyPeople = sqliteTable(
+    'usage_daily_people',
+    {
+        day: text('day').notNull(),
+        orgId: text('org_id')
+            .notNull()
+            .references(() => organizations.id, { onDelete: 'cascade' }),
+        userId: text('user_id')
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+    },
+    (t) => [
+        primaryKey({ columns: [t.day, t.orgId, t.userId] }),
+        index('usage_daily_people_org_id_idx').on(t.orgId),
+        index('usage_daily_people_user_id_idx').on(t.userId),
+    ],
+);
+
+// Website licensing (D-30, ADR 0021): which website account licenses an organization, and what the website last said.
+// Account and licence metadata only.
+
+/** One website subject per organization and one organization per subject; changing either is a later, explicit flow. */
+export const websiteLinks = sqliteTable('website_links', {
+    orgId: text('org_id')
+        .primaryKey()
+        .references(() => organizations.id),
+    subject: text('subject').notNull().unique(),
+    linkedByUserId: text('linked_by_user_id').notNull(),
+    linkedAt: integer('linked_at').notNull(),
+});
+
+/** The last snapshot that validated, kept for when the website does not answer; numbers and dates, no prices. */
+export const websiteLicenseSnapshots = sqliteTable('website_license_snapshots', {
+    orgId: text('org_id')
+        .primaryKey()
+        .references(() => organizations.id),
+    subject: text('subject').notNull(),
+    snapshot: text('snapshot').notNull(),
+    fetchedAt: integer('fetched_at').notNull(),
+});
+
+/** A handoff this App started: the challenge only as SHA-256, used at most once. */
+export const websiteHandoffStates = sqliteTable(
+    'website_handoff_states',
+    {
+        challengeHash: text('challenge_hash').primaryKey(),
+        createdAt: integer('created_at').notNull(),
+        expiresAt: integer('expires_at').notNull(),
+    },
+    (t) => [index('website_handoff_states_expires_at_idx').on(t.expiresAt)],
+);
+
+/** A verified website identity waiting for an App account to sign in or sign up; the cookie only as SHA-256. */
+export const websitePendingLinks = sqliteTable(
+    'website_pending_links',
+    {
+        tokenHash: text('token_hash').primaryKey(),
+        subject: text('subject').notNull(),
+        email: text('email').notNull(),
+        createdAt: integer('created_at').notNull(),
+        expiresAt: integer('expires_at').notNull(),
+    },
+    (t) => [index('website_pending_links_expires_at_idx').on(t.expiresAt)],
 );

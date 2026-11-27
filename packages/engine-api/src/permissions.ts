@@ -38,8 +38,22 @@ export const PERMISSIONS = [
     'triggers.manage',
     'integrations.read',
     'integrations.manage',
-    /** Driving an engine browser tab by hand (`browser-tab@1`); engine policy gives it to owners only. */
+    /**
+     * Watching the tabs agents work in and their help requests (`browser-tab@1`), for work the member can see anyway.
+     */
+    'browser.watch',
+    /**
+     * Controlling an engine browser tab by hand, behind step-up: taking over an agent's tab, signing in in a fresh one,
+     * dismissing a help request. Acting as the engine's accounts, so engine policy gives it to owners only.
+     */
     'browser.control',
+    /** The engine's AI tools (`ai-tools@1`): their status, how they sign in (never a key) and "Check now". */
+    'ai-tools.read',
+    /**
+     * Signing an AI tool in again, giving it an API key and signing it out, behind step-up. The project's model
+     * accounts and their bills, so engine policy gives it to owners only.
+     */
+    'ai-tools.manage',
 ] as const;
 export const Permission = z.enum(PERMISSIONS);
 export type Permission = z.infer<typeof Permission>;

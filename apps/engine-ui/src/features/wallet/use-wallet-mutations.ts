@@ -1,4 +1,5 @@
-import type { WalletRecordId, WalletRequestId } from '@ptbk/engine-api';
+import { WalletRecordId } from '@ptbk/engine-api';
+import type { WalletRequestId } from '@ptbk/engine-api';
 
 import { unwrap } from '../../app/api-errors';
 import type { ApiFailure } from '../../app/api-errors';
@@ -43,6 +44,14 @@ export interface LoginTarget {
     readonly label: string;
 }
 
+/** A removal saved across the full-page step-up: the whole input, nothing secret, so it runs again by itself. */
+function parseRemoval(data: unknown): LoginTarget | undefined {
+    if (typeof data !== 'object' || data === null) return undefined;
+    const { recordId, label } = data as Record<string, unknown>;
+    const id = WalletRecordId.safeParse(recordId);
+    return id.success && typeof label === 'string' && label.length <= 256 ? { id: id.data, label } : undefined;
+}
+
 function notReady(failure: ApiFailure): boolean {
     return failure.kind === 'problem' && failure.problem.code === 'wallet-not-ready';
 }
@@ -62,24 +71,33 @@ export function useWalletMutations() {
 
     const save = useStepUpAwareMutation({
         mutationFn: async ({ recordId, origin, username, password, label, fields, requestId }: LoginInput) => {
+            const secret = password.take();
+            const values = (fields ?? []).map((field) => field.value.take());
             const body = {
                 origin,
                 username,
-                password: password.take(),
+                password: secret,
                 ...(label === undefined ? {} : { label }),
                 ...(fields === undefined || fields.length === 0
                     ? {}
-                    : { fields: fields.map((field) => ({ label: field.label, value: field.value.take() })) }),
+                    : { fields: fields.map((field, index) => ({ label: field.label, value: values[index] ?? '' })) }),
                 ...(requestId === undefined ? {} : { requestId }),
             };
-            return unwrap(
+            const answer =
                 recordId === undefined
                     ? await engineApi.wallet.add(body, signal())
-                    : await engineApi.wallet.update(recordId, body, signal()),
-            );
+                    : await engineApi.wallet.update(recordId, body, signal());
+            // The engine stored nothing; the same call runs again once the passkey is confirmed in place.
+            if (answer.kind === 'problem' && answer.problem.code === 'step-up-required') {
+                password.restore(secret);
+                fields?.forEach((field, index) => {
+                    field.value.restore(values[index] ?? '');
+                });
+            }
+            return unwrap(answer);
         },
         invalidates: INVALIDATES,
-        // Only what reopens the form: the password stays behind and is typed again after the passkey check.
+        // Only what reopens the form after a full-page step-up: the password stays behind and is typed again.
         resumeAs: {
             action: SAVE_LOGIN_ACTION,
             data: ({ recordId, requestId, origin, username, label }: LoginInput) => ({
@@ -101,7 +119,11 @@ export function useWalletMutations() {
     const remove = useStepUpAwareMutation({
         mutationFn: async ({ id }: LoginTarget) => unwrap(await engineApi.wallet.delete(id, signal())),
         invalidates: INVALIDATES,
-        resumeAs: { action: REMOVE_LOGIN_ACTION, data: ({ id }: LoginTarget) => ({ recordId: id }) },
+        resumeAs: {
+            action: REMOVE_LOGIN_ACTION,
+            data: ({ id, label }: LoginTarget) => ({ recordId: id, label }),
+            rerun: parseRemoval,
+        },
         successMessage: (_, { label }) => m.wallet_removed({ label }),
         errorMessage: (failure, { label }) =>
             notReady(failure) ? m.wallet_not_ready_failure() : m.wallet_remove_failed({ label }),

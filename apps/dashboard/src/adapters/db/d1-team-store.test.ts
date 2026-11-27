@@ -6,7 +6,7 @@ import { createDatabase } from './client';
 import { createD1AuthStore } from './d1-auth-store';
 import { createD1LinkCodeStore } from './d1-registration-store';
 import { createD1TeamStore } from './d1-team-store';
-import { engines, memberRevocations, orgAuditLog } from './schema';
+import { engines, linkCodes, memberRevocations, orgAuditLog } from './schema';
 
 describeTeamStoreContract('D1', () => {
     const db = createDatabase(env.DB);
@@ -45,6 +45,14 @@ describeTeamStoreContract('D1', () => {
                 .orderBy(asc(orgAuditLog.createdAt), sql`${orgAuditLog}.rowid`)
                 .all();
             return rows.map((row) => row.action);
+        },
+        async storedCommitment(codeHash) {
+            const row = await db
+                .select({ ownerSetupCommitment: linkCodes.ownerSetupCommitment })
+                .from(linkCodes)
+                .where(eq(linkCodes.codeHash, codeHash))
+                .get();
+            return row?.ownerSetupCommitment ?? null;
         },
     };
 });

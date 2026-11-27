@@ -1,6 +1,7 @@
 import { AgentId, INTEGRATION_KINDS, INTEGRATION_STATUSES } from '@ptbk/engine-api';
 import type { ReadAgent, ReadIntegration } from '@ptbk/engine-api';
 import {
+    BrandRobot,
     Button,
     ConfirmDialog,
     createDataTableColumnHelper,
@@ -101,7 +102,7 @@ function useIntegrationColumns(): DataTableColumnDef<ReadIntegration>[] {
                 header: m.integrations_column_name(),
                 enableSorting: false,
                 enableHiding: false,
-                meta: { priority: 0, icon: <Hash className={ICON} /> },
+                meta: { priority: 0, grow: true, icon: <Hash className={ICON} /> },
                 cell: ({ row }) => (
                     <span className="flex min-w-0 items-start gap-2.5">
                         <span aria-hidden="true" className="mt-0.5 flex shrink-0 text-text-muted [&>svg]:size-4">
@@ -322,6 +323,7 @@ export function IntegrationsTable({ search, onSearchChange, agentId }: Integrati
                           }
                         : {
                               icon: <Plug />,
+                              ...(scope === 'agent' ? {} : { illustration: <BrandRobot pose="assembling" /> }),
                               title: m.integrations_empty_title(),
                               description:
                                   scope === 'agent' ? m.integrations_empty_agent_body() : m.integrations_empty_body(),
@@ -422,7 +424,13 @@ function IntegrationFilters({ view, search, scope, agents, onChange, onClear }: 
                           value: agent.id,
                           label: agent.name,
                           icon: (
-                              <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />
+                              <AgentAvatar
+                                  name={agent.name}
+                                  agentKey={agent.id}
+                                  profile={agent.profile}
+                                  origin={agent.origin}
+                                  size="2xs"
+                              />
                           ),
                       })),
                       value: readOneParam(search.agentId),

@@ -1,16 +1,19 @@
+import { AgentId } from '@ptbk/engine-api';
 import { Badge, Button, Spinner } from '@ptbk/ui';
 import { useState } from 'react';
 import type { ReactNode, Ref } from 'react';
 
 import { cx } from '../../app/cx';
 import { m } from '../../paraglide/messages';
-import { AgentAvatar } from '../agents/agent-avatar';
 import { AgentCreator } from '../agents/agent-creator';
+import { AgentLink } from '../entities/entity-chip';
 import type { MessageState, MessageView, StepsView, ThreadView } from './message-views';
 import { MessageMarkdown } from './render/lazy-markdown';
 import { PlainText } from './render/plain-text';
 import { tintStyle } from './references/agent-color';
-import { useReferenceAgent } from './references/thread-references';
+import { threadAgentHere } from './references/agent-hovercard';
+import { ReferenceAvatar } from './references/reference-avatar';
+import { useReferenceAgent, useThreadReferences } from './references/thread-references';
 import type { ReferenceAgent } from './references/thread-references';
 import { RecheckCard, WaitingCard } from './reply-status-card';
 import { StepsCard } from './steps-card';
@@ -98,18 +101,46 @@ function Choices({
     );
 }
 
-/** The agent's picture when its profile has one, else its initial on a wash of its colour. */
-function TurnAvatar({ agent }: { readonly agent: ReferenceAgent }) {
-    if (agent.avatarUrl !== null) {
-        return <AgentAvatar name={agent.name} profile={{ avatarUrl: agent.avatarUrl, color: null }} size="xs" />;
-    }
+/**
+ * Who speaks: in a thread, a link to the agent with the card every agent reference opens; a turn that only continues
+ * says it to screen readers, so it has nothing to focus.
+ */
+function TurnAuthor({
+    agent,
+    name,
+    shown,
+}: {
+    readonly agent: ReferenceAgent;
+    readonly name: string;
+    readonly shown: boolean;
+}) {
+    const references = useThreadReferences();
+    const content = (
+        <>
+            <ReferenceAvatar agent={agent} size="xs" />
+            <span className="text-tint">{name}</span>
+        </>
+    );
+    if (!shown || references === null) return content;
+    const onMention = references.onMention;
     return (
-        <span
-            aria-hidden="true"
-            className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklab,var(--tint)_16%,var(--color-raised))] font-display text-xs font-semibold text-tint"
+        <AgentLink
+            id={AgentId.safeParse(agent.key).data ?? null}
+            name={agent.name}
+            canOpen={references.canOpenAgents}
+            here={threadAgentHere(
+                agent,
+                references,
+                onMention === undefined
+                    ? undefined
+                    : () => {
+                          onMention(agent);
+                      },
+            )}
+            className="inline-flex items-center gap-2"
         >
-            {Array.from(agent.name.trim())[0]?.toLocaleUpperCase() ?? null}
-        </span>
+            {content}
+        </AgentLink>
     );
 }
 
@@ -132,11 +163,18 @@ function AgentTurn({
     return (
         <div className="flex w-full min-w-0 flex-col items-start gap-1.5" style={tintStyle(agent.color)}>
             <header className={cx('flex items-center gap-2 text-sm font-medium', !showAuthor && 'sr-only')}>
-                <TurnAvatar agent={agent} />
-                <span className="text-tint">{view.authorName}</span>
+                <TurnAuthor agent={agent} name={view.authorName} shown={showAuthor} />
                 {at === null ? null : <TurnTime at={at} />}
             </header>
-            <div className="ms-3 flex w-[calc(100%-0.75rem)] min-w-0 flex-col gap-1.5 border-s-2 border-[color-mix(in_oklab,var(--tint)_40%,transparent)] ps-[1.125rem]">
+            <div
+                data-turn-rail=""
+                className={cx(
+                    'ms-3 flex w-[calc(100%-0.75rem)] min-w-0 flex-col gap-1.5 border-s-2 border-[color-mix(in_oklab,var(--tint)_40%,transparent)] ps-[1.125rem]',
+                    // A row continuing the turn reaches its rail up over the row's top padding (`pt-1.5`), so the
+                    // turn's separately rendered rows draw one unbroken line from the header down.
+                    !showAuthor && '-mt-1.5 pt-1.5',
+                )}
+            >
                 {children}
             </div>
         </div>

@@ -1,4 +1,20 @@
-import { AgentId, Permission, Role, TriggerId, WALLET_REQUEST_PROBLEMS, WalletOrigin } from '@ptbk/engine-api';
+import {
+    AgentId,
+    AiToolId,
+    AiToolProblem,
+    BrowserHelpReason,
+    BrowserOrigin,
+    BrowserTabId,
+    ChatId,
+    LiveSessionId,
+    MAX_BROWSER_HELP_MESSAGE_LENGTH,
+    KNOWN_CAPABILITIES,
+    Permission,
+    Role,
+    TriggerId,
+    WALLET_REQUEST_PROBLEMS,
+    WalletOrigin,
+} from '@ptbk/engine-api';
 import { EngineVersion } from '@ptbk/protocol';
 import { z } from 'zod';
 
@@ -44,6 +60,19 @@ const ScriptedRun = z.strictObject({
         .max(20),
 });
 
+/** At most 30 days: the production delay is 72 h, and a lever must not leave a release pending for ever. */
+const MAX_UI_RELEASE_DELAY_S = 30 * 24 * 3600;
+
+/** `updates@1` levers (M-14): the fake release store behind the UI check, and what the engine knows of its own updates. */
+const UpdatesLevers = z.strictObject({
+    uiRelease: z
+        .strictObject({ version: EngineVersion, delayS: z.int().min(0).max(MAX_UI_RELEASE_DELAY_S).default(0) })
+        .nullable()
+        .optional(),
+    uiStoreFailing: z.boolean().optional(),
+    engineLatest: EngineVersion.nullable().optional(),
+});
+
 const InboundEmail = z.strictObject({
     triggerId: TriggerId,
     from: z.email().max(254),
@@ -56,6 +85,43 @@ const WalletLoginRequest = z.strictObject({
     account: z.string().min(1).max(320).nullable().default(null),
     problem: z.enum(WALLET_REQUEST_PROBLEMS).default('missing'),
 });
+
+/** What the provider answers a running harness sign-in with, as the core's `settleHarnessLogin` takes it. */
+const HarnessLoginOutcome = z.strictObject({
+    outcome: z.enum(['succeeded', 'failed', 'expired', 'denied']),
+    diagnostic: z.string().min(1).max(2048).optional(),
+});
+
+const FailingHarnessCheck = z.strictObject({
+    harness: z.enum(['codex', 'claude']),
+    reason: z.string().min(1).max(2048),
+});
+
+const LiveBrowserTabRequest = z.strictObject({ origin: BrowserOrigin, chatId: ChatId.optional() });
+
+/** What the agent in the tab says it is stuck on; without `tabId`, the fake agent tab the engine started with. */
+const LiveBrowserHelpRequest = z.strictObject({
+    tabId: BrowserTabId.optional(),
+    reason: BrowserHelpReason,
+    message: z.string().max(MAX_BROWSER_HELP_MESSAGE_LENGTH),
+});
+
+const LiveBrowserNavigation = z.strictObject({
+    tabId: BrowserTabId,
+    page: z.discriminatedUnion('kind', [
+        z.strictObject({ kind: z.literal('web'), origin: BrowserOrigin }),
+        z.strictObject({ kind: z.literal('browser-page') }),
+        z.strictObject({ kind: z.literal('secret-page') }),
+    ]),
+});
+
+/** Without `aiToolId`, the tool new chat turns run on: the first installed one. */
+const AiToolExpiry = z.strictObject({ aiToolId: AiToolId.optional() });
+const AiToolRef = z.strictObject({ aiToolId: AiToolId });
+const AiToolCheckFailure = z.strictObject({ aiToolId: AiToolId, problem: AiToolProblem.nullable() });
+const AiToolDeviceLogin = z.strictObject({ aiToolId: AiToolId, ...HarnessLoginOutcome.shape });
+
+const LiveBrowserElapse = z.strictObject({ sessionId: LiveSessionId, what: z.enum(['expired', 'idle']) });
 
 function invalidBody(path: string, message: string): Response {
     return problemResponse({ code: 'validation-failed', extras: { errors: [{ path, message }] } });
@@ -144,6 +210,33 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
         }
         return { memberId: addMember('member', 'Synthetic member'), permissions: subject.permissions };
     }
+
+    /** The levers answer as the engine's own routes do while `MOCK_LIVE_BROWSER` is off. */
+    const liveBrowser = (act: (tab: string) => Response): Response => {
+        const tab = runtime.liveBrowserTab();
+        return tab === null ? problemResponse({ code: 'capability-not-supported' }) : act(tab);
+    };
+    /** Like the API: without `ai-tools@1` the levers have nothing to act on. */
+    const aiTools = (act: () => Response): Response =>
+        runtime.current().capabilities.some(({ id }) => id === KNOWN_CAPABILITIES.aiTools.id)
+            ? act()
+            : problemResponse({ code: 'capability-not-supported' });
+    const aiTool = (aiToolId: string, act: () => unknown): Response => {
+        if (
+            !runtime
+                .controller()
+                .aiTools()
+                .some(({ id }) => id === aiToolId)
+        )
+            return problemResponse({ code: 'not-found' });
+        try {
+            return Response.json(act() ?? { tools: runtime.controller().aiTools() });
+        } catch (error) {
+            return invalidBody('body.aiToolId', error instanceof Error ? error.message : 'Not possible for this tool.');
+        }
+    };
+    const knownTab = (tabId: string, act: () => Response): Response =>
+        runtime.controller().getBrowserTab(tabId) === undefined ? problemResponse({ code: 'not-found' }) : act();
 
     const state = () => {
         const { seed, scenario, capabilities } = runtime.current();
@@ -245,6 +338,59 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
         }),
         control({
             method: 'POST',
+            path: '/__mock/live-browser/tabs',
+            body: { kind: 'json', schema: LiveBrowserTabRequest, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                liveBrowser(() => {
+                    const tab = runtime.controller().openAgentTab({ origin: body.origin, chatId: body.chatId ?? null });
+                    return Response.json({ tab }, { status: 201 });
+                }),
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/live-browser/help-requests',
+            body: { kind: 'json', schema: LiveBrowserHelpRequest, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                liveBrowser((startupTab) => {
+                    const tabId = body.tabId ?? startupTab;
+                    return knownTab(tabId, () => {
+                        try {
+                            const request = runtime
+                                .controller()
+                                .requestBrowserHelp(tabId, { reason: body.reason, message: body.message });
+                            return Response.json({ request }, { status: 201 });
+                        } catch {
+                            // The core refuses only a sign-in tab here: no agent works in one to ask.
+                            return invalidBody('body.tabId', 'Not an agent’s tab.');
+                        }
+                    });
+                }),
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/live-browser/navigate',
+            body: { kind: 'json', schema: LiveBrowserNavigation, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                liveBrowser(() =>
+                    knownTab(body.tabId, () => {
+                        runtime.controller().navigateBrowserTab(body.tabId, body.page);
+                        return new Response(null, { status: 204 });
+                    }),
+                ),
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/live-browser/elapse',
+            body: { kind: 'json', schema: LiveBrowserElapse, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                liveBrowser(() =>
+                    runtime.controller().elapseBrowserSession(body.sessionId, body.what)
+                        ? new Response(null, { status: 204 })
+                        : problemResponse({ code: 'not-found' }),
+                ),
+        }),
+        control({
+            method: 'POST',
             path: '/__mock/inbound-email',
             body: { kind: 'json', schema: InboundEmail, maxBytes: BODY_MAX_BYTES },
             handle: ({ body }) => {
@@ -259,6 +405,72 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
                         return Response.json({ fire: outcome.fire }, { status: 201 });
                 }
             },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/onboarding/harness-login',
+            body: { kind: 'json', schema: HarnessLoginOutcome, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) => {
+                const controller = runtime.controller();
+                const login = controller.onboarding().prompt;
+                if (login?.kind !== 'harness-login') return invalidBody('body', 'No harness sign-in is running.');
+                controller.settleHarnessLogin(body.outcome, body.diagnostic);
+                return Response.json(controller.onboarding());
+            },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/onboarding/harness-check',
+            body: { kind: 'json', schema: FailingHarnessCheck, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) => {
+                const controller = runtime.controller();
+                controller.failHarnessCheck(body.harness, body.reason);
+                return Response.json(controller.onboarding());
+            },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/ai-tools/expire',
+            body: { kind: 'json', schema: AiToolExpiry, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                aiTools(() => {
+                    const controller = runtime.controller();
+                    const aiToolId =
+                        body.aiToolId ?? controller.aiTools().find(({ status }) => status !== 'not-installed')?.id;
+                    if (aiToolId === undefined) return invalidBody('body.aiToolId', 'No AI tool is installed.');
+                    return aiTool(aiToolId, () => ({ tool: controller.expireAiToolSignIn(aiToolId) }));
+                }),
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/ai-tools/renew',
+            body: { kind: 'json', schema: AiToolRef, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                aiTools(() =>
+                    aiTool(body.aiToolId, () => ({ tool: runtime.controller().renewAiToolSignIn(body.aiToolId) })),
+                ),
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/ai-tools/check-failure',
+            body: { kind: 'json', schema: AiToolCheckFailure, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                aiTools(() =>
+                    aiTool(body.aiToolId, () => {
+                        runtime.controller().failAiToolCheck(body.aiToolId, body.problem);
+                    }),
+                ),
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/ai-tools/device-login',
+            body: { kind: 'json', schema: AiToolDeviceLogin, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                aiTools(() =>
+                    aiTool(body.aiToolId, () => {
+                        runtime.controller().settleAiToolSignIn(body.aiToolId, body.outcome, body.diagnostic);
+                    }),
+                ),
         }),
         control({
             method: 'PUT',
@@ -320,6 +532,57 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
             },
         }),
         control({
+            method: 'PUT',
+            path: '/__mock/updates',
+            body: { kind: 'json', schema: UpdatesLevers, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) => {
+                const controller = runtime.controller();
+                const fakeStore = body.uiRelease !== undefined || body.uiStoreFailing !== undefined;
+                if (fakeStore && deps.ui !== undefined) {
+                    return problemResponse({
+                        code: 'validation-failed',
+                        extras: {
+                            errors: [
+                                { path: 'body', message: 'The real release store is in use (PTBK_UI_RELEASE_URL).' },
+                            ],
+                        },
+                    });
+                }
+                if (body.uiRelease !== undefined) {
+                    const release = body.uiRelease;
+                    controller.setUiRelease(
+                        release === null
+                            ? null
+                            : {
+                                  version: release.version,
+                                  eligibleAt: wholeSeconds(runtime.clock.nowMs() + release.delayS * 1000),
+                              },
+                    );
+                }
+                if (body.uiStoreFailing !== undefined) controller.failUiReleaseStore(body.uiStoreFailing);
+                if (body.engineLatest !== undefined) {
+                    const latest = body.engineLatest;
+                    const { update } = controller.updateSecurity({});
+                    controller.updateSecurity({
+                        update: {
+                            ...update,
+                            status: latest === null ? 'none' : 'available',
+                            availableVersion: latest,
+                            checkedAt: wholeSeconds(runtime.clock.nowMs()),
+                            command: latest === null ? null : `npm install --global ptbk@${latest}`,
+                        },
+                    });
+                }
+                return new Response(null, { status: 204 });
+            },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/updates/check',
+            body: null,
+            handle: async () => Response.json(await runtime.controller().runUiUpdateCheck()),
+        }),
+        control({
             method: 'GET',
             path: '/__mock/members',
             body: null,
@@ -333,13 +596,31 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
         }),
         control({
             method: 'POST',
+            path: '/__mock/step-up/expire',
+            body: null,
+            handle: () => {
+                sessions.expireStepUps();
+                return new Response(null, { status: 204 });
+            },
+        }),
+        control({
+            method: 'POST',
             path: '/__mock/sessions',
-            body: { kind: 'json', schema: z.strictObject({ subject: SessionSubject }), maxBytes: BODY_MAX_BYTES },
+            body: {
+                kind: 'json',
+                schema: z.strictObject({
+                    subject: SessionSubject,
+                    // `stale`: signed in, but its passkey assertion too old for any step-up route.
+                    stepUp: z.enum(['fresh', 'stale']).default('fresh'),
+                }),
+                maxBytes: BODY_MAX_BYTES,
+            },
             handle: ({ body, clientIp }) => {
                 const { memberId, permissions } = memberFor(body.subject);
                 const signedIn = sessions.signIn({
                     memberId,
                     permissions,
+                    stepUp: body.stepUp === 'stale' ? 'none' : 'fresh',
                     client: { ip: clientIp, userAgent: 'mock control listener' },
                 });
                 return Response.json(
@@ -356,6 +637,10 @@ function bundleStatus(bundle: InstalledBundle | undefined) {
 }
 
 /** What the loader serves and what its last check decided; never file contents. */
+function wholeSeconds(ms: number): string {
+    return new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.000Z$/, 'Z');
+}
+
 function uiStatus(ui: UiLoader) {
     return {
         policy: ui.policy(),

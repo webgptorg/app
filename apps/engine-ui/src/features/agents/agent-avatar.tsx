@@ -14,6 +14,15 @@ const loadIllustrations = () => import('./illustrations/illustrations');
 void loadIllustrations().catch(() => undefined);
 const AgentIllustration = lazy(() => loadIllustrations().then((module) => ({ default: module.AgentIllustration })));
 
+/** What an avatar reads from an agent's profile; the role and illustration pick its character. */
+export type AgentAvatarProfile = Pick<AgentProfile, 'avatarUrl' | 'color'> & {
+    readonly description?: string | undefined;
+    readonly illustration?: string | null | undefined;
+};
+
+/** For an agent not loaded (yet): its name and key alone pick the picture and colour. */
+export const NO_AGENT_PROFILE: AgentAvatarProfile = { avatarUrl: null, color: null };
+
 const SIZES = { '2xs': '2xs', xs: 'sm', sm: 'md', lg: 'lg', xl: 'xl' } as const satisfies Record<string, AvatarSize>;
 export type AgentAvatarSize = keyof typeof SIZES;
 
@@ -33,10 +42,7 @@ export function AgentAvatar({
     className,
 }: {
     readonly name: string;
-    readonly profile: Pick<AgentProfile, 'avatarUrl' | 'color'> & {
-        readonly description?: string | undefined;
-        readonly illustration?: string | null | undefined;
-    };
+    readonly profile: AgentAvatarProfile;
     readonly origin?: AgentOrigin | undefined;
     readonly agentKey?: string | undefined;
     readonly size?: AgentAvatarSize;

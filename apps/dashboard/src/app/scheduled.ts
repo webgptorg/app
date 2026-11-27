@@ -5,7 +5,10 @@ import { createWebRiskApi } from '../adapters/abuse/web-risk-api';
 import { createWebRiskFeed } from '../adapters/abuse/web-risk-feed';
 import { createFetchPublicFaceFetcher } from '../adapters/abuse/fetch-public-face-fetcher';
 import { createDatabase } from '../adapters/db/client';
+import { createD1LinkCodeStore } from '../adapters/db/d1-registration-store';
 import { createD1CtStore } from '../adapters/db/d1-ct-store';
+import { createD1UsageStore } from '../adapters/db/d1-usage-store';
+import { createDurableObjectEngineStatus } from '../adapters/status/durable-object-engine-status';
 import { createD1ActiveEngineDirectory, createD1PublicFaceStore } from '../adapters/db/d1-public-face-store';
 import { createFetchRelayProber } from '../adapters/monitoring/fetch-relay-prober';
 import { createAnalyticsEngineQuery } from '../adapters/monitoring/analytics-engine-query';
@@ -72,6 +75,8 @@ const PUBLIC_FACE_CONCURRENCY = 6;
 const ABUSE_FEED_TIMEOUT_MS = 30_000;
 /** Lookups are local and cost no subrequest per engine, so one run covers every engine up to this. */
 const ABUSE_FEED_MAX_ENGINES = 10_000;
+/** Status objects the usage rollup asks at once; each answers from its own storage. */
+const USAGE_ROLLUP_CONCURRENCY = 10;
 
 function abuseDeps(env: Env, config: DashboardConfig, shared: { readonly logger: Logger }): AbuseJobDeps | null {
     if (config.monitoring === null) return null;
@@ -190,6 +195,13 @@ export async function runScheduled(
     const jobs = scheduledJobs({
         monitoring: monitoringDeps(env, ctx, config, dev, { metrics, logger }),
         abuse: abuseDeps(env, config, { logger }),
+        usage: {
+            store: createD1UsageStore(createDatabase(env.DB)),
+            engineStatus: createDurableObjectEngineStatus(env.ENGINE_STATUS),
+            concurrency: USAGE_ROLLUP_CONCURRENCY,
+            logger,
+        },
+        linkCodes: createD1LinkCodeStore(createDatabase(env.DB)),
     });
     const dispatcher = createScheduledDispatcher({
         jobs,

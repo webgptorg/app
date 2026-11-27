@@ -22,3 +22,7 @@ Stripe will handle billing, but plans and pricing are not decided (per engine, p
 ## Update 2026-11-04: billing off on staging
 
 Staging does not charge; production does (Seb). A third billing adapter, `off`, is allowed in dev and staging and refused in production: no provider, no Stripe secrets or IDs, and the entitlements port answers from one configured grant, `BILLING_OFF_PLAN`, for every organization. Stripe routes are not mounted and the SPA shows no billing. Nothing is written to the billing tables while off, so switching staging to `stripe` is a config change: every organization then starts on `none` and subscribes through Checkout. Production keeps `stripe` and the design above, unchanged.
+
+## Superseding decision, 13 November 2026
+
+The new website offer follows [ADR 0021](0021-website-license-authority.md). The website is the commercial authority; App consumes numeric grants and displays advisory coverage. Earlier card-before-install and hard billing gates do not apply to this offer. Legacy Stripe data stays intact.

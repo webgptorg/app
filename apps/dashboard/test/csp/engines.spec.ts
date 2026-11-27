@@ -27,18 +27,19 @@ test('link an engine, see it online, open its page and revoke it, under the prod
 }) => {
     await authenticators.add();
     const email = uniqueEmail('engines');
-    await page.goto('/signup');
+    await page.goto('/continue');
     await page.getByLabel('Email').fill(email);
-    await page.getByRole('button', { name: 'Send the link' }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
     await page.goto(await outboxLink(page.request, email, 'signup-link'));
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
 
     await page.goto('/engines/all');
-    await expect(page.getByRole('heading', { name: 'Your engines' })).toBeVisible();
-    await page.getByRole('link', { name: 'Link an engine' }).click();
-    await expect(page.getByRole('heading', { name: 'Link an engine', level: 1 })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Choose a plan to link your engine' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Your projects' })).toBeVisible();
+    await page.getByRole('link', { name: 'Link a project' }).click();
+    await expect(page.getByRole('heading', { name: 'Link a project', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Choose a plan to link your project' })).toBeVisible();
     await checkScreen('/engines/new plan step');
 
     // The fake Checkout starts the dev plan's trial and comes back here, where the code is issued without a click.
@@ -47,12 +48,12 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     const command = page.getByText(/^bun run dev:link [a-z2-7]{26}$/);
     await expect(command).toBeVisible();
     await expect(page).toHaveURL(/\/engines\/new\?.*link=[a-z2-7]{26}/);
-    await expect(page.getByText(/^Copy it now: it is shown only once and works until .+\.$/)).toBeVisible();
+    await expect(page.getByText(/^This code is shown once and expires on .+\.$/)).toBeVisible();
     const progress = page.locator('section[data-link-state]');
     await expect(progress).toHaveAttribute('data-link-state', 'waiting');
     await checkScreen('/engines/new install command');
     await expect(page.getByRole('link', { name: /^How Promptbook protects you/ })).toHaveAttribute('href', '/trust');
-    for (const tab of ['Docker Compose', 'Already running Promptbook']) {
+    for (const tab of ['Docker Compose', 'Running project']) {
         await page.getByRole('tab', { name: tab }).click();
         await expect(page.getByRole('tabpanel', { name: tab }).locator('pre code')).toContainText(/[a-z2-7]{26}/);
         await checkScreen(`/engines/new ${tab} tab`);
@@ -102,12 +103,12 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     // Until the owner's first passkey the engine counts no member (M-08).
     await beat(0);
     await expect(progress).toHaveAttribute('data-link-state', 'owner-pending');
-    await expect(progress.getByText('Engine online, version 1.0.0.', { exact: true }).first()).toBeVisible();
+    await expect(progress.getByText('Project online, version 1.0.0.', { exact: true }).first()).toBeVisible();
     await checkScreen('/engines/new owner pending');
 
     await beat(1);
     await expect(progress).toHaveAttribute('data-link-state', 'ready');
-    const ready = progress.getByRole('link', { name: /^Open engine/ });
+    const ready = progress.getByRole('link', { name: /^Open project/ });
     await expect(ready).toHaveAttribute('href', `https://${engineId}.${ENGINE_DOMAIN}/`);
     await expect(ready).toHaveAttribute('rel', 'noopener noreferrer');
     await checkScreen('/engines/new ready');
@@ -126,7 +127,7 @@ test('link an engine, see it online, open its page and revoke it, under the prod
 
     await page.goto('/engines/all');
     await expect(page.getByText('Online')).toBeVisible();
-    const open = page.getByRole('link', { name: /^Open engine/ });
+    const open = page.getByRole('link', { name: /^Open project/ });
     await expect(open).toHaveAttribute('href', `https://${engineId}.${ENGINE_DOMAIN}/`);
     await expect(open).toHaveAttribute('rel', 'noopener noreferrer');
     await expect(open).toHaveAttribute('referrerpolicy', 'no-referrer');
@@ -136,9 +137,9 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     await expect(page.getByRole('heading', { name: 'Last heartbeat' })).toBeVisible();
     await checkScreen('/engines/$engineId');
 
-    await page.getByRole('button', { name: /^Actions for engine/ }).click();
-    await page.getByRole('menuitem', { name: 'Revoke engine' }).click();
-    const dialog = page.getByRole('dialog', { name: `Revoke engine ${engineId.slice(0, 8)}…?` });
+    await page.getByRole('button', { name: /^Actions for project/ }).click();
+    await page.getByRole('menuitem', { name: 'Revoke project' }).click();
+    const dialog = page.getByRole('dialog', { name: `Revoke project ${engineId.slice(0, 8)}…?` });
     // axe measures colours as rendered, so the dialog's opening animation has to be over; and it is checked before
     // typing, since enabling the confirm button starts a colour transition too.
     await dialog.evaluate((element) =>
@@ -149,8 +150,8 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     // A sign-up is no step-up, so the confirm button runs the passkey check itself, without a second dialog.
     await dialog.getByRole('button', { name: 'Revoke with passkey' }).click();
     await expect(page.getByRole('dialog', { name: 'Confirm it is you' })).toHaveCount(0);
-    await expect(page.getByText(/You revoked this engine/)).toBeVisible();
-    await expect(page.getByRole('link', { name: /^Open engine/ })).toHaveCount(0);
+    await expect(page.getByText(/You revoked this project/)).toBeVisible();
+    await expect(page.getByRole('link', { name: /^Open project/ })).toHaveCount(0);
 
     expectNoBrowserErrors(browserReport());
 });

@@ -2,6 +2,8 @@ import {
     checkRegistrationResponse,
     ed25519PublicKeyToBytes,
     LinkCode,
+    newOwnerSetupSecret,
+    ownerSetupCommitment,
     ProblemDetails,
     REGISTER_PATH,
     TolerantRegisterEngineResponse,
@@ -10,6 +12,7 @@ import {
 } from '@ptbk/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { cryptoRandom } from '../adapters/crypto-random';
 import { orgIdSchema } from '../domain/ids';
 import { LINK_CODE_TTL_MS } from '../domain/registration/issue-link-code';
 import type {
@@ -27,6 +30,10 @@ import { createTestEngine, TEST_ENGINE_DOMAIN, type TestEngine } from './test-en
 const LINK_CODES = '/api/engines/link-codes';
 const LINK_ELIGIBILITY = '/api/engines/link-eligibility';
 const OTHER_ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+function newCommitment() {
+    return ownerSetupCommitment(newOwnerSetupSecret({ bytes: (length) => new Uint8Array(cryptoRandom.bytes(length)) }));
+}
 
 async function orgOf(browser: TestBrowser) {
     const response = await browser.request('GET', '/api/session');
@@ -250,13 +257,37 @@ export function describeEngineFlows(
             await expectRegistered(await register(await second.register(spare)), second);
         });
 
+        it('keeps a spare code usable when two new engines compete for the final project slot', async () => {
+            const { browser } = await owner();
+            const first = await createTestEngine();
+            await expectRegistered(await register(await first.register(await linkCode(browser))), first);
+            const requests: RegisterEngineRequest[] = [];
+            for (let i = 0; i < 2; i++) {
+                const engine = await createTestEngine();
+                requests.push(await engine.register(await linkCode(browser)));
+            }
+            const results = await Promise.all(
+                requests.map(async (request) => ({ request, response: await register(request) })),
+            );
+            expect(results.map(({ response }) => response.status).sort()).toEqual([200, 403]);
+            const denied = results.find(({ response }) => response.status === 403);
+            if (denied === undefined) throw new Error('expected one registration to reach the project limit');
+            expectProblem(denied.response, 403, 'engine-limit');
+            await revoke(harness, first.engineId);
+            expect((await register(denied.request)).status).toBe(200);
+        });
+
         it('limits active link codes per organization until one is cancelled', async () => {
             const { browser } = await owner();
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 99; i++) {
                 await linkCode(browser);
             }
+            const last = await Promise.all([browser.request('POST', LINK_CODES), browser.request('POST', LINK_CODES)]);
+            expect(last.map((response) => response.status).sort()).toEqual([200, 409]);
+            expect((await pending(browser)).linkCodes).toHaveLength(100);
             const limited = await browser.request('POST', LINK_CODES);
             expect([limited.status, problemCode(limited)]).toEqual([409, 'link-code-limit']);
+            expect((await browser.request('GET', LINK_ELIGIBILITY)).body).toMatchObject({ eligibility: 'allowed' });
             const [oldest] = (await pending(browser)).linkCodes.slice(-1);
             expect((await browser.request('POST', `${LINK_CODES}/${oldest?.linkCodeId ?? ''}/cancel`)).status).toBe(
                 204,
@@ -368,12 +399,6 @@ export function describeEngineFlows(
                     await expectRegistered(await register(await engine.register(await linkCode(browser))), engine);
                 }
                 expect((await eligibility(browser)).eligibility).toBe('engine-limit');
-                const busy = await owner();
-                for (let i = 0; i < 5; i++) {
-                    await linkCode(busy.browser);
-                }
-                // The rate limit is issuance's answer, not the plan step's.
-                expect((await eligibility(busy.browser)).eligibility).toBe('allowed');
             });
 
             it('follows a code from pending to expired, or to linked with the engine, without the code', async () => {
@@ -425,6 +450,96 @@ export function describeEngineFlows(
                 ]) {
                     expect([response.status, problemCode(response)]).toEqual([401, 'unauthorized']);
                 }
+            });
+        });
+
+        describe('owner setup commitment (ADR 0023)', () => {
+            it('stores the commitment with the code and answers it once, at registration, then nulls it', async () => {
+                const { browser } = await owner();
+                const commitment = await newCommitment();
+                const view = issued(await browser.request('POST', LINK_CODES, { ownerSetupCommitment: commitment }));
+                expect(JSON.stringify(view)).not.toContain(commitment);
+                expect(await storedLinkCodeValues(harness)).toContain(commitment);
+                const engine = await createTestEngine();
+                const request = await engine.register(LinkCode.parse(view.linkCode));
+                const answer = await register(request);
+                await expectRegistered(answer, engine);
+                expect(answer.body).toMatchObject({ ownerSetupCommitment: commitment });
+                expect(await storedLinkCodeValues(harness)).not.toContain(commitment);
+                expectProblem(await register(request), 401, 'invalid-link-code');
+
+                // Without a body, or with an empty one, a code is issued as before, and the re-link answers null.
+                for (const body of [undefined, {}]) {
+                    const again = issued(await browser.request('POST', LINK_CODES, body));
+                    const relinked = await register(await engine.register(LinkCode.parse(again.linkCode)));
+                    expect(relinked.body).toMatchObject({ ownerSetupCommitment: null });
+                }
+            });
+
+            it('refuses a malformed commitment, an unknown field and an oversized body, and issues nothing', async () => {
+                const { browser } = await owner();
+                const commitment = await newCommitment();
+                const refused = [
+                    { ownerSetupCommitment: commitment.slice(1) },
+                    { ownerSetupCommitment: `${commitment}A` },
+                    { ownerSetupCommitment: `${commitment}=` },
+                    { ownerSetupCommitment: `${commitment.slice(1)}+` },
+                    { ownerSetupCommitment: null },
+                    { ownerSetupCommitment: commitment, ownerSetupSecret: commitment.slice(0, 22) },
+                    { secret: commitment },
+                    null,
+                    commitment,
+                ];
+                for (const body of refused) {
+                    expectProblem(await browser.request('POST', LINK_CODES, body), 400, 'invalid-request');
+                }
+                expectProblem(
+                    await browser.request('POST', LINK_CODES, {
+                        ownerSetupCommitment: commitment,
+                        pad: 'x'.repeat(1024),
+                    }),
+                    413,
+                    'too-large',
+                );
+                expect(await pending(browser)).toEqual({ linkCodes: [] });
+            });
+
+            it('takes the commitment on the team route too, as strictly', async () => {
+                const { browser } = await owner();
+                const team = await browser.request('POST', '/api/teams', { name: 'Client A' });
+                const teamId = (team.body as { team: { teamId: string } }).team.teamId;
+                const path = `/api/teams/${teamId}/link-codes`;
+                expectProblem(
+                    await browser.request('POST', path, { ownerSetupCommitment: 'short' }),
+                    400,
+                    'invalid-request',
+                );
+                const commitment = await newCommitment();
+                const view = issued(await browser.request('POST', path, { ownerSetupCommitment: commitment }));
+                expect(await storedLinkCodeValues(harness)).toContain(commitment);
+                const engine = await createTestEngine();
+                const answer = await register(await engine.register(LinkCode.parse(view.linkCode)));
+                expect(answer.body).toMatchObject({ ownerSetupCommitment: commitment });
+                expect(await storedLinkCodeValues(harness)).not.toContain(commitment);
+            });
+
+            it('nulls the commitment of a cancelled code, and an expired code hands out none', async () => {
+                const { browser } = await owner();
+                const cancelled = await newCommitment();
+                const view = issued(await browser.request('POST', LINK_CODES, { ownerSetupCommitment: cancelled }));
+                expect((await browser.request('POST', `${LINK_CODES}/${view.linkCodeId}/cancel`)).status).toBe(204);
+                expect(await storedLinkCodeValues(harness)).not.toContain(cancelled);
+
+                const expired = issued(
+                    await browser.request('POST', LINK_CODES, { ownerSetupCommitment: await newCommitment() }),
+                );
+                harness.clock.advance(LINK_CODE_TTL_MS);
+                const engine = await createTestEngine();
+                expectProblem(
+                    await register(await engine.register(LinkCode.parse(expired.linkCode))),
+                    401,
+                    'invalid-link-code',
+                );
             });
         });
     });

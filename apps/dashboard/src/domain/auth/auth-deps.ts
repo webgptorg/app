@@ -9,13 +9,12 @@ import type { AuthStore } from './auth-store';
 /** Absolute URLs on the dashboard origin that emails link to; tokens travel in the fragment, never in a query. */
 export interface AuthLinks {
     signup(token: string): string;
-    recovery(token: string): string;
+    /** `invite` marks the link of an invitee adding a passkey (D-35); it changes the page's wording only. */
+    recovery(token: string, via?: 'invite'): string;
     signIn(): string;
     recover(): string;
     /** The invitation page (ADR 0018); the token rides in the fragment, so it never reaches a log or a `Referer`. */
     invite(token: string): string;
-    /** A team's page, for the access emails. */
-    team(teamId: string): string;
 }
 
 export interface AuthDeps {

@@ -62,7 +62,7 @@ describe('deleting an agent', { timeout: TIMEOUT_MS }, () => {
         await user.click(within(dialog).getByRole('button', { name: 'Delete Agent 003' }));
 
         expect(await within(dialog).findByRole('alert')).toBeDefined();
-        expect(within(dialog).getByRole('alert').textContent).toContain('The engine did not delete the agent.');
+        expect(within(dialog).getByRole('alert').textContent).toContain('The project did not delete the agent.');
         expect(await screen.findByText('The agent could not be deleted.')).toBeDefined();
         expect(screen.getByRole('link', { name: 'Agent 003' })).toBeDefined();
 

@@ -31,6 +31,17 @@ test('the public trust page, signed out, reached from the sign-in footer', async
         .getByRole('link', { name: 'How Promptbook protects you' })
         .click();
     await expect(page.getByRole('heading', { name: 'How Promptbook protects you', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Our relay', level: 3 })).toBeVisible();
     await checkScreen('trust');
+
+    // The drawings take their colours from theme tokens, so contrast is checked in the dark theme too.
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+    await checkScreen('trust, dark');
+
+    await page.context().addCookies([{ name: 'ptbk_locale', value: 'cs', url: page.url() }]);
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Jak Vás Promptbook chrání', level: 1 })).toBeVisible();
+    await checkScreen('trust, Czech');
     expectNoBrowserErrors(browserReport());
 });

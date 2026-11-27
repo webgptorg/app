@@ -1,11 +1,12 @@
 import type { AccountStore } from '../auth/auth-store';
 import type { EmailAddress } from '../auth/email-address';
+import type { UserRecord } from '../auth/records';
 import { newSecret, sha256Hex } from '../auth/secrets';
 import { newInviteId, newOrgAuditEntryId, type InviteId, type OrgId, type TeamId, type UserId } from '../ids';
 import type { Locale } from '../locale';
 import type { EmailMessage, EmailSender } from '../ports/email-sender';
 import type { OrgRole } from '../roles';
-import type { InvitePreview, InviteRecord } from './team-store';
+import type { InviteOffer, InviteRecord, TeamStore } from './team-store';
 import { teamAudit, type TeamActor, type TeamDeps } from './teams';
 
 /** How long an emailed invitation works (teams spec): long enough for a colleague on holiday, then it lapses. */
@@ -156,21 +157,15 @@ export function revokeInvite(deps: InviteDeps, actor: TeamActor, inviteId: Invit
     return deps.teams.revokeInvite(actor.orgId, inviteId, teamAudit(deps, actor));
 }
 
-export async function previewInvite(
-    deps: Pick<InviteDeps, 'teams' | 'clock'>,
-    token: string,
-): Promise<InvitePreview | null> {
-    return deps.teams.previewInvite(await sha256Hex(token), deps.clock.nowMs());
-}
-
 export type AcceptOutcome =
-    | { readonly kind: 'accepted'; readonly orgId: OrgId }
+    /** `teamIds`: the teams the invitation named, for the page that continues to their engines. */
+    | { readonly kind: 'accepted'; readonly orgId: OrgId; readonly teamIds: readonly TeamId[] }
     | { readonly kind: 'invalid' }
     /** The invitation was for another address: a forwarded link does not let someone else in. */
     | { readonly kind: 'email-mismatch' };
 
 export async function acceptInvite(
-    deps: Pick<InviteDeps, 'teams' | 'clock' | 'random'>,
+    deps: Pick<InviteDeps, 'clock' | 'random'> & { readonly teams: Pick<TeamStore, 'previewInvite' | 'acceptInvite'> },
     actor: { readonly userId: UserId; readonly email: string },
     token: string,
 ): Promise<AcceptOutcome> {
@@ -183,5 +178,47 @@ export async function acceptInvite(
     if (preview.invite.email !== actor.email.toLowerCase()) {
         return { kind: 'email-mismatch' };
     }
-    return deps.teams.acceptInvite(tokenHash, actor.userId, { id: newOrgAuditEntryId(deps.random), at: now });
+    const accepted = await deps.teams.acceptInvite(tokenHash, actor.userId, {
+        id: newOrgAuditEntryId(deps.random),
+        at: now,
+    });
+    return accepted.kind === 'accepted' ? { ...accepted, teamIds: preview.invite.teamIds } : accepted;
+}
+
+type OfferDeps = Pick<InviteDeps, 'clock' | 'random'> & {
+    readonly teams: Pick<TeamStore, 'listInvitesForEmail' | 'acceptInvite'>;
+};
+
+/** The account the invitations are offered to; only a verified address is ever matched. */
+export type Invitee = Pick<UserRecord, 'id' | 'email' | 'emailVerifiedAt'>;
+
+/**
+ * Pending invitations to the account's own address, offered after any sign-in or sign-up (D-33). The verified address
+ * is the proof the invitation link would have given, so these need no token.
+ */
+export async function listInviteOffers(deps: OfferDeps, invitee: Invitee): Promise<readonly InviteOffer[]> {
+    if (invitee.emailVerifiedAt === null) {
+        return [];
+    }
+    return deps.teams.listInvitesForEmail(invitee.email.toLowerCase(), deps.clock.nowMs());
+}
+
+/**
+ * Accepts one of {@link listInviteOffers} through the token path's transaction. An invitation to another address, or
+ * one no longer pending, is `invalid` alike, so an invitation ID reveals nothing.
+ */
+export async function acceptOfferedInvite(
+    deps: OfferDeps,
+    invitee: Invitee,
+    inviteId: InviteId,
+): Promise<Exclude<AcceptOutcome, { readonly kind: 'email-mismatch' }>> {
+    const offer = (await listInviteOffers(deps, invitee)).find((candidate) => candidate.invite.id === inviteId);
+    if (offer === undefined) {
+        return { kind: 'invalid' };
+    }
+    const accepted = await deps.teams.acceptInvite(offer.invite.tokenHash, invitee.id, {
+        id: newOrgAuditEntryId(deps.random),
+        at: deps.clock.nowMs(),
+    });
+    return accepted.kind === 'accepted' ? { ...accepted, teamIds: offer.invite.teamIds } : accepted;
 }

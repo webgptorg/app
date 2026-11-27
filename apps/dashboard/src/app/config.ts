@@ -12,10 +12,12 @@ import {
 } from '../domain/billing/plan-catalogue';
 import { CT_SOURCES, type CtSourceName } from '../domain/abuse/ct-log-source';
 import { MOCK_ENGINE_SIGN_IN_FINGERPRINT } from '../domain/abuse/public-face';
+import { LICENSE_ENFORCEMENT_MODES, type LicenseEnforcement } from '../domain/licensing/license-checks';
 import { LINK_CODE_TTL_MS } from '../domain/registration/issue-link-code';
 import type { HeartbeatTiming } from '../domain/status/engine-status';
 import { DEFAULT_THRESHOLDS, thresholdsSchema, type AlertThresholds } from '../domain/monitoring/alert-rules';
 import { environmentSchema, type Environment } from '../shared/environment';
+import { engineInstallReleaseSchema, type EngineInstallRelease } from '../shared/engine-installation';
 import {
     docsAnchorSchema,
     installPathIdSchema,
@@ -84,7 +86,7 @@ const installGuideUrlSchema = z
 const adaptersSchema = z.strictObject({
     email: z.enum(['cloudflare', 'fake']),
     /** `off` (dev and staging): nobody is charged and every organization holds `BILLING_OFF_PLAN`; no Stripe at all. */
-    billing: z.enum(['stripe', 'fake', 'off']),
+    billing: z.enum(['stripe', 'fake', 'off', 'website']),
     rateLimit: z.enum(['workers', 'memory']),
 });
 
@@ -143,6 +145,35 @@ const hmacKeySchema = z.string().regex(/^[A-Za-z0-9_-]{43,86}$/);
 /** Secret and restricted API keys; `wrangler secret put STRIPE_SECRET_KEY`, never a var. */
 const stripeKeySchema = z.string().regex(/^(sk|rk)_(test|live)_[A-Za-z0-9]{10,255}$/);
 const stripeWebhookSecretSchema = z.string().regex(/^whsec_[A-Za-z0-9+/=]{16,255}$/);
+
+/** Production's website, where licences are sold (ADR 0021); staging may point `WEBSITE_ORIGIN` at another one. */
+export const DEFAULT_WEBSITE_ORIGIN = 'https://www.ptbk.io';
+
+/** The website is reached server to server with a bearer secret, so plain http is refused even in dev. */
+const websiteOriginSchema = originSchema.refine((origin) => origin.startsWith('https://'), 'must be https');
+
+/**
+ * The website page that starts the handoff (ADR 0021): the App sends the browser there with `?challenge=`, and the page
+ * calls the website's same-origin `POST /api/promptbook-billing/handoff` with the member's session. No default: the
+ * website has no such page yet, and a guessed URL would send people nowhere.
+ */
+const websiteHandoffUrlSchema = z
+    .url({ protocol: /^https$/ })
+    .max(512)
+    .refine((value) => !value.includes('#'), 'must not have a fragment');
+
+/**
+ * The website's App credential (ADR 0021), shared with the website only; `wrangler secret put
+ * PROMPTBOOK_APP_LICENSE_SECRET`, never a var, never sent to the SPA. The website trims its copy and wants at least 32
+ * characters; here it must be exactly what it compares against, so no whitespace at all.
+ */
+const licenseSecretSchema = z.string().regex(/^[\x21-\x7e]{32,512}$/);
+
+/**
+ * Whether the licence check points (`engine.link`, `member.invite`) may deny, or only warn (website-licensing.md,
+ * "Enforcement"). `advisory` when unset, and in every environment today; `enforce` needs billing `website`.
+ */
+const licenseEnforcementSchema = z.enum(LICENSE_ENFORCEMENT_MODES);
 
 /**
  * Vars and secrets are JSON values. Anything else (D1, ASSETS, service bindings the runtime or the test pool adds) is a
@@ -258,6 +289,8 @@ const varsSchema = z
                 'duplicate relayId',
             ),
         INSTALL_COMMANDS: installCommandsSchema.optional(),
+        /** Reviewed published artifacts for engine-first command, AI and Windows installation. */
+        ENGINE_INSTALLATION: engineInstallReleaseSchema.optional(),
         /** D-03's single command; read only without `INSTALL_COMMANDS`, for one release. */
         INSTALL_COMMAND: installCommandSchema.optional(),
         INSTALL_GUIDE_URL: installGuideUrlSchema,
@@ -281,9 +314,17 @@ const varsSchema = z
         ABUSE_MONITORING: abuseMonitoringSchema.optional(),
         CERTSPOTTER_API_KEY: certSpotterKeySchema.optional(),
         WEB_RISK_API_KEY: webRiskKeySchema.optional(),
+        WEBSITE_ORIGIN: websiteOriginSchema.optional(),
+        WEBSITE_HANDOFF_URL: websiteHandoffUrlSchema.optional(),
+        PROMPTBOOK_APP_LICENSE_SECRET: licenseSecretSchema.optional(),
+        LICENSE_ENFORCEMENT: licenseEnforcementSchema.optional(),
     })
     .superRefine((vars, ctx) => {
-        if (vars.INSTALL_COMMANDS === undefined && vars.INSTALL_COMMAND === undefined) {
+        if (
+            vars.INSTALL_COMMANDS === undefined &&
+            vars.INSTALL_COMMAND === undefined &&
+            vars.ENGINE_INSTALLATION === undefined
+        ) {
             ctx.addIssue({ code: 'custom', path: ['INSTALL_COMMANDS'], message: 'required' });
         }
         if (vars.INSTALL_COMMANDS !== undefined && vars.INSTALL_COMMAND !== undefined) {
@@ -291,7 +332,9 @@ const varsSchema = z
         }
         // Engines accept only https:// link URLs, so a plain-http dev origin can hand out codes only.
         const templates = [...(vars.INSTALL_COMMANDS ?? []).map((path) => path.template), vars.INSTALL_COMMAND ?? ''];
-        const usesLinkUrl = templates.some((template) => template.includes(LINK_URL_PLACEHOLDER));
+        const usesLinkUrl =
+            vars.ENGINE_INSTALLATION !== undefined ||
+            templates.some((template) => template.includes(LINK_URL_PLACEHOLDER));
         if (usesLinkUrl && !vars.DASHBOARD_ORIGIN.startsWith('https://')) {
             ctx.addIssue({
                 code: 'custom',
@@ -311,7 +354,7 @@ const varsSchema = z
                     message: 'billing off is not for production',
                 });
             }
-        } else {
+        } else if (vars.ADAPTERS.billing !== 'website') {
             if (vars.BILLING_PLANS === undefined) {
                 ctx.addIssue({ code: 'custom', path: ['BILLING_PLANS'], message: 'required with billing on' });
             }
@@ -319,6 +362,26 @@ const varsSchema = z
             if (vars.BILLING_OFF_PLAN !== undefined) {
                 ctx.addIssue({ code: 'custom', path: ['BILLING_OFF_PLAN'], message: 'only with billing off' });
             }
+        }
+        if (vars.LICENSE_ENFORCEMENT === 'enforce' && vars.ADAPTERS.billing !== 'website') {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['LICENSE_ENFORCEMENT'],
+                message: 'needs the website billing adapter',
+            });
+        }
+        if (vars.ADAPTERS.billing === 'website') {
+            for (const name of ['WEBSITE_HANDOFF_URL', 'PROMPTBOOK_APP_LICENSE_SECRET'] as const) {
+                if (vars[name] === undefined) {
+                    ctx.addIssue({ code: 'custom', path: [name], message: 'required by the website billing adapter' });
+                }
+            }
+        }
+        // Refinements run on fields that already failed, which have their own issue.
+        const websiteOrigin = websiteOriginSchema.safeParse(vars.WEBSITE_ORIGIN ?? DEFAULT_WEBSITE_ORIGIN);
+        const handoffUrl = websiteHandoffUrlSchema.safeParse(vars.WEBSITE_HANDOFF_URL);
+        if (websiteOrigin.success && handoffUrl.success && new URL(handoffUrl.data).origin !== websiteOrigin.data) {
+            ctx.addIssue({ code: 'custom', path: ['WEBSITE_HANDOFF_URL'], message: 'must be on WEBSITE_ORIGIN' });
         }
         if (vars.ADAPTERS.billing === 'stripe') {
             for (const name of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'] as const) {
@@ -385,6 +448,15 @@ export type AdapterSelection = z.infer<typeof adaptersSchema>;
  * plans are sold through the provider.
  */
 export type BillingConfig =
+    | {
+          readonly adapter: 'website';
+          readonly websiteOrigin: string;
+          /** Where the handoff starts on the website; the App adds `challenge`. */
+          readonly handoffUrl: string;
+          /** Secret: the website's App credential; server to server only. */
+          readonly licenseSecret: string;
+          readonly enforcement: LicenseEnforcement;
+      }
     | { readonly adapter: 'off'; readonly grant: PlanEntitlements }
     | { readonly adapter: 'stripe' | 'fake'; readonly plans: PlanCatalogue };
 
@@ -403,6 +475,7 @@ export interface DashboardConfig {
     readonly relays: readonly Readonly<RelayConfig>[];
     /** The tabs of `/engines/new`, in order; each template contains one placeholder exactly once. */
     readonly installCommands: readonly InstallCommandConfig[];
+    readonly engineInstallation?: Readonly<EngineInstallRelease>;
     /** The public install guide, without a fragment. */
     readonly installGuideUrl: string;
     readonly adapters: Readonly<AdapterSelection>;
@@ -497,6 +570,15 @@ function abuseMonitoringConfig(parsed: z.infer<typeof varsSchema>): AbuseMonitor
 function billingConfig(parsed: z.infer<typeof varsSchema>): BillingConfig {
     const adapter = parsed.ADAPTERS.billing;
     // The refinement above requires the var each adapter reads.
+    if (adapter === 'website') {
+        return Object.freeze({
+            adapter,
+            websiteOrigin: parsed.WEBSITE_ORIGIN ?? DEFAULT_WEBSITE_ORIGIN,
+            handoffUrl: parsed.WEBSITE_HANDOFF_URL as string,
+            licenseSecret: parsed.PROMPTBOOK_APP_LICENSE_SECRET as string,
+            enforcement: parsed.LICENSE_ENFORCEMENT ?? 'advisory',
+        });
+    }
     return adapter === 'off'
         ? Object.freeze({ adapter, grant: createPlanEntitlements(parsed.BILLING_OFF_PLAN as PlanEntitlementsVar) })
         : Object.freeze({ adapter, plans: createPlanCatalogue(parsed.BILLING_PLANS as PlanCatalogueVar) });
@@ -532,6 +614,9 @@ export function parseConfig(env: object): DashboardConfig {
         engineDomain: parsed.ENGINE_DOMAIN,
         relays: Object.freeze(parsed.RELAYS.map((relay) => Object.freeze({ ...relay }))),
         installCommands: installCommandsConfig(parsed),
+        ...(parsed.ENGINE_INSTALLATION === undefined
+            ? {}
+            : { engineInstallation: Object.freeze({ ...parsed.ENGINE_INSTALLATION }) }),
         installGuideUrl: parsed.INSTALL_GUIDE_URL,
         adapters: Object.freeze({ ...parsed.ADAPTERS }),
         emailFrom: parsed.EMAIL_FROM,

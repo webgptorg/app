@@ -60,12 +60,22 @@ describe('agentStatus', () => {
         expect(agentStatus({ kind: 'pending' }, NO_ACTIVITY)).toBeNull();
     });
 
-    it('shows a state from a newer engine as unknown with its raw value, and an unreadable one as unknown', () => {
+    it('shows a state from a newer engine as unknown with its raw value', () => {
         expect(agentStatus(state('dreaming'), NO_ACTIVITY)).toMatchObject({
             kind: 'unknown',
             label: 'Unknown (dreaming)',
         });
-        expect(agentStatus({ kind: 'unavailable' }, NO_ACTIVITY)?.kind).toBe('unknown');
+    });
+
+    it('decides from the page’s lists alone when the engine reports no run state: never Unknown', () => {
+        const unavailable = { kind: 'unavailable' } as const;
+        expect(agentStatus(unavailable, NO_ACTIVITY)).toMatchObject({ kind: 'idle', tone: 'neutral', label: 'Idle' });
+        expect(agentStatus(unavailable, withTask)).toMatchObject({ kind: 'working', label: 'Working' });
+        expect(agentStatus(unavailable, { ...NO_ACTIVITY, working: [reply] })?.kind).toBe('working');
+        expect(agentStatus(unavailable, { ...NO_ACTIVITY, questions: 2 })).toMatchObject({
+            kind: 'needs-you',
+            label: 'Needs you',
+        });
     });
 });
 

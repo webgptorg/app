@@ -38,6 +38,7 @@ function render(ui: ReactNode, options: { readonly canOpenTasks?: boolean; reado
         chat: CHAT,
         agents: options.agents ?? [],
         canOpenTasks: options.canOpenTasks ?? false,
+        canOpenAgents: false,
     });
     const router = createRouter({
         routeTree: createRootRoute({

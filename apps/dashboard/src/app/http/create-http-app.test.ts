@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createFakeEmailSender } from '../../adapters/email/fake-email-sender';
+import { createConfiguredEngineInstallReleaseSource } from '../../adapters/registration/configured-engine-install-release-source';
 import { createManualTimer } from '../../testing/manual-timer';
 import { createMemoryLogger } from '../../adapters/memory-logger';
 import { createMemoryRateLimiter } from '../../adapters/rate-limit/memory-rate-limiter';
@@ -60,6 +61,7 @@ function app(options: {
     const registration = createMemoryRegistrationStores({ orgExists: () => true });
     const { app: http } = createHttpApp({
         config,
+        installReleases: createConfiguredEngineInstallReleaseSource(),
         clock,
         random: { bytes: (n) => new Uint8Array(n) },
         timer: createManualTimer(),
@@ -89,9 +91,12 @@ function app(options: {
         engineStatus: {
             recordHeartbeat: () => Promise.reject(new Error('not reached')),
             getStatus: () => Promise.resolve({ state: 'never-seen' }),
+            getActivity: () => Promise.resolve(null),
             reset: () => Promise.resolve(),
         },
         relayPresence: createMemoryRelayPresenceStore(),
+        usage: { record: () => Promise.resolve() },
+        licensing: null,
         assets: { fetch: assets } as unknown as Fetcher,
         viteDevServer: options.viteDevServer,
     });

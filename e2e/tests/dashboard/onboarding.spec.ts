@@ -156,10 +156,10 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         await page.goto(`${DASHBOARD_ORIGIN}/engines/new`);
         if (BILLING_OFF) {
             await expect(page).toHaveURL(/\/engines\/new\?link=[a-z2-7]{26}$/);
-            await expect(page.getByRole('heading', { name: 'Choose a plan to link your engine' })).toHaveCount(0);
+            await expect(page.getByRole('heading', { name: 'Choose a plan to link your project' })).toHaveCount(0);
             return;
         }
-        await expect(page.getByRole('heading', { name: 'Choose a plan to link your engine' })).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Choose a plan to link your project' })).toBeVisible();
         await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
         await expect(page.getByText('Thank you, your trial has started.')).toBeVisible();
         // Thanked once: the address no longer carries `checkout`, so a reload does not thank again.
@@ -177,7 +177,9 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     await expect(row('linked')).toHaveAttribute('data-step-state', 'current');
 
     const pastedAt = Date.now();
-    const engine = await mockEngines.startUnlinked();
+    // Paired before setup, as a Reborn engine installed from the dashboard is: setup finishes in the browser. With the
+    // handoff off, the tab waits and the terminal's link is the way in; the handoff has its own test below.
+    const engine = await mockEngines.startUnlinked({ setup: 'pending', ownerHandoff: 'off' });
     await waitUntilRunning(engine);
     expect(await ownerSetUp(engine)).toBe(false);
     const connect = await engine.exec([...ENGINE_CLI, 'connect', '--link', linkUrl]);
@@ -193,12 +195,12 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         await expect(row('linked').getByText(identity.fingerprint, { exact: true })).toBeVisible();
         await expect(row('linked').getByText(identity.hostname, { exact: true })).toBeVisible();
         await expect(row('online')).toHaveAttribute('data-step-state', 'done', { timeout: NEXT_HEARTBEAT_MS });
-        await expect(row('online').locator('p')).toHaveText(/^Engine online, version \S+\.$/);
+        await expect(row('online').locator('p')).toHaveText(/^Project online, version \S+\.$/);
         await expect(row('reachable')).toHaveAttribute('data-step-state', 'done', { timeout: REACHABLE_WITHIN_MS });
         await expect(row('reachable')).toContainText('Reachable through 2 relays');
         await expect(progress).toHaveAttribute('data-link-state', 'owner-pending');
         await expect(row('owner')).toHaveAttribute('data-step-state', 'current');
-        await expect(row('owner')).toContainText('browser window that opened on the engine');
+        await expect(row('owner')).toContainText('browser window that opened on the project');
     });
 
     const setupLink = parseSetupLink(await takeSetupLink(engine));
@@ -210,7 +212,7 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     await addPasskeyAuthenticator(enginePage);
     await test.step('the setup link makes the person the owner with a passkey', async () => {
         await enginePage.goto(setupLink.url);
-        await expect(enginePage.getByRole('heading', { name: 'Set up your engine' })).toBeVisible();
+        await expect(enginePage.getByRole('heading', { name: 'Set up your project' })).toBeVisible();
         expect(new URL(enginePage.url()).hash).toBe('');
         await expect(enginePage.locator('section[data-state="valid"]')).toContainText(identity.fingerprint);
         await enginePage.locator('button[data-action="create"]').click();
@@ -226,17 +228,19 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     await expect(row('owner')).toHaveAttribute('data-step-state', 'done');
     expect(distinctInOrder(linkStates)).toEqual(['waiting', 'linked', 'owner-pending', 'ready']);
 
-    await test.step('"Open engine" opens the engine at its hostname, signed in, with no passkey prompt', async () => {
+    await test.step('"Continue setup" opens the engine on its setup, signed in, with no passkey prompt', async () => {
         const ready = page.locator('[data-link-ready]');
-        await expect(ready.getByRole('link', { name: 'Back to engines' })).toBeVisible();
-        const open = ready.getByRole('link', { name: /^Open engine/ });
+        await expect(ready.getByRole('link', { name: 'Back to projects' })).toBeVisible();
+        // The engine reports its setup unfinished, so the ready panel continues it rather than opening the engine (D-36).
+        const open = ready.getByRole('link', { name: /^Continue setup on project/ });
         await expect(open).toHaveAttribute('href', `https://${identity.hostname}/`);
         const [appPage] = await Promise.all([context.waitForEvent('page'), open.click()]);
         await appPage.waitForLoadState('load');
         expect(new URL(appPage.url()).hostname).toBe(identity.hostname);
-        // The cross-site link leaves the SameSite=Strict cookie behind; the sign-in page finds the session itself.
-        await expect(appPage).toHaveURL(`https://${identity.hostname}/`);
-        await expect(appPage.getByRole('heading', { level: 1 })).toBeVisible();
+        // The cross-site link leaves the SameSite=Strict cookie behind; the sign-in page finds the session itself. The
+        // engine has no project yet, so the UI goes on to its setup.
+        await expect(appPage).toHaveURL(`https://${identity.hostname}/onboarding`);
+        await expect(appPage.getByRole('heading', { level: 1, name: 'Your project' })).toBeVisible();
         expect(await meStatus(appPage)).toBe(200);
         await appPage.close();
     });
@@ -245,7 +249,7 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         // A new tab: in the setup tab, only the fragment would change, and the page would not load again.
         const reused = await context.newPage();
         await reused.goto(setupLink.url);
-        await expect(reused.getByRole('heading', { name: 'This engine already has an owner' })).toBeVisible();
+        await expect(reused.getByRole('heading', { name: 'This project already has an owner' })).toBeVisible();
         await reused.close();
         await enginePage.close();
     });
@@ -257,13 +261,14 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         const [online, ...more] = await onlineEmails();
         expect(more).toEqual([]);
         // Unnamed when its first heartbeat arrives, so the email names it by its short ID and gives the address below.
-        expect(online?.subject).toBe(`Your engine ${identity.hostname.slice(0, 8)}… is online`);
+        expect(online?.subject).toBe(`Your project ${identity.hostname.slice(0, 8)}… is online`);
         expect(online?.text).toContain(identity.hostname);
-        expect(online?.text).toContain("open the setup link in the engine's terminal");
+        expect(online?.text).toContain("open the setup link in the project's terminal");
     });
 
     const engineRow = async () => (await dashboard.reloadEngineRows()).filter({ hasText: identity.hostname });
-    await expect((await engineRow()).getByText('Online', { exact: true })).toBeVisible();
+    // Online with an owner, but its setup is not finished yet (D-36).
+    await expect((await engineRow()).getByText('Setup not finished', { exact: true })).toBeVisible();
 
     let resetLink: SetupLink | undefined;
     await test.step('owner --reset: the dashboard shows "Owner not set up" again', async () => {
@@ -304,6 +309,45 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         'setup link → signed in': signedInAt - setupLinkAt,
         'landing → ready': readyAt - landedAt,
     });
+});
+
+test('the pairing tab opens the setup page by itself and the person becomes the owner (ADR 0023)', async ({
+    page,
+    dashboard,
+    mockEngines,
+}) => {
+    test.setTimeout(300_000);
+    const violations = await watchPolicy(page.context());
+    await dashboard.signUp(uniqueEmail('onboarding-handoff'));
+    await dashboard.subscribe();
+    const { linkCode, linkUrl } = await dashboard.createLinkCode();
+    const sessionKeys = await page.evaluate(() => Object.keys(sessionStorage));
+    expect(sessionKeys.filter((key) => key.startsWith('ptbk.ownerSetup.'))).toHaveLength(1);
+
+    const engine = await mockEngines.startUnlinked({ setup: 'pending' });
+    await waitUntilRunning(engine);
+    const connect = await engine.exec([...ENGINE_CLI, 'connect', '--link', linkUrl]);
+    expect(connect.exitCode, connect.stderr).toBe(0);
+    const identity = terminalIdentity(connect.stdout);
+
+    await test.step('the tab goes to the setup page once the engine signals, with the secret only in the fragment', async () => {
+        await page.waitForURL((url) => url.hostname === identity.hostname && url.pathname === '/setup', {
+            timeout: SETUP_LINK_WITHIN_MS,
+        });
+        await expect(page.getByRole('heading', { name: 'Set up your project' })).toBeVisible();
+        expect(new URL(page.url()).hash).toBe('');
+        await expect(page.locator('section[data-state="valid"]')).toContainText(identity.fingerprint);
+        await page.locator('button[data-action="create"]').click();
+        await expect(page.getByRole('heading', { name: 'You are the owner' })).toBeVisible();
+    });
+    expect(await ownerSetUp(engine)).toBe(true);
+
+    await test.step('the engine audits it as the handoff, and its log stream carries no secret', async () => {
+        const logs = await engine.logs();
+        expect(logs).toMatch(/"event":"owner\.passkey-registered".*"via":"owner-handoff"/);
+        expect(logs).not.toContain(linkCode);
+    });
+    expect(violations).toEqual([]);
 });
 
 test('an expired link code: the page says so and the engine refuses it', async ({ page, dashboard, mockEngines }) => {

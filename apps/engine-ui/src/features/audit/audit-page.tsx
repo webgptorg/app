@@ -145,6 +145,9 @@ function targetChip(target: NonNullable<ReadAuditEntry['target']>, name: string)
         case 'session':
         case 'settings':
         case 'engine':
+        case 'browser-session':
+        case 'browser-help-request':
+        case 'ai-tool':
             return null;
     }
 }

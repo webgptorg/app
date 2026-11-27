@@ -1,15 +1,17 @@
-import { Button, EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
+import { BrandRobot, Button, EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
 import { useQueryErrorResetBoundary } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import type { ErrorComponentProps } from '@tanstack/react-router';
-import { Compass, LockKeyhole, SearchX } from 'lucide-react';
+import { Compass, LockKeyhole, LogIn, SearchX } from 'lucide-react';
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 
 import { useStepUp } from '../features/step-up/step-up';
 import { m } from '../paraglide/messages';
 import { AccessDeniedError } from './access-denied';
-import { classifyApiError } from './api-errors';
+import { classifyApiError, isUnauthenticated } from './api-errors';
+import { useBrowser } from './browser-context';
+import { signInUrl } from './sign-in-redirect';
 import { Link } from './link';
 
 /**
@@ -20,6 +22,7 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
     const router = useRouter();
     const queryErrorResetBoundary = useQueryErrorResetBoundary();
     const stepUp = useStepUp();
+    const browser = useBrowser();
     useEffect(() => {
         queryErrorResetBoundary.reset();
     }, [queryErrorResetBoundary]);
@@ -40,6 +43,28 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
         );
     }
 
+    // The redirect to sign-in normally leaves this page at once; this stays for when it did not (e.g. the page came
+    // back from the browser's cache), so an ended session never reads as an error with a retry that cannot work.
+    if (isUnauthenticated(error)) {
+        return (
+            <RouteMessage
+                icon={<LogIn aria-hidden />}
+                title={m.signed_out_title()}
+                description={m.signed_out_body()}
+                action={
+                    <Button
+                        variant="primary"
+                        onClick={() => {
+                            browser.location.assign(signInUrl(browser.location));
+                        }}
+                    >
+                        {m.sign_in_again()}
+                    </Button>
+                }
+            />
+        );
+    }
+
     const failure = classifyApiError(error);
     if (failure.kind === 'problem' && failure.problem.code === 'step-up-required') {
         return (
@@ -51,7 +76,12 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
                     <Button
                         variant="primary"
                         onClick={() => {
-                            stepUp.request();
+                            stepUp.request({
+                                retry: () => {
+                                    reset();
+                                    void router.invalidate();
+                                },
+                            });
                         }}
                     >
                         {m.step_up_continue()}
@@ -77,6 +107,7 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
             <ErrorState
                 title={m.error_title()}
                 message={m.error_body()}
+                illustration={<BrandRobot pose="thinking" />}
                 onRetry={() => {
                     reset();
                     void router.invalidate();
@@ -133,6 +164,7 @@ export function RouteNotFound() {
         <div className="py-8">
             <EmptyState
                 icon={<SearchX aria-hidden />}
+                illustration={<BrandRobot pose="thinking" />}
                 title={m.not_found_title()}
                 description={m.not_found_body()}
                 headingLevel={1}

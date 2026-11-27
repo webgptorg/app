@@ -1,4 +1,4 @@
-import type { EngineApiRouteId, Permission } from '@ptbk/engine-api';
+import type { BrowserHelpReason, EngineApiRouteId, Permission } from '@ptbk/engine-api';
 
 /**
  * Who a session is for. Subjects are permission sets, never role names: which role holds which permission is engine
@@ -40,4 +40,70 @@ export interface ConformanceTarget {
      * Without it, `engine-api.wallet.requests` skips.
      */
     readonly walletRequest?: (origin: string) => Promise<string>;
+    /** How the checks reach `browser-tab@1`'s channel and test-mode levers; without it those checks skip. */
+    readonly liveBrowser?: LiveBrowserTarget;
+    /** Test-mode levers for `ai-tools@1`; without them `engine-api.ai-tools.sign-in-required` skips. */
+    readonly aiTools?: AiToolsTarget;
+}
+
+export interface AiToolsTarget {
+    /**
+     * The provider stops accepting the sign-in of the AI tool new chat turns run on, as when its refresh token is
+     * rotated away; answers that tool's ID.
+     */
+    expireSignIn(): Promise<string>;
+    /** The provider accepts that sign-in again, as after signing in on the host. */
+    renewSignIn(aiToolId: string): Promise<void>;
+}
+
+/** One event on a live channel as the test sees it, in arrival order. */
+export type LiveChannelEvent =
+    | { readonly kind: 'text'; readonly text: string }
+    | { readonly kind: 'binary'; readonly bytes: Uint8Array }
+    | { readonly kind: 'closed'; readonly code: number };
+
+/** A live channel the test drives. */
+export interface LiveChannelClient {
+    send(data: string | Uint8Array): void;
+    /** The next event, or `null` if none arrives within `timeoutMs`. After `closed`, every call answers `closed`. */
+    next(timeoutMs: number): Promise<LiveChannelEvent | null>;
+    close(): void;
+}
+
+/** The upgrade was refused with this HTTP status, or the channel opened. */
+export type LiveChannelOpen =
+    | { readonly kind: 'open'; readonly channel: LiveChannelClient }
+    | { readonly kind: 'refused'; readonly status: number };
+
+/** Where a lever sends the tab: a web origin, or a page whose frames must never leave the engine. */
+export type LiveBrowserPage =
+    | { readonly kind: 'web'; readonly origin: string }
+    | { readonly kind: 'browser-page' }
+    | { readonly kind: 'secret-page' };
+
+/**
+ * `browser-tab@1` from the outside. `openChannel` is a WebSocket upgrade at `LIVE_CHANNEL_PATH` with subprotocol
+ * `LIVE_CHANNEL_SUBPROTOCOL`, the credential's `Cookie` (none when `null`) and this `Origin` (none when `null`). The levers are test-mode
+ * hooks into the engine's browser, as `walletRequest` is into its Wallet; a real engine offers them only in test mode.
+ */
+export interface LiveBrowserTarget {
+    openChannel(
+        sessionId: string,
+        credential: SessionCredential | null,
+        origin: string | null,
+    ): Promise<LiveChannelOpen>;
+    /** An origin on the engine's remote sign-in allowlist. */
+    readonly signInOrigin: string;
+    /** Agent work opens a tab at `origin`, linked to no chat, task or run; answers the tab's ID. */
+    openAgentTab(origin: string): Promise<string>;
+    /** The agent working in the tab asks for help; answers the request's ID. */
+    requestHelp(tabId: string, reason: BrowserHelpReason, message: string): Promise<string>;
+    navigate(tabId: string, page: LiveBrowserPage): Promise<void>;
+    /** The session behaves as if its `endsAt` (`expired`) or its controller's idle limit (`idle`) passed now. */
+    elapse(sessionId: string, what: 'expired' | 'idle'): Promise<void>;
+    /**
+     * A new owner session whose passkey assertion is not fresh, so `stepUp` routes must answer 401
+     * `step-up-required`. Without it, the step-up check skips.
+     */
+    staleOwnerSession?(): Promise<SessionCredential>;
 }

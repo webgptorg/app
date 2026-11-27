@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ApiHarness } from '../src/testing/api-harness';
 import { HARNESS_ORIGIN, createApiHarness } from '../src/testing/api-harness';
 import { ALL_CAPABILITY_NAMES } from '../src/domain/state/capabilities';
+import { silentWav } from '../src/testing/wav';
 
 const signal = () => AbortSignal.timeout(10_000);
 const harnesses: ApiHarness[] = [];
@@ -33,7 +34,7 @@ async function start(options: Parameters<typeof createApiHarness>[0] = {}) {
 describe('capabilities through the mock HTTP server (contract)', () => {
     // One request per operation of the whole route table: about 4 s alone, so the 5 s default timed out under load.
     it('answers every C-07 operation, each response valid against its strict schema', { timeout: 30_000 }, async () => {
-        const { harness, owner } = await start();
+        const { harness, owner } = await start({ liveBrowser: true, voice: true });
         const answered = new Set<EngineApiRouteId>();
         const okFrom = async <T>(id: EngineApiRouteId, response: Promise<EngineApiResponse<T>>): Promise<T> => {
             const result = await response;
@@ -174,6 +175,57 @@ describe('capabilities through the mock HTTP server (contract)', () => {
         await okFrom('updateWalletRecord', owner.wallet.update(record.id, { ...login, label: 'Contract' }, signal()));
         await okFrom('deleteWalletRecord', owner.wallet.delete(record.id, signal()));
 
+        const signIn = await okFrom(
+            'openBrowserSignIn',
+            owner.browser.openSignIn({ browser: null, origin: 'https://accounts.example' }, signal()),
+        );
+        await okFrom('endBrowserSession', owner.browser.end(signIn.id, signal()));
+        const [tab] = (await okFrom('listBrowserTabs', owner.browser.listTabs({}, signal()))).items;
+        if (tab === undefined) throw new Error('no fake agent tab');
+        const watching = await okFrom('watchBrowserTab', owner.browser.watch(tab.id, signal()));
+        await okFrom('getBrowserSession', owner.browser.getSession(watching.id, signal()));
+        await okFrom('takeBrowserControl', owner.browser.takeControl(watching.id, signal()));
+        await okFrom('handBackBrowserTab', owner.browser.handBack(watching.id, signal()));
+        await owner.browser.end(watching.id, signal());
+        const controlling = await okFrom('controlBrowserTab', owner.browser.control(tab.id, signal()));
+        await owner.browser.end(controlling.id, signal());
+        const help = controller.requestBrowserHelp(tab.id, { reason: 'captcha', message: 'A puzzle.' });
+        await okFrom('listBrowserHelpRequests', owner.browser.listHelpRequests({ status: 'open' }, signal()));
+        await okFrom('getBrowserHelpRequest', owner.browser.getHelpRequest(help.id, signal()));
+        await okFrom('dismissBrowserHelpRequest', owner.browser.dismissHelpRequest(help.id, signal()));
+        const [voiceChat] = ok(await owner.chats.listAll({ limit: 1 }, signal())).items;
+        if (voiceChat === undefined) throw new Error('no chat');
+        await okFrom('transcribeVoiceClip', owner.voice.transcribe(voiceChat.id, silentWav(), {}, signal()));
+        const spoken = ok(await owner.chats.sendMessage(voiceChat.id, { content: 'Say this.' }, signal()));
+        await okFrom(
+            'speakChatMessage',
+            owner.voice.speak(voiceChat.id, spoken.message.id, { formats: ['audio/wav'] }, signal()),
+        );
+
+        const [tool] = (await okFrom('listAiTools', owner.aiTools.list(signal()))).items;
+        if (tool === undefined) throw new Error('no AI tool');
+        await okFrom('getAiTool', owner.aiTools.get(tool.id, signal()));
+        await okFrom('checkAiTool', owner.aiTools.check(tool.id, signal()));
+        const keySignIn = await okFrom(
+            'startAiToolSignIn',
+            owner.aiTools.startSignIn(tool.id, { method: 'api-key' }, signal()),
+        );
+        const keyPrompt = (await okFrom('getAiToolSignIn', owner.aiTools.getSignIn(tool.id, keySignIn.id, signal())))
+            .prompt;
+        if (keyPrompt === null) throw new Error('no sign-in prompt');
+        await okFrom(
+            'answerAiToolSignIn',
+            owner.aiTools.answerSignIn(
+                tool.id,
+                keySignIn.id,
+                { promptId: keyPrompt.id, action: 'alternative', alternativeId: 'account' },
+                signal(),
+            ),
+        );
+        await okFrom('cancelAiToolSignIn', owner.aiTools.cancelSignIn(tool.id, keySignIn.id, signal()));
+        await okFrom('signOutAiTool', owner.aiTools.signOut(tool.id, signal()));
+        await okFrom('checkForUiUpdate', owner.updates.checkUi(signal()));
+
         const { members, apiTokens, audit, bookEditor, agentManagement } = KNOWN_CAPABILITIES;
         const coreFeatures = new Set<string>(
             [members, apiTokens, audit, bookEditor, agentManagement].map(({ id }) => id),
@@ -201,7 +253,9 @@ describe('capabilities through the mock HTTP server (contract)', () => {
                     ? { headers: { 'content-type': 'application/json' }, body: '{}' }
                     : route.body?.kind === 'multipart'
                       ? { body: new FormData() }
-                      : {}),
+                      : route.body?.kind === 'binary'
+                        ? { body: new Blob([], { type: route.body.mediaTypes[0] ?? '' }) }
+                        : {}),
             });
             const body = (await response.json()) as { code?: string };
             if (route.capability.id === 'runs') expect(body.code, route.id).not.toBe('capability-not-supported');

@@ -1,14 +1,17 @@
 import type { Hono } from 'hono';
 
 import { emailAddressSchema, type EmailAddress } from '../../domain/auth/email-address';
-import { inviteIdSchema, teamIdSchema, userIdSchema } from '../../domain/ids';
+import { inviteIdSchema, teamIdSchema, userIdSchema, type OrgId } from '../../domain/ids';
+import type { UsageEvent } from '../../domain/usage/usage-event';
 import { resolveRequestLocale } from '../i18n/resolve-request-locale';
 import { issueLinkCode } from '../../domain/registration/issue-link-code';
 import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
+import type { LicenseGate } from '../../domain/licensing/license-service';
 import {
     acceptInvite,
+    acceptOfferedInvite,
     createInvites,
-    previewInvite,
+    listInviteOffers,
     resendInvite,
     revokeInvite,
     type InviteDeps,
@@ -29,9 +32,11 @@ import {
     renameTeam,
     type TeamActor,
 } from '../../domain/teams/teams';
+import { createInviteJoinFlow } from '../../domain/teams/join-invite';
 import { apiRoutes, type InviteView, type TeamView } from '../../shared/api/routes';
+import { clearInviteCookie, INVITE_COOKIE_TTL_MS, inviteCookie, inviteToken } from './cookies';
 import type { DashboardDeps } from '../deps';
-import { issuedLinkCodeView } from './link-code-view';
+import { resolveLinkCodeView } from './link-code-view';
 import type { RequestContext, RouteBinder } from './bind-route';
 
 const NO_CONTENT = { kind: 'ok', body: undefined, status: 204 } as const;
@@ -39,9 +44,9 @@ const NO_CONTENT = { kind: 'ok', body: undefined, status: 204 } as const;
 const JOIN_PATH = '/auth/join';
 
 export function memberAccessDeps(
-    deps: Pick<DashboardDeps, 'teams' | 'engines' | 'memberKey' | 'clock' | 'random' | 'logger' | 'links'>,
+    deps: Pick<DashboardDeps, 'teams' | 'engines' | 'memberKey' | 'clock' | 'random' | 'logger'>,
 ): MemberAccessDeps {
-    return { ...deps, teamLink: (teamId) => deps.links.team(teamId) };
+    return deps;
 }
 const NOT_FOUND = { kind: 'problem', status: 404, code: 'not-found' } as const;
 const LAST_OWNER = { kind: 'problem', status: 409, code: 'last-owner' } as const;
@@ -83,7 +88,11 @@ async function teamView(deps: Pick<DashboardDeps, 'teams'>, actor: TeamActor, te
 export function bindTeamRoutes(
     router: Hono,
     mount: string,
-    deps: DashboardDeps & { readonly policy: EngineCreationPolicy; readonly routes: RouteBinder },
+    deps: DashboardDeps & {
+        readonly policy: EngineCreationPolicy;
+        readonly routes: RouteBinder;
+        readonly licenseGate: LicenseGate;
+    },
 ): void {
     const bind = deps.routes.bind.bind(deps.routes);
     const inviteDeps: InviteDeps = {
@@ -138,9 +147,25 @@ export function bindTeamRoutes(
         return team === null ? NOT_FOUND : { kind: 'ok', body: { team: await teamView(deps, session.actor, team) } };
     });
 
-    bind(router, mount, apiRoutes.deleteTeam, async ({ input, session }) => {
+    bind(router, mount, apiRoutes.deleteTeam, async ({ input, request, session }) => {
         const outcome = await deleteTeam(deps, session.actor, teamIdSchema.parse(input.params.teamId));
-        return outcome === 'deleted' ? NO_CONTENT : NOT_FOUND;
+        if (outcome.kind === 'not-found') {
+            return NOT_FOUND;
+        }
+        if (outcome.engineId !== null) {
+            request.waitUntil(
+                deps.usage.record([
+                    {
+                        event: 'engine.removed',
+                        orgId: session.actor.orgId,
+                        userId: session.actor.userId,
+                        engineId: outcome.engineId,
+                        props: { via: 'team-deleted' },
+                    },
+                ]),
+            );
+        }
+        return NO_CONTENT;
     });
 
     bind(router, mount, apiRoutes.createTeamLinkCode, async ({ input, request, session }) => {
@@ -154,6 +179,7 @@ export function bindTeamRoutes(
         const outcome = await issueLinkCode(
             { ...deps, linkCodeTtlMs: deps.config.linkCodeTtlMs },
             { orgId: session.actor.orgId, userId: session.actor.userId },
+            input.body?.ownerSetupCommitment ?? null,
             request.signal,
         );
         if (outcome.kind === 'denied') {
@@ -168,13 +194,24 @@ export function bindTeamRoutes(
             }
         }
         await deps.teams.attachLinkCode(session.actor.orgId, outcome.linkCodeId, team.id, deps.clock.nowMs());
+        request.waitUntil(
+            deps.usage.record([
+                {
+                    event: 'engine.created',
+                    orgId: session.actor.orgId,
+                    userId: session.actor.userId,
+                    engineId: null,
+                    props: { forTeam: true },
+                },
+            ]),
+        );
         return {
             kind: 'ok',
-            body: issuedLinkCodeView(deps.config, outcome),
+            body: await resolveLinkCodeView(deps, outcome, request.signal),
         };
     });
 
-    bind(router, mount, apiRoutes.createAccessTicket, async ({ input, session }) => {
+    bind(router, mount, apiRoutes.createAccessTicket, async ({ input, request, session }) => {
         const outcome = await issueAccessTicket(
             memberAccessDeps(deps),
             { ...session.actor, email: session.user.email },
@@ -182,6 +219,17 @@ export function bindTeamRoutes(
         );
         switch (outcome.kind) {
             case 'issued':
+                request.waitUntil(
+                    deps.usage.record([
+                        {
+                            event: 'access.requested',
+                            orgId: session.actor.orgId,
+                            userId: session.actor.userId,
+                            engineId: outcome.engineId,
+                            props: {},
+                        },
+                    ]),
+                );
                 return {
                     kind: 'ok',
                     body: {
@@ -311,6 +359,16 @@ export function bindTeamRoutes(
             }
             emails.push(email.data);
         }
+        // Counts every address, also those already in the organization: enforcement may refuse a little early, never late.
+        const license = await deps.licenseGate.check(
+            'member.invite',
+            session.actor.orgId,
+            request.signal,
+            emails.length,
+        );
+        if (license.outcome === 'deny') {
+            return { kind: 'problem', status: 403, code: 'license-limit' };
+        }
         const outcome = await createInvites(inviteDeps, inviter(session), {
             emails,
             role: input.body.role,
@@ -320,6 +378,19 @@ export function bindTeamRoutes(
         switch (outcome.kind) {
             case 'ok':
                 request.waitUntil(sendInBackground(deps, outcome.deliver));
+                request.waitUntil(
+                    deps.usage.record(
+                        outcome.results
+                            .filter((result) => result.outcome === 'invited')
+                            .map(() => ({
+                                event: 'invite.sent' as const,
+                                orgId: session.actor.orgId,
+                                userId: session.actor.userId,
+                                engineId: null,
+                                props: { role: input.body.role, teams: input.body.teamIds.length },
+                            })),
+                    ),
+                );
                 return { kind: 'ok', body: { results: [...outcome.results] } };
             case 'forbidden':
                 return { kind: 'problem', status: 403, code: 'forbidden' };
@@ -347,37 +418,82 @@ export function bindTeamRoutes(
         return outcome === 'revoked' ? NO_CONTENT : NOT_FOUND;
     });
 
-    bind(router, mount, apiRoutes.previewInvite, async ({ input }) => {
-        const preview = await previewInvite(deps, input.body.token);
-        if (preview === null) {
-            return NOT_FOUND;
+    bind(router, mount, apiRoutes.previewInvite, async ({ input, request }) => {
+        const token = inviteToken(input.body.token, request);
+        const found = token === null ? null : await createInviteJoinFlow(deps).preview(token);
+        if (token === null || found === null) {
+            return { ...NOT_FOUND, setCookies: [clearInviteCookie()] };
         }
+        const { invite, orgName, teamNames } = found.preview;
+        const ttlMs = Math.min(INVITE_COOKIE_TTL_MS, invite.expiresAt - deps.clock.nowMs());
         return {
             kind: 'ok',
             body: {
-                orgName: preview.orgName,
-                teamNames: [...preview.teamNames],
-                email: preview.invite.email,
-                expiresAt: preview.invite.expiresAt,
+                orgName,
+                teamNames: [...teamNames],
+                email: invite.email,
+                expiresAt: invite.expiresAt,
+                hasAccount: found.hasAccount,
             },
+            setCookies: [inviteCookie(token, ttlMs)],
         };
     });
 
-    bind(router, mount, apiRoutes.acceptInvite, async ({ input, session }) => {
-        const outcome = await acceptInvite(
-            inviteDeps,
-            { userId: session.user.id, email: session.user.email },
-            input.body.token,
-        );
+    bind(router, mount, apiRoutes.acceptInvite, async ({ input, request, session }) => {
+        const token = inviteToken(input.body.token, request);
+        const outcome =
+            token === null
+                ? ({ kind: 'invalid' } as const)
+                : await acceptInvite(inviteDeps, { userId: session.user.id, email: session.user.email }, token);
         switch (outcome.kind) {
             case 'accepted':
-                return { kind: 'ok', body: { orgId: outcome.orgId } };
+                request.waitUntil(deps.usage.record([inviteAccepted(outcome.orgId, session)]));
+                return {
+                    kind: 'ok',
+                    body: { orgId: outcome.orgId, teamIds: [...outcome.teamIds] },
+                    setCookies: [clearInviteCookie()],
+                };
             case 'invalid':
-                return { kind: 'problem', status: 404, code: 'invite-invalid' };
+                return { kind: 'problem', status: 404, code: 'invite-invalid', setCookies: [clearInviteCookie()] };
             case 'email-mismatch':
                 return { kind: 'problem', status: 403, code: 'email-mismatch' };
         }
     });
+
+    bind(router, mount, apiRoutes.listInviteOffers, async ({ session }) => {
+        const offers = await listInviteOffers(deps, session.user);
+        return {
+            kind: 'ok',
+            body: {
+                offers: offers.map(({ invite, orgName, teamNames, inviterEmail }) => ({
+                    inviteId: invite.id,
+                    orgName,
+                    inviterEmail,
+                    teamNames: [...teamNames],
+                    expiresAt: invite.expiresAt,
+                })),
+            },
+        };
+    });
+
+    bind(router, mount, apiRoutes.acceptInviteOffer, async ({ input, request, session }) => {
+        const outcome = await acceptOfferedInvite(deps, session.user, inviteIdSchema.parse(input.params.inviteId));
+        if (outcome.kind !== 'accepted') {
+            return { kind: 'problem', status: 404, code: 'invite-invalid' };
+        }
+        request.waitUntil(deps.usage.record([inviteAccepted(outcome.orgId, session)]));
+        return { kind: 'ok', body: { orgId: outcome.orgId, teamIds: [...outcome.teamIds] } };
+    });
+}
+
+function inviteAccepted(orgId: OrgId, session: ActiveSession): UsageEvent {
+    return {
+        event: 'invite.accepted',
+        orgId,
+        userId: session.user.id,
+        engineId: null,
+        props: { as: 'existing-account' },
+    };
 }
 
 function inviter(session: ActiveSession): Inviter {

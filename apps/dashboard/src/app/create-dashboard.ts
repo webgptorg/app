@@ -5,6 +5,8 @@ import { createStripeApi, createStripeBillingProvider } from '../adapters/billin
 import { createStripeWebhookVerifier, rejectAllWebhooks } from '../adapters/billing/stripe-webhook-verifier';
 import { createConsoleLogger } from '../adapters/console-logger';
 import { cryptoRandom } from '../adapters/crypto-random';
+import { createConfiguredEngineInstallReleaseSource } from '../adapters/registration/configured-engine-install-release-source';
+import { createFetchEngineInstallReleaseSource } from '../adapters/registration/fetch-engine-install-release-source';
 import { createDohDnsResolver } from '../adapters/dns/doh-dns-resolver';
 import { createCloudflareEmailSender } from '../adapters/email/cloudflare-email-sender';
 import { createMeteredEmailSender } from '../adapters/email/metered-email-sender';
@@ -18,8 +20,12 @@ import {
     createD1LinkCodeStore,
     createD1PlatformEngineStore,
 } from '../adapters/db/d1-registration-store';
+import { createD1UsageStore } from '../adapters/db/d1-usage-store';
 import { createD1RelayPresenceStore } from '../adapters/db/d1-relay-presence-store';
 import { createD1TeamStore } from '../adapters/db/d1-team-store';
+import { createD1WebsiteLicensingStore } from '../adapters/db/d1-website-licensing-store';
+import { createWebsiteIdentityExchange } from '../adapters/licensing/website-handoff-client';
+import { createWebsiteLicenseHttpApi } from '../adapters/licensing/website-license-api';
 import { memberKeySource } from '../domain/teams/member-key';
 import { createD1RegistryReader, createD1RelayTokenStore } from '../adapters/db/d1-registry-store';
 import { createD1HeartbeatEngineReader } from '../adapters/db/d1-status-store';
@@ -37,9 +43,11 @@ import {
     type Entitlements,
 } from '../domain/billing/entitlements';
 import { DASHBOARD_POLICY } from '../domain/authz/policy';
+import { createAdvisoryEntitlements } from '../domain/licensing/advisory-entitlements';
 import type { Logger } from '../domain/ports/logger';
 import type { DashboardMetrics } from '../domain/monitoring/dashboard-metrics';
-import { ConfigError, parseConfig, type DashboardConfig } from './config';
+import { ConfigError, parseConfig, type BillingConfig, type DashboardConfig } from './config';
+import { createUsageRecorder } from '../domain/usage/usage-recorder';
 import { authLinks, type DashboardDeps } from './deps';
 import { createDevAdapters, type DevAdapters } from './dev-adapters';
 import { createHttpApp } from './http/create-http-app';
@@ -142,12 +150,24 @@ function rateLimiter(env: Env, config: DashboardConfig, dev: DevAdapters) {
  * With billing `off` there is no provider and no billing service, so no Stripe route is mounted; entitlements are the
  * fixed grant. Null when the configured provider cannot be built.
  */
+/** The website's App APIs, server to server with the shared secret (ADR 0021). */
+function websiteApi(billing: Extract<BillingConfig, { readonly adapter: 'website' }>) {
+    return {
+        websiteOrigin: billing.websiteOrigin,
+        secret: billing.licenseSecret,
+        fetch: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
+    };
+}
+
 function billingWiring(
     config: DashboardConfig,
     dev: DevAdapters,
     db: ReturnType<typeof createDatabase>,
     logger: Logger,
 ): { readonly billing: BillingService | null; readonly entitlements: Entitlements } | null {
+    if (config.billing.adapter === 'website') {
+        return { billing: null, entitlements: createAdvisoryEntitlements() };
+    }
     if (config.billing.adapter === 'off') {
         return { billing: null, entitlements: createFixedEntitlements(config.billing.grant) };
     }
@@ -191,6 +211,17 @@ export function createDashboard(
         return misconfigured(logger, ['STRIPE_SECRET_KEY']);
     }
     const customHostnames = createD1CustomHostnameStore(db);
+    const licensing: DashboardDeps['licensing'] =
+        config.billing.adapter === 'website'
+            ? {
+                  store: createD1WebsiteLicensingStore(db, {
+                      websiteOrigin: config.billing.websiteOrigin,
+                      clock: systemClock,
+                  }),
+                  licenses: createWebsiteLicenseHttpApi(websiteApi(config.billing)),
+                  identities: createWebsiteIdentityExchange(websiteApi(config.billing)),
+              }
+            : null;
     const deps: DashboardDeps = {
         config,
         clock: systemClock,
@@ -202,6 +233,16 @@ export function createDashboard(
         store: createD1AuthStore(db),
         ...billing,
         linkCodes: createD1LinkCodeStore(db),
+        installReleases:
+            config.environment === 'dev'
+                ? createConfiguredEngineInstallReleaseSource()
+                : createFetchEngineInstallReleaseSource({
+                      fetch: (url, init) =>
+                          fetch(url, {
+                              ...init,
+                              cf: { cacheEverything: true, cacheTtlByStatus: { '200-299': 300, '400-599': 0 } },
+                          }),
+                  }),
         engines: createD1EngineStore(db),
         teams: createD1TeamStore(db),
         memberKey: memberKeySource(config.memberKeySeed),
@@ -214,6 +255,8 @@ export function createDashboard(
         heartbeatEngines: createD1HeartbeatEngineReader(db),
         engineStatus: createDurableObjectEngineStatus(env.ENGINE_STATUS),
         relayPresence: createD1RelayPresenceStore(db),
+        usage: createUsageRecorder({ store: createD1UsageStore(db), clock: systemClock, random: cryptoRandom, logger }),
+        licensing,
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: config.dashboardOrigin, rpName: RP_NAME }),
         rateLimiter: rateLimiter(env, config, dev),
         links: authLinks(config.dashboardOrigin),

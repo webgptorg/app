@@ -26,6 +26,7 @@ import { engineLabel, shortEngineId } from '../../../shared/engine-label';
 import { useSession } from '../session/use-session';
 import { canRename, EngineNameField } from './engine-name';
 import { linkCodeQuery } from './link-queries';
+import { handOffOwnerSetup, holdsOwnerSetupSecret, ownerHandoffHostname } from './owner-handoff';
 import { useEngineTeam } from './use-engine-name';
 
 /** onboarding.md, step 4: the page asks every 3 seconds while it is visible, and stops at ready or expiry. */
@@ -59,16 +60,26 @@ export function linkState(code: LinkCodeStatusView, engine: EngineView | undefin
     return heartbeat.members > 0 ? 'ready' : 'owner-pending';
 }
 
+export interface ObservedLink {
+    readonly state: LinkState;
+    /** Ready, but the engine still reports its setup unfinished (D-36). */
+    readonly setupPending: boolean;
+}
+
 /**
  * The link state as `LinkProgress` last fetched it, for the page around it; it only reads what that component polls
  * and never asks on its own.
  */
-export function useObservedLinkState(linkCodeId: string | undefined): LinkState | undefined {
+export function useObservedLink(linkCodeId: string | undefined): ObservedLink | undefined {
     const api = useApiClient();
     const code = useQuery({ ...linkCodeQuery(api, linkCodeId ?? ''), enabled: false }).data;
     const engineId = linkCodeId !== undefined && code?.status === 'linked' ? code.engineId : '';
     const engine = useQuery({ ...engineQuery(api, engineId), enabled: false }).data;
-    return linkCodeId === undefined || code === undefined ? undefined : linkState(code, engine);
+    if (linkCodeId === undefined || code === undefined) {
+        return undefined;
+    }
+    const state = linkState(code, engine);
+    return { state, setupPending: state === 'ready' && setupPending(engine) };
 }
 
 /** The page's clock, ticking only while a hint may still appear. */
@@ -234,8 +245,20 @@ function Reachability(props: { readonly engine: EngineView; readonly troubleshoo
     );
 }
 
+/** Ready, but the engine reports its setup unfinished: onboarding ends on continuing it there rather than opening. */
+function setupPending(engine: EngineView | undefined): boolean {
+    return engine?.heartbeat?.setup === 'pending';
+}
+
+function ownerSetupCommand(engine: EngineView | undefined, engineId: string): string {
+    return engine?.heartbeat?.setup === 'pending'
+        ? `ptbk connect --onboarding ${engineId} --setup-link`
+        : 'ptbk connect --setup-link';
+}
+
 /** The one sentence the live region speaks, so a screen reader hears each change once and nothing else. */
-function announcement(state: LinkState): string {
+function announcement(state: LinkState, engine: EngineView | undefined, engineId: string, handingOff: boolean): string {
+    if (handingOff) return m.link_progress_owner_handoff();
     switch (state) {
         case 'waiting':
             return m.link_progress_waiting();
@@ -244,9 +267,9 @@ function announcement(state: LinkState): string {
         case 'linked':
             return m.link_progress_linked();
         case 'owner-pending':
-            return m.link_progress_owner_announcement();
+            return m.link_progress_owner_announcement({ command: ownerSetupCommand(engine, engineId) });
         case 'ready':
-            return m.link_progress_ready();
+            return setupPending(engine) ? m.link_progress_setup_pending() : m.link_progress_ready();
     }
 }
 
@@ -258,6 +281,8 @@ function Checklist(props: {
     readonly commandShown: boolean;
     readonly onRenew: () => void;
     readonly renewing: boolean;
+    /** This tab is about to open the engine's setup page itself (ADR 0023). */
+    readonly handingOff: boolean;
 }) {
     const { code, engine, state } = props;
     const waitingSince = useFirstSeen(state, 'waiting');
@@ -318,12 +343,37 @@ function Checklist(props: {
                         step="owner"
                         state={state === 'ready' ? 'done' : state === 'owner-pending' ? 'current' : 'waiting'}
                     >
-                        {state === 'ready' ? <p>{m.link_progress_owner_done()}</p> : <p>{m.link_progress_owner()}</p>}
+                        {state === 'ready' ? (
+                            <p>{m.link_progress_owner_done()}</p>
+                        ) : props.handingOff ? (
+                            <p>{m.link_progress_owner_handoff()}</p>
+                        ) : (
+                            <p>{m.link_progress_owner({ command: ownerSetupCommand(engine, linked.engineId) })}</p>
+                        )}
                     </Row>
                 </>
             )}
         </ol>
     );
+}
+
+/**
+ * ADR 0023: once the engine is ready for it, a tab that holds the owner setup secret for this code opens the setup page
+ * itself; true from then on, so row 5 says so instead of pointing to the terminal. The component is keyed by the code
+ * and mounts after issuance stored the secret, so whether it holds one is read once. The redirect deletes the secret
+ * before it navigates, which is what keeps it to one.
+ */
+function useOwnerHandoff(
+    linkCodeId: string,
+    code: LinkCodeStatusView | undefined,
+    engine: EngineView | undefined,
+): boolean {
+    const { sessionStorage, navigate } = useBrowser();
+    const [holdsSecret] = useState(() => holdsOwnerSetupSecret(sessionStorage, linkCodeId));
+    useEffect(() => {
+        handOffOwnerSetup({ storage: sessionStorage, navigate }, linkCodeId, code, engine);
+    }, [sessionStorage, navigate, linkCodeId, code, engine]);
+    return holdsSecret && ownerHandoffHostname(code, engine) !== null;
 }
 
 /**
@@ -348,9 +398,12 @@ export function LinkProgress(props: {
     const engine = useQuery({
         ...engineQuery(api, linked?.engineId ?? ''),
         enabled: linked !== null,
-        refetchInterval: (query) => ((query.state.data?.heartbeat?.members ?? 0) > 0 ? false : LINK_POLL_MS),
+        // Keeps asking through an unfinished setup, so the page turns ready by itself once the engine reports it done.
+        refetchInterval: (query) =>
+            (query.state.data?.heartbeat?.members ?? 0) > 0 && !setupPending(query.state.data) ? false : LINK_POLL_MS,
         refetchIntervalInBackground: false,
     });
+    const handingOff = useOwnerHandoff(props.linkCodeId, code.data, engine.data);
     if (code.data === undefined) {
         if (problemCode(code.error) === 'not-found') {
             return (
@@ -383,6 +436,7 @@ export function LinkProgress(props: {
             commandShown={props.commandShown}
             onRenew={props.onRenew}
             renewing={props.renewing}
+            handingOff={handingOff}
         />
     );
     const ready = state === 'ready' ? linked : null;
@@ -393,7 +447,7 @@ export function LinkProgress(props: {
             className="flex flex-col gap-4 border-t border-hairline pt-5"
         >
             <p className="sr-only" aria-live="polite">
-                {announcement(state)}
+                {announcement(state, engine.data, linked?.engineId ?? '', handingOff)}
             </p>
             {ready === null ? (
                 <>
@@ -433,6 +487,7 @@ function ReadyPanel(props: {
     const session = useSession();
     const { givenName } = useEngineTeam(props.engineId, props.hostname);
     const name = givenName ?? engineLabel({ engineId: props.engineId, label: props.engine?.label ?? null });
+    const setup = setupPending(props.engine);
     return (
         <div
             className={`soft-surface flex flex-col items-center gap-4 rounded-surface px-6 py-8 text-center ${STATUS_TINT_CLASSES.success}`}
@@ -447,9 +502,9 @@ function ReadyPanel(props: {
             />
             <div className="flex max-w-md flex-col gap-2">
                 <h2 id="link-ready-title" className="text-xl font-semibold tracking-display">
-                    {m.link_progress_ready()}
+                    {setup ? m.link_progress_setup_pending() : m.link_progress_ready()}
                 </h2>
-                <p>{m.link_progress_ready_body()}</p>
+                <p>{setup ? m.link_progress_setup_pending_body() : m.link_progress_ready_body()}</p>
                 <p className="text-sm text-text-muted">{m.link_progress_compare()}</p>
             </div>
             {givenName !== null || props.engine === undefined || !canRename(session.activeOrg.permissions) ? null : (
@@ -459,7 +514,13 @@ function ReadyPanel(props: {
                 </div>
             )}
             <div className="flex flex-wrap justify-center gap-3">
-                <EngineOpenLink name={name} hostname={props.hostname} variant="primary" size="md" prominent />
+                <EngineOpenLink
+                    name={name}
+                    hostname={props.hostname}
+                    variant="primary"
+                    size="md"
+                    wording={setup ? 'setup' : 'engine'}
+                />
                 <ButtonLink to="/engines" variant="secondary">
                     {m.link_progress_back()}
                 </ButtonLink>

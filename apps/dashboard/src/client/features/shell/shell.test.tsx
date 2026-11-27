@@ -27,9 +27,9 @@ function nav() {
 describe('signed-in shell', () => {
     it('shows the org, navigation by capability and the home page', async () => {
         const app = renderApp({ path: '/', session: session({ name: 'Acme' }) });
-        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Projects' })).toBeTruthy();
         expect(screen.getByText('Acme')).toBeTruthy();
-        expect(nav().getByRole('link', { name: 'Engines' }).getAttribute('aria-current')).toBe('page');
+        expect(nav().getByRole('link', { name: 'Projects' }).getAttribute('aria-current')).toBe('page');
         expect(nav().getByRole('link', { name: 'Account' })).toBeTruthy();
         expect(nav().queryByRole('link', { name: 'Admin' })).toBeNull();
         expect(screen.getByRole('link', { name: 'Skip to content' })).toBeTruthy();
@@ -48,7 +48,7 @@ describe('signed-in shell', () => {
         renderApp({ path: '/', session: session({ permissions: [] }) });
         expect(await screen.findByText('Organization: Personal')).toBeTruthy();
         expect(screen.queryByRole('button', { name: /^Organization/ })).toBeNull();
-        expect(nav().queryByRole('link', { name: 'Engines' })).toBeNull();
+        expect(nav().queryByRole('link', { name: 'Projects' })).toBeNull();
         expect(nav().getByRole('link', { name: 'Account' })).toBeTruthy();
     });
 
@@ -113,8 +113,8 @@ describe('signed-in shell', () => {
         const app = renderApp({ path: '/', session: session(), script: (api) => api.on(apiRoutes.signout, ok({})) });
         await app.user.click(await screen.findByRole('button', { name: 'Account menu for ada@example.test' }));
         await app.user.click(screen.getByRole('menuitem', { name: 'Sign out' }));
-        expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
-        expect(app.history.location.pathname).toBe('/signin');
+        expect(await screen.findByRole('heading', { name: 'Sign in or create an account' })).toBeTruthy();
+        expect(app.history.location.pathname).toBe('/continue');
         expect(await screen.findByText("You're signed out.")).toBeTruthy();
     });
 
@@ -126,7 +126,7 @@ describe('signed-in shell', () => {
         });
         await app.user.click(await screen.findByRole('button', { name: 'Account menu for ada@example.test' }));
         await app.user.click(screen.getByRole('menuitem', { name: 'Sign out' }));
-        expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Sign in or create an account' })).toBeTruthy();
     });
 
     it('stays signed in and says so when signing out fails', async () => {
@@ -146,7 +146,7 @@ describe('signed-in shell', () => {
         const app = renderApp({ path: '/', session: session() });
         await app.user.click(await screen.findByRole('button', { name: 'EN, Language: English' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Čeština' }));
-        expect(await screen.findByRole('heading', { name: 'Enginy' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Projekty' })).toBeTruthy();
         expect(document.documentElement.lang).toBe('cs');
         expect(document.cookie).toContain('ptbk_locale=cs');
         expect(app.navigations).toEqual([]);
@@ -161,22 +161,22 @@ describe('signed-in shell', () => {
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Podle systému' }));
         await app.user.click(screen.getByRole('button', { name: 'CS, Jazyk: Čeština' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'English' }));
-        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Projects' })).toBeTruthy();
         expect(document.documentElement.classList.contains('dark')).toBe(false);
     });
 
     it('switches language and theme while signed out', async () => {
-        const app = renderApp({ path: '/signin' });
+        const app = renderApp({ path: '/continue' });
         await app.user.click(await screen.findByRole('button', { name: 'Theme' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Light' }));
         expect(app.storage.getItem(THEME_STORAGE_KEY)).toBe('light');
         await app.user.click(screen.getByRole('button', { name: 'EN, Language: English' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Čeština' }));
-        expect(await screen.findByRole('heading', { name: 'Přihlášení' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Přihlaste se nebo si vytvořte účet' })).toBeTruthy();
         expect(document.cookie).toContain('ptbk_locale=cs');
         await app.user.click(screen.getByRole('button', { name: 'CS, Jazyk: Čeština' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'English' }));
-        expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Sign in or create an account' })).toBeTruthy();
     });
 });
 
@@ -187,7 +187,7 @@ describe('admin area', () => {
             session: session({ permissions: ['team.read', 'billing.read', 'billing.manage'], billingEnabled: false }),
         });
         expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
-        expect(nav().getByRole('link', { name: 'Engines' })).toBeTruthy();
+        expect(nav().getByRole('link', { name: 'Projects' })).toBeTruthy();
         expect(nav().queryByRole('link', { name: 'Billing' })).toBeNull();
         expect(app.api.callsTo(apiRoutes.getBilling)).toEqual([]);
     });
@@ -195,7 +195,7 @@ describe('admin area', () => {
     it('is not found for anyone but a platform admin', async () => {
         renderApp({ path: '/admin', session: session() });
         expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
-        expect(nav().getByRole('link', { name: 'Engines' })).toBeTruthy();
+        expect(nav().getByRole('link', { name: 'Projects' })).toBeTruthy();
         expect(nav().queryByRole('link', { name: 'Admin' })).toBeNull();
     });
 
@@ -215,7 +215,7 @@ describe('route states', () => {
         expect(screen.getByRole('button', { name: 'Account menu for ada@example.test' })).toBeTruthy();
         await expectNoAxeViolations(app.container);
         await app.user.click(screen.getByRole('link', { name: 'Back to the start' }));
-        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Projects' })).toBeTruthy();
     });
 
     it('keeps the signed-out frame around an unknown URL', async () => {
@@ -224,7 +224,7 @@ describe('route states', () => {
         expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull();
         expect(screen.getByRole('button', { name: 'EN, Language: English' })).toBeTruthy();
         await app.user.click(screen.getByRole('link', { name: 'Back to the start' }));
-        expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Sign in or create an account' })).toBeTruthy();
     });
 
     it('shows an error with a retry when the session cannot be checked', async () => {
@@ -232,7 +232,7 @@ describe('route states', () => {
         expect(await screen.findByText(/could not be reached/, {}, { timeout: 5000 })).toBeTruthy();
         app.api.on(apiRoutes.getSession, ok(session()));
         await app.user.click(screen.getByRole('button', { name: 'Try again' }));
-        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Projects' })).toBeTruthy();
     });
 
     it('explains other failures generically', async () => {
@@ -244,8 +244,8 @@ describe('route states', () => {
 describe('theme', () => {
     it('follows the system while set to system', async () => {
         const { setMedia } = await import('@ptbk/ui');
-        renderApp({ path: '/signin' });
-        await screen.findByRole('heading', { name: 'Sign in' });
+        renderApp({ path: '/continue' });
+        await screen.findByRole('heading', { name: 'Sign in or create an account' });
         setMedia('(prefers-color-scheme: dark)', true);
         await waitFor(() => {
             expect(document.documentElement.classList.contains('dark')).toBe(true);

@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import { createMockEngineTarget } from './mock-engine';
+import { MOCK_SIGN_IN_ORIGIN, createMockEngineTarget } from './mock-engine';
 
-function targetAnswering(status: number, body: unknown) {
+function targetAnswering(status: number, body: unknown, live = false) {
     const requests: Request[] = [];
     const target = createMockEngineTarget({
         baseUrl: new URL('https://engine.test'),
         controlUrl: new URL('http://127.0.0.1:4480'),
         enginePublicKey: 'key',
+        ...(live ? { openLiveChannel: () => Promise.resolve({ kind: 'refused', status: 401 } as const) } : {}),
         fetch: (input, init) => {
             requests.push(new Request(input, init));
-            return Promise.resolve(Response.json(body, { status }));
+            return Promise.resolve(status === 204 ? new Response(null, { status }) : Response.json(body, { status }));
         },
     });
     return { target, requests };
@@ -45,5 +46,50 @@ describe('createMockEngineTarget', () => {
         expect(requests[0]?.url).toBe('http://127.0.0.1:4480/__mock/wallet-requests');
         expect(await requests[0]?.json()).toEqual({ origin: 'https://github.com' });
         await expect(targetAnswering(400, {}).target.walletRequest?.('x')).rejects.toThrow('answered 400');
+    });
+
+    it('drives the live browser through the control listener only when it can open the channel', async () => {
+        expect(targetAnswering(201, {}).target.liveBrowser).toBeUndefined();
+        const tab = targetAnswering(201, { tab: { id: 'tab-1' } }, true);
+        const live = tab.target.liveBrowser;
+        if (live === undefined) throw new Error('no live browser');
+        expect(live.signInOrigin).toBe(MOCK_SIGN_IN_ORIGIN);
+        expect(await live.openChannel('session-1', null, 'https://engine.test')).toEqual({
+            kind: 'refused',
+            status: 401,
+        });
+        expect(await live.openAgentTab('https://work.conformance.invalid')).toBe('tab-1');
+        expect(tab.requests[0]?.url).toBe('http://127.0.0.1:4480/__mock/live-browser/tabs');
+        expect(await tab.requests[0]?.json()).toEqual({ origin: 'https://work.conformance.invalid' });
+
+        const help = targetAnswering(201, { request: { id: 'help-1' } }, true);
+        expect(await help.target.liveBrowser?.requestHelp('tab-1', 'login', 'Stuck.')).toBe('help-1');
+        expect(await help.requests[0]?.json()).toEqual({ tabId: 'tab-1', reason: 'login', message: 'Stuck.' });
+
+        const done = targetAnswering(204, null, true);
+        await done.target.liveBrowser?.navigate('tab-1', { kind: 'secret-page' });
+        await done.target.liveBrowser?.elapse('session-1', 'idle');
+        expect(done.requests.map((request) => new URL(request.url).pathname)).toEqual([
+            '/__mock/live-browser/navigate',
+            '/__mock/live-browser/elapse',
+        ]);
+        expect(await done.requests[1]?.json()).toEqual({ sessionId: 'session-1', what: 'idle' });
+
+        await expect(
+            targetAnswering(201, {}, true).target.liveBrowser?.openAgentTab('https://x.invalid'),
+        ).rejects.toThrow('no tab ID');
+        await expect(targetAnswering(404, {}, true).target.liveBrowser?.elapse('session-1', 'expired')).rejects.toThrow(
+            'answered 404',
+        );
+    });
+
+    it('signs in an owner whose passkey assertion is stale', async () => {
+        const { target, requests } = targetAnswering(
+            201,
+            { cookie: { name: '__Host-ptbk_session', value: 'stale' } },
+            true,
+        );
+        expect(await target.liveBrowser?.staleOwnerSession?.()).toEqual({ cookie: '__Host-ptbk_session=stale' });
+        expect(await requests[0]?.json()).toEqual({ subject: { kind: 'owner' }, stepUp: 'stale' });
     });
 });

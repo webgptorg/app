@@ -8,6 +8,7 @@ import type { DashboardAction } from '../domain/authz/policy';
 import type { CustomHostnameStore } from '../domain/custom-hostnames/custom-hostname-store';
 import type { PlatformEngineStore } from '../domain/engines/platform-engine-store';
 import type { EngineStore } from '../domain/registration/engine-store';
+import type { EngineInstallReleaseSource } from '../domain/registration/engine-install-release-source';
 import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import type { MemberKeySource } from '../domain/teams/member-key';
 import type { TeamStore } from '../domain/teams/team-store';
@@ -26,6 +27,10 @@ import type { RateLimiter } from '../domain/ports/rate-limiter';
 import type { RelyingParty } from '../domain/ports/relying-party';
 import type { Timer } from '../domain/ports/timer';
 import type { DashboardMetrics } from '../domain/monitoring/dashboard-metrics';
+import type { UsageRecorder } from '../domain/usage/usage-recorder';
+import type { WebsiteLicenseApi } from '../domain/licensing/license-contract';
+import type { WebsiteIdentityExchange } from '../domain/licensing/website-access';
+import type { WebsiteLicensingStore } from '../domain/licensing/website-licensing-store';
 import type { DashboardConfig } from './config';
 
 /** Everything handlers may use. Later tasks add their ports here, built from the adapters `config.adapters` selects. */
@@ -49,6 +54,7 @@ export interface DashboardDeps {
     /** What every gated action asks (ADR 0017); nothing outside billing sees plans or the provider. */
     readonly entitlements: Entitlements;
     readonly linkCodes: LinkCodeStore;
+    readonly installReleases: EngineInstallReleaseSource;
     readonly engines: EngineStore;
     /** Teams, their people, invitations and the member revocations owed to engines (ADR 0018). */
     readonly teams: TeamStore;
@@ -71,6 +77,18 @@ export interface DashboardDeps {
     readonly engineStatus: EngineStatusDirectory;
     /** Which relays hold a ready tunnel for which engines, as the relays report it (R-07). */
     readonly relayPresence: RelayPresenceStore;
+    /** Funnel events (ADR 0022), best effort: handlers pass `record` to `waitUntil`. */
+    readonly usage: UsageRecorder;
+    /**
+     * With billing `website` only (ADR 0021): the link to a website account and the last licence read, and the two
+     * website APIs the App calls server to server, each behind its port. Null otherwise, and then no licensing route is
+     * mounted and no licence is checked.
+     */
+    readonly licensing: {
+        readonly store: WebsiteLicensingStore;
+        readonly licenses: WebsiteLicenseApi;
+        readonly identities: WebsiteIdentityExchange;
+    } | null;
     /** The fake outbox behind `email` when `config.adapters.email` is `fake` (dev only), else null. */
     readonly devOutbox: FakeEmailSender | null;
 }
@@ -78,10 +96,9 @@ export interface DashboardDeps {
 export function authLinks(dashboardOrigin: string): AuthLinks {
     return {
         signup: (token) => `${dashboardOrigin}/signup#${token}`,
-        recovery: (token) => `${dashboardOrigin}/recover#${token}`,
-        signIn: () => `${dashboardOrigin}/signin`,
+        recovery: (token, via) => `${dashboardOrigin}/recover${via === undefined ? '' : `?via=${via}`}#${token}`,
+        signIn: () => `${dashboardOrigin}/continue`,
         recover: () => `${dashboardOrigin}/recover`,
         invite: (token) => `${dashboardOrigin}/invites#${token}`,
-        team: (teamId) => `${dashboardOrigin}/teams/${teamId}`,
     };
 }

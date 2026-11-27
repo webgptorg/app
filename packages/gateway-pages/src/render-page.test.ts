@@ -29,6 +29,41 @@ describe('renderGatewayPage', () => {
         }
     });
 
+    it('uses the real ptbk operations while keeping the mock CLI', () => {
+        for (const page of ['setup.html', 'sign-in.html'] as const) {
+            const real = renderGatewayPage(readPage(page), { ...SAMPLE_VALUES, command: 'ptbk' });
+            expect(real).toContain('ptbk connect --setup-link');
+            expect(real).toContain('ptbk connect --reset-owner');
+            expect(real).not.toMatch(/ptbk (?:setup-link|owner --reset)/);
+            const mock = renderGatewayPage(readPage(page), SAMPLE_VALUES);
+            expect(mock).toContain('mock-engine setup-link');
+            expect(mock).toContain('mock-engine owner --reset');
+        }
+    });
+
+    it('accepts complete recovery commands for a pending initialization and escapes them', () => {
+        const prefix = `ptbk connect --onboarding ${SAMPLE_VALUES.engineId}`;
+        const html = renderGatewayPage(
+            '<code>{{setupLinkCommand}}</code><code>{{resetOwnerCommand}}</code><code>{{statusCommand}}</code>',
+            {
+                ...SAMPLE_VALUES,
+                command: 'ptbk',
+                setupLinkCommand: `${prefix} --setup-link`,
+                resetOwnerCommand: `${prefix} --reset-owner`,
+                statusCommand: `ptbk onboarding --id ${SAMPLE_VALUES.engineId} --json`,
+            },
+        );
+        expect(html).toBe(
+            `<code>${prefix} --setup-link</code><code>${prefix} --reset-owner</code><code>ptbk onboarding --id ${SAMPLE_VALUES.engineId} --json</code>`,
+        );
+        expect(
+            renderGatewayPage('{{setupLinkCommand}}', {
+                ...SAMPLE_VALUES,
+                setupLinkCommand: '<script>',
+            }),
+        ).toBe('&lt;script&gt;');
+    });
+
     it('refuses an unknown placeholder', () => {
         expect(() => renderGatewayPage('<p>{{secret}}</p>', SAMPLE_VALUES)).toThrow(/Unknown .*\{\{secret\}\}/);
         expect(() => renderGatewayPage('<p>{{ lang }}</p>', SAMPLE_VALUES)).toThrow(/Unknown/);

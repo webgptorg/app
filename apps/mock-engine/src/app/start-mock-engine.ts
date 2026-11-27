@@ -1,7 +1,8 @@
 import type { Duplex } from 'node:stream';
 
-import type { InMemoryEngineCore } from '@ptbk/engine-api/in-memory';
-import type { Hostname } from '@ptbk/protocol';
+import { KNOWN_CAPABILITIES, Timestamp, supports } from '@ptbk/engine-api';
+import type { InMemoryEngineCore, UiUpdater } from '@ptbk/engine-api/in-memory';
+import type { Hostname, OwnerSetupCommitment } from '@ptbk/protocol';
 import {
     CLOSE_CODE,
     TUNNEL_FEATURES,
@@ -15,6 +16,7 @@ import type { ControlServer, FaultSettings } from '../adapters/control-server';
 import { createFaultSettings, startControlServer } from '../adapters/control-server';
 import { createEngineApiRoutes } from '../adapters/http/api-routes';
 import { createGatewayRoutes } from '../adapters/http/dev-login';
+import { createLiveChannelRoute } from '../adapters/http/live-channel-route';
 import type { GatewayPageFiles } from '../adapters/http/gateway-page-files';
 import type { PasskeyRouteDeps } from '../adapters/http/passkey-routes';
 import { SETUP_PATH, createPasskeyRoutes } from '../adapters/http/passkey-routes';
@@ -69,6 +71,7 @@ import { createRelayLink } from '../domain/tunnel/relay-link';
 import type { EngineRuntime } from '../domain/state/engine-runtime';
 import { createEngineRuntime } from '../domain/state/engine-runtime';
 import { capabilitiesFor } from '../domain/state/capabilities';
+import { startLiveBrowserTicks } from '../domain/state/live-browser';
 import { createSeededSequence, hashSeed } from '../domain/state/seed-random';
 import type { RelayTarget } from '../domain/tunnel/relay-target';
 import { relayTargetOf } from '../domain/tunnel/relay-target';
@@ -92,7 +95,7 @@ import { WAITING } from './operator-lines';
 import { ENGINE_COMMAND, retrySentence } from './registration-messages';
 import { localClockTime, openSetupLink, setupLinkLines } from './setup-link-command';
 import type { StartupProgress } from './startup-progress';
-import { NO_OWNER_LINE, createStartupProgress } from './startup-progress';
+import { HANDOFF_SETUP_LINE, NO_OWNER_LINE, createStartupProgress } from './startup-progress';
 
 /** Everything `@ptbk/protocol` implements, so the mock always advertises exactly the current contract. */
 export const DEFAULT_TUNNEL_OFFER: TunnelOfferConfig = Object.freeze({
@@ -146,6 +149,8 @@ export interface MockEngineDeps {
 
 export interface OnboardingDeps {
     readonly setupSecrets: SetupSecretStore;
+    /** The pairing tab's handoff slot (ADR 0023); in memory without it. */
+    readonly ownerHandoff?: SetupSecretStore;
     readonly passkeys: PasskeyStore;
     /** Access tickets the join page spent; in memory without it. */
     readonly spentTickets?: SpentTicketStore;
@@ -224,6 +229,7 @@ function configuredUiLoader(
         deps: deps.ui,
         clock: deps.clock,
         logger: deps.logger,
+        random: deps.random,
         onActive: (bundle) => {
             if (bundle !== undefined) progress.ui(bundle.version);
             runtime.setUi(
@@ -236,6 +242,26 @@ function configuredUiLoader(
             runtime.setUiUpdateCheck(uiUpdateCheckOf(outcome, atMs));
         },
     });
+}
+
+/**
+ * The loader as `updates@1` sees it. Check-now runs the scheduled check early (`checkEarly`), never the owner's
+ * approval under `manual`, which the core refuses before it gets here; it answers what the panel now reports.
+ */
+function uiUpdaterOf(loader: UiLoader, runtime: EngineRuntime, clock: Clock): UiUpdater {
+    return {
+        policy: () => loader.policy().kind,
+        nextCheckAt() {
+            const atMs = loader.nextCheckAtMs();
+            return atMs === null ? null : Timestamp.parse(new Date(Math.ceil(atMs / 1000) * 1000).toISOString());
+        },
+        async checkNow() {
+            const outcome = await loader.checkEarly();
+            return (
+                runtime.controller().updateSecurity({}).ui.lastUpdateCheck ?? uiUpdateCheckOf(outcome, clock.nowMs())
+            );
+        },
+    };
 }
 
 /** `PTBK_RELAYS` when set (an operator override, and always in the M1 dev mode), else the registration's relays. */
@@ -251,6 +277,8 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
     const hostname = defaultHostname(identity.engineId, config.engineDomain);
     // Set by `connect` on a terminal when it links this engine: that command shows the first setup link instead.
     let connectShowsSetupLink = false;
+    // Assigned once the setup secrets exist; the first link is shown only after startup.
+    let mayOpenFirstLink = (): boolean => false;
     const progress = createStartupProgress({
         logger,
         say: deps.say ?? null,
@@ -262,7 +290,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                 const delivery = setupLinkDelivery({
                     terminal: (deps.say ?? null) !== null && deps.firstSetupLink !== undefined,
                     ownerSetUp: false,
-                    mayOpen: deps.firstSetupLink?.mayOpen ?? false,
+                    mayOpen: mayOpenFirstLink(),
                 });
                 return delivery === 'none' ? 'operator' : 'engine';
             },
@@ -277,6 +305,10 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
     });
     progress.identity();
     const dashboard = config.dashboard === null ? null : { config: config.dashboard, deps: dashboardDeps(deps) };
+    // Accepted once the owner is known: a commitment means nothing to an engine that already has one.
+    const handedOver: {
+        current: { readonly commitment: OwnerSetupCommitment; readonly registeredAtMs: number } | null;
+    } = { current: null };
     let registration =
         dashboard === null
             ? null
@@ -294,9 +326,14 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   onRetry: (retry) => {
                       deps.say?.(`${WAITING} ${retrySentence(retry)}`);
                   },
+                  onOwnerSetupCommitment: (commitment, registeredAtMs) => {
+                      handedOver.current = { commitment, registeredAtMs };
+                  },
               });
     const linkedAtStart = dashboard === null || registration !== null;
     const faults = createFaultSettings(config.faults);
+    // The session store needs the runtime, and the runtime's cores ask the store; neither asks before startup ends.
+    let sessionStore: SessionStore | null = null;
     const runtime = await createEngineRuntime({
         seed: config.seed,
         scenario: config.scenario,
@@ -312,12 +349,27 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         simulation: config.simulation,
         passkeys: config.passkeys,
         ...(config.onboarding === null ? {} : { onboarding: config.onboarding }),
+        liveBrowser: config.liveBrowser,
+        voice: config.voice,
+        browserPermissions: (memberId, sessionId) => sessionStore?.permissionsOf(memberId, sessionId) ?? null,
         faults: () => faults.plan(),
         onSimulationError: (error) => {
             logger.error('simulation.error', { problem: error instanceof Error ? error.name : 'unknown' });
         },
     });
     const sessions = createSessionStore({ engine: () => runtime.controller(), clock: deps.clock, random: deps.random });
+    sessionStore = sessions;
+    const stopLiveBrowser = config.liveBrowser
+        ? startLiveBrowserTicks(deps.clock, () => {
+              try {
+                  runtime.controller().browserTick();
+              } catch (error) {
+                  logger.error('live-browser.tick-failed', {
+                      problem: error instanceof Error ? error.name : 'unknown',
+                  });
+              }
+          })
+        : null;
     const ownerSetUpNow = (): boolean => hasOwner(runtime.controller().inspect());
     // Assigned below; the owner changes only through requests and commands that come after startup.
     let onboardingChanged = (): void => undefined;
@@ -328,6 +380,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         random: deps.random,
         clock: deps.clock,
         hasOwner: ownerSetUpNow,
+        ...(config.ownerHandoff ? { handoff: onboarding?.ownerHandoff ?? createInMemorySetupSecretStore() } : {}),
     });
     const passkeyStore = onboarding?.passkeys ?? createInMemoryPasskeyStore();
     const ceremonies = onboarding?.ceremonies ?? createSimpleWebAuthnCeremonies();
@@ -349,8 +402,17 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
             if (setUp && !ownerWasSetUp) heartbeat?.beatNow();
             ownerWasSetUp = setUp;
         },
+        onOwnerSetUp: (slot) => {
+            if (slot === 'owner-handoff') deps.say?.(HANDOFF_SETUP_LINE);
+        },
     });
     await passkeyGateway.restore();
+    await setupSecrets.loadHandoff();
+    if (handedOver.current !== null) {
+        const { commitment, registeredAtMs } = handedOver.current;
+        const accepted = await setupSecrets.acceptHandoff(commitment, registeredAtMs);
+        logger.info('owner-handoff.registration', { outcome: accepted });
+    }
     const joinGateway = createJoinGateway({
         engine: () => runtime.controller(),
         engineId: identity.engineId,
@@ -389,6 +451,8 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                       runtime.setHeartbeat(status);
                   },
                   teams: joinGateway,
+                  // Only once a browser can use the address, so the pairing tab never lands on a certificate error.
+                  ownerHandoff: () => setupSecrets.handoffLive() && addressGapsNow().length === 0,
               });
     const rateLimiter = deps.rateLimiter ?? createWindowRateLimiter({ clock: deps.clock });
     runtime.onReset(() => {
@@ -399,6 +463,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         });
     });
     const ui = configuredUiLoader(config, deps, runtime, progress);
+    if (ui !== null) runtime.setUiUpdater(uiUpdaterOf(ui, runtime, deps.clock));
     const server =
         deps.certificates === undefined
             ? null
@@ -407,6 +472,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   certificates: deps.certificates,
                   ...(deps.challenges === undefined ? {} : { challenges: deps.challenges }),
                   core: () => runtime.core(),
+                  microphone: () => supports(runtime.current(), KNOWN_CAPABILITIES.voiceInput),
                   sessions,
                   faults,
                   seed: config.seed,
@@ -430,6 +496,8 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
               });
     let links: readonly RelayLink[] = [];
     let certificateNotAfter: string | null = null;
+    // The pairing tab opens the setup page itself; a second page racing it on the same desktop would only confuse.
+    mayOpenFirstLink = (): boolean => (deps.firstSetupLink?.mayOpen ?? false) && !setupSecrets.handoffLive();
     const addressGapsNow = (): AddressGap[] =>
         addressGaps({
             relaysReady: links.filter((link) => link.state().kind === 'ready').length,
@@ -549,6 +617,8 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         }
         if (stored === null) return { outcome: 'not-registered' };
         registration = stored;
+        // `connect` stored the pairing tab's slot next to the registration it just made.
+        await setupSecrets.loadHandoff();
         logger.info('registration.linked', { engineId: stored.engineId, relays: stored.relays.length });
         progress.linked(false);
         goOnline(stored);
@@ -603,7 +673,11 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         const say = deps.say ?? null;
         const first = deps.firstSetupLink;
         if (say === null || first === undefined) return;
-        const delivery = setupLinkDelivery({ terminal: true, ownerSetUp: ownerSetUpNow(), mayOpen: first.mayOpen });
+        const delivery = setupLinkDelivery({
+            terminal: true,
+            ownerSetUp: ownerSetUpNow(),
+            mayOpen: mayOpenFirstLink(),
+        });
         if (delivery === 'none') return;
         const answer = await operator.setupLink();
         if (answer.outcome === 'not-ready') {
@@ -620,6 +694,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
     } catch (error) {
         // Nothing started so far may outlive a refused start: a listening control server would keep the process up.
         runtime.simulation().stop();
+        stopLiveBrowser?.();
         stopReportingCertificate?.();
         await control?.close();
         server?.close();
@@ -670,6 +745,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         },
         async close() {
             runtime.simulation().stop();
+            stopLiveBrowser?.();
             stopReportingCertificate?.();
             cancelHeartbeatFallback?.();
             const stopping = Promise.all([heartbeat?.stop(), ui?.stop(), ...links.map((link) => link.stop())]);
@@ -744,6 +820,7 @@ export function createInTunnelRoutes(deps: {
             ? []
             : createPasskeyRoutes({ ...deps.passkeys, engineId: deps.engineId, devLogin: deps.devLogin })),
         ...createEngineApiRoutes({ core: deps.core }),
+        createLiveChannelRoute({ core: deps.core }),
         ...createUiRoutes({ store: deps.bundles ?? NO_BUNDLES }),
     ];
 }
@@ -760,6 +837,8 @@ export interface EngineServerDeps {
     /** Pending TLS-ALPN-01 challenges; none by default, so every `acme-tls/1` hello is refused. */
     readonly challenges?: AcmeChallenges;
     readonly core: () => InMemoryEngineCore;
+    /** Whether the engine advertises `voice-input@1` right now, so `Permissions-Policy` allows the microphone; no by default. */
+    readonly microphone?: () => boolean;
     readonly sessions: SessionStore;
     readonly faults: FaultSettings;
     /** Seeds fault decisions. */
@@ -794,6 +873,7 @@ export function createEngineServer(deps: EngineServerDeps): EngineServer {
         logger: deps.logger,
         sessions: deps.sessions,
         faults: createFaults(deps.faults, deps.seed, deps.clock),
+        ...(deps.microphone === undefined ? {} : { microphone: deps.microphone }),
     });
     const tls = createTlsStreamServer({
         certificates: deps.certificates,

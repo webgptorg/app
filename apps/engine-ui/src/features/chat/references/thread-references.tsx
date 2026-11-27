@@ -1,4 +1,4 @@
-import type { ReadAgent, ReadChat } from '@ptbk/engine-api';
+import type { AgentOrigin, ReadAgent, ReadChat } from '@ptbk/engine-api';
 import { createContext, use } from 'react';
 import type { ReactNode } from 'react';
 
@@ -20,6 +20,10 @@ export interface ReferenceAgent {
     /** `profile.description`, its one-line role; `null` until the project's agents have loaded. */
     readonly description: string | null;
     readonly profileColor: string | null;
+    /** The engine's illustration ID; with `origin`, what the avatar resolves its character from. */
+    readonly illustration: string | null;
+    /** `undefined` until the project's agents have loaded. */
+    readonly origin: AgentOrigin | undefined;
     /** It is a member of this thread, not only an agent of the project. */
     readonly member: boolean;
 }
@@ -34,6 +38,8 @@ export interface ThreadReferences {
     readonly working: readonly ReadChatWorking[];
     /** The engine offers `tasks@1` and the member may read tasks, so "Open task" leads somewhere. */
     readonly canOpenTasks: boolean;
+    /** The member may open agents, so their references carry the agent's card. */
+    readonly canOpenAgents: boolean;
     /** Addresses the agent in the composer; absent where the member cannot write. */
     readonly onMention?: ((agent: ReferenceAgent) => void) | undefined;
 }
@@ -65,6 +71,8 @@ export function useReferenceAgent(key: string, fallbackName: string): ReferenceA
             avatarUrl: null,
             description: null,
             profileColor: null,
+            illustration: null,
+            origin: undefined,
             member: false,
         }
     );
@@ -75,6 +83,7 @@ export interface ThreadReferencesInput {
     /** The project's agents, when they have loaded; `[]` without `agents.read`. */
     readonly agents: readonly ReadAgent[];
     readonly canOpenTasks: boolean;
+    readonly canOpenAgents: boolean;
     readonly onMention?: ((agent: ReferenceAgent) => void) | undefined;
 }
 
@@ -83,6 +92,7 @@ export function buildThreadReferences({
     chat,
     agents,
     canOpenTasks,
+    canOpenAgents,
     onMention,
 }: ThreadReferencesInput): ThreadReferences {
     const profiles = new Map(agents.map((agent) => [agent.id as string, agent]));
@@ -98,6 +108,8 @@ export function buildThreadReferences({
             avatarUrl: agent?.profile.avatarUrl ?? null,
             description: agent === undefined ? null : agent.profile.description.trim() || null,
             profileColor,
+            illustration: agent?.profile.illustration ?? null,
+            origin: agent?.origin,
             member,
         });
     };
@@ -113,6 +125,7 @@ export function buildThreadReferences({
         tasks: new Map(chat.tasks.map((task) => [task.name, task])),
         working: chat.working,
         canOpenTasks,
+        canOpenAgents,
         onMention,
     };
 }

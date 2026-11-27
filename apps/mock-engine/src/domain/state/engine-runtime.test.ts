@@ -4,10 +4,12 @@ import {
     MemberId,
     OWNER_PERMISSIONS,
     SessionId,
+    Timestamp,
     UiUpdateCheck,
     KNOWN_CAPABILITIES,
     createEngineApiClient,
 } from '@ptbk/engine-api';
+import { DEFAULT_CAPABILITIES } from '@ptbk/engine-api/in-memory';
 import type { Actor } from '@ptbk/engine-api/in-memory';
 import { describe, expect, it } from 'vitest';
 
@@ -35,7 +37,7 @@ function ok<T>(response: EngineApiResponse<T>): T {
     return response.data;
 }
 
-async function start() {
+async function start(options: { readonly liveBrowser?: boolean } = {}) {
     const clock = createFakeClock(Date.parse('2026-10-20T08:00:00Z'));
     const runtime = await createTestRuntime({
         seed: 42,
@@ -43,6 +45,7 @@ async function start() {
         epoch: new Date('2026-10-01T00:00:00Z'),
         identity: IDENTITY,
         clock,
+        ...options,
     });
     const actorOf = (): Actor => {
         const owner = runtime
@@ -63,15 +66,54 @@ async function start() {
     return { clock, runtime, client };
 }
 
+describe('engine runtime with the live browser', () => {
+    it('advertises browser-tab@1 and starts each core with a fake agent tab in a seeded chat', async () => {
+        const { runtime, client } = await start({ liveBrowser: true });
+        expect(ok(await client().engine.get(signal())).capabilities).toContainEqual(KNOWN_CAPABILITIES.browserTab);
+        const first = runtime.liveBrowserTab();
+        const tab = runtime.controller().getBrowserTab(first ?? '');
+        expect(tab).toMatchObject({ origin: 'https://shop.example', agentState: 'working' });
+        expect(tab?.chatId).not.toBeNull();
+        expect(tab?.agentId).not.toBeNull();
+        expect(ok(await client().browser.listTabs({}, signal())).items.map(({ id }) => id)).toEqual([first]);
+
+        // A reset that names capabilities still keeps the flag's: the flag, not the list, decides.
+        await runtime.reset({ seed: 7, scenario: 'empty', capabilities: [KNOWN_CAPABILITIES.tasks] });
+        expect(runtime.current().capabilities).toEqual([KNOWN_CAPABILITIES.tasks, KNOWN_CAPABILITIES.browserTab]);
+        expect(ok(await client().engine.get(signal())).capabilities).toEqual([
+            KNOWN_CAPABILITIES.tasks,
+            KNOWN_CAPABILITIES.browserTab,
+        ]);
+        const empty = runtime.controller().getBrowserTab(runtime.liveBrowserTab() ?? '');
+        expect(empty).toMatchObject({ origin: 'https://shop.example', chatId: null, agentId: null });
+        await runtime.reset({ seed: 7, scenario: 'empty' });
+        expect(runtime.current().capabilities).toEqual([KNOWN_CAPABILITIES.tasks, KNOWN_CAPABILITIES.browserTab]);
+    });
+
+    it('allows the sign-in origins and nothing else', async () => {
+        const { client } = await start({ liveBrowser: true });
+        const open = (origin: string) => client().browser.openSignIn({ browser: null, origin }, signal());
+        expect((await open('https://shop.example')).kind).toBe('problem');
+        expect(ok(await open('https://accounts.example'))).toMatchObject({ kind: 'sign-in', status: 'open' });
+    });
+
+    it('has no tab and no capability without the flag', async () => {
+        const { runtime, client } = await start();
+        expect(runtime.liveBrowserTab()).toBeNull();
+        const listed = await client().browser.listTabs({}, signal());
+        expect(listed.kind === 'problem' && listed.problem.code).toBe('capability-not-supported');
+    });
+});
+
 describe('engine runtime', () => {
-    it('reports the identity, version, mode and every capability but file scanning', async () => {
+    it('reports the identity, version, mode and every capability but file scanning, the live browser and voice', async () => {
         const { client } = await start();
         expect(ok(await client().engine.get(signal()))).toMatchObject({
             engineId: IDENTITY.engineId,
             hostname: IDENTITY.hostname,
             mode: 'tunnel',
             dashboardUrl: null,
-            capabilities: Object.values(KNOWN_CAPABILITIES).filter((ref) => ref !== KNOWN_CAPABILITIES.fileScanning),
+            capabilities: DEFAULT_CAPABILITIES,
         });
         expect(ok(await client().security.get(signal()))).toMatchObject({
             engine: { version: '0.4.2' },
@@ -155,7 +197,33 @@ describe('engine runtime', () => {
             releaseLogIndex: 9,
             releaseLogEntryUuid: null,
             lastUpdateCheck: { ...refused, eligibleAt: null },
+            // No loader is plugged in here, so the core's own schedule: an hour after the last check.
+            nextCheckAt: '2026-10-20T09:00:00Z',
         });
+    });
+
+    it('announces every UI check as updates.changed with the bundle it serves, and plugs the real updater in', async () => {
+        const { runtime, client } = await start();
+        const events: unknown[] = [];
+        runtime.controller().onEvent((event) => events.push(event));
+        runtime.setUi({ version: '1.1.0', bundleSha256: 'c'.repeat(64), releaseLogIndex: 9 });
+        const check = UiUpdateCheck.parse({
+            at: '2026-10-20T08:00:00Z',
+            outcome: 'installed',
+            version: '1.1.0',
+            reason: null,
+            revocationReason: null,
+        });
+        runtime.setUiUpdateCheck(check);
+        expect(events).toEqual([{ type: 'updates.changed', uiVersion: '1.1.0' }]);
+        runtime.setUiUpdater({
+            policy: () => 'auto',
+            nextCheckAt: () => Timestamp.parse('2026-10-20T08:30:00Z'),
+            checkNow: () => Promise.resolve(check),
+        });
+        await runtime.reset({ seed: 3, scenario: 'empty' });
+        expect(ok(await client().security.get(signal())).ui.nextCheckAt).toBe('2026-10-20T08:30:00Z');
+        expect(ok(await client().updates.checkUi(signal()))).toEqual(check);
     });
 
     it('shows the placeholder bundle again once no bundle is active, as before the first install', async () => {

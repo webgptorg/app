@@ -10,6 +10,15 @@ export const RATE_LIMITS = {
     'engine-api-ip': { limit: 1_200, windowMs: 60_000 },
     /** Draft test replies (`test-chat@1`): each one is a model call, and a person types far slower than this. */
     'engine-api-test-chat-ip': { limit: 60, windowMs: 60_000 },
+    /** Live channel attaches (`browser-tab@1`): one per opened session, plus reconnects after a dropped network. */
+    'live-channel-ip': { limit: 120, windowMs: 60_000 },
+    /**
+     * Voice clips and spoken replies (`voice-input@1`, `voice-output@1`): each is a provider call, and a person records
+     * or listens to a few a minute; a conformance run sends a few dozen.
+     */
+    'engine-api-voice-ip': { limit: 60, windowMs: 60_000 },
+    /** AI tool checks and sign-in answers (`ai-tools@1`): each is a model or provider call; a person clicks a few. */
+    'engine-api-ai-tools-ip': { limit: 30, windowMs: 60_000 },
     /** UI bundle files: a cold page load fetches a few dozen, cached ones none. */
     'ui-ip': { limit: 1_200, windowMs: 60_000 },
     /** Gateway pages and forms: sign-in, sign-out, step-up. */

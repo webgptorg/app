@@ -1,26 +1,46 @@
-import { KNOWN_CAPABILITIES, OWNER_PERMISSIONS } from '@ptbk/engine-api';
-import type { Permission } from '@ptbk/engine-api';
-import type { EngineApiClient, OnboardingAnswer, OnboardingPrompt, OnboardingState } from '@ptbk/engine-api';
+import { KNOWN_CAPABILITIES, OnboardingStateReader, OWNER_PERMISSIONS } from '@ptbk/engine-api';
+import type { OnboardingActivity, Permission } from '@ptbk/engine-api';
+import type { EngineApiClient, OnboardingAnswer, OnboardingPrompt, ReadOnboardingState } from '@ptbk/engine-api';
 import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
-import { screen, waitFor } from '@testing-library/react';
+import type { QueryClient } from '@tanstack/react-query';
+import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../testing/render-with-providers';
+import { spoken } from '../../testing/spoken';
+import { OneTimeValue } from '../wallet/one-time-value';
 import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
 
 const TIMEOUT_MS = 20_000;
 
-const base = { title: 'Setup', hint: null, error: null, canGoBack: false };
+const base = { title: 'Setup', hint: null, error: null, canGoBack: false, details: [], alternatives: [] };
 
-function pending(prompt: OnboardingPrompt): OnboardingState {
-    return { status: 'pending', deferred: false, progress: { step: 1, of: 2 }, prompt };
+function pending(
+    prompt: OnboardingPrompt,
+    extra: { readonly canDefer?: boolean; readonly activity?: readonly OnboardingActivity[] } = {},
+): ReadOnboardingState {
+    return {
+        status: 'pending',
+        deferred: false,
+        canDefer: extra.canDefer ?? true,
+        progress: { step: 1, of: 2 },
+        activity: [...(extra.activity ?? [])],
+        prompt,
+    };
 }
 
-const DONE: OnboardingState = { status: 'completed', deferred: false, progress: null, prompt: null };
+const DONE: ReadOnboardingState = {
+    status: 'completed',
+    deferred: false,
+    canDefer: true,
+    progress: null,
+    activity: [],
+    prompt: null,
+};
 
 /** The in-memory engine for everything else, with an onboarding that serves `states` in turn and records answers. */
 function scripted(
-    states: readonly OnboardingState[],
+    states: readonly ReadOnboardingState[],
     options: { readonly withChatter?: boolean; readonly permissions?: readonly Permission[] } = {},
 ) {
     const engine = createInMemoryEngine({
@@ -39,16 +59,18 @@ function scripted(
     });
     let index = 0;
     let deferred = false;
-    const current = (): OnboardingState => ({
-        ...(states[Math.min(index, states.length - 1)] as OnboardingState),
+    const current = (): ReadOnboardingState => ({
+        ...(states[Math.min(index, states.length - 1)] as ReadOnboardingState),
         ...(deferred ? { deferred } : {}),
     });
     const answers: OnboardingAnswer[] = [];
+    const bodies: Parameters<EngineApiClient['onboarding']['answer']>[0][] = [];
     const client: EngineApiClient = {
         ...engine.client,
         onboarding: {
             get: () => Promise.resolve({ kind: 'ok', data: current() }),
             answer: (body) => {
+                bodies.push(body);
                 if (body.action === 'answer') answers.push(body.answer as OnboardingAnswer);
                 index++;
                 return Promise.resolve({ kind: 'ok', data: current() });
@@ -59,7 +81,7 @@ function scripted(
             },
         },
     };
-    return { client, answers };
+    return { client, answers, bodies };
 }
 
 describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
@@ -70,7 +92,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         ]);
         const { user } = renderWithProviders({ path: '/onboarding', engineApi: client });
         await user.click(await screen.findByRole('button', { name: 'No' }));
-        expect(await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Your project is set up' })).toBeDefined();
         expect(answers).toEqual([{ kind: 'confirm', confirmed: false }]);
     });
 
@@ -115,14 +137,56 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         expect(screen.getByRole('button', { name: 'Continue' }).hasAttribute('disabled')).toBe(true);
         await user.type(name, 'Bakery');
         await user.click(screen.getByRole('button', { name: 'Continue' }));
-        await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' });
+        await screen.findByRole('heading', { level: 1, name: 'Your project is set up' });
         expect(answers).toEqual([
             { kind: 'choice', choiceIds: ['b'] },
             { kind: 'text', text: 'Bakery', fileIds: [] },
         ]);
     });
 
-    it('asks as Chatter, keeps Enter for new lines in a long answer, and continues on Ctrl+Enter', async () => {
+    it('keeps the engine order and picked IDs when expanding and collapsing more choices', async () => {
+        const choices = [
+            { id: 'default', label: 'Alpha', description: null, disabled: false, featured: true },
+            { id: 'extra', label: 'Beta', description: null, disabled: false, featured: false },
+            { id: 'other', label: 'Gamma', description: null, disabled: false, featured: false },
+            {
+                id: 'last',
+                label: 'Delta',
+                description: 'About 14 GB on the engine host.',
+                disabled: false,
+                featured: true,
+            },
+        ];
+        const { client, answers } = scripted([
+            pending({
+                ...base,
+                id: 'picker',
+                kind: 'choice',
+                question: 'Pick tools',
+                multiple: true,
+                choices,
+                initial: ['default'],
+            }),
+            DONE,
+        ]);
+        const { user } = renderWithProviders({ path: '/onboarding', engineApi: client });
+        const initial = await screen.findByRole<HTMLInputElement>('checkbox', { name: 'Alpha' });
+        expect(initial.checked).toBe(true);
+        expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+        expect(screen.getByText('About 14 GB on the engine host.')).toBeDefined();
+        await user.click(screen.getByRole('button', { name: 'Show more', expanded: false }));
+        expect(screen.getAllByRole('checkbox').at(-1)).toEqual(screen.getByRole('checkbox', { name: /Delta/ }));
+        await user.click(screen.getByRole('checkbox', { name: 'Beta' }));
+        await user.click(screen.getByRole('button', { name: 'Show less', expanded: true }));
+        expect(screen.queryByRole('checkbox', { name: 'Gamma' })).toBeNull();
+        expect(screen.getByRole<HTMLInputElement>('checkbox', { name: 'Beta' }).checked).toBe(true);
+        await user.click(initial);
+        await user.click(screen.getByRole('button', { name: 'Continue' }));
+        await screen.findByRole('heading', { name: 'Your project is set up' });
+        expect(answers).toEqual([{ kind: 'choice', choiceIds: ['extra'] }]);
+    });
+
+    it('is guided by the robot, keeps Enter for new lines in a long answer, and continues on Ctrl+Enter', async () => {
         const { client, answers } = scripted([
             pending({
                 ...base,
@@ -139,16 +203,20 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         ]);
         const { user } = renderWithProviders({ path: '/onboarding', engineApi: client });
         const answer = await screen.findByRole('textbox', { name: 'What are you working on?' });
-        expect(screen.getByText('Chatter')).toBeDefined();
-        expect(screen.getByText('Step 1 of 2')).toBeDefined();
+        expect(screen.getByText(/Tell me a little about your project/)).toBeDefined();
+        expect(
+            spoken(
+                within(screen.getByRole('list', { name: 'Setup steps' })).getByRole('listitem', { current: 'step' }),
+            ),
+        ).toBe('Setup');
         await user.type(answer, 'Bread{Enter}Cakes');
         expect(answers).toEqual([]);
         await user.keyboard('{Control>}{Enter}{/Control}');
-        await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' });
+        await screen.findByRole('heading', { level: 1, name: 'Your project is set up' });
         expect(answers).toEqual([{ kind: 'text', text: 'Bread\nCakes', fileIds: [] }]);
     });
 
-    it('shows Chatter by its initial without agents.read, and never asks for the agent list', async () => {
+    it('guides without agents.read, and never asks for the agent list', async () => {
         const { client } = scripted(
             [pending({ ...base, id: 'p1', kind: 'confirm', question: 'Go?', confirmLabel: 'Yes', declineLabel: 'No' })],
             { permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'agents.read') },
@@ -156,7 +224,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         const list = vi.spyOn(client.agents, 'list');
         renderWithProviders({ path: '/onboarding', engineApi: client });
         expect(await screen.findByRole('button', { name: 'Yes' })).toBeDefined();
-        expect(screen.getByText('Chatter')).toBeDefined();
+        expect(screen.getByText(/confirm when it seems right/)).toBeDefined();
         expect(list).not.toHaveBeenCalled();
     });
 
@@ -186,7 +254,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         );
         await user.click(screen.getByRole('button', { name: 'Remove plan.txt' }));
         await user.click(screen.getByRole('button', { name: 'Continue' }));
-        await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' });
+        await screen.findByRole('heading', { level: 1, name: 'Your project is set up' });
         expect(answers).toHaveLength(1);
         expect(answers[0]?.kind === 'upload' && answers[0].fileIds).toHaveLength(1);
     });
@@ -210,9 +278,11 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('shows the engine at work while it has no prompt', async () => {
-        const { client } = scripted([{ status: 'working', deferred: false, progress: null, prompt: null }]);
+        const { client } = scripted([
+            { status: 'working', deferred: false, canDefer: true, progress: null, activity: [], prompt: null },
+        ]);
         renderWithProviders({ path: '/onboarding', engineApi: client });
-        expect(await screen.findByText('The engine is setting things up…')).toBeDefined();
+        expect(await screen.findByText('The project is setting things up…')).toBeDefined();
     });
 
     it('offers a retry when the setup cannot be loaded, and says when an answer did not arrive', async () => {
@@ -226,7 +296,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         get.mockRestore();
         await user.click(screen.getByRole('button', { name: 'Try again' }));
         await user.click(await screen.findByRole('button', { name: 'Yes' }));
-        expect(await screen.findByText('The engine did not get your answer. Try again.')).toBeDefined();
+        expect(await screen.findByText('The project did not get your answer. Try again.')).toBeDefined();
     });
 
     it('reads the state again when its answer was to a prompt the engine moved past', async () => {
@@ -240,7 +310,7 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(get.mock.calls.length).toBeGreaterThan(1);
         });
-        expect(screen.queryByText('The engine did not get your answer. Try again.')).toBeNull();
+        expect(screen.queryByText('The project did not get your answer. Try again.')).toBeNull();
     });
 
     it('skips to Home on an engine without Chatter', async () => {
@@ -253,5 +323,274 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(router.state.location.pathname).toBe('/');
         });
+    });
+});
+
+const SECRET = 'sk-test-0123456789abcdef';
+
+const secretPrompt = (id: string, error: string | null = null): OnboardingPrompt => ({
+    ...base,
+    id,
+    kind: 'secret',
+    title: 'API key',
+    question: 'Paste your Gemini API key.',
+    hint: 'It starts with AIza.',
+    label: 'Gemini API key',
+    placeholder: 'AIza…',
+    helpUrl: 'https://aistudio.google.com/apikey',
+    error,
+    canGoBack: true,
+});
+
+/** Every value the mutation cache retains, with any one-time value read out, so a kept secret would show. */
+function retainedMutationValues(queryClient: QueryClient): string {
+    const reveal = (value: unknown): unknown => {
+        if (value instanceof OneTimeValue) return value.take();
+        if (Array.isArray(value)) return value.map(reveal);
+        if (typeof value === 'object' && value !== null) {
+            return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, reveal(inner)]));
+        }
+        return value;
+    };
+    return JSON.stringify(
+        queryClient
+            .getMutationCache()
+            .getAll()
+            .map((mutation) => reveal(mutation.state)),
+    );
+}
+
+describe('onboarding input kinds after pairing', { timeout: TIMEOUT_MS }, () => {
+    it('takes a secret in a masked field, sends it once, and keeps it nowhere after a refusal', async () => {
+        const { client, answers } = scripted([
+            pending(secretPrompt('k1')),
+            pending(secretPrompt('k2', 'This key was not accepted. Check it and paste it again.')),
+        ]);
+        const { user, queryClient, container } = renderWithProviders({ path: '/onboarding', engineApi: client });
+        const field = await screen.findByLabelText<HTMLInputElement>('Gemini API key');
+        expect(field.type).toBe('password');
+        expect(field.getAttribute('autocomplete')).toBe('off');
+        expect(field.getAttribute('spellcheck')).toBe('false');
+        expect(field.placeholder).toBe('AIza…');
+        expect(screen.getByText('It starts with AIza.')).toBeDefined();
+        const help = screen.getByRole('link', { name: /Where to get it/ });
+        expect(help.getAttribute('href')).toBe('https://aistudio.google.com/apikey');
+        expect(help.getAttribute('rel')).toContain('noopener');
+        expect(screen.getByRole('button', { name: 'Continue' }).hasAttribute('disabled')).toBe(true);
+
+        await user.type(field, SECRET);
+        await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+        expect(await screen.findByText('This key was not accepted. Check it and paste it again.')).toBeDefined();
+        expect(answers).toEqual([{ kind: 'secret', value: SECRET }]);
+        const again = screen.getByLabelText<HTMLInputElement>('Gemini API key');
+        expect(again.value).toBe('');
+        expect(again.getAttribute('aria-invalid')).toBe('true');
+        expect(field.value).toBe('');
+        const inputs = [...container.querySelectorAll('input')].map((input) => input.value);
+        expect(inputs.join('\n')).not.toContain(SECRET);
+        expect(new XMLSerializer().serializeToString(document.body)).not.toContain(SECRET);
+        expect(
+            JSON.stringify(
+                queryClient
+                    .getQueryCache()
+                    .getAll()
+                    .map((query) => query.state),
+            ),
+        ).not.toContain(SECRET);
+        expect(retainedMutationValues(queryClient)).not.toContain(SECRET);
+    });
+
+    it('empties a typed secret when the member leaves its step', async () => {
+        const { client, answers, bodies } = scripted([
+            pending(secretPrompt('k1')),
+            pending({ ...base, id: 'p0', kind: 'confirm', question: 'Go?', confirmLabel: 'Yes', declineLabel: 'No' }),
+        ]);
+        const { user } = renderWithProviders({ path: '/onboarding', engineApi: client });
+        const field = await screen.findByLabelText<HTMLInputElement>('Gemini API key');
+        await user.type(field, SECRET);
+        await user.click(screen.getByRole('button', { name: 'Back' }));
+        expect(await screen.findByRole('button', { name: 'Yes' })).toBeDefined();
+        expect(field.value).toBe('');
+        expect(answers).toEqual([]);
+        expect(bodies).toEqual([{ promptId: 'k1', action: 'back' }]);
+    });
+
+    it('shows the engine’s facts under the question, as the review on a final confirm', async () => {
+        const { client, answers } = scripted([
+            pending({
+                ...base,
+                id: 'p1',
+                kind: 'confirm',
+                title: 'Review',
+                question: 'Create the project and start?',
+                details: [
+                    { label: 'Project', text: 'Bakery' },
+                    { label: 'Folder', text: '~/projects/bakery' },
+                    { label: 'AI tools', text: 'OpenAI Codex' },
+                ],
+                confirmLabel: 'Create and start',
+                declineLabel: 'Change something',
+            }),
+            DONE,
+        ]);
+        const { user } = renderWithProviders({ path: '/onboarding', engineApi: client });
+        expect(await screen.findByText('Create the project and start?')).toBeDefined();
+        expect(screen.getAllByRole('term').map((term) => term.textContent)).toEqual(['Project', 'Folder', 'AI tools']);
+        expect(screen.getAllByRole('definition').map((value) => value.textContent)).toEqual([
+            'Bakery',
+            '~/projects/bakery',
+            'OpenAI Codex',
+        ]);
+        await user.click(screen.getByRole('button', { name: 'Create and start' }));
+        await screen.findByRole('heading', { level: 1, name: 'Your project is set up' });
+        expect(answers).toEqual([{ kind: 'confirm', confirmed: true }]);
+    });
+
+    it('takes an alternative the engine presents next, and links one of its own pages in a new tab', async () => {
+        const login: OnboardingPrompt = {
+            ...base,
+            id: 'l1',
+            kind: 'harness-login',
+            title: 'Sign in to OpenAI Codex',
+            question: 'Sign in with your ChatGPT account.',
+            harness: 'OpenAI Codex',
+            method: 'device-code',
+            url: 'https://auth.openai.com/codex/device',
+            userCode: 'K7QF-3MRP',
+            status: 'waiting',
+            diagnostic: null,
+            expiresAt: null,
+            alternatives: [
+                { id: 'api-key', label: 'Use an API key instead', description: 'For an organisation key.', href: null },
+                {
+                    id: 'terminal',
+                    label: 'Sign in in a terminal instead',
+                    description: null,
+                    href: '/_ptbk/harness-terminal?harness=codex',
+                },
+            ],
+        };
+        const { client, bodies } = scripted([pending(login), pending(secretPrompt('k1'))]);
+        const { user } = renderWithProviders({ path: '/onboarding', engineApi: client });
+
+        const link = await screen.findByRole('link', { name: /Sign in in a terminal instead/ });
+        expect(link.getAttribute('href')).toBe('/_ptbk/harness-terminal?harness=codex');
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toBe('noopener');
+        expect(screen.getByText(/come back to this page to continue/)).toBeDefined();
+        expect(screen.getByText('For an organisation key.')).toBeDefined();
+
+        await user.click(screen.getByRole('button', { name: 'Use an API key instead' }));
+        expect(await screen.findByLabelText('Gemini API key')).toBeDefined();
+        expect(bodies).toEqual([{ promptId: 'l1', action: 'alternative', alternativeId: 'api-key' }]);
+    });
+
+    it('lists the engine’s work while it sets up, and keeps a failure in view above the next prompt', async () => {
+        const activity: OnboardingActivity[] = [
+            { id: 'a1', label: 'Install OpenAI Codex', status: 'done', detail: null },
+            { id: 'a2', label: 'Check Claude Code', status: 'failed', detail: 'claude: command not found' },
+            { id: 'a3', label: 'Install Gemini CLI', status: 'skipped', detail: null },
+            { id: 'a4', label: 'Download the model', status: 'running', detail: '240 MB of 1.2 GB' },
+        ];
+        const { client } = scripted([
+            { status: 'working', deferred: false, canDefer: true, progress: null, activity, prompt: null },
+            pending(
+                {
+                    ...base,
+                    id: 'p1',
+                    kind: 'confirm',
+                    question: 'Go on with Codex?',
+                    confirmLabel: 'Yes',
+                    declineLabel: 'No',
+                },
+                { activity: activity.slice(0, 3) },
+            ),
+            pending(
+                { ...base, id: 'p2', kind: 'confirm', question: 'All good?', confirmLabel: 'Fine', declineLabel: 'No' },
+                { activity: [activity[0] as OnboardingActivity] },
+            ),
+        ]);
+        const { user, queryClient } = renderWithProviders({ path: '/onboarding', engineApi: client });
+        const list = await screen.findByRole('list', { name: 'What the project is doing' });
+        const lines = within(list)
+            .getAllByRole('listitem')
+            .map((line) => line.textContent);
+        expect(lines).toEqual([
+            'Done: Install OpenAI Codex',
+            'Failed: Check Claude Codeclaude: command not found',
+            'Skipped: Install Gemini CLI · Skipped',
+            'In progress: Download the model240 MB of 1.2 GB',
+        ]);
+        expect(screen.queryByText('The project is setting things up…')).toBeNull();
+
+        await client.onboarding.answer({ promptId: 'none', action: 'back' }, AbortSignal.timeout(1_000));
+        await queryClient.invalidateQueries({ queryKey: ['onboarding'] });
+        expect(await screen.findByRole('button', { name: 'Yes' })).toBeDefined();
+        expect(screen.getByRole('list', { name: 'What the project is doing' })).toBeDefined();
+        expect(screen.getByText('claude: command not found')).toBeDefined();
+
+        await user.click(screen.getByRole('button', { name: 'Yes' }));
+        expect(await screen.findByRole('button', { name: 'Fine' })).toBeDefined();
+        expect(screen.queryByRole('list', { name: 'What the project is doing' })).toBeNull();
+    });
+
+    it('offers no skip on an engine without a project yet, and says the answers are kept', async () => {
+        const { client } = scripted([
+            pending(
+                { ...base, id: 'p1', kind: 'confirm', question: 'Go?', confirmLabel: 'Yes', declineLabel: 'No' },
+                { canDefer: false },
+            ),
+        ]);
+        renderWithProviders({ path: '/onboarding', engineApi: client });
+        expect(await screen.findByText(/Your answers are saved/)).toBeDefined();
+        expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull();
+    });
+
+    it('says a step of an unknown kind needs a newer app, names the host command, and keeps looking', async () => {
+        const unknown = OnboardingStateReader.parse({
+            status: 'pending',
+            deferred: false,
+            canDefer: false,
+            progress: null,
+            activity: [],
+            prompt: { id: 'x1', kind: 'browser-profile', title: 'Browser profile', question: 'Which profile?' },
+        });
+        const { client } = scripted([unknown, DONE]);
+        const get = vi.spyOn(client.onboarding, 'get');
+        renderWithProviders({ path: '/onboarding', engineApi: client });
+        expect(await screen.findByRole('heading', { level: 1, name: 'Browser profile' })).toBeDefined();
+        expect(screen.getByText('Which profile?')).toBeDefined();
+        expect(screen.getByText('This step needs a newer version of the app')).toBeDefined();
+        const info = await client.engine.get(AbortSignal.timeout(5_000));
+        if (info.kind !== 'ok' || info.data.engineId === null) throw new Error('engine identity unavailable');
+        expect(screen.getByText(`ptbk onboarding --id ${info.data.engineId}`)).toBeDefined();
+        const calls = get.mock.calls.length;
+        await waitFor(
+            () => {
+                expect(get.mock.calls.length).toBeGreaterThan(calls);
+            },
+            { timeout: 5_000 },
+        );
+    });
+    it('explains how to select a saved setup when a local engine reports no ID', async () => {
+        const unknown = OnboardingStateReader.parse({
+            status: 'pending',
+            deferred: false,
+            canDefer: false,
+            progress: null,
+            activity: [],
+            prompt: { id: 'x1', kind: 'browser-profile', title: 'Browser profile', question: 'Which profile?' },
+        });
+        const { client } = scripted([unknown]);
+        const original = client.engine.get.bind(client.engine);
+        vi.spyOn(client.engine, 'get').mockImplementation(async (signal) => {
+            const result = await original(signal);
+            return result.kind === 'ok' ? { ...result, data: { ...result.data, engineId: null } } : result;
+        });
+        renderWithProviders({ path: '/onboarding', engineApi: client });
+        expect(await screen.findByText('ptbk onboarding')).toBeDefined();
+        expect(screen.getByText(/If it lists setups, repeat with --id/)).toBeDefined();
+        expect(screen.queryByText(/ptbk onboarding --id null/)).toBeNull();
     });
 });

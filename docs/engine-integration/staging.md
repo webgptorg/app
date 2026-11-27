@@ -8,7 +8,7 @@ Run the [conformance suite](testing-against-the-platform.md) first. Staging show
 
 | Part             | Address                                                                                                                |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Dashboard        | `https://app.ptbk.io`: sign up with an email and a passkey. Billing is off: every account may link up to 10 engines    |
+| Dashboard        | `https://app.ptbk.io`: sign up with an email and a passkey. Billing is off. Each organization can link 20 engines.     |
 | Engine domain    | `engines.ptbk.link`: your engine is `https://<engineId>.engines.ptbk.link/`, and every such name resolves to the relay |
 | Relay            | One relay for now. The registration names it; every engine hostname resolves to its addresses                          |
 | UI release store | `https://ui.ptbk.link/`, in the [release mirror layout v1](ui-loader.md#release-mirror-layout-v1)                      |
@@ -25,6 +25,8 @@ Run the [conformance suite](testing-against-the-platform.md) first. Staging show
 - A browser that can create a passkey.
 
 ## Settings
+
+A [staging build](ui-loader.md#staging-builds) of `ptbk`, installed from the block on app.ptbk.io → Engines → New engine, needs none of this: it embeds the staging policy and defaults. The settings below are for any other build.
 
 Start the engine from your own shell, not from the release image or the installer's service: those set `NODE_ENV=production`, and production refuses the staging trust policy ([ui-loader.md](ui-loader.md#where-the-trust-policy-comes-from)). If your bundler inlines `NODE_ENV`, use a build that does not.
 
@@ -112,7 +114,7 @@ Every failure and skip prints its own fix line too. When the TLS check fails, th
 | The engine serves its plain page, "no verified UI release"                                          | No policy: `PTBK_UI_TRUST_POLICY_FILE` is unset. Or `ui.lastUpdateCheck` says why: `delay-not-elapsed` (wait until `eligibleAt`, then restart or wait for the next check), `revocations-unverifiable` or a missing release (ours: tell the maintainer) |
 | `ui/latest.json` names a version the store does not have                                            | Ours. `curl https://ui.ptbk.link/ui/latest.json` and `curl -I https://ui.ptbk.link/release-log/ui-<version>.json` show it; tell the maintainer                                                                                                         |
 | `connect` exits with `invalid-link-code`                                                            | The code was used, cancelled or is older than 30 days. Make a new one on Engines                                                                                                                                                                       |
-| `connect` exits with `engine-limit`                                                                 | The account already has 10 engines. Revoke one on Engines                                                                                                                                                                                              |
+| `connect` exits with `engine-limit`                                                                 | The organization already has 20 engines. Revoke one on Engines                                                                                                                                                                                         |
 
 ## Never
 

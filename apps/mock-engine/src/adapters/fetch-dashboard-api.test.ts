@@ -73,6 +73,7 @@ describe('createFetchDashboardApi: register', () => {
                 hostname: defaultHostname(engine.engineId, ENGINE_DOMAIN),
                 relays: RELAYS,
                 memberKey: null,
+                ownerSetupCommitment: null,
             },
         });
         expect(dashboard.registerRequests).toEqual([request]);
@@ -104,7 +105,7 @@ describe('createFetchDashboardApi: register', () => {
             await signedRequest(engine, LINK_CODE),
             SIGNAL,
         );
-        expect(call).toEqual({ kind: 'ok', response: { ...response, memberKey: null } });
+        expect(call).toEqual({ kind: 'ok', response: { ...response, memberKey: null, ownerSetupCommitment: null } });
         expect(call.kind === 'ok' && 'addedLater' in call.response).toBe(false);
     });
 

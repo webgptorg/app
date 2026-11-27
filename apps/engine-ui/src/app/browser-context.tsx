@@ -2,6 +2,10 @@ import type { PreferenceStorage } from '@ptbk/ui';
 import { createContext, use } from 'react';
 import type { ReactNode } from 'react';
 
+import type { OpenLiveChannel } from '../features/browser/live-channel';
+import type { FrameDrawer } from '../features/browser/live-session';
+import type { StepUpPopups } from '../features/step-up/step-up-popup';
+import type { VoiceMedia } from '../features/voice/voice-media';
 import type { BrowserLocation } from './sign-in-redirect';
 import type { ThemeMatchMedia } from './theme';
 
@@ -15,6 +19,14 @@ export interface AppBrowser {
     readonly fetch: typeof fetch;
     /** The reader's IANA time zone, which every time on screen is shown in unless a schedule names its own. */
     readonly timeZone: string;
+    /** The step-up's small window; without it the step-up takes the full-page round trip. */
+    readonly popups?: StepUpPopups | undefined;
+    /** Live browser channels; without it, a WebSocket to `location.origin` (tests bind the in-memory engine). */
+    readonly openLiveChannel?: OpenLiveChannel | undefined;
+    /** How live frames reach the page; without it, `createImageBitmap` onto the viewer's canvas. */
+    readonly frameDrawer?: ((canvas: HTMLCanvasElement) => FrameDrawer) | undefined;
+    /** Microphone, recorder and audio output for voice; without it, the window's own. */
+    readonly voiceMedia?: VoiceMedia | undefined;
 }
 
 const BrowserContext = createContext<AppBrowser | null>(null);

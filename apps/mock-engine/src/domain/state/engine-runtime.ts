@@ -1,6 +1,14 @@
-import type { CapabilityRef, SecurityOverview, UiUpdateCheck } from '@ptbk/engine-api';
+import { KNOWN_CAPABILITIES, supports } from '@ptbk/engine-api';
+import type { CapabilityRef, MemberId, Permission, SecurityOverview, SessionId, UiUpdateCheck } from '@ptbk/engine-api';
 import { createInMemoryEngineCore } from '@ptbk/engine-api/in-memory';
-import type { InMemoryEngineController, InMemoryEngineCore, ReplyScript, Sleep } from '@ptbk/engine-api/in-memory';
+import type {
+    InMemoryEngineController,
+    InMemoryEngineCore,
+    OnboardingSeed,
+    ReplyScript,
+    Sleep,
+    UiUpdater,
+} from '@ptbk/engine-api/in-memory';
 
 import { decideOwnership } from '../authorization/policy';
 import { generateReply } from '../chat/reply-generator';
@@ -11,7 +19,8 @@ import type { Simulation } from '../simulation/simulation';
 import { createSimulation } from '../simulation/simulation';
 import type { SimulationClock, SimulationMode } from '../simulation/simulation-clock';
 import { createSimulationClock } from '../simulation/simulation-clock';
-import { MOCK_UPLOAD_POLICIES } from './capabilities';
+import { MOCK_UPLOAD_POLICIES, withVoice } from './capabilities';
+import { setUpLiveBrowser, withLiveBrowser } from './live-browser';
 import type { Scenario } from './scenarios';
 import { HOSTILE_AGENT_NAME, ownerOf, seedEngine } from './seed';
 import { createSeededSequence, hashSeed } from './seed-random';
@@ -65,8 +74,21 @@ export interface EngineRuntimeOptions {
      * as on a fresh engine whose owner has yet to open the setup link. Members and data stay either way.
      */
     readonly passkeys?: 'seeded' | 'none';
-    /** `MOCK_ONBOARDING`: overrides the scenario's onboarding state (`empty` is `pending`, the others `completed`). */
-    readonly onboarding?: 'pending' | 'completed';
+    /**
+     * `MOCK_ONBOARDING`: overrides the onboarding state. Without it an engine whose owner is not seeded is paired before
+     * setup (`no-project`), as a newly linked Reborn engine is; with the owner seeded `empty` is `pending` and the other
+     * scenarios `completed`.
+     */
+    readonly onboarding?: OnboardingSeed;
+    /**
+     * `MOCK_LIVE_BROWSER=enabled`: every core advertises `browser-tab@1` whatever the capability list says, and starts
+     * with the fake agent tab and sign-in allowlist.
+     */
+    readonly liveBrowser?: boolean;
+    /** `MOCK_VOICE=enabled`: every core advertises `voice-input@1` and `voice-output@1` whatever the capability list says. */
+    readonly voice?: boolean;
+    /** What a gateway session holds now (the session store's answer), so a role change ends live browser sessions. */
+    readonly browserPermissions?: (memberId: MemberId, sessionId: SessionId) => ReadonlySet<Permission> | null;
 }
 
 export interface ResetInput {
@@ -97,6 +119,8 @@ export interface EngineRuntime {
     reset(input: ResetInput): Promise<void>;
     /** Runs after every reset, e.g. to drop the gateway's sessions, which the new core does not list. */
     onReset(listener: () => void): void;
+    /** The fake agent tab the current core started with; `null` without `liveBrowser`. */
+    liveBrowserTab(): string | null;
     setDashboardUrl(url: string | null): void;
     /** `local` while the engine waits for `connect`, then `tunnel`; kept across resets like the dashboard URL. */
     setMode(mode: EngineIdentityInfo['mode']): void;
@@ -105,8 +129,13 @@ export interface EngineRuntime {
     setHeartbeat(heartbeat: HeartbeatInfo): void;
     /** The UI bundle the loader serves (M-05); `null` once none is, as before the first install. */
     setUi(ui: UiBundleInfo | null): void;
-    /** The UI loader's last update check (M-05). */
+    /** The UI loader's last update check (M-05); announced as `updates.changed` under `updates@1`. */
     setUiUpdateCheck(check: UiUpdateCheck): void;
+    /**
+     * The real UI loader behind `updates@1` (M-14), kept across resets. Until one is set, the core's fake release store
+     * answers, moved by its levers.
+     */
+    setUiUpdater(updater: UiUpdater | null): void;
     /** The certificate served for the default hostname, after every issue or renewal. */
     setTlsCertificate(certificate: TlsCertificateInfo): void;
 }
@@ -153,19 +182,30 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         heartbeat: { lastHeartbeat: null, clockSkew: null } as HeartbeatInfo,
         ui: null as UiBundleInfo | null,
         uiUpdateCheck: null as UiUpdateCheck | null,
+        uiUpdater: null as UiUpdater | null,
+        /** Once the loader reported anything, `ui` is its to set; before, the core's fake release store owns it. */
+        loaderReports: false,
         tls: null as TlsCertificateInfo | null,
     };
     // Each core's own placeholder, so it comes back when a revocation leaves no bundle active.
     const placeholderUi = new WeakMap<InMemoryEngineCore, SecurityOverview['ui']>();
     const listeners: (() => void)[] = [];
-    let current = { seed: options.seed, scenario: options.scenario, capabilities: options.capabilities };
+    const effective = (capabilities: readonly CapabilityRef[]): readonly CapabilityRef[] => {
+        const browser = options.liveBrowser === true ? withLiveBrowser(capabilities) : capabilities;
+        return options.voice === true ? withVoice(browser) : browser;
+    };
+    let current = { seed: options.seed, scenario: options.scenario, capabilities: effective(options.capabilities) };
     const now = (): string => new Date(clock.nowMs()).toISOString().replace(/\.\d{3}Z$/, 'Z');
 
     async function build(
         seedValue: number,
         scenario: Scenario,
         capabilities: readonly CapabilityRef[],
-    ): Promise<{ readonly core: InMemoryEngineCore; readonly simulation: Simulation }> {
+    ): Promise<{
+        readonly core: InMemoryEngineCore;
+        readonly simulation: Simulation;
+        readonly liveBrowserTab: string | null;
+    }> {
         const seeded = await seedEngine({
             seed: seedValue,
             scenario,
@@ -173,7 +213,8 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
             hostname: identity.hostname,
         });
         const withOwner = options.passkeys === 'none' ? { ...seeded, passkeys: [], sessions: [] } : seeded;
-        const seed = options.onboarding === undefined ? withOwner : { ...withOwner, onboarding: options.onboarding };
+        const onboarding = options.onboarding ?? (options.passkeys === 'none' ? 'no-project' : undefined);
+        const seed = onboarding === undefined ? withOwner : { ...withOwner, onboarding };
         const replyScript: ReplyScript = ({ agent, content, chatId, messageIndex }) => ({
             chunks: generateReply({
                 seed: seedValue,
@@ -201,6 +242,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
             replyScript,
             capabilities,
             authorizer: { can: decideOwnership },
+            ...(options.browserPermissions === undefined ? {} : { browserPermissions: options.browserPermissions }),
             uploadPolicies: MOCK_UPLOAD_POLICIES,
             sleep: clockSleep(clock),
             checks: createEngineChecks({
@@ -209,6 +251,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
                 probes: createSeededSequence(hashSeed(seedValue, scenario, 'probes')),
             }),
         });
+        core.controller.plugUiUpdater(sticky.uiUpdater);
         core.controller.updateSecurity({
             engine: { version: identity.version, releaseLogIndex: null },
             update: {
@@ -219,7 +262,9 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
                 eligibleAt: null,
             },
         });
-        applySecurity(core);
+        applySecurity(core, true);
+        const liveBrowserTab =
+            options.liveBrowser === true ? setUpLiveBrowser(core.controller, seed.chats?.[0]?.id).id : null;
         const simulation = createSimulation({
             controller: core.controller,
             clock: simulationClock,
@@ -228,7 +273,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
             faults: options.faults,
             onError: options.onSimulationError,
         });
-        return { core, simulation };
+        return { core, simulation, liveBrowserTab };
     }
 
     /** Only the default hostname's certificate is tracked (`setTlsCertificate`); custom ones stay unreported. */
@@ -237,14 +282,15 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         return Date.parse(sticky.tls.notAfter) > clock.nowMs() ? 'valid' : 'expired';
     }
 
-    function applySecurity(core: InMemoryEngineCore): void {
+    /** Without a loader, `ui` is set once and then left to the core's fake release store (`updates@1`). */
+    function applySecurity(core: InMemoryEngineCore, initial = false): void {
         // Until a bundle is active the core's placeholder bundle stays, but a refused or failed check still shows.
         const overview = core.controller.updateSecurity({});
         if (!placeholderUi.has(core)) placeholderUi.set(core, overview.ui);
         const ui = sticky.ui ?? placeholderUi.get(core) ?? overview.ui;
         core.controller.updateSecurity({
             ...(sticky.tls === null ? {} : { tls: { ...overview.tls, ...sticky.tls } }),
-            ui: { ...ui, lastUpdateCheck: sticky.uiUpdateCheck },
+            ...(initial || sticky.loaderReports ? { ui: { ...ui, lastUpdateCheck: sticky.uiUpdateCheck } } : {}),
             lastHeartbeat: sticky.heartbeat.lastHeartbeat,
             clockSkew: sticky.heartbeat.clockSkew,
             relays: [...sticky.relays].map(([hostname, relay]) => ({ hostname, ...relay })),
@@ -268,7 +314,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         reset(input) {
             // One at a time: two overlapping resets would each build a core, and the loser's simulation would run on.
             const next = resetting.then(async () => {
-                const capabilities = input.capabilities ?? current.capabilities;
+                const capabilities = effective(input.capabilities ?? current.capabilities);
                 engine.simulation.stop();
                 simulationClock.reset(startMs(simulationClock.mode()));
                 engine = await build(input.seed, input.scenario, capabilities);
@@ -281,6 +327,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         onReset(listener) {
             listeners.push(listener);
         },
+        liveBrowserTab: () => engine.liveBrowserTab,
         setDashboardUrl(url) {
             sticky.dashboardUrl = url;
             engine.core.controller.updateEngine({ dashboardUrl: url });
@@ -300,11 +347,21 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         },
         setUi(ui) {
             sticky.ui = ui;
+            sticky.loaderReports = true;
             applySecurity(engine.core);
         },
         setUiUpdateCheck(check) {
             sticky.uiUpdateCheck = check;
+            sticky.loaderReports = true;
             applySecurity(engine.core);
+            if (supports({ capabilities: current.capabilities }, KNOWN_CAPABILITIES.updates)) {
+                engine.core.controller.emit({ type: 'updates.changed', uiVersion: sticky.ui?.version ?? null });
+            }
+        },
+        setUiUpdater(updater) {
+            sticky.uiUpdater = updater;
+            sticky.loaderReports = true;
+            engine.core.controller.plugUiUpdater(updater);
         },
         setTlsCertificate(certificate) {
             sticky.tls = certificate;

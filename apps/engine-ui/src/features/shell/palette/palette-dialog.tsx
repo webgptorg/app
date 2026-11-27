@@ -1,4 +1,4 @@
-import type { AgentId, AgentProfile } from '@ptbk/engine-api';
+import type { AgentId, ReadAgent } from '@ptbk/engine-api';
 import { CommandPalette } from '@ptbk/ui';
 import type { CommandPaletteGroup, CommandPaletteItem } from '@ptbk/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
@@ -19,6 +19,7 @@ import type {
 import { useAllows, useVisibleFeatures } from '../../../app/registry/use-visible-features';
 import { m } from '../../../paraglide/messages';
 import { AgentAvatar } from '../../agents/agent-avatar';
+import { LookedUpAgentAvatar } from '../../agents/looked-up-agent-avatar';
 import { agentListQueryOptions } from '../../agents/agents-queries';
 import { useCurrentMember } from '../../session/use-current-member';
 import { navSections } from '../nav-groups';
@@ -242,7 +243,7 @@ function useAgentResults(query: string): { readonly items: PaletteItem[]; readon
     const items = (search.data?.items ?? [])
         .filter((agent) => matchesQuery(text, [agent.name, agent.profile.fullname, agent.profile.description]))
         .map((agent) => ({
-            ...agentItem(router, agent.id, agent.name, agent.profile),
+            ...agentItem(router, agent.id, agent.name, agent),
             ...(agent.profile.description === '' ? {} : { detail: agent.profile.description }),
         }));
     return { items, loading: text !== settled || search.isFetching };
@@ -252,14 +253,19 @@ function agentItem(
     router: ReturnType<typeof useRouter>,
     agentId: AgentId,
     name: string,
-    profile: Pick<AgentProfile, 'avatarUrl' | 'color'> = { avatarUrl: null, color: null },
+    agent?: Pick<ReadAgent, 'profile' | 'origin'>,
 ): PaletteItem {
     const target = { to: '/agents/$agentId', params: { agentId } } as const;
     return {
         id: `agent:${agentId}`,
         label: name,
-        // The agent's own avatar and colour, as in lists and chips; a recent pick without its profile keeps its hue.
-        icon: <AgentAvatar name={name} agentKey={agentId} profile={profile} size="xs" />,
+        // The agent's own avatar and colour, as in lists and chips; a recent pick looks its profile up.
+        icon:
+            agent === undefined ? (
+                <LookedUpAgentAvatar agentKey={agentId} name={name} size="xs" />
+            ) : (
+                <AgentAvatar name={name} agentKey={agentId} profile={agent.profile} origin={agent.origin} size="xs" />
+            ),
         select: () => {
             void router.navigate(target);
         },

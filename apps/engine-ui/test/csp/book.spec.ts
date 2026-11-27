@@ -92,6 +92,10 @@ test.describe("the book editor's test chat under the engine CSP", () => {
         const history = panel.getByRole('region', { name: 'Test messages' });
         await expect(history.getByText('Image: x')).toBeVisible();
         expect(await history.locator('img, script, iframe, object, embed, [src], [srcset]').count()).toBe(0);
+        expect(
+            await page.evaluate(() => (document.scrollingElement?.scrollHeight ?? 0) - window.innerHeight),
+            'the document scrolls under the book',
+        ).toBeLessThanOrEqual(0);
         await expect(page.getByText('Unsaved changes')).toBeVisible();
 
         const viewport = page.viewportSize();

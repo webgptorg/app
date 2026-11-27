@@ -340,7 +340,7 @@ export function TeamPage(props: { readonly teamId: string }) {
             ]}
             actions={
                 <>
-                    <OpenTeamButton team={view} variant="primary" size="md" />
+                    <OpenTeamButton team={view} engine={engine} variant="primary" size="md" />
                     <TeamMenu team={view} />
                 </>
             }
@@ -392,7 +392,7 @@ export function TeamPage(props: { readonly teamId: string }) {
                                   }}
                               >
                                   <UserPlus aria-hidden className="size-4" />
-                                  {m.invite_open()}
+                                  {view.engineId === null ? m.invite_open() : m.invite_to_engine()}
                               </Button>
                           ),
                       }
@@ -416,6 +416,7 @@ export function TeamPage(props: { readonly teamId: string }) {
             <InviteDialog
                 open={inviting}
                 teamIds={[view.teamId]}
+                {...(view.engineId === null ? {} : { engineName: name })}
                 onClose={() => {
                     setInviting(false);
                 }}

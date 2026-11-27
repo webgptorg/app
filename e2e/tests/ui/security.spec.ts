@@ -40,7 +40,7 @@ test('the security panel matches what the browser and the release store see', as
     await expect(page.getByRole('heading', { name: /your data stays on your server/ })).toBeVisible();
 
     const reported = await apiGet<SecurityOverview>(page, '/security');
-    const engineCard = await openCheck(page, 'Engine');
+    const engineCard = await openCheck(page, 'Project');
     await expect(factValue(engineCard, 'Version')).toHaveText(reported.engine.version);
     expect(reported.engine.version).toMatch(/^\d+\.\d+\.\d+/);
 

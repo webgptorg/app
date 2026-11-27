@@ -31,6 +31,12 @@ export type RouteResult<C extends RouteContract> =
           readonly setCookies?: readonly string[];
       }
     | {
+          /** Only on `redirect` routes; `location` is built by the handler, never taken from input. */
+          readonly kind: 'redirect';
+          readonly location: string;
+          readonly setCookies?: readonly string[];
+      }
+    | {
           readonly kind: 'problem';
           readonly status: ProblemStatus;
           readonly code: RouteErrorCode<C> | CommonProblemCode;
@@ -154,6 +160,9 @@ export function assertMountable(contract: RouteContract, mount: string): void {
     if (contract.responseType === 'text' && contract.auth !== 'public') {
         problems.push('text response outside a public route');
     }
+    if (contract.responseType === 'redirect' && (contract.auth !== 'public' || contract.method !== 'GET')) {
+        problems.push('redirect outside a public GET route');
+    }
     if (contract.path.includes('/:') && contract.input.params === null) {
         problems.push('path parameters without a schema');
     }
@@ -253,6 +262,10 @@ async function readBody(context: Context, contract: RouteContract): Promise<Pars
     }
     if (body === RAW_BODY) {
         return { kind: 'ok', value: bytes };
+    }
+    // No body at all is `undefined`, which only a schema that declares the body optional accepts.
+    if (bytes.byteLength === 0) {
+        return parseWith(body, undefined);
     }
     try {
         return parseWith(body, JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes)));
@@ -446,6 +459,23 @@ export function createRouteBinder(deps: RouteBinderDeps): RouteBinder {
                             result.status === 204
                                 ? context.body(null, 204)
                                 : context.json(result.body as unknown as object, result.status ?? 200),
+                            result.setCookies,
+                        );
+                    case 'redirect':
+                        if (contract.responseType !== 'redirect') {
+                            throw new Error(`${contract.path} redirected without a redirect contract`);
+                        }
+                        // The browser shows the target instead, so a one-time URL never stays in the address bar; it
+                        // must not be cached or sent on as a Referer either.
+                        return withCookies(
+                            new Response(null, {
+                                status: 303,
+                                headers: {
+                                    Location: result.location,
+                                    'Cache-Control': 'no-store',
+                                    'Referrer-Policy': 'no-referrer',
+                                },
+                            }),
                             result.setCookies,
                         );
                     case 'problem':

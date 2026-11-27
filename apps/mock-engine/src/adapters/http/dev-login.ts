@@ -1,12 +1,13 @@
 import type { Member } from '@ptbk/engine-api';
 import { MemberId, SIGN_IN_PATH, SIGN_OUT_PATH, STEP_UP_PATH } from '@ptbk/engine-api';
-import { isSafeNextPath } from '@ptbk/gateway-pages';
+import { GATEWAY_ASSET_PATH, isSafeNextPath } from '@ptbk/gateway-pages';
 import { z } from 'zod';
 
 import type { SessionStore } from '../../domain/gateway/sessions';
 import { clearedSessionCookie, clientInfo, sessionCookie } from './gateway-middleware';
 import type { Route } from './route';
 import { defineHttpRoute } from './route';
+import { STEP_UP_PAGE_QUERY } from './passkey-routes';
 import { problemResponse } from './route-handler';
 
 export interface GatewayRouteDeps {
@@ -47,6 +48,30 @@ function page(title: string, body: string): Response {
 <body>
 <h1>${escapeHtml(title)}</h1>
 ${body}
+</body>
+</html>
+`;
+    return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
+function stepUpAction(query: z.output<typeof STEP_UP_PAGE_QUERY>): string {
+    const search = new URLSearchParams(
+        Object.entries(query).filter((entry): entry is [string, string] => entry[1] !== undefined),
+    ).toString();
+    return search === '' ? STEP_UP_PATH : `${STEP_UP_PATH}?${search}`;
+}
+
+/** `gateway.js` on a `step-up-confirmed` page signals the opener with the nonce from the address, then closes. */
+function popupConfirmedPage(): Response {
+    const html = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Confirmed · Promptbook mock engine</title>
+<script type="module" src="${GATEWAY_ASSET_PATH}gateway.js"></script>
+</head>
+<body data-page="step-up-confirmed">
+<section data-state="confirmed"><h1 tabindex="-1">Confirmed</h1><p>You can close this window.</p></section>
 </body>
 </html>
 `;
@@ -171,14 +196,14 @@ export function createGatewayRoutes(deps: GatewayRouteDeps): readonly Route[] {
             permission: null,
             rateLimit: 'gateway-ip',
             params: null,
-            query: NO_QUERY,
+            query: STEP_UP_PAGE_QUERY,
             headers: null,
             body: null,
-            handle: () =>
+            handle: ({ query }) =>
                 page(
                     'Confirm it is you',
                     `<p>Development step-up: the real engine asks for a fresh passkey assertion here.</p>
-<form method="post" action="${STEP_UP_PATH}"><button type="submit">Confirm</button></form>`,
+<form method="post" action="${escapeHtml(stepUpAction(query))}"><button type="submit">Confirm</button></form>`,
                 ),
         }),
         defineHttpRoute({
@@ -189,12 +214,14 @@ export function createGatewayRoutes(deps: GatewayRouteDeps): readonly Route[] {
             permission: null,
             rateLimit: 'gateway-ip',
             params: null,
-            query: NO_QUERY,
+            query: STEP_UP_PAGE_QUERY,
             headers: null,
             body: null,
-            handle: ({ actor }) => {
+            handle: ({ actor, query }) => {
                 deps.sessions.confirmStepUp(actor.sessionId);
-                return redirect('/');
+                // In a popup the gateway's script tells the opener and closes the window, as the passkey page does.
+                if (query.mode === 'popup' && query.nonce !== undefined) return popupConfirmedPage();
+                return redirect(safeNext(query.returnTo) ?? '/');
             },
         }),
     );

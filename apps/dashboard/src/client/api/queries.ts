@@ -59,6 +59,8 @@ export const queryKeys = {
     passkeys: ['passkeys'] as const,
     sessions: ['sessions'] as const,
     billing: ['billing'] as const,
+    license: ['license'] as const,
+    websitePending: ['website-access', 'pending'] as const,
     adminBilling: ['admin', 'billing'] as const,
     engines: ['engines'] as const,
     engine: (engineId: string) => ['engines', engineId] as const,
@@ -166,6 +168,26 @@ export function billingQuery(client: ApiClient) {
     return queryOptions({
         queryKey: queryKeys.billing,
         queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.getBilling, {}, signal)),
+    });
+}
+
+/** Server-side it may wait up to 5 s for the website, so it is its own query and never holds a screen up. */
+export function licenseQuery(client: ApiClient) {
+    return queryOptions({
+        queryKey: queryKeys.license,
+        queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.getLicense, {}, signal)),
+    });
+}
+
+/** Null when this browser holds no pending website identity (404). */
+export function websitePendingQuery(client: ApiClient) {
+    return queryOptions({
+        queryKey: queryKeys.websitePending,
+        queryFn: async ({ signal }) => {
+            const outcome = await client.call(apiRoutes.websiteAccessPending, {}, signal);
+            return outcome.kind === 'problem' && outcome.code === 'not-found' ? null : dataOrThrow(outcome);
+        },
+        retry: false,
     });
 }
 

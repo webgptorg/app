@@ -14,7 +14,8 @@ interface Task {
 }
 
 const TASKS_DIR = join(import.meta.dirname, '..', 'docs', 'plan', 'tasks');
-const STATUS_PATTERN = /^(todo|in progress \(.+\)|done \(#\d+\))$/;
+// Work pushed straight to main, without a PR to save Actions minutes, has no number to name.
+const STATUS_PATTERN = /^(todo|in progress \(.+\)|done \((#\d+|pushed to main)\))$/;
 
 function field(source: string, name: string): string | undefined {
     return new RegExp(`\\*\\*${name}:\\*\\*\\s*([^·\\n]+)`).exec(source)?.[1]?.trim();

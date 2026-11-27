@@ -235,7 +235,8 @@ export function createSpikeRoutes(deps: SpikeRouteDeps): readonly Route[] {
             query: NO_QUERY,
             headers: null,
             maxPayloadBytes: SPIKE_LIMITS.echoMaxMessageBytes,
-            handle: echo,
+            subprotocol: null,
+            handle: () => ({ kind: 'accept', open: echo }),
         }),
         defineWebSocketRoute({
             transport: 'websocket',
@@ -252,9 +253,13 @@ export function createSpikeRoutes(deps: SpikeRouteDeps): readonly Route[] {
             headers: null,
             // The screencast only sends; anything the client sends is small control traffic at most.
             maxPayloadBytes: 1024,
-            handle: (socket, { query }) => {
-                screencast(socket, clock, query.fps, query.bytes);
-            },
+            subprotocol: null,
+            handle: ({ query }) => ({
+                kind: 'accept',
+                open: (socket) => {
+                    screencast(socket, clock, query.fps, query.bytes);
+                },
+            }),
         }),
         defineHttpRoute({
             transport: 'http',

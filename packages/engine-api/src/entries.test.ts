@@ -13,8 +13,16 @@ describe('package entries', () => {
 
     it('serves them from their subpaths', () => {
         expect(Object.keys(inMemory).sort()).toEqual([
+            'CHECK_MS',
+            'CREATE_MS',
             'DEFAULT_CAPABILITIES',
             'DEFAULT_EVENT_BUFFER_SIZE',
+            'DEVICE_LOGIN_MS',
+            'FAKE_FRAME_HEIGHT',
+            'FAKE_FRAME_WIDTH',
+            'FAKE_TRANSCRIPTS',
+            'FAKE_VIEWPORT',
+            'INSTALL_MS',
             'IN_MEMORY_CLIENT_MARKER',
             'PERMISSION_AUTHORIZER',
             'RECHECK_DELAY_MS',
@@ -27,6 +35,7 @@ describe('package entries', () => {
             'createInMemoryEngineCore',
             'demoReplyScript',
             'nextScheduleFireAt',
+            'renderFakeFrame',
             'runPreview',
             'truncateRunText',
         ]);

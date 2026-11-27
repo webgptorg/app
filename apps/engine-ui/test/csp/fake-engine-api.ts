@@ -1,5 +1,7 @@
 import {
     AgentId,
+    BrowserHelpRequestId,
+    BrowserTabId,
     ChatId,
     FileId,
     IntegrationId,
@@ -13,11 +15,14 @@ import {
     encodeSseMessage,
     ENGINE_API_PREFIX,
     KNOWN_CAPABILITIES,
+    LIVE_CHANNEL_PATH,
+    LiveSessionId,
     MemberId,
     MessageId,
 } from '@ptbk/engine-api';
 import type {
     ActivityItem,
+    CapabilityRef,
     EngineApiClient,
     EngineApiResponse,
     EngineApiStreamItem,
@@ -25,16 +30,23 @@ import type {
     TestChatBody,
     TestChatEvent,
 } from '@ptbk/engine-api';
-import { DEFAULT_CAPABILITIES, createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
-import type { InMemoryMember, InMemorySeed } from '@ptbk/engine-api/in-memory';
+import { DEFAULT_CAPABILITIES, createInMemoryEngine } from '@ptbk/engine-api/in-memory';
+import type {
+    InMemoryEngineController,
+    InMemoryLiveEngine,
+    InMemoryMember,
+    InMemorySeed,
+} from '@ptbk/engine-api/in-memory';
 import { readFileSync } from 'node:fs';
 
-import type { Page, Route } from '@playwright/test';
+import type { Page, Route, WebSocketRoute } from '@playwright/test';
 
 /** The agent page the CSP checks visit. */
 export const FAKE_AGENT_ID = 'ada';
 /** The owner's chat with Ada, whose reply carries the hostile samples (spec, Security hardening 5). */
 export const FAKE_CHAT_ID = 'chat-hostile';
+/** A thread longer than any screen, with two agents taking turns. */
+export const FAKE_LONG_CHAT_ID = 'chat-long';
 
 /** Every way the spec and M-04's "Injection demo" agent try to make agent output load, run or navigate. */
 export const HOSTILE_REPLY = [
@@ -71,10 +83,80 @@ const fileId = (match: RegExpExecArray) => FileId.parse(match[1] ?? '');
 const integrationId = (match: RegExpExecArray) => IntegrationId.parse(match[1] ?? '');
 const revisionId = (match: RegExpExecArray) => RevisionId.parse(match[2] ?? '');
 
+const tabId = (match: RegExpExecArray) => BrowserTabId.parse(match[1] ?? '');
+const liveSessionId = (match: RegExpExecArray) => LiveSessionId.parse(match[1] ?? '');
+const helpRequestId = (match: RegExpExecArray) => BrowserHelpRequestId.parse(match[1] ?? '');
+
+/** `browser-tab@1`; an engine that does not advertise it answers each with 404, as a real one does. */
+const BROWSER_ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
+    [
+        'GET',
+        /^\/browser-tabs$/,
+        200,
+        (api, _, query, __, signal) => api.browser.listTabs(Object.fromEntries(query), signal),
+    ],
+    [
+        'POST',
+        /^\/browser-tabs\/([\w-]+)\/watch$/,
+        201,
+        (api, match, _, __, signal) => api.browser.watch(tabId(match), signal),
+    ],
+    [
+        'POST',
+        /^\/browser-tabs\/([\w-]+)\/control$/,
+        201,
+        (api, match, _, __, signal) => api.browser.control(tabId(match), signal),
+    ],
+    ['POST', /^\/browser-sessions$/, 201, (api, _, __, body, signal) => api.browser.openSignIn(body as never, signal)],
+    [
+        'GET',
+        /^\/browser-sessions\/([\w-]+)$/,
+        200,
+        (api, match, _, __, signal) => api.browser.getSession(liveSessionId(match), signal),
+    ],
+    [
+        'POST',
+        /^\/browser-sessions\/([\w-]+)\/control$/,
+        200,
+        (api, match, _, __, signal) => api.browser.takeControl(liveSessionId(match), signal),
+    ],
+    [
+        'POST',
+        /^\/browser-sessions\/([\w-]+)\/hand-back$/,
+        200,
+        (api, match, _, __, signal) => api.browser.handBack(liveSessionId(match), signal),
+    ],
+    [
+        'POST',
+        /^\/browser-sessions\/([\w-]+)\/end$/,
+        200,
+        (api, match, _, __, signal) => api.browser.end(liveSessionId(match), signal),
+    ],
+    [
+        'GET',
+        /^\/browser-help-requests$/,
+        200,
+        (api, _, query, __, signal) => api.browser.listHelpRequests(Object.fromEntries(query), signal),
+    ],
+    [
+        'GET',
+        /^\/browser-help-requests\/([\w-]+)$/,
+        200,
+        (api, match, _, __, signal) => api.browser.getHelpRequest(helpRequestId(match), signal),
+    ],
+    [
+        'POST',
+        /^\/browser-help-requests\/([\w-]+)\/dismiss$/,
+        200,
+        (api, match, _, __, signal) => api.browser.dismissHelpRequest(helpRequestId(match), signal),
+    ],
+];
+
 /** The routes the visited pages call, with the success status the contract gives each; anything else answers 404. */
 const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])[] = [
     ['GET', /^\/engine$/, 200, (api, _, __, ___, signal) => api.engine.get(signal)],
     ['GET', /^\/me$/, 200, (api, _, __, ___, signal) => api.me.get(signal)],
+    ['GET', /^\/ai-tools$/, 200, (api, _, __, ___, signal) => api.aiTools.list(signal)],
     ['GET', /^\/onboarding$/, 200, (api, _, __, ___, signal) => api.onboarding.get(signal)],
     ['POST', /^\/onboarding\/answer$/, 200, (api, _, __, body, signal) => api.onboarding.answer(body as never, signal)],
     ['POST', /^\/onboarding\/defer$/, 200, (api, _, __, ___, signal) => api.onboarding.defer(signal)],
@@ -174,6 +256,7 @@ const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])
         200,
         (api, _, query, __, signal) => api.members.listInvites(Object.fromEntries(query), signal),
     ],
+    ...BROWSER_ROUTES,
     ['GET', /^\/wallet$/, 200, (api, _, __, ___, signal) => api.wallet.get(signal)],
     ['POST', /^\/wallet\/records$/, 200, (api, _, __, body, signal) => api.wallet.add(body as never, signal)],
     [
@@ -417,8 +500,50 @@ function fakeTasks(): NonNullable<InMemorySeed['tasks']> {
                 },
             ],
         },
+        {
+            task: {
+                id: 'task-long-name',
+                name: `${LONG_TASK_NAME} — 2026-09-30 09:00:00`,
+                kind: 'ordinary',
+                purpose: 'content',
+                core: false,
+                agentId: 'grace',
+                executor: null,
+                priority: { rank: 2, text: 'before the weekly sync' },
+                state: 'active',
+                stateReason: null,
+                next: null,
+                conditions: [],
+                repeat: null,
+                notBefore: null,
+                dueAt: null,
+                nextAt: null,
+                progress: null,
+                parent: null,
+                dependsOn: [],
+                origin: {
+                    kind: 'chat',
+                    chatId: FAKE_CHAT_ID,
+                    taskId: null,
+                    text: 'Show me everything you can render.',
+                },
+                doneCount: 0,
+                lastDoneAt: null,
+                reopened: false,
+                sourcePath: 'tasks/pull-requests.book',
+                allowedActions: [],
+                updatedAt: '2026-09-30T09:30:00.000Z',
+            },
+            links: [],
+            notes: [],
+            occurrences: [],
+        },
     ];
 }
+
+/** A task name as Reborn writes them for real work: one long sentence, no breaks. */
+export const LONG_TASK_NAME =
+    'Summarise every open pull request across the webgptorg repositories, flag the ones waiting on review for more than three days and post the digest to the team channel';
 
 function fakeRuns() {
     const base = {
@@ -876,15 +1001,25 @@ async function serveTestChat(
 /**
  * Answers the engine API from the in-memory client until the mock engine (M-04) and the loader (M-05) serve the
  * bundle for real (X-04). Same origin as the bundle, so `connect-src 'self'` still applies. `member` signs in as
- * someone other than the owner; routed again on the same page, the newer routing wins.
+ * someone other than the owner, `capabilities` replaces what the engine advertises; routed again on the same page, the
+ * newer routing wins.
  */
 export async function routeFakeEngineApi(
     page: Page,
-    options: { readonly member?: InMemoryMember; readonly onboarding?: 'pending' } = {},
-): Promise<void> {
-    const engineApi = createInMemoryEngineApiClient({
+    options: {
+        readonly member?: InMemoryMember;
+        readonly onboarding?: 'pending';
+        readonly capabilities?: readonly CapabilityRef[];
+        /** Advertises `browser-tab@1` and serves its channel over a routed WebSocket. */
+        readonly liveBrowser?: boolean;
+    } = {},
+): Promise<InMemoryEngineController> {
+    const engine = createInMemoryEngine({
         // File scanning is optional (#189); these checks cover its badges and the blocked download.
-        capabilities: [...DEFAULT_CAPABILITIES, KNOWN_CAPABILITIES.fileScanning],
+        capabilities: [
+            ...(options.capabilities ?? [...DEFAULT_CAPABILITIES, KNOWN_CAPABILITIES.fileScanning]),
+            ...(options.liveBrowser === true ? [KNOWN_CAPABILITIES.browserTab] : []),
+        ],
         ...(options.member === undefined ? {} : { member: options.member }),
         seed: {
             activity: [...FAKE_ACTIVITY],
@@ -971,13 +1106,26 @@ export async function routeFakeEngineApi(
                         { type: 'message', author: ADA, content: '+@User Do we ship to Brno?', choices: ['Yes', 'No'] },
                     ],
                 },
+                {
+                    id: FAKE_LONG_CHAT_ID,
+                    title: 'Quarterly review',
+                    createdAt: '2026-09-20T10:00:00.000Z',
+                    entries: [
+                        { type: 'joined', participant: USER },
+                        { type: 'joined', participant: ADA },
+                        { type: 'joined', participant: GRACE },
+                        ...longThread(),
+                    ],
+                },
             ],
         },
         uploadPolicies: { knowledge: { maxBytes: 10 * 1024 * 1024, accept: ['.md', '.pdf', 'text/plain'] } },
         // Sent messages get the same hostile reply, streamed in pieces.
         replyScript: () => ({ chunks: HOSTILE_REPLY.match(/[\s\S]{1,40}/g) ?? [] }),
     });
+    const engineApi = engine.client;
     await saveSecondBookVersion(engineApi);
+    if (options.liveBrowser === true) await routeLiveChannels(page, engine);
     await page.route(`**${ENGINE_API_PREFIX}/**`, async (route) => {
         const request = route.request();
         const url = new URL(request.url());
@@ -1017,6 +1165,54 @@ export async function routeFakeEngineApi(
         }
         await fulfil(route, { kind: 'problem', problem: createProblem('not-found') }, 404);
     });
+    return engine.controller;
+}
+
+/** Frames reach the page at most this often, so the screencast does not spin the CPU for the length of a check. */
+const FRAME_INTERVAL_MS = 100;
+
+/**
+ * The live channel as the engine's gateway binds it: Playwright answers the page's WebSocket at `LIVE_CHANNEL_PATH`
+ * from the in-memory engine, so the bundle draws real PNG frames under the engine CSP.
+ */
+async function routeLiveChannels(page: Page, engine: InMemoryLiveEngine): Promise<void> {
+    const path = new RegExp(`${ENGINE_API_PREFIX}${LIVE_CHANNEL_PATH.replace('{sessionId}', '([\\w-]+)')}$`);
+    await page.routeWebSocket(path, (socket: WebSocketRoute) => {
+        const sessionId = path.exec(new URL(socket.url()).pathname)?.[1] ?? '';
+        let lastFrame = 0;
+        const attached = engine.attachLiveChannel(sessionId, {
+            send: (data) => {
+                if (typeof data === 'string') {
+                    socket.send(data);
+                    return;
+                }
+                const wait = Math.max(0, lastFrame + FRAME_INTERVAL_MS - Date.now());
+                lastFrame = Date.now() + wait;
+                setTimeout(() => {
+                    // The page may have closed the socket meanwhile; a frame for nobody is dropped.
+                    try {
+                        socket.send(Buffer.from(data));
+                    } catch {
+                        return;
+                    }
+                }, wait);
+            },
+            close: (code) => {
+                void socket.close({ code });
+            },
+        });
+        if (attached.kind === 'refused') {
+            void socket.close({ code: 1008 });
+            return;
+        }
+        attached.peer.opened();
+        socket.onMessage((message) => {
+            attached.peer.receive(typeof message === 'string' ? message : new Uint8Array(message));
+        });
+        socket.onClose(() => {
+            attached.peer.closed();
+        });
+    });
 }
 
 /** The agent whose book the editor checks open; a second version gives its history something to compare. */
@@ -1033,6 +1229,29 @@ async function saveSecondBookVersion(engineApi: EngineApiClient): Promise<void> 
 
 const USER = { kind: 'user', key: 'user' } as const;
 const ADA = { kind: 'agent', key: FAKE_AGENT_ID } as const;
+const GRACE = { kind: 'agent', key: 'grace' } as const;
+
+function longThread() {
+    return Array.from({ length: 12 }, (_, turn) => {
+        const at = (minute: number) => `2026-09-20T10:${String(turn * 4 + minute).padStart(2, '0')}:00.000Z`;
+        return [
+            userSays(`Point ${String(turn + 1)}: what changed since last quarter?`, at(0)),
+            {
+                type: 'progress' as const,
+                author: ADA,
+                steps: [{ kind: 'tool' as const, tool: 'Read', text: 'reports/quarterly.md' }],
+            },
+            {
+                type: 'message' as const,
+                author: ADA,
+                content: 'Revenue grew in every region.\n\n'.repeat(3),
+                at: at(1),
+            },
+            { type: 'message' as const, author: ADA, content: 'Costs held flat.', at: at(1) },
+            { type: 'message' as const, author: GRACE, content: '@Ada The numbers check out.', at: at(2) },
+        ];
+    }).flat();
+}
 
 function userSays(content: string, at: string) {
     return { type: 'message' as const, author: USER, createdBy: 'member-owner', content, at };

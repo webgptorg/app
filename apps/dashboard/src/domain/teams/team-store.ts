@@ -1,6 +1,7 @@
 import type { EngineId } from '@ptbk/protocol';
 
 import type { TeamName } from '../../shared/team-name';
+import type { PasskeyRecord, SessionRecord, UserRecord } from '../auth/records';
 import type { InviteId, LinkCodeId, OrgAuditEntryId, OrgId, TeamId, UserId } from '../ids';
 import type { Locale } from '../locale';
 import type { OrgRole } from '../roles';
@@ -111,6 +112,12 @@ export interface InvitePreview {
     readonly teamNames: readonly TeamName[];
 }
 
+/** A pending invitation offered to its address after sign-in (D-33), with who sent it. */
+export interface InviteOffer extends InvitePreview {
+    /** Null if the inviter's account is gone. */
+    readonly inviterEmail: string | null;
+}
+
 /**
  * Why a removal could not happen: the organization keeps at least one owner, so its billing and roles always have
  * someone to run them.
@@ -209,6 +216,8 @@ export interface TeamStore {
     insertInvite(invite: InviteRecord, audit: TeamAudit): Promise<void>;
     /** Unaccepted, unrevoked and unexpired at `now`, newest first. */
     listPendingInvites(orgId: OrgId, now: number): Promise<readonly InviteRecord[]>;
+    /** Pending invitations to `email` (lowercase) across organizations, newest first. */
+    listInvitesForEmail(email: string, now: number): Promise<readonly InviteOffer[]>;
     /** A pending invitation by its token's hash, with the names to show; null otherwise. */
     previewInvite(tokenHash: string, now: number): Promise<InvitePreview | null>;
     /** A new token and expiry for a pending invitation; the old link stops working. */
@@ -229,4 +238,21 @@ export interface TeamStore {
         userId: UserId,
         audit: Omit<TeamAudit, 'actorUserId'>,
     ): Promise<{ readonly kind: 'accepted'; readonly orgId: OrgId } | { readonly kind: 'invalid' }>;
+    /**
+     * {@link acceptInvite} for someone without an account: creates the user with the invitation's address, their
+     * passkey, and a session in the invitation's organization, in the same transaction. Nothing is written unless the
+     * invitation is still pending and of `session.activeOrgId`; `conflict` when the address or passkey is taken.
+     */
+    acceptInviteAsNewUser(
+        tokenHash: string,
+        account: NewInvitedAccount,
+        audit: Omit<TeamAudit, 'actorUserId'>,
+    ): Promise<{ readonly kind: 'accepted'; readonly orgId: OrgId } | { readonly kind: 'invalid' | 'conflict' }>;
+}
+
+/** The account an invitation creates; its address is the invitation's, so it is not given here. */
+export interface NewInvitedAccount {
+    readonly user: Omit<UserRecord, 'email'>;
+    readonly passkey: PasskeyRecord;
+    readonly session: SessionRecord;
 }

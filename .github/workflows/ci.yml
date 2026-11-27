@@ -1,40 +1,43 @@
 name: CI
 
+# Pull requests and pushes to main run the jobs their changes reach, main one run at a time for the newest commit. A
+# manual run runs everything.
 on:
   push:
     branches: [main]
   # ready_for_review: a draft runs nothing (see `changes`), so marking it ready must start its run.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-  # The nightly full run on main (nightly.yml), and a full run by hand.
-  workflow_call: {}
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
-# A pull request cancels its superseded run. On main every commit has its own group per event, so no run is cancelled
-# or replaced while pending: each push is scoped against the commit before it, so every push needs its own run.
+# A newer run cancels the one it supersedes, on a pull request and on main alike, so a burst of merges collapses into
+# one run of the newest commit; `changes` scopes that run to cover the cancelled ones. Manual runs are never cancelled.
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && github.ref || format('{0}-{1}', github.event_name, github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'push' && 'main' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 # Actions are pinned to full commit SHAs and nothing is cached between runs (spec, Security hardening item 10).
-# Pull requests and pushes to main run only the jobs their changes reach (scripts/ci-scope.ts); the nightly, a manual
-# run and a push that cannot be scoped run every job. Each job's `if` reads only the `changes` job list.
+# Pull requests and pushes to main run only the jobs their changes reach (scripts/ci-scope.ts); a manual
+# run and a push that cannot be scoped run every job. Each job's `if` reads only the `changes` outputs.
 jobs:
   # Skipped for a draft, and with it every job below; `ci-passed` then fails, so a draft never looks green.
   changes:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read # the last completed run on main
     outputs:
       check: ${{ steps.scope.outputs.check }}
       workspaces: ${{ steps.scope.outputs.workspaces }}
       jobs: ${{ steps.scope.outputs.jobs }}
     steps:
       # A pull request needs depth 2: its merge commit and both parents, so HEAD^1 is the base it merges into. A push
-      # needs the history back to `before`, which a force-push may not even contain.
+      # needs the history back to the last completed run, which a force-push may not even contain.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -42,10 +45,32 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      # Reads the event from GITHUB_EVENT_NAME and GITHUB_EVENT_PATH: a push without `before` or a force-push runs
-      # everything, as do the nightly and a manual run.
+      # The last main commit a run completed on, passed or failed: not cancelled, and with every job GitHub started
+      # (it refuses jobs when billing fails). Cancelled runs leave their commits to this one.
+      - id: since
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          since=''
+          while read -r id sha; do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs?filter=latest&per_page=100" \
+              --jq '.jobs | any(.name == "changes" and .conclusion == "success")
+                and all(.conclusion != "failure" or (.steps | length) > 0)' | grep -qx true; then
+              since=$sha
+              break
+            fi
+          done < <(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --status completed \
+            --limit 30 --json databaseId,headSha,conclusion,event \
+            --jq '.[] | select(.event != "pull_request" and (.conclusion == "success" or .conclusion == "failure"))
+              | "\(.databaseId) \(.headSha)"')
+          echo "since=$since" >> "$GITHUB_OUTPUT"
+      # Reads the event from GITHUB_EVENT_NAME: a push without a completed run to start from runs everything, as does a
+      # manual run.
       - id: scope
-        run: node scripts/ci-scope.ts changes
+        env:
+          SINCE: ${{ steps.since.outputs.since }}
+        run: node scripts/ci-scope.ts changes --since="$SINCE"
 
   check:
     needs: changes
@@ -62,7 +87,16 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      # Formatting-only changes need the root tools, not every app's runtime and browser dependencies.
+      - name: Install check dependencies
+        env:
+          CHECK_MODE: ${{ needs.changes.outputs.check }}
+        run: |
+          if [ "$CHECK_MODE" = format ]; then
+            bun install --frozen-lockfile --filter './'
+          else
+            bun install --frozen-lockfile
+          fi
       # The root `check` script, so whatever runs locally runs in CI and new checks cannot be forgotten here: whole
       # for a full run, with tests only for the affected workspaces, or only Prettier and the plan and engine guide
       # checks when no workspace is affected.
@@ -90,11 +124,15 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/engine-ui...'
       - name: Install Chromium
         working-directory: apps/engine-ui
         run: bunx --no-install playwright install --with-deps chromium
-      - run: bun run --filter @ptbk/engine-ui test:csp
+      # A failing PR is already blocked; stop at the first browser failure. Main and manual runs keep every diagnostic.
+      - run: |
+          args=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--max-failures=1); fi
+          bun run --filter @ptbk/engine-ui test:csp "${args[@]}"
 
   # The built dashboard (SPA and Worker in workerd) in Chromium under its production CSP, with a virtual WebAuthn
   # authenticator for the sign-up, sign-in and recovery flows (D-09).
@@ -114,12 +152,16 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/dashboard...'
       - run: bun run --filter @ptbk/dashboard generate
       - name: Install Chromium
         working-directory: apps/dashboard
         run: bunx --no-install playwright install --with-deps chromium
-      - run: bun run --filter @ptbk/dashboard test:csp
+      # A failing PR is already blocked; stop at the first browser failure. Main and manual runs keep every diagnostic.
+      - run: |
+          args=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--max-failures=1); fi
+          bun run --filter @ptbk/dashboard test:csp "${args[@]}"
 
   # The owner's setup and passkey sign-in on the mock engine's reference gateway pages, in Chromium with a virtual
   # authenticator, through an in-process relay under the engine's CSP (M-08).
@@ -139,11 +181,15 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/mock-engine...'
       - name: Install Chromium
         working-directory: apps/mock-engine
         run: bunx --no-install playwright install --with-deps chromium
-      - run: bun run --filter @ptbk/mock-engine test:browser
+      # A failing PR is already blocked; stop at the first browser failure. Main and manual runs keep every diagnostic.
+      - run: |
+          args=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then args+=(--max-failures=1); fi
+          bun run --filter @ptbk/mock-engine test:browser "${args[@]}"
 
   # Browsers through both relays to the mock engine in Docker Compose (X-01). Separate from `check`, which never needs
   # Docker. Every image is built from scratch on each run: no actions/cache, no Buildx cache.
@@ -164,7 +210,11 @@ jobs:
         with:
           node-version-file: .nvmrc
       # Needs no install on the runner: the driver uses only node: modules, and the images install inside Docker.
-      - run: bun run --filter @ptbk/e2e e2e
+      # Firefox runs in manual runs only.
+      - run: |
+          args=()
+          if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then args+=(--project=chromium); fi
+          bun run --filter @ptbk/e2e e2e "${args[@]}"
       - name: Upload e2e results
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -193,7 +243,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/mock-engine...' --filter '@ptbk/conformance...'
       - name: Build the mock engine and the conformance CLI
         run: |
           bun run --filter @ptbk/mock-engine build
@@ -260,7 +310,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/relay...'
       - run: bun run --filter @ptbk/relay check:metrics
 
   # The relay host's real user data booted in a Debian 13 cloud image under KVM, with secrets placed and a test relay
@@ -283,7 +333,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/relay...'
       - run: bun run --filter @ptbk/relay build
       - name: Install QEMU and the test tools
         run: |
@@ -320,7 +370,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --filter './' --filter '@ptbk/mock-engine...' --filter '@ptbk/relay...'
       - run: bun run --filter @ptbk/mock-engine build
       - run: infra/relay/test/deploy-test.sh
 
@@ -335,7 +385,7 @@ jobs:
       - name: Audit workflows with zizmor
         run: pipx run zizmor==1.30.1 --min-severity medium .github/workflows
 
-  # The one status to require for main: a job skipped because the change does not reach it counts as passed, a failed
+  # The one status to require for main: a job skipped because the change does not reach it counts as passed; a failed
   # or cancelled one fails this, and so does a skipped `changes` (a draft), because GitHub reports a skipped job as
   # passed.
   ci-passed:

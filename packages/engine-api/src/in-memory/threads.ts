@@ -12,7 +12,7 @@ import type {
 } from '../chats';
 import { MAX_WORKING_STEPS, USER_PARTICIPANT_KEY } from '../chats';
 import { ChatId, MessageId } from '../common';
-import type { MemberId, Timestamp } from '../common';
+import type { AiToolId, MemberId, Timestamp } from '../common';
 import { MAX_CHAT_PREVIEW_LENGTH } from '../constants';
 import { KNOWN_CAPABILITIES } from '../capabilities/capability';
 import type { EngineContext, HandlerContext, HandlerResult, ScriptedReply } from './kit';
@@ -57,6 +57,8 @@ export interface RecheckRecord {
     readonly rounds: number;
     readonly author: ParticipantRef;
     readonly prompt: string;
+    /** The AI tool whose sign-in the failure needs renewed (`ai-tool-sign-in-required`), else `null`. */
+    readonly aiToolId: AiToolId | null;
 }
 
 /** A thread as the in-memory engine keeps it; members see it through `chatView`. */
@@ -172,6 +174,7 @@ export function chatView(ctx: EngineContext, record: ChatRecord, memberId: Membe
             cause: record.recheck.cause,
             nextAt: record.recheck.nextAt,
             rounds: record.recheck.rounds,
+            aiToolId: record.recheck.aiToolId,
         },
     };
 }

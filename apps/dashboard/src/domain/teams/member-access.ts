@@ -12,12 +12,13 @@ import {
 } from '@ptbk/protocol';
 
 import { newSecret } from '../auth/secrets';
-import type { TeamId } from '../ids';
+import type { OrgId, TeamId } from '../ids';
 import type { Clock } from '../ports/clock';
 import type { EmailMessage } from '../ports/email-sender';
 import type { Logger } from '../ports/logger';
 import type { Random } from '../ports/random';
 import type { EngineStore } from '../registration/engine-store';
+import type { UsageEvent } from '../usage/usage-event';
 import type { MemberKeySource } from './member-key';
 import type { TeamStore, TicketOutcome } from './team-store';
 import type { TeamActor } from './teams';
@@ -29,12 +30,16 @@ export interface MemberAccessDeps {
     readonly clock: Clock;
     readonly random: Random;
     readonly logger: Logger;
-    /** The team's page in the dashboard, for the emails. */
-    readonly teamLink: (teamId: TeamId) => string;
 }
 
 export type TicketOutcomeView =
-    | { readonly kind: 'issued'; readonly ticket: string; readonly hostname: Hostname; readonly expiresAt: number }
+    | {
+          readonly kind: 'issued';
+          readonly ticket: string;
+          readonly engineId: EngineId;
+          readonly hostname: Hostname;
+          readonly expiresAt: number;
+      }
     /** The actor already has access: open the engine itself, no ticket. */
     | { readonly kind: 'direct'; readonly hostname: Hostname }
     /** Not a team of the organization the actor is in, or one without an active engine. */
@@ -95,7 +100,7 @@ export async function issueAccessTicket(
         issuedAt: now,
         expiresAt,
     });
-    return { kind: 'issued', ticket, hostname: engine.hostname, expiresAt };
+    return { kind: 'issued', ticket, engineId: engine.engineId, hostname: engine.hostname, expiresAt };
 }
 
 const TICKET_OUTCOMES: ReadonlySet<string> = new Set<TicketOutcome>(['approved', 'declined', 'removed']);
@@ -106,6 +111,8 @@ function isTicketAck(ack: HeartbeatAck): ack is HeartbeatAck & { readonly outcom
 
 export interface HeartbeatV2Result {
     readonly reply: HeartbeatReply;
+    /** The engine's answers to access requests, for the usage record (ADR 0022). */
+    readonly usage: readonly UsageEvent[];
     /** The emails the acks and pending requests call for; run after the response. */
     readonly deliver: (send: (message: EmailMessage) => Promise<void>) => Promise<void>;
 }
@@ -124,19 +131,33 @@ export async function handleHeartbeatV2(
 ): Promise<HeartbeatV2Result> {
     const now = deps.clock.nowMs();
     const emails: EmailMessage[] = [];
+    const usage: UsageEvent[] = [];
+    // Every effect and notice of this heartbeat is about this one engine; heartbeats come only from active ones.
+    const engineHostname = async (orgId: OrgId) => (await deps.engines.findInOrg(orgId, engineId))?.hostname ?? null;
     for (const ack of heartbeat.acks) {
         if (!isTicketAck(ack)) {
             await deps.teams.closeRevocation(engineId, ack.id, ack.outcome, now);
             continue;
         }
         const effect = await deps.teams.applyTicketAck(engineId, ack.id, ack.outcome, now);
-        if (effect !== null && ack.outcome === 'approved') {
+        if (effect !== null && ack.outcome !== 'removed') {
+            usage.push({
+                event: ack.outcome === 'approved' ? 'access.approved' : 'access.declined',
+                orgId: effect.orgId,
+                userId: effect.userId,
+                engineId,
+                props: {},
+            });
+        }
+        const hostname = effect !== null && ack.outcome === 'approved' ? await engineHostname(effect.orgId) : null;
+        if (effect !== null && hostname !== null) {
             emails.push({
                 template: 'access-granted',
                 to: effect.email,
                 locale: effect.locale,
                 teamName: effect.teamName,
-                link: deps.teamLink(effect.teamId),
+                hostname,
+                link: `https://${hostname}/`,
             });
         }
     }
@@ -147,6 +168,10 @@ export async function handleHeartbeatV2(
             now,
         );
         for (const notice of notices) {
+            const hostname = await engineHostname(notice.orgId);
+            if (hostname === null) {
+                continue;
+            }
             for (const recipient of notice.recipients) {
                 emails.push({
                     template: 'access-waiting',
@@ -154,7 +179,9 @@ export async function handleHeartbeatV2(
                     locale: recipient.locale,
                     requesterEmail: notice.requesterEmail,
                     teamName: notice.teamName,
-                    link: deps.teamLink(notice.teamId),
+                    // The engine's Members page, not the request itself: the heartbeat carries only a count and the
+                    // engine makes up its request IDs, so the dashboard never knows which one this is.
+                    link: `https://${hostname}/members`,
                 });
             }
         }
@@ -176,6 +203,7 @@ export async function handleHeartbeatV2(
               );
     return {
         reply: { v: 1, revocations },
+        usage,
         deliver: async (send) => {
             for (const message of emails) {
                 await send(message);

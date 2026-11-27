@@ -67,6 +67,9 @@ function demoEngine(options: InMemoryEngineApiOptions = {}): EngineApiClient {
 // A section's name is its title, then its count when it has one ("Needs you 5").
 const needsYou = () => screen.findByRole('region', { name: /^Needs you( \d+)?$/ });
 const workingNow = () => screen.findByRole('region', { name: /^Working now( \d+)?$/ });
+/** A line whose agent name is a link of its own: matched by its whole text. */
+const sentence = (text: string) => (_content: string, element: Element | null) =>
+    element?.tagName === 'SPAN' && element.textContent === text;
 
 describe('home', { timeout: TIMEOUT_MS }, () => {
     it('greets the owner, leads with Ask Chatter, ends with recent activity and meets axe', async () => {
@@ -74,7 +77,6 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
         const { container } = renderWithProviders({ path: '/', engineApi: engine.client });
 
         expect(await screen.findByRole('heading', { level: 1, name: /, Owner$/ })).toBeDefined();
-        // Home's content arrives as a chunk of its own, alongside the data.
         expect(await screen.findByRole('textbox', { name: 'Ask Chatter' })).toBeDefined();
         expect(screen.getByRole('link', { name: 'New agent' }).getAttribute('href')).toBe('/agents/new');
         expect(await within(await feed()).findAllByRole('listitem')).not.toHaveLength(0);
@@ -111,7 +113,7 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
 
         const box = await screen.findByRole('textbox', { name: 'Ask Chatter' });
         await user.type(box, 'Hello{Enter}');
-        expect(await screen.findByText(/Chatter isn’t set up on this engine yet/)).toBeDefined();
+        expect(await screen.findByText(/Chatter isn’t set up in this project yet/)).toBeDefined();
         expect((box as HTMLTextAreaElement).value).toBe('Hello');
 
         await user.type(box, '{Enter}');
@@ -210,7 +212,9 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
     it('quotes an agent’s question with Reply, and puts every count that waits on the member on one line each', async () => {
         renderWithProviders({ path: '/', engineApi: demoEngine() });
         const region = await needsYou();
-        expect(await within(region).findByText('Iris asks you')).toBeDefined();
+        expect(await within(region).findByText(sentence('Iris asks you'))).toBeDefined();
+        // The agent's name opens the agent, with the card every agent reference has.
+        expect(within(region).getByRole('link', { name: 'Iris' }).getAttribute('aria-haspopup')).toBe('dialog');
         expect(
             await within(region).findByText('Should the weekly report include the three open support cases?'),
         ).toBeDefined();
@@ -223,13 +227,37 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
                 .getByRole('link', { name: 'Review' })
                 .getAttribute('href'),
         ).toBe('/wallet');
-        expect(await within(region).findByText('1 person asks to join')).toBeDefined();
+        const waiting = await within(region).findByText('Petr Svoboda is waiting for access');
+        const item = waiting.closest('li') ?? region;
+        expect(within(item).getByText('petr@example.com')).toBeDefined();
+        expect(within(item).getByRole('link', { name: 'Approve' }).getAttribute('href')).toBe(
+            '/members?request=access-petr',
+        );
         const failed = await within(region).findByText(/failed run/);
         expect(
             within(failed.closest('li') ?? region)
                 .getByRole('link', { name: 'Review' })
                 .getAttribute('href'),
         ).toBe('/runs?status=failed');
+    });
+
+    it('opens the approval with its code input from a waiting person’s Approve', async () => {
+        const { user } = renderWithProviders({ path: '/', engineApi: demoEngine() });
+        const region = await needsYou();
+        const waiting = await within(region).findByText('Petr Svoboda is waiting for access');
+        await user.click(within(waiting.closest('li') ?? region).getByRole('link', { name: 'Approve' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Approve Petr Svoboda' });
+        expect(within(dialog).getByRole('textbox', { name: /Code/ })).toBeDefined();
+    });
+
+    it('lists nobody waiting for access without members.manage', async () => {
+        renderWithProviders({
+            path: '/',
+            engineApi: demoEngine({ member: { permissions: allBut('members.manage') } }),
+        });
+        const region = await needsYou();
+        await within(region).findByText(sentence('Iris asks you'));
+        expect(within(region).queryByText(/is waiting for access/)).toBeNull();
     });
 
     it('names a provider’s count by its label, else by its nav label, linking to exactly what it counts', async () => {
@@ -267,10 +295,17 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('shows agents replying with their latest step and a timer, running tasks and runs that are neither', async () => {
-        renderWithProviders({ path: '/', engineApi: demoEngine() });
+        const { user } = renderWithProviders({ path: '/', engineApi: demoEngine() });
 
         const region = await workingNow();
-        expect(await within(region).findByText('Chatter is replying in')).toBeDefined();
+        expect(await within(region).findByText(sentence('Chatter is replying in'))).toBeDefined();
+        const chatter = within(region).getByRole('link', { name: 'Chatter' });
+        await user.hover(chatter);
+        const card = await screen.findByRole('dialog', { name: 'Chatter' });
+        expect((await within(card).findByRole('link', { name: 'Open agent' })).getAttribute('href')).toBe(
+            chatter.getAttribute('href'),
+        );
+        await user.unhover(chatter);
         expect(within(region).getByRole('link', { name: 'Release notes' }).getAttribute('href')).toBe(
             '/chats/chat-working',
         );
@@ -377,7 +412,7 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
         const engine = createHomeEngine();
         renderWithProviders({ path: '/', engineApi: engine.client });
         await feed();
-        expect(screen.queryByText('Engine update available')).toBeNull();
+        expect(screen.queryByText('Update available')).toBeNull();
 
         act(() => {
             engine.controller.appendActivity({
@@ -390,9 +425,9 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByText('Version 9.2.0 is available.')).toBeDefined();
         // The feed's live region repeats the line once its announcer flushes, so look for the card in the list only.
         const list = within(await feed()).getByRole('list');
-        expect(await within(list).findByText('Engine version 9.2.0 is available')).toBeDefined();
+        expect(await within(list).findByText('Update 9.2.0 is available')).toBeDefined();
         await waitFor(() => {
-            expect(liveRegion()?.textContent).toBe('Engine version 9.2.0 is available');
+            expect(liveRegion()?.textContent).toBe('Update 9.2.0 is available');
         });
     });
 
@@ -550,7 +585,7 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
             'Triggers',
             'Integrations',
             'Members',
-            'Engine',
+            'Project',
         ]);
 
         await user.click(within(region).getByRole('button', { name: 'Members' }));

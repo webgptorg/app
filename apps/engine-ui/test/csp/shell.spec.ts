@@ -79,7 +79,8 @@ test.describe('foundations in a real browser', () => {
             [...document.fonts].filter((face) => face.status === 'loaded').map((face) => face.family),
         );
         const families = loaded.map((family) => family.replaceAll('"', ''));
-        expect(families).toEqual(expect.arrayContaining(['Inter Variable']));
+        // Inter for text, the brand kit's Exo 2 for the page title, both self-hosted.
+        expect(families).toEqual(expect.arrayContaining(['Inter Variable', 'Exo 2 Variable']));
         expect(families).not.toContain('Outfit Variable');
         expect(fonts.length).toBeGreaterThan(0);
         for (const url of fonts) expect(new URL(url).origin).toBe(new URL(baseURL ?? '').origin);

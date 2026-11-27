@@ -129,6 +129,18 @@ describe('DataTable in server-side mode', () => {
         expect(screen.getByRole('columnheader', { name: 'Status' }).hasAttribute('aria-sort')).toBe(false);
     });
 
+    it('gives a growing column the slack and keeps the others on one line', () => {
+        const [name, ...rest] = COLUMNS;
+        const columns = [{ ...name, meta: { ...name?.meta, grow: true } }, ...rest] as DataTableColumnDef<Agent>[];
+        renderUi(table({ columns }));
+        const grid = screen.getByRole('table', { name: 'Agents' });
+        const cell = within(grid).getByRole('cell', { name: 'Ada' });
+        expect(cell.hasAttribute('data-grow')).toBe(true);
+        expect(cell.className).toContain('max-w-0');
+        expect(within(grid).getByRole('cell', { name: '12' }).hasAttribute('data-grow')).toBe(false);
+        expect(grid.className).toContain('whitespace-nowrap');
+    });
+
     it('emits sorting changes from the keyboard without reordering rows locally', async () => {
         const onSortingChange = vi.fn();
         function Harness() {

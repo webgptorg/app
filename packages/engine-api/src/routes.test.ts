@@ -76,9 +76,13 @@ const CAPABILITY_BY_PATH = [
     ['/access-requests', KNOWN_CAPABILITIES.accessRequests],
     ['/settings/dashboard-removals', KNOWN_CAPABILITIES.accessRequests],
     ['/chats/{chatId}/live-audio', RESERVED_CAPABILITIES.liveAudio],
-    ['/browser-tab-sessions', RESERVED_CAPABILITIES.browserTab],
+    ['/browser-sessions', KNOWN_CAPABILITIES.browserTab],
+    ['/browser-tabs', KNOWN_CAPABILITIES.browserTab],
+    ['/browser-help-requests', KNOWN_CAPABILITIES.browserTab],
     ['/onboarding', KNOWN_CAPABILITIES.onboarding],
     ['/wallet', KNOWN_CAPABILITIES.wallet],
+    ['/ai-tools', KNOWN_CAPABILITIES.aiTools],
+    ['/updates', KNOWN_CAPABILITIES.updates],
 ] as const;
 
 /** Core features an engine may leave out: these routes share paths with core routes that stay, so they go by ID. */
@@ -99,6 +103,8 @@ const CAPABILITY_BY_ROUTE: Readonly<Record<string, (typeof KNOWN_CAPABILITIES)[k
     getAgentRevision: KNOWN_CAPABILITIES.bookEditor,
     updateAgent: KNOWN_CAPABILITIES.agentManagement,
     restoreAgent: KNOWN_CAPABILITIES.agentManagement,
+    transcribeVoiceClip: KNOWN_CAPABILITIES.voiceInput,
+    speakChatMessage: KNOWN_CAPABILITIES.voiceOutput,
 };
 
 function expectedCapability(route: RouteDefinition) {
@@ -107,6 +113,12 @@ function expectedCapability(route: RouteDefinition) {
         CAPABILITY_BY_PATH.find(([prefix]) => route.path === prefix || route.path.startsWith(`${prefix}/`))?.[1]
     );
 }
+
+/**
+ * POSTs that read and change nothing, or only refresh what they read (an AI tool's check), so the read permission of
+ * what they read is enough.
+ */
+const READ_ONLY_POSTS: ReadonlySet<string> = new Set(['speakChatMessage', 'checkAiTool']);
 
 const capabilityRoutes = ENGINE_API_ROUTE_LIST.filter((route) => expectedCapability(route) !== undefined);
 
@@ -149,8 +161,9 @@ describe('ENGINE_API_ROUTES', () => {
     });
 
     it('requires a non-read permission on every mutating route outside /me/**', () => {
-        // Recording what the caller read or saw changes no content: anyone who may read a thread may record it.
-        const readMarkers: ReadonlySet<string> = new Set(['markChatRead', 'markChatSeen']);
+        // Recording what the caller read or saw changes no content: anyone who may read a thread may record it. Speech
+        // changes nothing either; it is a POST only because its body carries the formats in order of preference.
+        const readMarkers: ReadonlySet<string> = new Set([...READ_ONLY_POSTS, 'markChatRead', 'markChatSeen']);
         for (const route of ENGINE_API_ROUTE_LIST.filter((candidate) => candidate.method !== 'GET')) {
             if (isSelfService(route)) continue;
             expect(route.permission, route.id).not.toBeNull();
@@ -222,7 +235,9 @@ describe('capability routes', () => {
     it('requires a non-read permission on every mutating capability route', () => {
         for (const route of capabilityRoutes.filter((candidate) => candidate.method !== 'GET')) {
             expect(route.permission, route.id).not.toBeNull();
-            if (route.permission !== null) expect(isReadPermission(route.permission), route.id).toBe(false);
+            if (route.permission !== null) {
+                expect(isReadPermission(route.permission), route.id).toBe(READ_ONLY_POSTS.has(route.id));
+            }
         }
         expect(ENGINE_API_ROUTES.cancelRun.permission).toBe('runs.control');
         expect(ENGINE_API_ROUTES.retryRun.permission).toBe('runs.control');
@@ -230,16 +245,23 @@ describe('capability routes', () => {
         expect(ENGINE_API_ROUTES.checkIntegration.permission).toBe('integrations.manage');
     });
 
-    it('takes a credential only in Wallet writes and returns none anywhere but the new API token', () => {
+    it('takes a credential only in Wallet writes and secret answers, and returns none but the new API token', () => {
         const walletWrites: readonly RouteDefinition[] = [
             ENGINE_API_ROUTES.addWalletRecord,
             ENGINE_API_ROUTES.updateWalletRecord,
         ];
+        const takesCredential: readonly RouteDefinition[] = [
+            ...walletWrites,
+            ENGINE_API_ROUTES.answerOnboarding,
+            ENGINE_API_ROUTES.answerAiToolSignIn,
+        ];
         for (const route of capabilityRoutes.filter((candidate) => candidate.id !== 'createApiToken')) {
             expect(credentialKeys(route), route.id).toEqual([]);
-            if (!walletWrites.includes(route)) expect(requestCredentialKeys(route), route.id).toEqual([]);
+            if (!takesCredential.includes(route)) expect(requestCredentialKeys(route), route.id).toEqual([]);
         }
         for (const route of walletWrites) expect(requestCredentialKeys(route).sort()).toEqual(['password', 'value']);
+        expect(requestCredentialKeys(ENGINE_API_ROUTES.answerOnboarding)).toEqual(['value']);
+        expect(requestCredentialKeys(ENGINE_API_ROUTES.answerAiToolSignIn)).toEqual(['value']);
     });
 
     it('lists chats across agents with chats.read and filters activity per item', () => {

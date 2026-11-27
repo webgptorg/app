@@ -11,6 +11,8 @@ import type { SeqStore } from './seq-store';
 import type { SystemStats } from './system-stats';
 
 export const DEFAULT_HEARTBEAT_INTERVAL_S = 60;
+/** How often the loop looks whether setup just finished, so the dashboard learns it within seconds. */
+export const SETUP_CHECK_MS = 1_000;
 const STALE_TIMESTAMP_CODE = 'stale-timestamp';
 
 export interface LastHeartbeat {
@@ -57,6 +59,8 @@ export interface HeartbeatLoopDeps {
     readonly onStatus?: (status: HeartbeatStatus) => void;
     /** Teams (ADR 0018): while `enabled()`, beats are v2 with these facts, and replies' revocations go to `apply`. */
     readonly teams?: HeartbeatTeams;
+    /** Whether the pairing tab may send the owner to `/setup` now (ADR 0023); beats carry `ownerHandoff` while true. */
+    readonly ownerHandoff?: () => boolean;
 }
 
 export interface HeartbeatTeams {
@@ -74,7 +78,8 @@ export interface HeartbeatLoop {
     /** Sends the first beat now, then one every interval. */
     start(): void;
     /**
-     * One beat now, outside the interval, for a change the dashboard waits on (the owner's first passkey). Nothing
+     * One beat now, outside the interval, for a change the dashboard waits on (the owner's first passkey; setup
+     * finishing, which the loop notices by itself within `SETUP_CHECK_MS`). Nothing
      * before `start` or after `stop`. A beat in flight was built before the change, so one more follows it; the
      * interval's schedule stays as it was.
      */
@@ -95,6 +100,9 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
     const signer = signerOf(deps.identity);
     let status: HeartbeatStatus = Object.freeze({ lastHeartbeat: null, clockSkew: null, lastAnswer: null });
     let cancelTimer: (() => void) | null = null;
+    let cancelSetupCheck: (() => void) | null = null;
+    let lastSetup = deps.engine.setup();
+    let lastHandoff = false;
     let inFlight: Promise<void> | null = null;
     let beatAfterInFlight = false;
     let abort = new AbortController();
@@ -130,6 +138,8 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
                 system: await deps.system.sample(),
                 counts: deps.engine.counts(),
                 update: deps.engine.updateState(),
+                setup: deps.engine.setup(),
+                ownerHandoff: deps.ownerHandoff?.() === true ? 'ready' : null,
                 ...(teams === null ? {} : { teams: { accessRequests: teams.pendingRequests(), acks } }),
             },
             { clock, signer, signal },
@@ -185,21 +195,38 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
         send();
     }
 
+    function beatNow(): void {
+        if (cancelTimer === null) return;
+        if (inFlight !== null) {
+            beatAfterInFlight = true;
+            return;
+        }
+        send();
+    }
+
+    // Setup finishes in engine time, often while nobody calls the engine, so the loop looks for it itself. The
+    // handoff turns ready when the certificate arrives, and the pairing tab is waiting for exactly that beat.
+    function checkSetup(): void {
+        cancelSetupCheck = clock.setTimeout(checkSetup, SETUP_CHECK_MS);
+        const setup = deps.engine.setup();
+        const handoff = deps.ownerHandoff?.() === true;
+        if ((lastSetup === 'pending' && setup === 'done') || (handoff && !lastHandoff)) beatNow();
+        lastSetup = setup;
+        lastHandoff = handoff;
+    }
+
     return {
         start() {
-            if (cancelTimer === null) tick();
+            if (cancelTimer !== null) return;
+            tick();
+            cancelSetupCheck = clock.setTimeout(checkSetup, SETUP_CHECK_MS);
         },
-        beatNow() {
-            if (cancelTimer === null) return;
-            if (inFlight !== null) {
-                beatAfterInFlight = true;
-                return;
-            }
-            send();
-        },
+        beatNow,
         async stop() {
             cancelTimer?.();
             cancelTimer = null;
+            cancelSetupCheck?.();
+            cancelSetupCheck = null;
             beatAfterInFlight = false;
             abort.abort();
             await inFlight;

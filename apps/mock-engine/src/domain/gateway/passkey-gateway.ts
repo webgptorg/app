@@ -1,10 +1,10 @@
-import type { ClientInfo, Member } from '@ptbk/engine-api';
+import type { AuditDetails, ClientInfo, Member } from '@ptbk/engine-api';
 import type { Actor, InMemoryEngineController } from '@ptbk/engine-api/in-memory';
 import { encodeBase64Url } from '@ptbk/protocol';
 
 import type { Clock } from '../clock';
 import type { Logger } from '../logger';
-import type { SetupSecrets } from '../onboarding/setup-secret';
+import type { SetupSecrets, SetupSlot } from '../onboarding/setup-secret';
 import type { Random } from '../random';
 import type { Challenges, PasskeyCeremonies, PasskeyCredential, RelyingParty } from './passkey-ceremonies';
 import type { SessionStore } from './sessions';
@@ -108,9 +108,13 @@ export interface PasskeyGatewayDeps {
     readonly logger: Logger;
     /** Called after the owner was set up or reset. */
     readonly onOwnerChanged?: () => void;
+    /** Called once the owner's first passkey is registered, with the slot whose secret set it up. */
+    readonly onOwnerSetUp?: (slot: SetupSlot) => void;
 }
 
 const RP_NAME = 'Promptbook engine';
+/** The audit `details` of an owner's first passkey that came through the pairing tab's handoff slot. */
+export const HANDOFF_AUDIT = { via: 'owner-handoff' } as const;
 const ID_BYTES = 12;
 
 /** The name the owner sees in the passkey list; they tell devices apart by its kind and date. */
@@ -163,6 +167,7 @@ export function createPasskeyGateway(deps: PasskeyGatewayDeps): PasskeyGateway {
         memberId: string,
         passkey: StoredPasskey,
         client: ClientInfo,
+        details: AuditDetails | null = null,
     ): void {
         deps.engine().recordAudit({
             actor: { kind: 'member', memberId },
@@ -170,6 +175,7 @@ export function createPasskeyGateway(deps: PasskeyGatewayDeps): PasskeyGateway {
             target: { kind: 'passkey', id: passkey.passkeyId, name: passkey.name },
             outcome: 'success',
             client,
+            details,
         });
     }
 
@@ -242,7 +248,7 @@ export function createPasskeyGateway(deps: PasskeyGatewayDeps): PasskeyGateway {
             if (credential === null) return { kind: 'not-verified' };
             // Spent here, after the passkey verified: of two browsers racing with one link, only one becomes owner.
             const spent = await deps.secrets.consume(secret);
-            if (spent !== 'valid') return { kind: spent };
+            if (spent.kind !== 'valid') return { kind: spent.kind };
             const engine = deps.engine();
             const nowMs = deps.clock.nowMs();
             const existing = ownerToBe();
@@ -273,7 +279,14 @@ export function createPasskeyGateway(deps: PasskeyGatewayDeps): PasskeyGateway {
                 lastUsedAt: passkey.createdAt,
                 authenticator: { attachment: passkey.attachment, backedUp: passkey.backedUp },
             });
-            audit('passkey.register', member.id, passkey, client);
+            // Marked, so an owner claimed by code served on app.ptbk.io is visible in the log (ADR 0023).
+            audit(
+                'passkey.register',
+                member.id,
+                passkey,
+                client,
+                spent.slot === 'owner-handoff' ? HANDOFF_AUDIT : null,
+            );
             const { token } = deps.sessions.signIn({
                 memberId: member.id,
                 permissions: null,
@@ -281,7 +294,8 @@ export function createPasskeyGateway(deps: PasskeyGatewayDeps): PasskeyGateway {
                 passkeyId: passkey.passkeyId,
             });
             audit('auth.sign-in', member.id, passkey, client);
-            logger.info('owner.passkey-registered', {});
+            logger.info('owner.passkey-registered', { via: spent.slot });
+            deps.onOwnerSetUp?.(spent.slot);
             deps.onOwnerChanged?.();
             return { kind: 'owner', token };
         },

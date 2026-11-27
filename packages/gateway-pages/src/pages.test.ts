@@ -15,7 +15,10 @@ const EXPECTED: Readonly<Record<GatewayPage, { readonly page: string; readonly s
         page: 'sign-in',
         states: [...COMMON_STATES, 'checking', 'ready', 'not-recognised', 'no-owner', 'done'],
     },
-    'step-up.html': { page: 'step-up', states: [...COMMON_STATES, 'ready', 'not-recognised', 'signed-out', 'done'] },
+    'step-up.html': {
+        page: 'step-up',
+        states: [...COMMON_STATES, 'ready', 'not-recognised', 'signed-out', 'done', 'confirmed'],
+    },
     'join.html': {
         page: 'join',
         states: [
@@ -34,7 +37,7 @@ const EXPECTED: Readonly<Record<GatewayPage, { readonly page: string; readonly s
         ],
     },
 };
-const ACTIONS = new Set(['create', 'confirm', 'retry']);
+const ACTIONS = new Set(['create', 'confirm', 'retry', 'close']);
 
 const parse = (page: GatewayPage) => new DOMParser().parseFromString(readPage(page), 'text/html');
 const assetName = (url: string | null) =>
@@ -119,6 +122,20 @@ describe.each(GATEWAY_PAGES)('%s', (page) => {
         expect(document.querySelectorAll('[data-lang]:not([data-lang="en"]):not([data-lang="cs"])')).toHaveLength(0);
     });
 
+    it('keeps shared copy hidden at first, for states the page has, in English and Czech', () => {
+        for (const shared of document.querySelectorAll('[data-shown-in]')) {
+            expect(shared.hasAttribute('hidden')).toBe(true);
+            expect(shared.closest('section')).toBeNull();
+            for (const state of (shared.getAttribute('data-shown-in') ?? '').split(' ')) {
+                expect(EXPECTED[page].states).toContain(state);
+            }
+            const english = shared.querySelectorAll('[data-lang="en"]');
+            expect(english.length).toBeGreaterThan(0);
+            expect(shared.querySelectorAll('[data-lang="cs"]').length).toBe(english.length);
+            expect(shared.querySelectorAll('button, h1')).toHaveLength(0);
+        }
+    });
+
     it('wires only known actions and has a live region', () => {
         for (const button of document.querySelectorAll('button')) {
             expect(button.getAttribute('type')).toBe('button');
@@ -158,24 +175,68 @@ describe('setup.html', () => {
     it("uses onboarding.md's English copy", () => {
         const text = parse('setup.html').body.textContent.replace(/\s+/g, ' ');
         for (const copy of [
-            'Set up your engine',
-            'You are about to become the owner of this engine. Your passkey stays with you; the engine keeps only its public half.',
+            'Set up your project',
+            'You are about to become the owner of this project. Your passkey stays with you; the project keeps only its public half.',
             'Confirm on your device: fingerprint, face, PIN or security key.',
             'The passkey prompt was closed or timed out. Try again when you are ready.',
-            'Sign in from any device with this passkey. To add a device without synced passkeys, use Security in the engine.',
-            'Setup is done. If you started on the Promptbook dashboard, its tab shows this engine as ready by itself; you can close it.',
+            'Sign in from any device with this passkey. To add a device without synced passkeys, use Security in the project.',
+            'Setup is done. If you started on the Promptbook dashboard, its tab shows this project as ready by itself; you can close it.',
             'This setup link has expired',
-            "Setup links work for 30 minutes. On the engine's server, run {{command}} setup-link for a new one.",
-            'This engine already has an owner',
-            'Sign in with your passkey. If you are the owner and lost every passkey, run {{command}} owner --reset on the server.',
-            "This page needs the setup link from the engine's terminal",
+            "Setup links work for 30 minutes. On the project's server, run {{setupLinkCommand}} for a new one.",
+            'This project already has an owner',
+            'Sign in with your passkey. If you are the owner and lost every passkey, run {{resetOwnerCommand}} on the server.',
+            "This page needs the setup link from the project's terminal",
             'This browser cannot create passkeys',
             'Create passkey',
-            'Open your engine',
+            'Open your project',
             'Try again',
         ]) {
             expect(text).toContain(copy);
         }
+    });
+});
+
+describe('sign-in.html', () => {
+    it('offers ways forward without a passkey here, never a second prompt', () => {
+        const document = parse('sign-in.html');
+        const ways = document.querySelector('.ways[data-shown-in]');
+        expect(ways?.getAttribute('data-shown-in')?.split(' ').sort()).toEqual(
+            ['cancelled', 'failed', 'not-recognised', 'ready'].sort(),
+        );
+        const text = ways?.textContent.replace(/\s+/g, ' ') ?? '';
+        for (const copy of [
+            'No passkey for this project on this device?',
+            "Choose the phone option in the browser's prompt, then confirm on your phone.",
+            'Otherwise, sign in on the device where you created it.',
+            'Open the project from your Promptbook dashboard: choose Open next to it.',
+            'Nemáte na tomto zařízení klíč k tomuto projektu?',
+        ]) {
+            expect(text).toContain(copy);
+        }
+        expect(ways?.querySelectorAll('a, button')).toHaveLength(0);
+    });
+});
+
+describe('join.html', () => {
+    it('explains the second passkey and asks for the code to be read out', () => {
+        const text = parse('join.html').body.textContent.replace(/\s+/g, ' ');
+        for (const copy of [
+            'This project has its own secure address, so your browser asks for one more passkey here.',
+            'Tell this code to the person approving you',
+            'Keep this page open; it signs you in as soon as you are approved.',
+            "You're in",
+            'Opening the project…',
+        ]) {
+            expect(text).toContain(copy);
+        }
+    });
+
+    it('shows the code on its own, large, between the heading and the hint', () => {
+        const waiting = parse('join.html').querySelector('section[data-state="waiting"]');
+        const code = waiting?.querySelector('[data-join-code]');
+        expect(code?.className).toBe('join-code');
+        expect(code?.nextElementSibling?.className).toBe('join-code-hint');
+        expect(readPackageFile('gateway.css')).toMatch(/\.join-code \{[^}]*font-size: clamp\(/);
     });
 });
 
@@ -187,7 +248,8 @@ describe('gateway scripts', () => {
         /document\.write/,
         /\beval\b/,
         /\bFunction\s*\(/,
-        /setTimeout|setInterval/,
+        // A timer with a string body is eval; the only timer allowed is the waiting page's pause, which resolves a promise.
+        /setTimeout(?!\(resolve, ms\))|setInterval/,
         /setAttribute/,
         /\.style\b/,
         /\bconsole\./,

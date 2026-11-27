@@ -177,6 +177,24 @@ describe('engine events', () => {
         expect(stream).toHaveBeenCalledTimes(3);
     });
 
+    it('reports a session that ended, which no retry of the stream would notice', async () => {
+        const { client } = createInMemoryEngine();
+        const timers = manualTimers();
+        const stream = vi
+            .fn<Stream>()
+            .mockResolvedValue({ kind: 'problem', problem: createProblem('unauthenticated') });
+        const onUnauthenticated = vi.fn();
+        const events = createEngineEvents({
+            engineApi: { ...client, events: { stream } },
+            onUnauthenticated,
+            ...timers,
+        });
+        events.subscribe({ onEvent: () => undefined });
+        await flush();
+        expect(onUnauthenticated).toHaveBeenCalledOnce();
+        expect(timers.count).toBe(0);
+    });
+
     it('retries when the connection cannot be opened, and cancels the retry when nobody listens', async () => {
         const { client } = createInMemoryEngine();
         const timers = manualTimers();

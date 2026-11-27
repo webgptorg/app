@@ -67,9 +67,16 @@ export interface SessionStore {
     authenticate(token: string, client: ClientInfo): Authentication;
     /** The dev step-up form: the session counts as freshly asserted for {@link STEP_UP_WINDOW_MS}. */
     confirmStepUp(sessionId: string): boolean;
+    /** Every session's assertion goes stale at once, as the window would; tests use it to reach step-up on demand. */
+    expireStepUps(): void;
     signOut(sessionId: string): void;
     /** Forgets every token, e.g. when the engine state is replaced. */
     clear(): void;
+    /**
+     * What the gateway session holds now, as `authenticate` would resolve it: the fewest any of its tokens hold, none
+     * for a member who is not active, `null` for a session this store has no token for.
+     */
+    permissionsOf(memberId: string, sessionId: string): ReadonlySet<Permission> | null;
 }
 
 interface GatewaySession {
@@ -181,12 +188,29 @@ export function createSessionStore(deps: {
             }
             return false;
         },
+        expireStepUps() {
+            for (const session of byToken.values()) session.stepUpMs = null;
+        },
         signOut(sessionId) {
             for (const session of [...byToken.values()]) if (session.sessionId === sessionId) end(session);
             deps.engine().removeSession(sessionId);
         },
         clear() {
             byToken.clear();
+        },
+        permissionsOf(memberId, sessionId) {
+            const tokens = [...byToken.values()].filter(
+                (session) => session.sessionId === sessionId && session.memberId === memberId,
+            );
+            if (tokens.length === 0) return null;
+            const member = deps
+                .engine()
+                .inspect()
+                .members.find(({ id }) => id === memberId);
+            if (member?.status !== 'active') return new Set();
+            return tokens
+                .map((session) => permissionsFor(member, session))
+                .reduce((held, next) => new Set([...held].filter((permission) => next.has(permission))));
         },
     };
 }

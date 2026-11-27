@@ -80,7 +80,7 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
 
     it('says "not available on this engine" for a deep link to a tab whose capability is missing', async () => {
         await renderAgent('/agents/agent-001/runs', { features: FEATURES, capabilities: [] });
-        expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Not available in this project' })).toBeDefined();
     });
 
     it('checks a tab’s own requirement on a deep link, and says "not found" for a tab nobody registers', async () => {
@@ -317,12 +317,13 @@ describe('agent live state', { timeout: TIMEOUT_MS }, () => {
         expect(within(agentHeader()).getByText('Unknown (sleeping)')).toBeDefined();
     });
 
-    it('shows the state as unknown when the engine cannot report it', async () => {
+    it('shows Idle when the engine cannot report the state', async () => {
         const engine = createAgentsEngine({ agentCount: 2, capabilities: [] });
         engine.spies.getStatus.mockImplementation(() => problemResponse('validation-failed'));
         renderWithProviders({ path: '/agents/agent-001', engineApi: engine.client });
         const header = (await screen.findByRole('tablist'), agentHeader());
-        expect(await within(header).findByText('Unknown')).toBeDefined();
+        expect(await within(header).findByText('Idle')).toBeDefined();
+        expect(within(header).queryByText(/Unknown/)).toBeNull();
     });
 
     it('stops a running agent from the header through the draft endpoint, and offers no Start after', async () => {
@@ -486,7 +487,7 @@ describe('agent settings', { timeout: TIMEOUT_MS }, () => {
             agents: [seededAgent(1), { ...seededAgent(2), illustration: 'analyst' }],
         });
         const picture = await screen.findByRole('region', { name: 'Picture' });
-        expect(within(picture).getByText('Chosen for this agent on the engine.')).toBeDefined();
+        expect(within(picture).getByText('Chosen for this agent in the project.')).toBeDefined();
     });
 
     it('points to the book for the name and description, under a title that is not the field label', async () => {

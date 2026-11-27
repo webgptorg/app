@@ -10,6 +10,7 @@ import {
     type EngineRecord,
     type EngineStore,
 } from '../domain/registration/engine-store';
+import { LINK_CODE_LIMITS } from '../shared/link-code-limits';
 import type { LinkCodeRecord, LinkCodeStore } from '../domain/registration/link-code-store';
 
 export interface StoredLinkCode extends LinkCodeRecord {
@@ -59,9 +60,22 @@ export function createMemoryRegistrationStores(deps: {
 }): MemoryRegistrationStores & { readonly adminAuditEntries: readonly AdminAuditEntry[] } {
     const state: MemoryRegistrationState = { linkCodes: new Map(), engines: new Map(), orgAudit: [] };
     const codes = () => [...state.linkCodes.values()];
+    const activeEngineCount = (orgId: OrgId) =>
+        [...state.engines.values()].filter((engine) => engine.orgId === orgId && engine.status === 'active').length;
 
     const linkCodes: LinkCodeStore = {
         insert(record) {
+            const orgCodes = codes().filter((code) => code.orgId === record.orgId);
+            if (
+                orgCodes.filter((code) => redeemable(code, record.orgId, record.createdAt)).length >=
+                LINK_CODE_LIMITS.active
+            ) {
+                return Promise.resolve('link-code-limit');
+            }
+            const since = record.createdAt - LINK_CODE_LIMITS.windowMs;
+            if (orgCodes.filter((code) => code.createdAt > since).length >= LINK_CODE_LIMITS.perHour) {
+                return Promise.resolve('rate-limited');
+            }
             if (!deps.orgExists(record.orgId)) {
                 return Promise.reject(new Error('FOREIGN KEY constraint failed'));
             }
@@ -72,11 +86,8 @@ export function createMemoryRegistrationStores(deps: {
                 return Promise.reject(new Error('UNIQUE constraint failed: link_codes.id'));
             }
             state.linkCodes.set(record.codeHash, { ...record, usedAt: null, engineId: null });
-            return Promise.resolve();
+            return Promise.resolve('inserted');
         },
-        countActive: (orgId, now) => Promise.resolve(codes().filter((code) => redeemable(code, orgId, now)).length),
-        countIssuedSince: (orgId, since) =>
-            Promise.resolve(codes().filter((code) => code.orgId === orgId && code.createdAt > since).length),
         listPending: (orgId, now) =>
             Promise.resolve(
                 codes()
@@ -84,12 +95,21 @@ export function createMemoryRegistrationStores(deps: {
                     .sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : -1))
                     .map(({ id, createdAt, expiresAt }) => ({ id, createdAt, expiresAt })),
             ),
+        clearExpiredCommitments(now) {
+            let cleared = 0;
+            for (const code of codes()) {
+                if (code.ownerSetupCommitment === null || code.expiresAt > now) continue;
+                state.linkCodes.set(code.codeHash, { ...code, ownerSetupCommitment: null });
+                cleared++;
+            }
+            return Promise.resolve(cleared);
+        },
         cancel(orgId, id, now) {
             const code = codes().find((candidate) => candidate.id === id);
             if (!redeemable(code, orgId, now)) {
                 return Promise.resolve('not-found');
             }
-            state.linkCodes.set(code.codeHash, { ...code, expiresAt: now });
+            state.linkCodes.set(code.codeHash, { ...code, expiresAt: now, ownerSetupCommitment: null });
             return Promise.resolve('cancelled');
         },
         findState(orgId, id, now) {
@@ -106,14 +126,27 @@ export function createMemoryRegistrationStores(deps: {
         },
         findRedeemable(codeHash, now) {
             const code = state.linkCodes.get(codeHash);
-            return Promise.resolve(redeemable(code, null, now) ? code.orgId : null);
+            return Promise.resolve(
+                redeemable(code, null, now)
+                    ? { orgId: code.orgId, ownerSetupCommitment: code.ownerSetupCommitment }
+                    : null,
+            );
         },
-        redeemForNewEngine(codeHash, engine) {
+        redeemForNewEngine(codeHash, engine, maxActiveEngines) {
             const code = state.linkCodes.get(codeHash);
-            if (!redeemable(code, engine.orgId, engine.createdAt) || state.engines.has(engine.engineId)) {
+            if (
+                !redeemable(code, engine.orgId, engine.createdAt) ||
+                state.engines.has(engine.engineId) ||
+                (maxActiveEngines !== null && activeEngineCount(engine.orgId) >= maxActiveEngines)
+            ) {
                 return Promise.resolve('conflict');
             }
-            state.linkCodes.set(codeHash, { ...code, usedAt: engine.createdAt, engineId: engine.engineId });
+            state.linkCodes.set(codeHash, {
+                ...code,
+                usedAt: engine.createdAt,
+                engineId: engine.engineId,
+                ownerSetupCommitment: null,
+            });
             state.engines.set(engine.engineId, engine);
             return Promise.resolve('redeemed');
         },
@@ -127,7 +160,12 @@ export function createMemoryRegistrationStores(deps: {
             ) {
                 return Promise.resolve('conflict');
             }
-            state.linkCodes.set(codeHash, { ...code, usedAt: refresh.now, engineId: refresh.engineId });
+            state.linkCodes.set(codeHash, {
+                ...code,
+                usedAt: refresh.now,
+                engineId: refresh.engineId,
+                ownerSetupCommitment: null,
+            });
             state.engines.set(refresh.engineId, {
                 ...engine,
                 mode: refresh.mode,
@@ -139,11 +177,7 @@ export function createMemoryRegistrationStores(deps: {
     };
 
     const engines: EngineStore = {
-        countActive: (orgId) =>
-            Promise.resolve(
-                [...state.engines.values()].filter((engine) => engine.orgId === orgId && engine.status === 'active')
-                    .length,
-            ),
+        countActive: (orgId) => Promise.resolve(activeEngineCount(orgId)),
         listForOrg: (orgId) =>
             Promise.resolve(
                 [...state.engines.values()]

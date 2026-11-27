@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import { createMockEngineTarget } from '../../src/index';
 import { freeLoopbackPort } from '../harness/loopback';
 import type { EngineTargetFactory } from '../harness/platform';
+import { createLiveChannelOpener } from './live-channel';
 
 const CONTROL_PORT = 'MOCK_CONTROL_PORT';
+const LIVE_CHANNEL_HANDSHAKE_MS = 10_000;
 
 /**
  * Engine API sessions for mock engines the harness starts: each gets its own dev-only control listener on a loopback
@@ -19,6 +21,8 @@ export function createMockEngineTargetFactory(): EngineTargetFactory {
                 MOCK_CONTROL: 'enabled',
                 MOCK_CONTROL_HOST: '127.0.0.1',
                 [CONTROL_PORT]: String(await freeLoopbackPort()),
+                // The draft `browser-tab@1` is off in a started mock; its checks need it on.
+                MOCK_LIVE_BROWSER: 'enabled',
             };
         },
         target(engine, endpoint) {
@@ -29,6 +33,15 @@ export function createMockEngineTargetFactory(): EngineTargetFactory {
                 baseUrl: endpoint.baseUrl,
                 controlUrl: new URL(`http://127.0.0.1:${port}`),
                 fetch: globalThis.fetch.bind(globalThis),
+                ...(endpoint.connect === undefined
+                    ? {}
+                    : {
+                          openLiveChannel: createLiveChannelOpener(
+                              endpoint.baseUrl,
+                              endpoint.connect,
+                              LIVE_CHANNEL_HANDSHAKE_MS,
+                          ),
+                      }),
             });
             return { ...target, fetch: endpoint.fetch };
         },

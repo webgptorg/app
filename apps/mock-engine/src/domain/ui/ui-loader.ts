@@ -3,6 +3,7 @@ import type { EngineVersion, ProvenanceVerifier, TrustPolicy } from '@ptbk/proto
 
 import type { Clock } from '../clock';
 import type { Logger } from '../logger';
+import type { Random } from '../random';
 import type { BundleStore, InstalledBundle } from './bundle-store';
 import type { ReleaseSource } from './release-source';
 import type { UiUpdateOutcome } from './ui-update';
@@ -25,6 +26,8 @@ export interface UiLoaderOptions {
     readonly deps: UiLoaderDeps;
     readonly clock: Clock;
     readonly logger: Logger;
+    /** Jitter for the extra check when a delayed release becomes eligible. */
+    readonly random: Random;
     /**
      * Called with the active bundle at start and whenever a check changed it, for the security panel: `undefined` once
      * a revocation withdrew every installed bundle.
@@ -44,6 +47,9 @@ export interface UiLoader {
     pin(version: EngineVersion): boolean;
     /** A check now; under `manual`, this is the owner's approval. */
     checkNow(): Promise<UiUpdateOutcome>;
+    /** The owner's check-now from the browser: the scheduled check run early, joining one in flight. */
+    checkEarly(): Promise<UiUpdateOutcome>;
+    nextCheckAtMs(): number | null;
     lastOutcome(): UiUpdateOutcome | null;
     start(): void;
     stop(): Promise<void>;
@@ -56,6 +62,7 @@ export function createUiLoader(options: UiLoaderOptions): UiLoader {
     const updater = createUiUpdater({
         clock,
         logger,
+        random: options.random,
         intervalMs: options.checkIntervalS * 1000,
         automatic: policy.kind !== 'manual',
         check: async (signal) => {
@@ -86,6 +93,8 @@ export function createUiLoader(options: UiLoaderOptions): UiLoader {
             return true;
         },
         checkNow: () => updater.checkNow(),
+        checkEarly: () => updater.checkEarly(),
+        nextCheckAtMs: () => updater.nextCheckAtMs(),
         lastOutcome: () => updater.lastOutcome(),
         start: () => {
             updater.start();

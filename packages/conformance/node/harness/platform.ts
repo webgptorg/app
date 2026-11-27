@@ -1,3 +1,5 @@
+import type { TLSSocket } from 'node:tls';
+
 import type { Hostname } from '@ptbk/protocol';
 
 import type { BaseCheckContext, ConformanceCheck, ConformanceSuite, ConformanceTarget } from '../../src/index';
@@ -50,6 +52,11 @@ export interface EngineApiEndpoint {
     readonly baseUrl: URL;
     /** A fetch that reaches the engine's hostname through the relay and trusts the engine's certificate. */
     readonly fetch: typeof fetch;
+    /**
+     * A TLS connection to the engine's hostname by the same path, for what `fetch` cannot do, such as a WebSocket
+     * upgrade. Absent where only `fetch` is known.
+     */
+    readonly connect?: () => Promise<TLSSocket>;
 }
 
 /**

@@ -176,10 +176,14 @@ describe('access request guards', () => {
         const attempt = (guess: string) =>
             client.members.approveAccessRequest(request.id, { code: guess, role: 'member' }, signal());
         for (let index = 1; index < MAX_ACCESS_CODE_ATTEMPTS; index++) {
-            expect(code(await attempt('000000'))).toBe('access-code-mismatch');
+            const wrong = await attempt('000000');
+            expect(code(wrong)).toBe('access-code-mismatch');
+            expect(wrong.kind === 'problem' && wrong.problem.attemptsRemaining).toBe(MAX_ACCESS_CODE_ATTEMPTS - index);
             expect(controller.inspect().accessRequests).toEqual([request]);
         }
-        expect(code(await attempt('000000'))).toBe('access-code-mismatch');
+        const last = await attempt('000000');
+        expect(code(last)).toBe('access-code-mismatch');
+        expect(last.kind === 'problem' && last.problem.attemptsRemaining).toBe(0);
         expect(controller.inspect().accessRequests).toEqual([]);
         expect(code(await attempt(petr.code))).toBe('not-found');
         expect(controller.inspect().members.some((member) => member.dashboardUserId === petr.dashboardUserId)).toBe(

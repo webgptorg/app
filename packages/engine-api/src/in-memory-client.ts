@@ -12,6 +12,9 @@ import { FileMetadata, FileVersion } from './capabilities/files';
 import type { FileScanStatus } from './capabilities/files';
 import { Integration } from './capabilities/integrations';
 import type { IntegrationStatus } from './capabilities/integrations';
+import type { OnboardingState } from './capabilities/onboarding';
+import { AiToolProblem } from './capabilities/ai-tools';
+import type { AiTool } from './capabilities/ai-tools';
 import { RunDetail } from './capabilities/runs';
 import { Task, TaskLink, TaskOccurrence } from './capabilities/tasks';
 import type { Run, RunStatus } from './capabilities/runs';
@@ -19,12 +22,14 @@ import { Trigger, TriggerFire } from './capabilities/triggers';
 import { ParticipantRef } from './chats';
 import type { Chat, ChatStatus, Message } from './chats';
 import { WalletRecord, WalletRequest } from './capabilities/wallet';
+import type { BrowserHelpReason, BrowserHelpRequest, BrowserTab } from './capabilities/live';
 import type { WalletState } from './capabilities/wallet';
 import { createEngineApiClient, EngineApiContractError } from './client';
 import type { EngineApiClient, EngineApiResponse, EngineApiTransport, EngineApiTransportRequest } from './client';
 import {
     AgentId,
     AgentPermanentId,
+    AiToolId,
     AuditEntryId,
     ClientInfo,
     DashboardUserId,
@@ -33,6 +38,7 @@ import {
     OpaqueId,
     OrgId,
     RevisionId,
+    SemVer,
     SessionId,
     Timestamp,
 } from './common';
@@ -43,8 +49,20 @@ import { EngineEvent } from './events';
 import { Folder } from './folders';
 import { hashAuditEntry } from './in-memory/audit-chain';
 import { requestAccess, revokeDashboardMember } from './in-memory/access-requests';
-import { createOnboardingRecord, settleHarnessLogin } from './in-memory/onboarding';
-import type { HarnessLoginOutcome } from './in-memory/onboarding';
+import { createOnboardingRecord, failHarnessCheck, onboardingState, settleHarnessLogin } from './in-memory/onboarding';
+import { createUpdatesRecord, runFakeUiCheck, uiUpdaterOf } from './in-memory/updates';
+import type { FakeUiRelease, UiUpdater } from './in-memory/updates';
+import { createVoiceRecord } from './in-memory/voice';
+import {
+    createInMemoryAiTools,
+    expireAiToolSignIn,
+    failAiToolCheck,
+    renewAiToolSignIn,
+    listAiTools,
+    settleAiToolSignIn,
+} from './in-memory/ai-tools';
+import type { VoiceFault } from './in-memory/voice';
+import type { HarnessLoginOutcome, OnboardingHarness, OnboardingSeed } from './in-memory/onboarding';
 import type { DashboardRevocationOutcome, NewAccessRequest } from './in-memory/access-requests';
 import { checkBook } from './in-memory/book';
 import { HANDLERS } from './in-memory/handlers';
@@ -103,6 +121,20 @@ import {
     touch,
 } from './in-memory/threads';
 import type { ChatRecord } from './in-memory/threads';
+import {
+    attachLiveChannel,
+    browserTabOf,
+    browserTick,
+    closeAgentTab,
+    createInMemoryBrowser,
+    elapseBrowserSession,
+    navigateBrowserTab,
+    noteBrowserActor,
+    openAgentTab,
+    requestBrowserHelp,
+    sweepBrowser,
+} from './in-memory/live';
+import type { FakePage, LiveChannelAttach, LiveChannelSink, NewAgentTab } from './in-memory/live';
 import { requestWalletLogin } from './in-memory/wallet';
 import type { NewWalletRequest } from './in-memory/wallet';
 import { findTriggers, fireTrigger } from './in-memory/triggers';
@@ -113,9 +145,11 @@ import { Passkey } from './passkeys';
 import { OWNER_PERMISSIONS } from './permissions';
 import type { Permission, Role } from './permissions';
 import { createProblem } from './problem';
-import type { EngineApiStreamItem, ParsedRouteRequest, RouteDefinition } from './route';
+import type { EngineApiStreamItem, ParsedRouteRequest, RouteBody, RouteDefinition } from './route';
+import { matchMediaType } from './media-type';
 import type { EngineApiRouteId } from './routes';
 import { SecurityOverview } from './security';
+import type { UiUpdateCheck } from './security';
 import { Session } from './sessions';
 import { Settings } from './settings';
 
@@ -229,8 +263,11 @@ export interface InMemorySeed {
     readonly invites?: readonly Unbranded<z.input<typeof Invite>>[];
     /** Pending requests with the code each person was shown; ignored without `access-requests@1`. */
     readonly accessRequests?: readonly InMemorySeedAccessRequest[];
-    /** `onboarding@1`: whether setup still waits for the owner (`pending`) or is done (`completed`, the default). */
-    readonly onboarding?: 'pending' | 'completed';
+    /**
+     * `onboarding@1`: whether setup still waits for the owner (`pending`), waits on an engine paired before it has a
+     * project and cannot be skipped (`no-project`), or is done (`completed`, the default).
+     */
+    readonly onboarding?: OnboardingSeed;
     readonly folders?: readonly Unbranded<z.input<typeof Folder>>[];
     readonly agents?: readonly InMemorySeedAgent[];
     /** Replayed after the agents, so joins carry their names. */
@@ -290,6 +327,8 @@ export interface InMemorySeedChat {
         readonly nextAt: string;
         readonly rounds: number;
         readonly author?: ParticipantRef;
+        /** The AI tool the failure needs signed in again (`ai-tool-sign-in-required`). */
+        readonly aiToolId?: string;
     };
 }
 
@@ -340,6 +379,12 @@ export interface InMemoryEngineCoreOptions {
     readonly capabilities?: readonly Unbranded<CapabilityRef>[];
     /** Runs for every route with a permission; the default allows exactly the actor's permissions. */
     readonly authorizer?: Authorizer;
+    /**
+     * What a gateway session holds now, as its gateway would resolve it (`null` when unknown). The live browser asks on
+     * every sweep, so a member who loses `browser.watch` or `browser.control` loses those sessions without making
+     * another request. Without it, a session goes by what its gateway session held at its latest request.
+     */
+    readonly browserPermissions?: (memberId: MemberId, sessionId: SessionId) => ReadonlySet<Permission> | null;
     /** How many events `GET /events` can replay after a reconnect (default 1,000). */
     readonly eventBufferSize?: number;
     /** Paces scripted replies; defaults to a timer. */
@@ -351,6 +396,11 @@ export interface InMemoryEngineCoreOptions {
     readonly checks?: Partial<EngineChecks>;
     /** Upload limits per purpose (`GET /files/upload-policy`); by default any type up to `MAX_FILE_BYTES`. */
     readonly uploadPolicies?: FileUploadPolicies;
+    /**
+     * `updates@1`: the engine's real UI updater. Without it the core checks a fake release store that only the
+     * controller's levers change (`setUiRelease`, `failUiReleaseStore`).
+     */
+    readonly uiUpdater?: UiUpdater;
 }
 
 export interface InMemoryEngineApiOptions extends InMemoryEngineCoreOptions {
@@ -501,8 +551,11 @@ export interface InMemoryEngineController {
         agentId: string,
         reply: { readonly content: string; readonly choices?: readonly string[] },
     ): Message;
-    /** The turn failed before a reply: the thread gets a recheck, which the engine attempts at its `nextAt`. */
-    failReplyTurn(chatId: string, agentId: string, cause?: string): Chat;
+    /**
+     * The turn failed before a reply: the thread gets a recheck, which the engine attempts at its `nextAt`. With
+     * `aiToolId` it failed because that AI tool needs signing in again.
+     */
+    failReplyTurn(chatId: string, agentId: string, cause?: string, aiToolId?: string): Chat;
     /** The engine's own attempt at a thread's recheck when `nextAt` comes; throws when none waits. */
     recheckChat(chatId: string): Chat;
     /** The thread created or links a task: a `linked` entry and the task's live state in `tasks`. */
@@ -515,6 +568,41 @@ export interface InMemoryEngineController {
     requestAccess(request: NewAccessRequest): AccessRequest;
     /** `onboarding@1`: the provider answered the running harness sign-in; throws when none runs. */
     settleHarnessLogin(outcome: HarnessLoginOutcome, diagnostic?: string): void;
+    /** `onboarding@1`: the harness's check fails with `reason` whenever it runs during setup. */
+    failHarnessCheck(harness: OnboardingHarness, reason: string): void;
+    /** `onboarding@1`: the setup as the engine itself sees it at its current time, e.g. for the heartbeat's `setup`. */
+    onboarding(): OnboardingState;
+    /** `voice-input@1` and `voice-output@1`: the speech provider fails this way from now on; `null` heals it. */
+    failVoice(fault: VoiceFault | null): void;
+    /** `voice-input@1`: the fake transcriber hears `text` in the clip with this SHA-256 (lowercase hex). */
+    setVoiceTranscript(clipSha256: string, text: string): void;
+    /** `ai-tools@1`: the tools as the engine sees them now. */
+    aiTools(): readonly AiTool[];
+    /**
+     * `ai-tools@1`: the provider stops accepting the tool's sign-in; it reads `needs-sign-in`, and while it is the first
+     * installed tool, new chat turns fail with a recheck naming it. Throws for an unknown tool or one without one.
+     */
+    expireAiToolSignIn(aiToolId: string): AiTool;
+    /** `ai-tools@1`: the provider accepts the tool's sign-in again, as after signing in on the host. */
+    renewAiToolSignIn(aiToolId: string): AiTool;
+    /** `ai-tools@1`: every check and verification of the tool fails with `problem` from now on; `null` heals it. */
+    failAiToolCheck(aiToolId: string, problem: Unbranded<AiToolProblem> | null): void;
+    /** `ai-tools@1`: the provider answered the device login of the tool's open sign-in; throws when none waits. */
+    settleAiToolSignIn(aiToolId: string, outcome: HarnessLoginOutcome, diagnostic?: string): void;
+    /**
+     * `updates@1`, fake store only: publishes one newer UI release, inside its delay until `eligibleAt`; `null` takes
+     * it down. Throws for a version that is not SemVer or a time that is not a timestamp.
+     */
+    setUiRelease(release: { readonly version: string; readonly eligibleAt?: string | null } | null): void;
+    /** `updates@1`, fake store only: every check from now on finds the store unreachable, until `false`. */
+    failUiReleaseStore(failing: boolean): void;
+    /**
+     * A scheduled UI check, or under `manual` the owner's approval on the host: no rate limit, and announced with
+     * `updates.changed` like every check. Uses the plugged-in updater when there is one.
+     */
+    runUiUpdateCheck(signal?: AbortSignal): Promise<UiUpdateCheck>;
+    /** Plugs in the engine's real UI updater once it exists, or unplugs it (`null`) to go back to the fake store. */
+    plugUiUpdater(updater: UiUpdater | null): void;
     /** Agent work needs a login it does not have; asking again for the same origin and account counts on one request. */
     requestWalletLogin(request: Unbranded<NewWalletRequest>): WalletRequest;
     /** E.g. the operator set the Wallet up or it locked on this host. */
@@ -537,6 +625,24 @@ export interface InMemoryEngineController {
     /** An entry for something the gateway or the host did outside the API (a sign-in, a reset), on the same chain. */
     recordAudit(entry: InMemoryAuditInput): void;
     inspect(): InMemoryEngineSnapshot;
+    /** Agent work opened a browser tab (`browser-tab@1`); throws for an origin that is not a URL. */
+    openAgentTab(tab: NewAgentTab): BrowserTab;
+    /** The tab moved to another origin, a browser page or a secret page; throws for an unknown tab. */
+    navigateBrowserTab(tabId: string, page: FakePage): void;
+    /** The agent working in the tab asks a human for help; asking again while one is open answers that one. */
+    requestBrowserHelp(
+        tabId: string,
+        request: { readonly reason: BrowserHelpReason; readonly message: string },
+    ): BrowserHelpRequest;
+    /** The agent's work ended or closed its tab: its sessions end and an open help request is cancelled. */
+    closeAgentTab(tabId: string): void;
+    getBrowserTab(tabId: string): BrowserTab | undefined;
+    /** Origins the owner allowed for remote sign-in, besides the Wallet's. */
+    setBrowserSignInOrigins(origins: readonly string[]): void;
+    /** Ends what ran out of time or was revoked, then sends each attached viewer its next frame: call on a timer. */
+    browserTick(): void;
+    /** Test mode: the session behaves as if its time or its controller's idle limit ran out now. */
+    elapseBrowserSession(sessionId: string, what: 'expired' | 'idle'): boolean;
 }
 
 export interface InMemoryAuditInput {
@@ -554,10 +660,21 @@ export interface InMemoryEngine {
     readonly controller: InMemoryEngineController;
 }
 
+/** What `createInMemoryEngine` makes: the engine, and its live channel for the client's own gateway session. */
+export interface InMemoryLiveEngine extends InMemoryEngine {
+    /** Binds a live channel as the client's own member and gateway session, as the gateway would after its checks. */
+    attachLiveChannel(sessionId: string, sink: LiveChannelSink): LiveChannelAttach;
+}
+
 /** One engine, many members: each request runs as the actor its transport was made for. */
 export interface InMemoryEngineCore {
     /** Resolves with exactly what an engine would send (strictly checked), so it can be served over HTTP. */
     transport(actor: Actor): EngineApiTransport;
+    /**
+     * Binds a live session's WebSocket (`LIVE_CHANNEL_PATH`) once the server's gateway authenticated the upgrade from
+     * the session cookie and checked its `Origin`. Refused with 404 for another gateway session's session.
+     */
+    attachLiveChannel(actor: Actor, sessionId: string, sink: LiveChannelSink): LiveChannelAttach;
     readonly controller: InMemoryEngineController;
 }
 
@@ -571,14 +688,14 @@ export function createInMemoryEngineApiClient(options: InMemoryEngineApiOptions 
 }
 
 /** The in-memory client, acting as one member, together with the core's controller. */
-export function createInMemoryEngine(options: InMemoryEngineApiOptions = {}): InMemoryEngine {
+export function createInMemoryEngine(options: InMemoryEngineApiOptions = {}): InMemoryLiveEngine {
     const core = createInMemoryEngineCore(options);
-    const client = createEngineApiClient(
-        withUploadProgress(withClientReading(core.transport(actorFromOptions(options)))),
-    );
+    const actor = actorFromOptions(options);
+    const client = createEngineApiClient(withUploadProgress(withClientReading(core.transport(actor))));
     return {
         client: Object.defineProperty(client, Symbol.toStringTag, { value: IN_MEMORY_CLIENT_MARKER }),
         controller: core.controller,
+        attachLiveChannel: (sessionId, sink) => core.attachLiveChannel(actor, sessionId, sink),
     };
 }
 
@@ -629,9 +746,16 @@ const DEFAULT_REPLY_SCRIPT: ReplyScript = ({ agent, content }) => ({
 
 export const DEFAULT_EVENT_BUFFER_SIZE = 1_000;
 
-/** Every capability this contract knows except malware scanning, which an engine offers only with a scanner. */
+/**
+ * Every capability this contract knows except malware scanning, which an engine offers only with a scanner, and the
+ * live browser and voice, which no environment advertises until they are rolled out: a core or the mock engine opts in.
+ */
 export const DEFAULT_CAPABILITIES: readonly CapabilityRef[] = Object.values(KNOWN_CAPABILITIES).filter(
-    (ref) => ref !== KNOWN_CAPABILITIES.fileScanning,
+    (ref) =>
+        ref !== KNOWN_CAPABILITIES.fileScanning &&
+        ref !== KNOWN_CAPABILITIES.browserTab &&
+        ref !== KNOWN_CAPABILITIES.voiceInput &&
+        ref !== KNOWN_CAPABILITIES.voiceOutput,
 );
 
 const timerSleep: Sleep = (ms, signal) =>
@@ -773,6 +897,14 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         });
     };
 
+    state.browser.audit = (input) => {
+        appendAudit(input);
+    };
+    state.browser.permissionsOf = options.browserPermissions ?? (() => null);
+    state.aiTools.audit = (input) => {
+        appendAudit(input);
+    };
+    state.updates.updater = options.uiUpdater ?? null;
     const checks: EngineChecks = { ...DEFAULT_ENGINE_CHECKS, ...options.checks };
     const system: EngineContext = { state, checks, now, newId, publish, replies };
     const chatRecord = (chatId: string): ChatRecord => {
@@ -857,9 +989,13 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             touch(system, record);
             return message;
         },
-        failReplyTurn: (chatId, agentId, cause = REPLY_FAILED_CAUSE) => {
+        failReplyTurn: (chatId, agentId, cause = REPLY_FAILED_CAUSE, aiToolId) => {
             const record = chatRecord(chatId);
-            endTurn(system, record, workingRecord(record, agentId), { kind: 'failed', cause });
+            endTurn(system, record, workingRecord(record, agentId), {
+                kind: 'failed',
+                cause,
+                aiToolId: aiToolId === undefined ? null : AiToolId.parse(aiToolId),
+            });
             touch(system, record);
             return chatView(system, record, seedMember.id);
         },
@@ -885,6 +1021,45 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         settleHarnessLogin: (outcome, diagnostic) => {
             settleHarnessLogin(system, outcome, diagnostic);
         },
+        failHarnessCheck: (harness, reason) => {
+            failHarnessCheck(system, harness, reason);
+        },
+        onboarding: () => onboardingState(system),
+        failVoice: (fault) => {
+            state.voice.fault = fault;
+        },
+        aiTools: () => listAiTools(system),
+        expireAiToolSignIn: (aiToolId) => expireAiToolSignIn(system, aiToolId),
+        renewAiToolSignIn: (aiToolId) => renewAiToolSignIn(system, aiToolId),
+        failAiToolCheck: (aiToolId, problem) => {
+            failAiToolCheck(system, aiToolId, problem === null ? null : AiToolProblem.parse(problem));
+        },
+        settleAiToolSignIn: (aiToolId, outcome, diagnostic) => {
+            settleAiToolSignIn(system, aiToolId, outcome, diagnostic);
+        },
+        setVoiceTranscript: (clipSha256, text) => {
+            if (!/^[0-9a-f]{64}$/.test(clipSha256)) throw new Error('Expected a lowercase hex SHA-256');
+            state.voice.transcripts.set(clipSha256, text);
+        },
+        setUiRelease: (release) => {
+            state.updates.release =
+                release === null
+                    ? null
+                    : ({
+                          version: SemVer.parse(release.version),
+                          eligibleAt: release.eligibleAt == null ? null : Timestamp.parse(release.eligibleAt),
+                      } satisfies FakeUiRelease);
+        },
+        failUiReleaseStore: (failing) => {
+            state.updates.storeFailing = failing;
+        },
+        plugUiUpdater: (updater) => {
+            state.updates.updater = updater;
+        },
+        runUiUpdateCheck: (signal = new AbortController().signal) =>
+            state.updates.updater === null
+                ? Promise.resolve(runFakeUiCheck(system))
+                : uiUpdaterOf(system).checkNow(signal),
         requestWalletLogin: (request) => requestWalletLogin(system, request as NewWalletRequest),
         setWalletState: (walletState, lockedRecords = 0) => {
             state.wallet.state = walletState;
@@ -962,6 +1137,22 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             sessions: [...state.sessions.values()].map((session) => ({ ...session, current: false })),
             accessRequests: [...state.accessRequests.values()].map((record) => record.request),
         }),
+        openAgentTab: (tab) => openAgentTab(system, tab),
+        navigateBrowserTab: (tabId, page) => {
+            navigateBrowserTab(system, tabId, page);
+        },
+        requestBrowserHelp: (tabId, request) => requestBrowserHelp(system, tabId, request),
+        closeAgentTab: (tabId) => {
+            closeAgentTab(system, tabId);
+        },
+        getBrowserTab: (tabId) => browserTabOf(system, tabId),
+        setBrowserSignInOrigins: (origins) => {
+            state.browser.signInOrigins = new Set(origins.map((origin) => new URL(origin).origin));
+        },
+        browserTick: () => {
+            browserTick(system);
+        },
+        elapseBrowserSession: (sessionId, what) => elapseBrowserSession(system, sessionId, what),
     };
 
     const transport =
@@ -976,6 +1167,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             // Read on every request, so a removed member is signed out and a changed role applies at once.
             const member = state.members.get(actor.memberId);
             if (!member) return { kind: 'problem', problem: createProblem('unauthenticated') };
+            noteBrowserActor(system, actor);
             const routeId = route.id as EngineApiRouteId;
             const audited = AUDITED[routeId];
             // Taken before the handler runs, so a deleted or renamed target is logged under the name it had.
@@ -1009,6 +1201,8 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
                 replyScript: options.replyScript ?? DEFAULT_REPLY_SCRIPT,
                 signal,
             });
+            // A revoked session, a removed member or a changed role ends live browser sessions now, not at the next tick.
+            sweepBrowser(system);
             if (audited && (result.kind === 'problem' || (audited.successWhen?.(parsed.request.body) ?? true))) {
                 if (result.kind === 'ok') {
                     const target = auditTarget(state, audited, parsed.request.params, result.data);
@@ -1021,7 +1215,22 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             if (result.kind === 'problem') return result;
             return { kind: 'ok', data: checkSuccess(route, result.data) };
         };
-    return { transport, controller };
+    const attach: InMemoryEngineCore['attachLiveChannel'] = (actor, sessionId, sink) => {
+        if (!supports(state.engine, KNOWN_CAPABILITIES.browserTab)) {
+            return { kind: 'refused', problem: createProblem('capability-not-supported') };
+        }
+        if (!state.members.has(actor.memberId)) return { kind: 'refused', problem: createProblem('unauthenticated') };
+        noteBrowserActor(system, actor);
+        // Like reading or ending the session: a controller holds `browser.watch` too.
+        if (!actor.permissions.has('browser.watch')) {
+            return {
+                kind: 'refused',
+                problem: createProblem('forbidden', { requiredPermission: 'browser.watch' }),
+            };
+        }
+        return attachLiveChannel(system, actor, sessionId, sink);
+    };
+    return { transport, attachLiveChannel: attach, controller };
 }
 
 const PARAM_RESOURCES: Readonly<Record<string, ResourceKind>> = {
@@ -1122,9 +1331,15 @@ function parseRequest(route: RouteDefinition, request: Parameters<EngineApiTrans
         }
         return undefined;
     };
+    let rawBody = request.body;
+    if (route.body?.kind === 'binary') {
+        const clip = binaryBody(route.body, rawBody);
+        if (clip.kind === 'problem') return clip;
+        rawBody = clip.blob;
+    }
     const params = part('params', route.params, request.params);
     const query = part('query', route.query, request.query);
-    const body = part('body', route.body?.schema, request.body);
+    const body = part('body', route.body?.schema, rawBody);
     if (errors.length > 0) return { kind: 'problem', problem: createProblem('validation-failed', { errors }) };
     return {
         kind: 'ok',
@@ -1135,6 +1350,19 @@ function parseRequest(route: RouteDefinition, request: Parameters<EngineApiTrans
             lastEventId: request.lastEventId ?? null,
         } as ParsedRouteRequest<RouteDefinition>,
     };
+}
+
+/** As an engine's HTTP layer refuses a raw body: by its media type, then its size, before anything reads it. */
+function binaryBody(
+    body: Extract<RouteBody, { kind: 'binary' }>,
+    value: unknown,
+): { readonly kind: 'ok'; readonly blob: Blob } | { readonly kind: 'problem'; readonly problem: ProblemDetails } {
+    const type = value instanceof Blob ? matchMediaType(value.type, body.mediaTypes) : null;
+    if (!(value instanceof Blob) || type === null) {
+        return { kind: 'problem', problem: createProblem('unsupported-media-type') };
+    }
+    if (value.size > body.maxBytes) return { kind: 'problem', problem: createProblem('payload-too-large') };
+    return { kind: 'ok', blob: value.slice(0, value.size, type) };
 }
 
 /** A fake that answers outside its own contract is a bug, reported the way the fetch client reports the engine's. */
@@ -1151,8 +1379,12 @@ function checkSuccess(route: RouteDefinition, data: unknown): unknown {
         }
         case 'sse':
             return checkStream(route, success.event, data as AsyncIterable<EngineApiStreamItem<unknown>>);
-        case 'empty':
         case 'binary':
+            if (success.mediaTypes !== undefined && matchMediaType((data as Blob).type, success.mediaTypes) === null) {
+                throw new EngineApiContractError(route.id, 'in-memory response is in an undeclared format');
+            }
+            return data;
+        case 'empty':
         case undefined:
             return data;
     }
@@ -1213,6 +1445,7 @@ const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
     revokeApiToken: { action: 'api-token.revoke', kind: 'api-token', param: 'apiTokenId' },
     updateSettings: { action: 'settings.update', kind: null },
     setUpdatePolicy: { action: 'settings.update-policy', kind: null },
+    checkForUiUpdate: { action: 'updates.ui-check', kind: null },
     revokePasskey: { action: 'passkey.revoke', kind: 'passkey', param: 'passkeyId' },
     revokeSession: { action: 'session.revoke', kind: 'session', param: 'sessionId' },
     revokeMyPasskey: { action: 'passkey.revoke', kind: 'passkey', param: 'passkeyId' },
@@ -1238,6 +1471,15 @@ const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
     disableIntegration: { action: 'integration.disable', kind: 'integration', param: 'integrationId' },
     deleteIntegration: { action: 'integration.delete', kind: 'integration', param: 'integrationId' },
     testAgentDraft: { action: 'agent.test-chat.start', kind: 'agent', param: 'agentId', successWhen: startsTestChat },
+    openBrowserSignIn: { action: 'browser.sign-in.open', kind: 'browser-session' },
+    watchBrowserTab: { action: 'browser.watch', kind: 'browser-session' },
+    controlBrowserTab: { action: 'browser.control.take', kind: 'browser-session' },
+    takeBrowserControl: { action: 'browser.control.take', kind: 'browser-session', param: 'sessionId' },
+    handBackBrowserTab: { action: 'browser.control.hand-back', kind: 'browser-session', param: 'sessionId' },
+    endBrowserSession: { action: 'browser.session.end', kind: 'browser-session', param: 'sessionId' },
+    dismissBrowserHelpRequest: { action: 'browser.help.dismiss', kind: 'browser-help-request', param: 'requestId' },
+    startAiToolSignIn: { action: 'ai-tool.sign-in.start', kind: 'ai-tool', param: 'aiToolId' },
+    signOutAiTool: { action: 'ai-tool.sign-out', kind: 'ai-tool', param: 'aiToolId' },
 };
 
 function auditTarget(state: InMemoryState, rule: AuditRule, params: unknown, created: unknown): AuditTarget | null {
@@ -1277,6 +1519,16 @@ function targetName(state: InMemoryState, kind: AuditTarget['kind'], id: string)
             return state.integrations.get(id)?.name;
         case 'access-request':
             return null;
+        case 'browser-session': {
+            // The site, never the page: an origin is the most a log may say about where the tab was.
+            const tabId = state.browser.sessions.get(id)?.tabId;
+            const tab = tabId === undefined ? undefined : state.browser.tabs.get(tabId);
+            return tab?.page.kind === 'web' ? tab.page.origin : null;
+        }
+        case 'browser-help-request':
+            return state.browser.helpRequests.get(id)?.origin ?? null;
+        case 'ai-tool':
+            return state.aiTools.tools.get(id)?.fake.name;
         case 'message':
         case 'invite':
         case 'session':
@@ -1428,6 +1680,8 @@ function createState(
         members,
         invites: byId((seed.invites ?? []).map((record) => Invite.parse(record))),
         onboarding: createOnboardingRecord(seed.onboarding ?? 'completed'),
+        voice: createVoiceRecord(),
+        updates: createUpdatesRecord(at),
         accessRequests: new Map(
             (seed.accessRequests ?? []).map(({ request, code, dashboardUserId }) => {
                 const parsed = AccessRequest.parse(request);
@@ -1456,6 +1710,8 @@ function createState(
             records: byId((seed.wallet?.records ?? []).map((record) => WalletRecord.parse(record))),
             requests: byId((seed.wallet?.pending ?? []).map((record) => WalletRequest.parse(record))),
         },
+        browser: createInMemoryBrowser(),
+        aiTools: createInMemoryAiTools(at),
         apiTokens: byId((seed.apiTokens ?? []).map((record) => ApiToken.parse(record))),
         passkeys: byId(
             (
@@ -1618,6 +1874,7 @@ function replayChat(ctx: EngineContext, seed: InMemorySeedChat): ChatRecord {
             rounds: seed.recheck.rounds,
             author: ParticipantRef.parse(author),
             prompt: lastUserMessage(clock, record),
+            aiToolId: seed.recheck.aiToolId === undefined ? null : AiToolId.parse(seed.recheck.aiToolId),
         };
     }
     if (record.placeholderTitle && record.title === '') {

@@ -11,6 +11,9 @@ const PUBLIC_ROUTES = [
     'GET /api/__dev/emails',
     'GET /api/abuse-contact',
     'GET /api/environment',
+    'GET /install-server.sh',
+    'GET /install.ps1',
+    'GET /install.sh',
     'GET /v1/health',
     'POST /api/auth/recovery/options',
     'POST /api/auth/recovery/request',
@@ -20,10 +23,15 @@ const PUBLIC_ROUTES = [
     'POST /api/auth/signup/options',
     'POST /api/auth/signup/start',
     'POST /api/auth/signup/verify',
+    'POST /api/invites/join/options',
+    'POST /api/invites/join/verify',
     'POST /api/invites/preview',
+    'POST /api/invites/signin/verify',
 ];
 
 const MOUNTS = ['/api', '/v1', '/internal', '/webhooks', '/.well-known'];
+/** Prefixes whose unknown paths answer a 404 problem instead of the SPA shell. */
+const PROBLEM_PREFIXES = [...MOUNTS, '/install.sh', '/install-server.sh', '/install.ps1'];
 
 /**
  * I-05's abuse review: every endpoint reachable without a session and the limits it is held to, per client IP (or per
@@ -35,6 +43,9 @@ const ANONYMOUS_LIMITS = {
     'GET /api/__dev/emails': ['public-read-ip', null],
     'GET /api/abuse-contact': ['public-read-ip', null],
     'GET /api/environment': ['public-read-ip', null],
+    'GET /install-server.sh': ['public-read-ip', null],
+    'GET /install.ps1': ['public-read-ip', null],
+    'GET /install.sh': ['public-read-ip', null],
     'GET /internal/v1/engines/:engineId': ['registry-relay', null],
     'GET /v1/health': ['public-read-ip', null],
     'POST /api/auth/recovery/options': ['options-ip', null],
@@ -45,11 +56,25 @@ const ANONYMOUS_LIMITS = {
     'POST /api/auth/signup/options': ['options-ip', null],
     'POST /api/auth/signup/start': ['signup-start-ip', null],
     'POST /api/auth/signup/verify': ['verify-ip', null],
+    'POST /api/invites/join/options': ['options-ip', null],
+    'POST /api/invites/join/verify': ['verify-ip', null],
     'POST /api/invites/preview': ['verify-ip', null],
+    'POST /api/invites/signin/verify': ['verify-ip', null],
     'POST /v1/engines/:engineId/heartbeat': ['heartbeat-ip', 'heartbeat-engine'],
     'POST /v1/engines/register': ['registration-ip', null],
     'POST /webhooks/stripe': ['webhook-ip', null],
     'PUT /internal/v1/relays/presence': ['presence-relay', null],
+};
+
+/**
+ * Session routes that are also limited per IP: the WebAuthn verifications, and the invitations offered to the signed-in
+ * address (D-33), which accept without a token.
+ */
+const SESSION_LIMITS = {
+    'GET /api/invites/offers': 'public-read-ip',
+    'POST /api/auth/step-up/verify': 'verify-ip',
+    'POST /api/invites/offers/:inviteId/accept': 'verify-ip',
+    'POST /api/passkeys/verify': 'verify-ip',
 };
 
 describe('route table', () => {
@@ -59,14 +84,17 @@ describe('route table', () => {
 
     it('mounts nothing that bypassed the route helper', () => {
         const mounted = harness.http.routes
-            // Middleware and the per-mount 404 catch-alls are `ALL`; the SPA fallback serves static assets only.
+            // Middleware and the per-prefix 404 catch-alls are `ALL`; the SPA fallback serves static assets only.
             .filter(
                 (route) => route.method !== 'ALL' && !(route.path === '/*' && ['GET', 'HEAD'].includes(route.method)),
             )
             .map((route) => `${route.method} ${route.path}`);
         expect(mounted.sort()).toEqual([...declared].sort());
         for (const route of harness.http.routes.filter((r) => r.method === 'ALL')) {
-            expect(route.path === '/*' || MOUNTS.some((mount) => route.path === `${mount}/*`), route.path).toBe(true);
+            expect(
+                route.path === '/*' || PROBLEM_PREFIXES.some((prefix) => route.path === `${prefix}/*`),
+                route.path,
+            ).toBe(true);
         }
     });
 
@@ -123,11 +151,44 @@ describe('route table', () => {
         expect(limits).toEqual(ANONYMOUS_LIMITS);
     });
 
+    it('limits exactly the reviewed session routes per IP', () => {
+        const limits = Object.fromEntries(
+            harness.routes
+                .filter((route) => route.auth === 'session' && route.rateLimit !== null)
+                .map((route) => [`${route.method} ${route.path}`, route.rateLimit]),
+        );
+        expect(limits).toEqual(SESSION_LIMITS);
+    });
+
     it('allows exactly the allowlisted public routes', () => {
         const publicRoutes = harness.routes
             .filter((route) => route.auth === 'public')
             .map((route) => `${route.method} ${route.path}`);
         expect(publicRoutes.sort()).toEqual(PUBLIC_ROUTES);
+    });
+
+    it('adds exactly the website handoff as public with billing website, held to its own limit, and drops Stripe', () => {
+        const website = createAuthHarness({ store: createMemoryAuthStore(), billing: 'website' });
+        for (const route of website.routes) {
+            const mount = MOUNTS.find((candidate) => route.path.startsWith(`${candidate}/`)) ?? '';
+            expect(() => {
+                assertMountable(route, mount);
+            }, `${route.method} ${route.path}`).not.toThrow();
+        }
+        const publicRoutes = website.routes
+            .filter((route) => route.auth === 'public')
+            .map((route) => `${route.method} ${route.path} ${String(route.rateLimit)} ${route.responseType ?? 'json'}`);
+        expect(publicRoutes.filter((route) => !PUBLIC_ROUTES.some((known) => route.startsWith(`${known} `)))).toEqual([
+            'GET /api/website-access/start website-access-ip redirect',
+            'GET /api/website-access/return website-access-ip redirect',
+            'GET /api/website-access/pending website-access-ip json',
+        ]);
+        expect(website.routes.filter((route) => route.auth === 'stripe-signature')).toEqual([]);
+        const sessionRoutes = website.routes
+            .filter((route) => route.path.startsWith('/api/website-access') || route.path === '/api/license')
+            .filter((route) => route.auth === 'session')
+            .map((route) => `${route.method} ${route.path} ${String(route.permission)}`);
+        expect(sessionRoutes).toEqual(['POST /api/website-access/link license.link', 'GET /api/license license.read']);
     });
 
     it('does not mount the dev outbox without the fake email adapter', async () => {

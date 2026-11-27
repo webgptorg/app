@@ -1,7 +1,9 @@
 import { agentWizardFeature } from '../features/agent-wizard/agent-wizard-feature';
+import { aiToolsFeature } from '../features/ai-tools/ai-tools-feature';
 import { agentsFeature } from '../features/agents/agents-feature';
 import { auditFeature } from '../features/audit/audit-feature';
 import { bookFeature } from '../features/book/book-feature';
+import { browserFeature } from '../features/browser/browser-feature';
 import { chatFeature } from '../features/chat/chat-feature';
 import { filesFeature } from '../features/files/files-feature';
 import { homeFeature } from '../features/home/home-feature';
@@ -34,7 +36,9 @@ export const FEATURES: readonly FeatureDefinition[] = [
     membersFeature,
     securityFeature,
     walletFeature,
+    browserFeature,
     auditFeature,
     settingsFeature,
+    aiToolsFeature,
     onboardingFeature,
 ];

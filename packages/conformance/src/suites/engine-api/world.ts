@@ -238,6 +238,13 @@ export async function createWorld(ctx: CheckContext, api?: EngineApi): Promise<W
         return created.id;
     });
 
+    // An installed tool when there is one, so a request for it reaches the point a check is about.
+    const aiTool = memo(async () => {
+        if (!(await advertises(R.listAiTools))) return null;
+        const { items } = await owner.ok(R.listAiTools);
+        return (items.find(({ status }) => status !== 'not-installed') ?? items[0])?.id ?? null;
+    });
+
     const resolvers: Readonly<Record<string, () => Promise<string | null>>> = {
         agentId: async () => (await agent()).id,
         revisionId: async () => (await agent()).currentRevisionId,
@@ -255,6 +262,7 @@ export async function createWorld(ctx: CheckContext, api?: EngineApi): Promise<W
         fileId: file,
         triggerId: trigger,
         integrationId: integration,
+        aiToolId: aiTool,
     };
 
     return {

@@ -42,6 +42,7 @@ const ACTION_LABELS: Readonly<Record<AuditAction, () => string>> = {
     'settings.update': m.audit_action_settings_update,
     'settings.update-policy': m.audit_action_settings_update_policy,
     'settings.dashboard-removals': m.audit_action_settings_dashboard_removals,
+    'updates.ui-check': m.audit_action_updates_ui_check,
     'wallet.record.save': m.audit_action_wallet_record_save,
     'wallet.record.update': m.audit_action_wallet_record_update,
     'wallet.record.delete': m.audit_action_wallet_record_delete,
@@ -61,6 +62,16 @@ const ACTION_LABELS: Readonly<Record<AuditAction, () => string>> = {
     'integration.enable': m.audit_action_integration_enable,
     'integration.disable': m.audit_action_integration_disable,
     'integration.delete': m.audit_action_integration_delete,
+    'browser.sign-in.open': m.audit_action_browser_sign_in_open,
+    'browser.watch': m.audit_action_browser_watch,
+    'browser.control.take': m.audit_action_browser_control_take,
+    'browser.control.hand-back': m.audit_action_browser_control_hand_back,
+    'browser.session.end': m.audit_action_browser_session_end,
+    'browser.channel.attach': m.audit_action_browser_channel_attach,
+    'browser.help.dismiss': m.audit_action_browser_help_dismiss,
+    'ai-tool.sign-in.start': m.audit_action_ai_tool_sign_in_start,
+    'ai-tool.sign-in.complete': m.audit_action_ai_tool_sign_in_complete,
+    'ai-tool.sign-out': m.audit_action_ai_tool_sign_out,
     'engine.update.install': m.audit_action_engine_update_install,
     'ui.update.install': m.audit_action_ui_update_install,
 };
@@ -89,6 +100,9 @@ const TARGET_KIND_LABELS: Readonly<Record<TargetKind, () => string>> = {
     run: m.audit_target_run,
     trigger: m.audit_target_trigger,
     integration: m.audit_target_integration,
+    'browser-session': m.audit_target_browser_session,
+    'browser-help-request': m.audit_target_browser_help_request,
+    'ai-tool': m.audit_target_ai_tool,
 };
 
 export function auditTargetKindLabel(kind: TargetKind): string {

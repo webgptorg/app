@@ -137,7 +137,13 @@ export default tseslint.config(
     {
         languageOptions: {
             globals: globals.node,
-            parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+            parserOptions: {
+                projectService: true,
+                tsconfigRootDir: import.meta.dirname,
+                // Single-run mode (inferred for the CLI and CI) builds a Program per tsconfig on top of the project
+                // service since typescript-eslint 8.72.1, which pushes a whole-repo lint past the heap limit.
+                disallowAutomaticSingleRunInference: true,
+            },
         },
         rules: {
             'no-eval': 'error',

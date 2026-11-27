@@ -12,7 +12,7 @@ import {
 } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import { apiRoutes, type LinkCodeView, type SessionView } from '../../../shared/api/routes';
@@ -22,21 +22,33 @@ import { billingQuery, dataOrThrow, problemCode } from '../../api/queries';
 import { useBrowser } from '../../core/browser';
 import { Link } from '../../core/link';
 import { useAppMutation } from '../../core/mutations';
-import { PlanOfferList } from '../billing/plan-offers';
 import { useSession } from '../session/use-session';
 import { Crumb, Page } from '../shell/page';
 import { TrustLink } from '../trust/trust-link';
-import { LINK_POLL_MS, LinkProgress, useObservedLinkState } from './link-progress';
-import type { LinkState } from './link-progress';
+import { troubleshootingLink } from './engine-guide';
+import { LINK_POLL_MS, LinkProgress, useObservedLink } from './link-progress';
+import type { ObservedLink } from './link-progress';
 import { linkCodeQuery, linkEligibilityQuery } from './link-queries';
+import { canKeepOwnerSetupSecret, drawOwnerSetup, keepOwnerSetupSecret } from './owner-handoff';
 import { LinkSteps } from './link-steps';
+import { InstallationCopyBlock } from './installation-copy-block';
+import { installationTabs } from './installation-options';
 import type { LinkStep } from './link-steps';
+
+const NewEnginePlanStep = lazy(async () => {
+    const module = await import('./new-engine-plan-step');
+    return { default: module.NewEnginePlanStep };
+});
+
+/** Only with website licences, so dashboards without them never load it. */
+const LicenseCheckNotice = lazy(async () => ({
+    default: (await import('../licensing/license-check-notice')).LicenseCheckNotice,
+}));
 
 const LINK_PERMISSION = 'engine.link';
 const BILLING_PERMISSION = 'billing.manage';
 const SECOND_MS = 1000;
 const MOVING_ANCHOR = 'moving-an-existing-deployment';
-const TROUBLESHOOTING_ANCHOR = 'troubleshooting';
 
 const INSTALL_PATH_LABELS: Record<InstallPathLabelKey, () => string> = {
     'docker-server': () => m.engines_new_tab_docker_server(),
@@ -78,8 +90,14 @@ function upgradeReason(error: unknown): UpgradeReason | null {
     return code === 'not-entitled' || code === 'engine-limit' ? code : null;
 }
 
-/** With billing off there is no plan to upgrade, so the copy names the account and points nowhere. */
-const UPGRADE_COPY: Record<'on' | 'off', Record<UpgradeReason, { title: () => string; body: () => string }>> = {
+/**
+ * With billing off there is no plan to upgrade, so the copy names the account and points nowhere. With website licences
+ * these appear only under `LICENSE_ENFORCEMENT` `enforce`, and point to the licence instead.
+ */
+const UPGRADE_COPY: Record<
+    'on' | 'off' | 'license',
+    Record<UpgradeReason, { title: () => string; body: () => string }>
+> = {
     on: {
         'not-entitled': {
             title: () => m.engines_new_not_entitled_title(),
@@ -100,10 +118,23 @@ const UPGRADE_COPY: Record<'on' | 'off', Record<UpgradeReason, { title: () => st
             body: () => m.engines_new_engine_limit_off_body(),
         },
     },
+    license: {
+        'not-entitled': {
+            title: () => m.engines_new_license_missing_title(),
+            body: () => m.engines_new_license_body(),
+        },
+        'engine-limit': {
+            title: () => m.engines_new_license_limit_title(),
+            body: () => m.engines_new_license_body(),
+        },
+    },
 };
 
-function upgradeCopy(billingEnabled: boolean, reason: UpgradeReason) {
-    return UPGRADE_COPY[billingEnabled ? 'on' : 'off'][reason];
+function upgradeCopy(
+    session: { readonly billingEnabled: boolean; readonly licensing: boolean },
+    reason: UpgradeReason,
+) {
+    return UPGRADE_COPY[session.licensing ? 'license' : session.billingEnabled ? 'on' : 'off'][reason];
 }
 
 /** Ticks every second from the injected clock, so the expiry banner shows when the code runs out on an open page. */
@@ -122,12 +153,13 @@ function useRemainingMs(until: number): number {
 }
 
 function UpgradeBanner(props: { readonly reason: UpgradeReason }) {
-    const { billingEnabled } = useSession();
-    const copy = upgradeCopy(billingEnabled, props.reason);
+    const session = useSession();
+    const copy = upgradeCopy(session, props.reason);
     return (
         <Banner tone="warning" title={copy.title()}>
             <p>{copy.body()}</p>
-            {billingEnabled ? <Link to="/billing">{m.engines_new_upgrade()}</Link> : null}
+            {session.billingEnabled ? <Link to="/billing">{m.engines_new_upgrade()}</Link> : null}
+            {session.licensing ? <Link to="/license">{m.license_notice_action()}</Link> : null}
         </Banner>
     );
 }
@@ -146,30 +178,22 @@ function guideLink(guideUrl: string, anchor: string): string {
     return `${guideUrl}#${anchor}`;
 }
 
-/** Text only: a command is never parsed as markup, and the copy is the exact configured string. */
-function InstallPathPanel(props: { readonly path: InstallCommandView; readonly guideUrl: string }) {
-    const { path, guideUrl } = props;
+function InstallPathPanel(props: {
+    readonly path: InstallCommandView;
+    readonly guideUrl: string;
+    readonly linkUrl: string | null;
+}) {
+    const { path, guideUrl, linkUrl } = props;
     return (
         <div className="flex flex-col gap-3">
-            {path.id === 'compose' ? <p className="text-sm">{m.engines_new_compose_hint()}</p> : null}
-            <div className="overflow-hidden rounded-control border border-hairline bg-(--code-text-bg) text-(--code-text-text)">
-                <div className="flex justify-end px-2 pt-2">
-                    <CopyButton value={path.command} label={m.engines_new_copy()} variant="secondary" showLabel />
-                </div>
-                <pre className="px-3 pt-1 pb-3 font-mono text-sm wrap-anywhere whitespace-pre-wrap">
-                    <code>{path.command}</code>
-                </pre>
-            </div>
-            <p className="text-sm text-text-muted">
-                {m.engines_new_requirements()}{' '}
+            <InstallationCopyBlock value={path.command} />
+            {linkUrl === null ? null : <LinkUrl url={linkUrl} />}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                 <ExternalLink href={guideLink(guideUrl, path.docsAnchor)}>{m.engines_new_docs()}</ExternalLink>
-            </p>
-            {path.id === 'connect' ? (
-                <p className="text-sm">
-                    {m.engines_new_move()}{' '}
+                {path.id === 'connect' ? (
                     <ExternalLink href={guideLink(guideUrl, MOVING_ANCHOR)}>{m.engines_new_move_docs()}</ExternalLink>
-                </p>
-            ) : null}
+                ) : null}
+            </div>
         </div>
     );
 }
@@ -211,7 +235,11 @@ function InstallCommand(props: {
     const locale = useLocale();
     const remaining = useRemainingMs(props.view.expiresAt);
     const paths = props.view.installCommands;
-    const [selectedId, setSelectedId] = useState<string>(paths[0]?.id ?? '');
+    const options = props.view.installationOptions;
+    const [selectedId, setSelectedId] = useState<string>(() => {
+        if (options === undefined) return paths[0]?.id ?? '';
+        return /Windows/i.test(navigator.userAgent) ? 'powershell' : 'posix';
+    });
     // Only observes what the progress panel polls; it never asks on its own.
     const status = useQuery({ ...linkCodeQuery(api, props.view.linkCodeId), enabled: false }).data?.status;
     if (status === 'linked') {
@@ -220,24 +248,45 @@ function InstallCommand(props: {
     if (remaining === 0 || status === 'expired') {
         return <ExpiredBanner onRenew={props.onRenew} renewing={props.renewing} />;
     }
+    const linkInConnectTab = options !== undefined && paths.some((path) => path.id === 'connect');
+    const configuredTabs = paths
+        .filter((path) => options === undefined || path.id !== 'installer')
+        .map((path) => ({
+            id: path.id,
+            label: INSTALL_PATH_LABELS[path.labelKey](),
+            panel: (
+                <InstallPathPanel
+                    path={path}
+                    guideUrl={props.view.installGuideUrl}
+                    linkUrl={linkInConnectTab && path.id === 'connect' ? props.view.linkUrl : null}
+                />
+            ),
+        }));
+
     return (
-        <Section title={m.engines_new_command_title()} divided={false} description={m.engines_new_intro()}>
+        <Section
+            title={m.engines_new_command_title()}
+            divided={false}
+            description={options === undefined ? m.engines_new_intro() : m.engines_new_install_intro()}
+        >
             <div className="flex flex-col gap-3">
                 <Tabs
                     label={m.engines_new_tabs_label()}
                     selectedId={selectedId}
                     onSelect={setSelectedId}
-                    tabs={paths.map((path) => ({
-                        id: path.id,
-                        label: INSTALL_PATH_LABELS[path.labelKey](),
-                        // Keyed, so "Copied" on one command never shows on the next tab's.
-                        panel: <InstallPathPanel key={path.id} path={path} guideUrl={props.view.installGuideUrl} />,
-                    }))}
+                    tabs={
+                        options === undefined
+                            ? configuredTabs
+                            : installationTabs(options, configuredTabs, locale.locale)
+                    }
                 />
-                {props.view.linkUrl === null ? null : <LinkUrl url={props.view.linkUrl} />}
+                {!linkInConnectTab && props.view.linkUrl !== null ? <LinkUrl url={props.view.linkUrl} /> : null}
                 <p className="text-sm text-text-muted" aria-live="off">
                     {m.engines_new_command_body({ time: locale.formatDateTime(new Date(props.view.expiresAt)) })}
                 </p>
+                {options === undefined ? null : (
+                    <p className="text-sm text-text-muted">{m.engines_new_computer_access()}</p>
+                )}
             </div>
         </Section>
     );
@@ -248,35 +297,14 @@ function canChoosePlan(session: SessionView): boolean {
     return session.billingEnabled && session.activeOrg.permissions.includes(BILLING_PERMISSION);
 }
 
-/** Step 2 of onboarding.md: without `engines.create`, the plans come first, and Checkout returns here. */
+/** Load the existing legacy billing UI only for an eligible account that actually needs it. */
 function PlanStep(props: { readonly checkout: CheckoutReturn | undefined }) {
-    const api = useApiClient();
     const session = useSession();
-    const billing = useQuery({ ...billingQuery(api), enabled: canChoosePlan(session) });
-    if (!canChoosePlan(session)) {
-        return <UpgradeBanner reason="not-entitled" />;
-    }
+    if (!canChoosePlan(session)) return <UpgradeBanner reason="not-entitled" />;
     return (
-        <Section title={m.engines_new_plan_title()} divided={false} description={m.engines_new_plan_body()}>
-            {props.checkout === 'cancel' ? <Banner tone="info">{m.billing_checkout_cancel()}</Banner> : null}
-            {billing.data === undefined ? (
-                billing.isError ? (
-                    <ErrorState
-                        message={m.billing_load_failed()}
-                        onRetry={() => void billing.refetch()}
-                        retrying={billing.isFetching}
-                    />
-                ) : (
-                    <Skeleton className="h-32 w-full" />
-                )
-            ) : (
-                <PlanOfferList
-                    plans={billing.data.plans}
-                    trialAvailable={billing.data.trialAvailable}
-                    returnTo="engines-new"
-                />
-            )}
-        </Section>
+        <Suspense fallback={<Skeleton className="h-32 w-full" />}>
+            <NewEnginePlanStep checkout={props.checkout} />
+        </Suspense>
     );
 }
 
@@ -298,11 +326,11 @@ function flowSteps(planShown: boolean): readonly LinkStep[] {
     return planShown ? ['plan', 'install', 'connect', 'finish'] : ['install', 'connect', 'finish'];
 }
 
-function currentStep(planStep: boolean, link: LinkState | undefined): LinkStep | null {
+function currentStep(planStep: boolean, link: ObservedLink | undefined): LinkStep | null {
     if (planStep) {
         return 'plan';
     }
-    switch (link) {
+    switch (link?.state) {
         case undefined:
         case 'waiting':
         case 'expired':
@@ -312,7 +340,7 @@ function currentStep(planStep: boolean, link: LinkState | undefined): LinkStep |
         case 'owner-pending':
             return 'finish';
         case 'ready':
-            return null;
+            return link.setupPending ? 'finish' : null;
     }
 }
 
@@ -321,20 +349,34 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
     const session = useSession();
     const navigate = useNavigate();
     const toast = useToast();
+    const browser = useBrowser();
     // Only to say "trial" or "subscription" in the thanks after Checkout.
     const billing = useQuery({ ...billingQuery(api), enabled: props.search.checkout === 'success' });
     const [issued, setIssued] = useState<LinkCodeView | null>(null);
     const create = useAppMutation<LinkCodeView>({
-        mutationFn: async () =>
-            props.search.team === undefined
-                ? dataOrThrow(await api.call(apiRoutes.createLinkCode, {}))
-                : dataOrThrow(await api.call(apiRoutes.createTeamLinkCode, { params: { teamId: props.search.team } })),
+        // The owner setup secret (ADR 0023) lives only in this closure and the tab's sessionStorage; the request carries
+        // its commitment. Without storage there could be no redirect, so no commitment either.
+        mutationFn: async () => {
+            const tab = browser.sessionStorage;
+            const handoff = canKeepOwnerSetupSecret(tab) ? await drawOwnerSetup() : null;
+            const body = handoff === null ? undefined : { ownerSetupCommitment: handoff.commitment };
+            const view =
+                props.search.team === undefined
+                    ? dataOrThrow(await api.call(apiRoutes.createLinkCode, { body }))
+                    : dataOrThrow(
+                          await api.call(apiRoutes.createTeamLinkCode, { params: { teamId: props.search.team }, body }),
+                      );
+            if (handoff !== null && tab !== undefined) {
+                keepOwnerSetupSecret(tab, view.linkCodeId, handoff.secret, issued?.linkCodeId ?? props.search.link);
+            }
+            return view;
+        },
         errorMessage: (error) => {
             if (problemCode(error) === LINK_CODE_LIMIT) {
                 return m.engines_new_code_limit_title();
             }
             const reason = upgradeReason(error);
-            return reason === null ? undefined : upgradeCopy(session.billingEnabled, reason).title();
+            return reason === null ? undefined : upgradeCopy(session, reason).title();
         },
         onSuccess: async (view) => {
             setIssued(view);
@@ -382,7 +424,7 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
     const renew = () => {
         mutate();
     };
-    const linkState = useObservedLinkState(linkCodeId);
+    const observedLink = useObservedLink(linkCodeId);
     const state = eligibility.data?.eligibility;
     const planStep = linkCodeId === undefined && state === 'not-entitled';
     // Once shown, the plan step stays in the steps for this visit, done.
@@ -394,7 +436,10 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
         (linkCodeId === undefined && state === undefined) ||
         state === 'engine-limit' ||
         (state === 'not-entitled' && !canChoosePlan(session)) ? null : (
-            <LinkSteps steps={flowSteps(planShown)} current={currentStep(planStep && !backFromCheckout, linkState)} />
+            <LinkSteps
+                steps={flowSteps(planShown)}
+                current={currentStep(planStep && !backFromCheckout, observedLink)}
+            />
         );
 
     if (linkCodeId !== undefined) {
@@ -406,7 +451,7 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
                     key={linkCodeId}
                     linkCodeId={linkCodeId}
                     commandShown={issued !== null}
-                    troubleshootingUrl={guideUrl === undefined ? null : guideLink(guideUrl, TROUBLESHOOTING_ANCHOR)}
+                    troubleshootingUrl={guideUrl === undefined ? null : troubleshootingLink(guideUrl)}
                     onRenew={renew}
                     renewing={create.isPending}
                 />
@@ -490,6 +535,11 @@ function NewEngineContent(props: { readonly search: NewEngineSearch }) {
                 </Crumb>,
             ]}
         >
+            {canLink && session.licensing ? (
+                <Suspense fallback={null}>
+                    <LicenseCheckNotice point="engineLink" />
+                </Suspense>
+            ) : null}
             {canLink ? <LinkFlow search={props.search} /> : <Banner tone="info">{m.engines_new_not_allowed()}</Banner>}
             <TrustLink />
         </Page>

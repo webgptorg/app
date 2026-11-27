@@ -47,7 +47,7 @@ Staging links only mock engines and throwaway `ptbk` projects that hold test dat
 
 - An up-to-date checkout of `main` with `bun install` done; Node 24 (`nvm use`), [OpenTofu](https://opentofu.org/docs/intro/install/) 1.10 or later, `dig` (BIND tools), `jq`, `ssh`, and `nmap` for one check.
 - Two hardware security keys, and a password manager vault for staging (one entry per secret below).
-- `ADAPTERS.billing` is `"off"` in `env.staging` of [apps/dashboard/wrangler.jsonc](../apps/dashboard/wrangler.jsonc). Every organization then holds `BILLING_OFF_PLAN` (engines, up to 10 per organization; a plain `wrangler.jsonc` value, so changing it needs no code) with no Stripe secrets or IDs; the Stripe catalogue stays commented out next to it. Stripe is needed only when billing is switched on ([apply.md](plan/apply.md) step 2).
+- `ADAPTERS.billing` is `"off"` in `env.staging` of [apps/dashboard/wrangler.jsonc](../apps/dashboard/wrangler.jsonc). Every organization then holds `BILLING_OFF_PLAN` (engines, up to 20 per organization; a plain `wrangler.jsonc` value, so changing it needs no code) with no Stripe secrets or IDs; the Stripe catalogue stays commented out next to it. Stripe is needed only when billing is switched on ([apply.md](plan/apply.md) step 2).
 - Secrets never go into the repo, a PR, a chat, a log or this page. Values in `staging.env` are not secrets (IDs, domains, addresses) and end up committed.
 
 ## 1. Account and domain
@@ -351,23 +351,11 @@ Put the next re-sign date in the calendar: once a list expires, engines install 
 
 ## 12. Link an engine
 
-The real engine is the engine team's `ptbk` CLI (npm `ptbk`; Node 22.13+ or 24+, npm 10+, Git and Chrome). Link only a throwaway project with test data ([Staging relaxations](#staging-relaxations-not-for-production)). Engines, New engine shows these commands with the link URL filled in, as its first tab:
+The real engine uses npm's `ptbk` CLI. On Engines → New engine, copy the complete version-checked command from the current installation tab and run it on the engine's computer. It installs the version selected by the dashboard and runs `ptbk init --prepare-only --link '<full link URL>'`. Do not replace its pinned version or split it into the historical init-then-connect sequence.
 
-```sh
-npm install --global ptbk
-mkdir -p my-agenda && cd my-agenda
-ptbk init --path . --no-dashboard
-ptbk connect --link 'https://app.ptbk.io/link#<code>'
-```
+The engine links before asking for the project folder. Finish the owner passkey in the browser window or setup link its terminal opens; resume the saved project setup with `ptbk onboarding --id <engine-id>`. For a new owner link during pending setup, use `ptbk connect --onboarding <engine-id> --setup-link`; for an existing project, run `ptbk connect --setup-link` in its folder. The link URL selects the dashboard; it needs no old staging environment overrides.
 
-The link URL names the dashboard, so no variable is needed; the engine prints `https://app.ptbk.io` before it registers, keeps it with the registration and uses it after a reboot too. This needs a `ptbk` release that takes the link URL (the engine team's 2026-11-06 change). With 0.119.0-72, link with the code after `#` and the old variables instead, and start the engine from a shell that has them:
-
-```sh
-export PTBK_DASHBOARD_URL=https://app.ptbk.io PTBK_ENGINE_DOMAIN=engines.ptbk.link
-ptbk connect --link <code>
-```
-
-**You should see:** "Linked to the Promptbook App" with the engine ID and the fingerprint the page shows; the engine shows online within about a minute, with its relays connected. "Open" does not work yet: the engine refuses browser streams until it terminates TLS itself, and its App page says so.
+**You should see:** the matching engine ID and fingerprint, a heartbeat, relay connectivity, and the engine's HTTPS page once its certificate is ready. If it stays offline, inspect `ptbk status` in the project folder, or `ptbk onboarding --id <engine-id> --json` before a project exists. Check [troubleshooting](engine-integration/installation.md#troubleshooting).
 
 The mock engine checks the path through the relay end to end. On your machine:
 
@@ -395,7 +383,7 @@ openssl s_client -connect <relay ipv4>:443 -servername <engineId>.engines.ptbk.l
 
 The certificate comes from Let's Encrypt production, which is what staging runs on (`ptbk.link`'s CAA allows only `letsencrypt.org`): the engine holds the key and the relay only routes the validation connection by SNI ([spike/acme-tls-alpn-01.md](spike/acme-tls-alpn-01.md)). Mind Let's Encrypt's rate limits (50 certificates per registered domain a week, 5 duplicates a week): keep `PTBK_DATA_DIR` between runs, so a restart reuses the stored certificate instead of ordering a new one. Without `MOCK_CERT_SOURCE=acme` the mock falls back to its dev CA, whose certificate browsers refuse, and passkeys with it.
 
-**If it fails:** for `ptbk`, the message names the refusal and the next step. For the mock, exit 3 means the code was refused (used, cancelled, or older than 30 days): make a new one. Exit 5 (`engine-limit`, `not-entitled`) means the organization already has `BILLING_OFF_PLAN`'s 10 engines (revoke one), or billing is not off. Exit 6 means the dashboard was unreachable.
+**If it fails:** for `ptbk`, the message names the refusal and the next step. For the mock, exit 3 means the code was refused (used, cancelled, or older than 30 days): make a new one. Exit 5 (`engine-limit`, `not-entitled`) means the organization already has `BILLING_OFF_PLAN`'s 20 engines (revoke one), or billing is not off. Exit 6 means the dashboard was unreachable.
 
 ## 13. e2e against staging
 

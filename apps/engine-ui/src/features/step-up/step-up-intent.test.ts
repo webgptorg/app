@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { createMemoryStorage, REFUSING_STORAGE } from '../../testing/memory-storage';
-import { saveStepUpIntent, STEP_UP_INTENT_KEY, STEP_UP_INTENT_MAX_AGE_MS, takeStepUpIntent } from './step-up-intent';
+import {
+    saveStepUpIntent,
+    STEP_UP_AUTO_MAX_AGE_MS,
+    STEP_UP_INTENT_KEY,
+    STEP_UP_INTENT_MAX_AGE_MS,
+    takeStepUpIntent,
+} from './step-up-intent';
 
 const NOW = 1_000_000;
 const INTENT = { action: 'settings.update-policy', data: { policy: 'manual' } };
@@ -46,6 +52,28 @@ describe('step-up intent', () => {
             expect(storage.getItem(STEP_UP_INTENT_KEY)).toBe('');
         },
     );
+
+    it('keeps intents for an automatic rerun apart from those that only restore a form', () => {
+        const storage = createMemoryStorage();
+        saveStepUpIntent(storage, { ...INTENT, auto: true }, '/settings', NOW);
+        expect(takeStepUpIntent(storage, 'settings.update-policy', '/settings', NOW)).toBeUndefined();
+        expect(takeStepUpIntent(storage, 'settings.update-policy', '/settings', NOW, { auto: true })).toEqual({
+            policy: 'manual',
+        });
+        expect(takeStepUpIntent(storage, 'settings.update-policy', '/settings', NOW, { auto: true })).toBeUndefined();
+
+        saveStepUpIntent(storage, INTENT, '/settings', NOW);
+        expect(takeStepUpIntent(storage, 'settings.update-policy', '/settings', NOW, { auto: true })).toBeUndefined();
+        expect(takeStepUpIntent(storage, 'settings.update-policy', '/settings', NOW)).toEqual({ policy: 'manual' });
+    });
+
+    it('drops an automatic rerun older than two minutes instead of running it', () => {
+        const storage = createMemoryStorage();
+        saveStepUpIntent(storage, { ...INTENT, auto: true }, '/settings', NOW);
+        const late = NOW + STEP_UP_AUTO_MAX_AGE_MS + 1;
+        expect(takeStepUpIntent(storage, 'settings.update-policy', '/settings', late, { auto: true })).toBeUndefined();
+        expect(storage.getItem(STEP_UP_INTENT_KEY)).toBe('');
+    });
 
     it('works without storage and when the browser refuses it', () => {
         expect(() => {

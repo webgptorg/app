@@ -11,7 +11,7 @@ import { readLinkCodeStatus } from '../../domain/registration/read-link-code-sta
 import { OWNER_REVOKED } from '../../domain/registration/engine-store';
 import { apiRoutes, type EngineView, type LinkEligibilityView } from '../../shared/api/routes';
 import type { DashboardDeps } from '../deps';
-import { issuedLinkCodeView } from './link-code-view';
+import { resolveLinkCodeView } from './link-code-view';
 import type { RouteBinder } from './bind-route';
 
 function engineView(overview: EngineOverview): EngineView {
@@ -52,11 +52,13 @@ export function bindEngineRoutes(
         | 'logger'
         | 'timer'
         | 'linkCodes'
+        | 'installReleases'
         | 'engines'
         | 'engineStatus'
         | 'engineHostnames'
         | 'relayPresence'
         | 'teams'
+        | 'usage'
     > & {
         readonly policy: EngineCreationPolicy;
         readonly routes: RouteBinder;
@@ -64,16 +66,28 @@ export function bindEngineRoutes(
 ): void {
     const bind = deps.routes.bind.bind(deps.routes);
 
-    bind(router, mount, apiRoutes.createLinkCode, async ({ request, session }) => {
+    bind(router, mount, apiRoutes.createLinkCode, async ({ input, request, session }) => {
         const outcome = await issueLinkCode(
             { ...deps, linkCodeTtlMs: deps.config.linkCodeTtlMs },
             { orgId: session.actor.orgId, userId: session.actor.userId },
+            input.body?.ownerSetupCommitment ?? null,
             request.signal,
         );
         if (outcome.kind === 'issued') {
+            request.waitUntil(
+                deps.usage.record([
+                    {
+                        event: 'engine.created',
+                        orgId: session.actor.orgId,
+                        userId: session.actor.userId,
+                        engineId: null,
+                        props: { forTeam: false },
+                    },
+                ]),
+            );
             return {
                 kind: 'ok',
-                body: issuedLinkCodeView(deps.config, outcome),
+                body: await resolveLinkCodeView(deps, outcome, request.signal),
             };
         }
         switch (outcome.reason) {
@@ -180,9 +194,22 @@ export function bindEngineRoutes(
         return { kind: 'ok', body: { engine: engineView(await readEngineOverview(deps, engine)) } };
     });
 
-    bind(router, mount, apiRoutes.revokeEngine, async ({ input, session }) => {
+    bind(router, mount, apiRoutes.revokeEngine, async ({ input, request, session }) => {
         const { engineId } = input.params;
         const outcome = await revokeEngine(deps, session.actor, engineId);
+        if (outcome === 'revoked') {
+            request.waitUntil(
+                deps.usage.record([
+                    {
+                        event: 'engine.removed',
+                        orgId: session.actor.orgId,
+                        userId: session.actor.userId,
+                        engineId,
+                        props: { via: 'revoked' },
+                    },
+                ]),
+            );
+        }
         const engine = outcome === 'not-found' ? null : await deps.engines.findInOrg(session.actor.orgId, engineId);
         if (engine === null) {
             return { kind: 'problem', status: 404, code: 'not-found' };

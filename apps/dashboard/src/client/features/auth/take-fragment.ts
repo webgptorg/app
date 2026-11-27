@@ -19,5 +19,6 @@ export function takeFragment(
         return;
     }
     context.fragmentTokens.put(purpose, parseFragmentToken(location.hash));
-    throw redirect({ to, replace: true });
+    // The query is no secret and may carry a page hint, e.g. `/recover?via=invite`.
+    throw redirect({ to, search: location.search, replace: true });
 }

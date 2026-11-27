@@ -26,19 +26,24 @@ export interface GatewayRequest {
 export type GatewayOutcome =
     { readonly kind: 'signed-in'; readonly actor: Actor } | { readonly kind: 'refused'; readonly response: Response };
 
+/** `Origin` is this engine's own: `https://` plus a `Host` naming the SNI hostname. */
+export function isOwnOrigin(request: Pick<GatewayRequest, 'hostname' | 'header'>): boolean {
+    const host = request.header('host')?.toLowerCase();
+    const origin = request.header('origin')?.toLowerCase();
+    if (host === undefined || origin === undefined) return false;
+    const hostname = host.replace(/:\d{1,5}$/, '');
+    return hostname === request.hostname.toLowerCase() && origin === `https://${host}`;
+}
+
 /**
  * Cross-site request forgery stops here, before anything else runs: a state-changing request must come from this
- * origin (`Origin` equal to `https://` plus a `Host` naming the SNI hostname) with Fetch Metadata saying so
- * (`Sec-Fetch-Site` `same-origin`, or `none` for a user's own navigation). There is no CORS, so nothing else may pass.
+ * origin ({@link isOwnOrigin}) with Fetch Metadata saying so (`Sec-Fetch-Site` `same-origin`, or `none` for a user's
+ * own navigation). There is no CORS, so nothing else may pass.
  */
 export function isSameOriginMutation(request: Omit<GatewayRequest, 'clientIp' | 'path' | 'target'>): boolean {
     if (SAFE_METHODS.has(request.method)) return true;
-    const host = request.header('host')?.toLowerCase();
-    const origin = request.header('origin')?.toLowerCase();
     const site = request.header('sec-fetch-site')?.toLowerCase();
-    if (host === undefined || origin === undefined || site === undefined) return false;
-    const hostname = host.replace(/:\d{1,5}$/, '');
-    return hostname === request.hostname.toLowerCase() && origin === `https://${host}` && ALLOWED_FETCH_SITES.has(site);
+    return site !== undefined && ALLOWED_FETCH_SITES.has(site) && isOwnOrigin(request);
 }
 
 /** The session token from `Cookie`, or `null`; a malformed or repeated cookie is no session. */

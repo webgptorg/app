@@ -21,6 +21,8 @@ function bodyOf(route: RouteDefinition): RouteBody | null {
             return null;
         case 'json':
             return { kind: 'json', schema: route.body.schema, maxBytes: JSON_MAX_BYTES };
+        case 'binary':
+            return { kind: 'binary', schema: route.body.schema, maxBytes: route.body.maxBytes };
         case 'multipart':
             return {
                 kind: 'multipart',
@@ -33,6 +35,10 @@ function bodyOf(route: RouteDefinition): RouteBody | null {
 /** Routes that cost more than a lookup get their own, tighter budget; everything else shares `engine-api-ip`. */
 const RATE_LIMIT_BY_ROUTE: Partial<Record<EngineApiRouteId, RateLimitRule>> = {
     testAgentDraft: 'engine-api-test-chat-ip',
+    transcribeVoiceClip: 'engine-api-voice-ip',
+    speakChatMessage: 'engine-api-voice-ip',
+    checkAiTool: 'engine-api-ai-tools-ip',
+    answerAiToolSignIn: 'engine-api-ai-tools-ip',
 };
 
 function isStream(route: RouteDefinition): boolean {

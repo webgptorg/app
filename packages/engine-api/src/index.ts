@@ -4,6 +4,7 @@ export * from './problem-codes';
 export * from './problem';
 export * from './common';
 export * from './route';
+export * from './media-type';
 export * from './routes';
 
 export * from './me';
@@ -29,8 +30,12 @@ export * from './capabilities/integrations';
 export * from './capabilities/test-chat';
 export * from './capabilities/access-requests';
 export * from './capabilities/live';
+export * from './capabilities/live-channel';
 export * from './capabilities/onboarding';
 export * from './capabilities/wallet';
+export * from './capabilities/voice';
+export * from './capabilities/ai-tools';
+export * from './capabilities/updates';
 export { stripUnknownFields, toTolerant } from './tolerant';
 
 export { createEngineApiClient, EngineApiContractError } from './client';

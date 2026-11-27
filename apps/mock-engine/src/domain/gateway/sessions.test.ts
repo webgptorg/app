@@ -153,6 +153,38 @@ describe('gateway session store', () => {
         );
     });
 
+    it('answers what a session holds now, for the live browser to re-check without a request', async () => {
+        const { store, core } = setup();
+        const ada = store.signIn({ memberId: 'member-ada', permissions: null, client: CLIENT });
+        expect(store.permissionsOf('member-ada', 'session-unknown')).toBeNull();
+        expect(store.permissionsOf('member-owner', ada.sessionId)).toBeNull();
+        expect([...(store.permissionsOf('member-ada', ada.sessionId) ?? [])].sort()).toEqual(
+            [...ROLE_PERMISSIONS.member].sort(),
+        );
+        // A second token on the same session with fewer permissions: the session holds the fewest.
+        store.signIn({
+            memberId: 'member-ada',
+            sessionId: ada.sessionId,
+            permissions: ['agents.read', 'browser.watch', 'browser.control'],
+            client: CLIENT,
+        });
+        expect([...(store.permissionsOf('member-ada', ada.sessionId) ?? [])].sort()).toEqual([
+            'agents.read',
+            'browser.watch',
+        ]);
+        const owner = createEngineApiClient(
+            core.transport({
+                memberId: 'member-owner' as never,
+                sessionId: 'session-x' as never,
+                client: CLIENT,
+                permissions: new Set(OWNER_PERMISSIONS),
+                stepUpFresh: true,
+            }),
+        );
+        expect((await owner.members.remove('member-ada' as never, AbortSignal.timeout(5000))).kind).toBe('ok');
+        expect(store.permissionsOf('member-ada', ada.sessionId)).toEqual(new Set());
+    });
+
     it('expires an idle session and removes it from the engine', () => {
         const { store, clock, listed } = setup();
         const { token, sessionId } = store.signIn({ memberId: 'member-ada', permissions: null, client: CLIENT });
@@ -217,6 +249,17 @@ describe('gateway session store', () => {
         expect(store.confirmStepUp(sessionId)).toBe(true);
         expect(signedIn(store.authenticate(token, CLIENT)).stepUpFresh).toBe(true);
         expect(store.confirmStepUp('session-unknown')).toBe(false);
+    });
+
+    it('lets every assertion go stale on demand, until the next step-up', () => {
+        const { store } = setup();
+        const ada = store.signIn({ memberId: 'member-ada', permissions: null, client: CLIENT });
+        const again = store.signIn({ memberId: 'member-ada', permissions: null, client: CLIENT });
+        store.expireStepUps();
+        expect(signedIn(store.authenticate(ada.token, CLIENT)).stepUpFresh).toBe(false);
+        expect(signedIn(store.authenticate(again.token, CLIENT)).stepUpFresh).toBe(false);
+        expect(store.confirmStepUp(ada.sessionId)).toBe(true);
+        expect(signedIn(store.authenticate(ada.token, CLIENT)).stepUpFresh).toBe(true);
     });
 
     it('signs in without a fresh assertion when told so', () => {

@@ -1,6 +1,7 @@
 import type { Bytes, Ed25519PublicKey, EngineId, HeartbeatVerification } from '@ptbk/protocol';
 
 import type { OrgId } from '../ids';
+import type { EngineActivity } from '../usage/engine-activity';
 import type { EngineStatusSnapshot } from './engine-status';
 
 export interface RecordHeartbeatInput {
@@ -19,6 +20,7 @@ export interface RecordHeartbeatInput {
 export interface EngineStatusDirectory {
     recordHeartbeat(input: RecordHeartbeatInput): Promise<HeartbeatVerification>;
     getStatus(engineId: EngineId): Promise<EngineStatusSnapshot>;
+    getActivity(engineId: EngineId): Promise<EngineActivity | null>;
     /** Forgets the engine entirely, for engine removal. */
     reset(engineId: EngineId): Promise<void>;
 }

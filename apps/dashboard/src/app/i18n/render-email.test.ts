@@ -9,7 +9,7 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
     {
         template: 'account-exists',
         to: 'a@example.test',
-        signInLink: 'https://app.ptbk.test/signin',
+        signInLink: 'https://app.ptbk.test/continue',
         recoveryLink: 'https://app.ptbk.test/recover',
     },
     { template: 'recovery-link', to: 'a@example.test', link: 'https://app.ptbk.test/recover#tok' },
@@ -18,7 +18,7 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
         to: 'a@example.test',
         recoveredAt: RECOVERED_AT,
         cooldownEndsAt: RECOVERED_AT + 72 * 3600_000,
-        signInLink: 'https://app.ptbk.test/signin',
+        signInLink: 'https://app.ptbk.test/continue',
     },
     {
         template: 'engine-offline',
@@ -47,9 +47,31 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
         backOnlineAt: RECOVERED_AT + (2 * 24 + 3) * 3600_000 + 59 * 60_000,
         link: 'https://app.ptbk.test/engines/abcdefghijklmnopqrstuvwxyz',
     },
+    {
+        template: 'access-waiting',
+        to: 'a@example.test',
+        requesterEmail: 'jana@example.test',
+        teamName: 'Kancelář Brno',
+        link: 'https://abcdefghijklmnopqrstuvwxyz.engines.ptbk.test/members',
+    },
+    {
+        template: 'access-granted',
+        to: 'jana@example.test',
+        teamName: 'Kancelář Brno',
+        hostname: 'abcdefghijklmnopqrstuvwxyz.engines.ptbk.test',
+        link: 'https://abcdefghijklmnopqrstuvwxyz.engines.ptbk.test/',
+    },
+    {
+        template: 'invite-passkey-link',
+        to: 'a@example.test',
+        orgName: null,
+        link: 'https://app.ptbk.test/recover?via=invite#tok',
+    },
 ] as EmailMessage[];
 const ONLINE = MESSAGES[5] as Extract<EmailMessage, { template: 'engine-online' }>;
 const BACK_ONLINE = MESSAGES[6] as Extract<EmailMessage, { template: 'engine-back-online' }>;
+const WAITING = MESSAGES[7] as Extract<EmailMessage, { template: 'access-waiting' }>;
+const GRANTED = MESSAGES[8] as Extract<EmailMessage, { template: 'access-granted' }>;
 
 describe('renderEmail', () => {
     it.each(
@@ -95,6 +117,27 @@ describe('renderEmail', () => {
         expect(text).toContain('ada@example.test invited you to Acme on Promptbook.');
     });
 
+    it.each([
+        ['en', 'Add a passkey to join Acme', 'and you can join Acme.'],
+        ['cs', 'Přidejte si přístupový klíč a připojte se k Acme', 'můžete připojit k Acme.'],
+    ] as const)(
+        'words the invitee’s recovery link for joining and still names both effects in %s',
+        (locale, subject, joins) => {
+            const { subject: rendered, text } = renderEmail({
+                template: 'invite-passkey-link',
+                to: 'a@example.test',
+                locale,
+                orgName: 'Acme',
+                link: 'https://app.ptbk.test/recover?via=invite#tok',
+            });
+            expect(rendered).toBe(subject);
+            expect(text).toContain(joins);
+            expect(text).toContain('72');
+            expect(text).toMatch(locale === 'en' ? /signs out your other devices/ : /odhlásí Vaše ostatní zařízení/);
+            expect(text.replace('https://app.ptbk.test/recover', '')).not.toMatch(/recover|obnov/i);
+        },
+    );
+
     it('differs between English and Czech', () => {
         const en = renderEmail({ ...MESSAGES[0], locale: 'en' } as EmailMessage);
         const cs = renderEmail({ ...MESSAGES[0], locale: 'cs' } as EmailMessage);
@@ -126,8 +169,8 @@ describe('renderEmail', () => {
     });
 
     it.each([
-        ['en', 'Your engine Production is offline'],
-        ['cs', 'Váš engine Production je offline'],
+        ['en', 'Your project Production is offline'],
+        ['cs', 'Váš projekt Production je offline'],
     ] as const)(
         'names the engine by its label, then its address and when it was last seen in %s',
         (locale, subject) => {
@@ -143,8 +186,8 @@ describe('renderEmail', () => {
     );
 
     it.each([
-        ['en', 'Your engine abcdefgh… is online', "setup link in the engine's terminal"],
-        ['cs', 'Váš engine abcdefgh… je online', 'v terminálu enginu'],
+        ['en', 'Your project abcdefgh… is online', "setup link in the project's terminal"],
+        ['cs', 'Váš projekt abcdefgh… je online', 'v terminálu projektu'],
     ] as const)(
         'sends the first-online email in %s pointing to the terminal, never with a setup link',
         (locale, subject, where) => {
@@ -189,6 +232,25 @@ describe('renderEmail', () => {
     ])('rounds an outage of %i ms down to "%s"', (offlineMs, duration) => {
         const { text } = renderEmail({ ...BACK_ONLINE, locale: 'en', backOnlineAt: RECOVERED_AT + offlineMs });
         expect(text.replace(/\s/g, ' ')).toContain(`offline for ${duration}.`);
+    });
+
+    it.each(['en', 'cs'] as const)(
+        'asks approvers in for the engine itself: who waits, where, and the code to ask for (%s)',
+        (locale) => {
+            const { subject, text } = renderEmail({ ...WAITING, locale });
+            expect(subject).toContain('jana@example.test');
+            expect(subject).toContain('Kancelář Brno');
+            expect(text).toContain('https://abcdefghijklmnopqrstuvwxyz.engines.ptbk.test/members');
+            expect(text).not.toContain('app.ptbk.test');
+        },
+    );
+
+    it('tells the person they are in, with the engine’s own address', () => {
+        expect(renderEmail({ ...GRANTED, locale: 'en' }).subject).toBe("You're in: open Kancelář Brno");
+        expect(renderEmail({ ...GRANTED, locale: 'cs' }).subject).toBe('Máte přístup: otevřete Kancelář Brno');
+        const { text } = renderEmail({ ...GRANTED, locale: 'en' });
+        expect(text).toContain('https://abcdefghijklmnopqrstuvwxyz.engines.ptbk.test/');
+        expect(text).toContain('abcdefghijklmnopqrstuvwxyz.engines.ptbk.test,');
     });
 
     it('renders an ops alert in English with its rule, subject, time and numbers only', () => {

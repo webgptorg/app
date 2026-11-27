@@ -16,7 +16,7 @@ describe('abuse page', () => {
         const mail = await screen.findByRole('link', { name: 'abuse@ptbk.test' });
         expect(mail.getAttribute('href')).toBe('mailto:abuse@ptbk.test');
         expect(screen.getByRole('heading', { name: 'What we can and cannot see' })).toBeTruthy();
-        expect(screen.getByText(/We cannot see what an engine shows to signed-in users/)).toBeTruthy();
+        expect(screen.getByText(/We cannot see what a project shows to signed-in users/)).toBeTruthy();
         expect(screen.getByText(/We cannot delete anything from the owner's server/)).toBeTruthy();
         expect(screen.getByRole('link', { name: 'security.txt' }).getAttribute('href')).toBe(
             '/.well-known/security.txt',
@@ -46,7 +46,7 @@ describe('abuse page', () => {
                 );
             },
         });
-        expect(await screen.findByText(/Promptbook suspended this engine/)).toBeTruthy();
+        expect(await screen.findByText(/Promptbook suspended this project/)).toBeTruthy();
         expect((await screen.findByRole('link', { name: 'abuse@ptbk.test' })).getAttribute('href')).toBe(
             'mailto:abuse@ptbk.test',
         );

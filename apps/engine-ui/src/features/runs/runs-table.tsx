@@ -1,11 +1,10 @@
 import { RUN_SOURCES, RUN_STATUSES } from '@ptbk/engine-api';
 import type { AgentId, ReadAgent, ReadRun } from '@ptbk/engine-api';
 import {
-    Avatar,
+    BrandRobot,
     Button,
     createDataTableColumnHelper,
     DataTable,
-    EntityChip,
     FilterBar,
     filterField,
     RelativeTime,
@@ -14,7 +13,6 @@ import {
 } from '@ptbk/ui';
 import type { DataTableColumnDef, FilterBarField, SortingState } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link as RouterLink } from '@tanstack/react-router';
 import { Activity, Bot, CalendarClock, CircleDot, Coins, Hash, Timer, Zap } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 
@@ -26,9 +24,9 @@ import { isInvalidCursor } from '../../app/list-errors';
 import { useAllows } from '../../app/registry/use-visible-features';
 import { readListParam, readOneParam, readRangeParams, writeListParam } from '../../app/search-filters';
 import { m } from '../../paraglide/messages';
-import { safeImageSource } from '../../security/safe-url';
+import { AgentAvatar, NO_AGENT_PROFILE } from '../agents/agent-avatar';
 import { agentListQueryOptions } from '../agents/agents-queries';
-import { agentColor } from '../chat/references/agent-color';
+import { EntityChip } from '../entities/entity-chip';
 import { useRunRowActions } from './run-actions';
 import { RunCost, RunDuration, runTitle } from './run-format';
 import { hasRunFilters, runListParams } from './run-search';
@@ -45,19 +43,25 @@ export const RUN_COLUMNS_STORAGE_KEY = 'ptbk.runs.columns';
 
 const ICON = 'size-3.5';
 
-interface AgentLook {
-    readonly tint: string;
-    readonly src: string | null;
-}
-
-/** An agent's avatar and colour, from its profile when the agent list has it, else from its ID. */
-function agentLook(agentId: string, agents: ReadonlyMap<string, ReadAgent>): AgentLook {
-    const profile = agents.get(agentId)?.profile;
-    const avatarUrl = profile?.avatarUrl ?? null;
-    return {
-        tint: agentColor(profile?.color, agentId),
-        src: avatarUrl === null ? null : safeImageSource(avatarUrl),
-    };
+/** An agent's avatar, from its profile when the agent list has it, else from its name and ID. */
+function RunAgentAvatar({
+    agentId,
+    name,
+    agent,
+}: {
+    readonly agentId: string;
+    readonly name: string;
+    readonly agent: ReadAgent | undefined;
+}) {
+    return (
+        <AgentAvatar
+            name={name}
+            agentKey={agentId}
+            profile={agent?.profile ?? NO_AGENT_PROFILE}
+            origin={agent?.origin}
+            size="2xs"
+        />
+    );
 }
 
 /**
@@ -95,7 +99,7 @@ function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColum
                 header: m.runs_column_title(),
                 enableSorting: false,
                 enableHiding: false,
-                meta: { priority: 0, icon: <Hash className={ICON} /> },
+                meta: { priority: 0, grow: true, icon: <Hash className={ICON} /> },
                 cell: ({ row }) => (
                     <span className="flex min-w-0 flex-col items-start gap-0.5">
                         <Link
@@ -174,21 +178,15 @@ function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColum
     }, [acrossAgents, cost]);
 }
 
-/** The run's agent as a chip in its colour, linking to the agent; the name is a text node. */
+/** The run's agent as a chip in its colour, linking to the agent with its card; the name is a text node. */
 function RunAgent({ run }: { readonly run: ReadRun }) {
-    const look = agentLook(run.agentId, useAgents(true).byId);
-    const name = run.agentName ?? run.agentId;
+    const agent = useAgents(true).byId.get(run.agentId);
     return (
         <EntityChip
-            label={name}
-            tone="agent"
-            tint={look.tint}
-            leading={<Avatar name={name} src={look.src} tint={look.tint} size="2xs" />}
-            render={({ children, ...props }) => (
-                <RouterLink to="/agents/$agentId" params={{ agentId: run.agentId }} {...props}>
-                    {children}
-                </RouterLink>
-            )}
+            kind="agent"
+            id={run.agentId}
+            name={run.agentName ?? run.agentId}
+            {...(agent === undefined ? {} : { profile: agent.profile, origin: agent.origin })}
         />
     );
 }
@@ -286,6 +284,7 @@ export function RunsTable({ search, onSearchChange, agentId }: RunsTableProps) {
                     ? { title: m.runs_no_results(), description: m.runs_no_results_hint(), action: clearButton }
                     : {
                           icon: <Activity />,
+                          ...(scope === 'agent' ? {} : { illustration: <BrandRobot pose="resting" /> }),
                           title: m.runs_empty_title(),
                           description: scope === 'agent' ? m.runs_empty_agent_body() : m.runs_empty_body(),
                       }
@@ -327,14 +326,11 @@ function runFilterFields({ search, scope, agents, agentsById, onChange }: RunFil
                       label: m.runs_filter_agent(),
                       icon: <Bot className={ICON} />,
                       multiple: false,
-                      options: agents.map((agent) => {
-                          const look = agentLook(agent.id, agentsById);
-                          return {
-                              value: agent.id,
-                              label: agent.name,
-                              icon: <Avatar name={agent.name} src={look.src} tint={look.tint} size="2xs" />,
-                          };
-                      }),
+                      options: agents.map((agent) => ({
+                          value: agent.id,
+                          label: agent.name,
+                          icon: <RunAgentAvatar agentId={agent.id} name={agent.name} agent={agent} />,
+                      })),
                       value: readOneParam(search.agentId),
                       onChange: ([picked]) => {
                           onChange({ agentId: picked === undefined ? undefined : agentsById.get(picked)?.id });

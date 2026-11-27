@@ -51,7 +51,8 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'team_id',
     ],
     // One-time link codes: the code only as SHA-256, who issued it for which organization, a 30-minute lifetime, the
-    // engine that redeemed it and the team that engine joins.
+    // engine that redeemed it and the team that engine joins, and until it is spent the SHA-256 of the pairing tab's
+    // owner setup secret (ADR 0023), never the secret.
     link_codes: [
         'code_hash',
         'org_id',
@@ -62,6 +63,7 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'engine_id',
         'id',
         'team_id',
+        'owner_setup_commitment',
     ],
     // Teams (ADR 0018): a name the organization typed, and who is in it. No engine content.
     teams: ['id', 'org_id', 'name', 'created_at', 'deleted_at'],
@@ -154,8 +156,38 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'created_at',
         'webauthn_user_id',
     ],
+    // Usage data (ADR 0022, migration 0014_usage_data): funnel events and daily activity for improving the product.
+    // Only IDs the dashboard already holds, the event's name and props of numbers, booleans and closed enums validated
+    // per event; no names, emails, IP addresses, user agents, tokens or free text. Events kept 13 months.
+    usage_events: ['id', 'occurred_at', 'event', 'org_id', 'user_id', 'engine_id', 'props'],
+    // An engine's day: how many heartbeats arrived, first and last, and the last one's numbers and closed enums, all of
+    // which the heartbeat already carries (C-03). Kept 25 months.
+    usage_daily_engines: [
+        'day',
+        'engine_id',
+        'org_id',
+        'beats',
+        'first_beat_at',
+        'last_beat_at',
+        'engine_version',
+        'agents',
+        'members',
+        'setup',
+        'update_state',
+        'cpu_load',
+    ],
+    // Who used the dashboard on which day, in which organization, from `sessions.last_seen_at`. Kept 25 months.
+    usage_daily_people: ['day', 'org_id', 'user_id'],
     // Live WebAuthn ceremonies, at most 5 minutes each.
     webauthn_challenges: ['id', 'challenge', 'purpose', 'user_id', 'token_hash', 'webauthn_user_id', 'expires_at'],
+    // Website licensing (D-30): which website account (its subject UUID) licenses the organization, who linked it, when.
+    website_links: ['org_id', 'subject', 'linked_by_user_id', 'linked_at'],
+    // The website's last licence snapshot: grant IDs, validity dates and numeric capacities, no prices and no content.
+    website_license_snapshots: ['org_id', 'subject', 'snapshot', 'fetched_at'],
+    // A handoff to the website in flight: its challenge only as SHA-256, a 10-minute lifetime.
+    website_handoff_states: ['challenge_hash', 'created_at', 'expires_at'],
+    // The website's verified address and subject, waiting 30 minutes for this browser's sign-in or sign-up.
+    website_pending_links: ['token_hash', 'subject', 'email', 'created_at', 'expires_at'],
 };
 
 async function storedColumns(): Promise<Record<string, string[]>> {

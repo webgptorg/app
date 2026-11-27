@@ -161,7 +161,9 @@ describe('runs timeline', { timeout: TIMEOUT_MS }, () => {
         const { ticker } = await renderRuns();
         const row = (await within(table()).findByText('Summarise open pull requests')).closest('tr') as HTMLElement;
         expect(within(row).getByText('Running')).toBeDefined();
-        expect(within(row).getByRole('link', { name: 'Ada' }).getAttribute('href')).toBe('/agents/agent-ada');
+        const agent = within(row).getByRole('link', { name: 'Ada' });
+        expect(agent.getAttribute('href')).toBe('/agents/agent-ada');
+        expect(agent.getAttribute('aria-haspopup')).toBe('dialog');
         expect(within(row).getByText('API')).toBeDefined();
         expect(within(row).getByText('1 min 30 s')).toBeDefined();
         ticker.advance(5_000);
@@ -247,7 +249,7 @@ describe('runs access', { timeout: TIMEOUT_MS }, () => {
     it('without runs@1: no nav item and /runs says "not available on this engine"', async () => {
         const without = Object.values(KNOWN_CAPABILITIES).filter(({ id }) => id !== 'runs');
         renderWithProviders({ path: '/runs', capabilities: without });
-        expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Not available in this project' })).toBeDefined();
         const nav = screen.getByRole('navigation', { name: 'Main' });
         expect(within(nav).queryByRole('link', { name: 'Runs' })).toBeNull();
     });

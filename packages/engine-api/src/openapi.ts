@@ -24,6 +24,7 @@ import {
     AuditVerification,
 } from './audit';
 import { Activity, ActivityActor, ActivityPage } from './capabilities/activity';
+import { AiTool, AiToolList, AiToolSignIn } from './capabilities/ai-tools';
 import { CapabilityRef, capabilityLabel } from './capabilities/capability';
 import {
     FileMetadata,
@@ -81,6 +82,8 @@ import {
     ActivityId,
     AgentId,
     AgentPermanentId,
+    AiToolId,
+    AiToolSignInId,
     ApiTokenId,
     AuditEntryId,
     ChatId,
@@ -262,6 +265,11 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, z.ZodType>> = {
     WalletRequest,
     WalletOverview,
     WalletSaved,
+    AiToolId,
+    AiToolSignInId,
+    AiTool,
+    AiToolList,
+    AiToolSignIn,
 };
 
 const JSON_SCHEMA_DIALECT = 'https://json-schema.org/draft/2020-12/schema';
@@ -395,6 +403,14 @@ function requestBodyOf(route: RouteDefinition, components: ComponentCollector): 
                 },
             };
         }
+        case 'binary':
+            return {
+                required: true,
+                description: `The raw bytes, at most ${String(body.maxBytes)}.`,
+                content: Object.fromEntries(
+                    body.mediaTypes.map((type) => [type, { schema: { type: 'string', contentMediaType: type } }]),
+                ),
+            };
     }
 }
 
@@ -413,15 +429,15 @@ function successResponseOf(response: RouteResponse, components: ComponentCollect
                     "Server-sent events; each event's `type` is also its SSE `event` field, and `data` is the event as JSON.",
                 content: { 'text/event-stream': { schema: components.convert(response.event, 'output') } },
             };
-        case 'binary':
+        case 'binary': {
+            const types = response.mediaTypes ?? ['application/octet-stream'];
             return {
-                description: 'The bytes.',
-                content: {
-                    'application/octet-stream': {
-                        schema: { type: 'string', contentMediaType: 'application/octet-stream' },
-                    },
-                },
+                description: response.mediaTypes === undefined ? 'The bytes.' : 'The bytes, in one of these formats.',
+                content: Object.fromEntries(
+                    types.map((type) => [type, { schema: { type: 'string', contentMediaType: type } }]),
+                ),
             };
+        }
     }
 }
 

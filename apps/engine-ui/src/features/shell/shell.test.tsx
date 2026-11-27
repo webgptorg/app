@@ -125,7 +125,7 @@ describe('app shell', () => {
         const features = FEATURES.map((feature) => (feature.id === 'audit' ? gatedAudit : feature));
         renderWithProviders({ path: '/audit', features, capabilities: [], permissions: ALL_PERMISSIONS });
 
-        expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Not available in this project' })).toBeDefined();
         expect(await sidebarLinks()).not.toContain('Audit log');
     });
 
@@ -134,7 +134,7 @@ describe('app shell', () => {
             path: '/members',
             capabilities: [KNOWN_CAPABILITIES.files, KNOWN_CAPABILITIES.wallet],
         });
-        expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Not available in this project' })).toBeDefined();
         expect(await sidebarLinks()).toEqual(['Home', 'Agents', 'Chats', 'Files', 'Security', 'Wallet', 'Settings']);
 
         await user.click(screen.getByRole('button', { name: 'Search and commands' }));
@@ -164,7 +164,7 @@ describe('app shell', () => {
                 seed: { agents: [{ id: 'agent-001', source: 'Ada\nPERSONA Research' }] },
             }),
         });
-        expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Not available in this project' })).toBeDefined();
     });
 
     it('says "no access" for an advertised capability without the permission', async () => {
@@ -322,10 +322,10 @@ describe('app shell', () => {
         });
         const { user, unmount } = renderWithProviders({ path: '/settings', engineApi: linked });
         await user.click(await screen.findByRole('button', { name: /Lab/ }));
-        expect(screen.getByRole('menuitem', { name: 'All engines' }).getAttribute('href')).toBe(
+        expect(screen.getByRole('menuitem', { name: 'All projects' }).getAttribute('href')).toBe(
             'https://app.ptbk.test/',
         );
-        expect(screen.getByRole('menuitem', { name: 'Add engine' }).getAttribute('href')).toBe(
+        expect(screen.getByRole('menuitem', { name: 'Add project' }).getAttribute('href')).toBe(
             'https://app.ptbk.test/engines/new',
         );
         unmount();
@@ -333,8 +333,8 @@ describe('app shell', () => {
         const second = renderWithProviders({ path: '/settings' });
         await second.user.click(await screen.findByRole('button', { name: /Test engine/ }));
         expect(screen.getByRole('menuitemradio', { name: /Test engine/ })).toBeDefined();
-        expect(screen.queryByRole('menuitem', { name: 'All engines' })).toBeNull();
-        expect(screen.queryByRole('menuitem', { name: 'Add engine' })).toBeNull();
+        expect(screen.queryByRole('menuitem', { name: 'All projects' })).toBeNull();
+        expect(screen.queryByRole('menuitem', { name: 'Add project' })).toBeNull();
     });
 
     it('verifies the engine from the switcher: the fingerprint code, then the trust panel', async () => {
@@ -345,8 +345,8 @@ describe('app shell', () => {
 
         expect(screen.queryByRole('link', { name: /Engine security/ })).toBeNull();
         await user.click(await screen.findByRole('button', { name: /Test engine/ }));
-        const verify = screen.getByRole('menuitem', { name: /Verify this engine/ });
-        expect(verify.textContent).toContain(`Engine fingerprint ${formatted}`);
+        const verify = screen.getByRole('menuitem', { name: /Verify this project/ });
+        expect(verify.textContent).toContain(`Project fingerprint ${formatted}`);
         expect(document.activeElement).toBe(verify);
         await user.click(verify);
         await waitFor(() => {
@@ -359,7 +359,7 @@ describe('app shell', () => {
         const { user } = renderWithProviders({ path: '/settings', permissions: [] });
         await user.click(await screen.findByRole('button', { name: /Test engine/ }));
         expect(screen.getByRole('menuitemradio', { name: /Test engine/ })).toBeDefined();
-        expect(screen.getByRole('menuitem', { name: /Verify this engine/ })).toBeDefined();
+        expect(screen.getByRole('menuitem', { name: /Verify this project/ })).toBeDefined();
     });
 
     it('opens Settings and Security from the account menu without repeating the name and role', async () => {

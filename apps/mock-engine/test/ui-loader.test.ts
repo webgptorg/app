@@ -14,6 +14,7 @@ import type { MemoryReleaseSource } from '../src/testing/memory-release-source';
 import { createMemoryReleaseSource } from '../src/testing/memory-release-source';
 import { createMemoryUpdateStateStore } from '../src/testing/memory-update-state-store';
 import { createMemoryLogger } from '../src/testing/memory-logger';
+import { createSeededRandom } from '../src/testing/seeded-random';
 import type { TestBundleInput, TestReleaseKeys } from '../src/testing/ui-releases';
 import {
     TEST_ARCHIVE_NAME,
@@ -78,6 +79,7 @@ async function start(options: { readonly pinned?: string } = {}): Promise<Engine
             trust: keys.policy,
         },
         clock,
+        random: createSeededRandom(1),
         logger: createMemoryLogger(),
         onActive: (bundle) => {
             onActive(bundle);
@@ -374,6 +376,8 @@ describe('security panel and control listener', () => {
             bundleSha256: sha256,
             releaseLogIndex: 4242,
             releaseLogEntryUuid: null,
+            // The loader's own schedule, which depends on when its startup check ended.
+            nextCheckAt: overview.data.ui.nextCheckAt,
             lastUpdateCheck: {
                 at: new Date(NOW).toISOString().replace(/\.\d{3}Z$/, 'Z'),
                 outcome: 'installed',
@@ -427,7 +431,11 @@ describe('security panel and control listener', () => {
         expect(page.status).toBe(503);
         expect(await page.text()).toContain('The app is unavailable');
         const withdrawn = await panel();
-        expect(withdrawn).toEqual({ ...placeholder, lastUpdateCheck: withdrawn.lastUpdateCheck });
+        expect(withdrawn).toEqual({
+            ...placeholder,
+            nextCheckAt: withdrawn.nextCheckAt,
+            lastUpdateCheck: withdrawn.lastUpdateCheck,
+        });
         expect(withdrawn.lastUpdateCheck).toMatchObject({ outcome: 'refused', version: '1.0.0', reason: 'revoked' });
     });
 

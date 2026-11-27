@@ -1,6 +1,7 @@
 import { deriveEngineFingerprint } from '@ptbk/protocol';
 import {
     Banner,
+    Button,
     CodeText,
     EmptyState,
     ErrorState,
@@ -11,8 +12,8 @@ import {
     useLocale,
 } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, SearchX } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { ChevronRight, SearchX, UserPlus } from 'lucide-react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import type { EngineView, HeartbeatView } from '../../../shared/api/routes';
@@ -24,9 +25,9 @@ import { AbuseContactLink } from '../abuse/abuse-contact';
 import { Crumb, Page } from '../shell/page';
 import { useSession } from '../session/use-session';
 import { OpenTeamButton } from '../teams/open-team-button';
-import { ENGINE_STATUS_COMMAND, TROUBLESHOOTING_ANCHOR } from './engine-guide';
+import { ENGINE_STATUS_COMMAND, troubleshootingLink } from './engine-guide';
 import { EngineMark } from './engine-identity';
-import { cpuLoadLabel, modeLabel, updateStateLabel } from './engine-labels';
+import { cpuLoadLabel, modeLabel, setupStateLabel, updateStateLabel } from './engine-labels';
 import { canRename, RenameEngineButton } from './engine-name';
 import { EngineOpenLink } from './engine-open-link';
 import { EngineReachability } from './engine-reachability';
@@ -35,8 +36,13 @@ import { LastSeen, useNowFor } from './engine-values';
 import { EngineActionMenu } from './revoke-engine';
 import { useEngineTeam } from './use-engine-name';
 
+// Loaded on first use: the dialog's form would otherwise put the engine page over its bundle budget, for an action
+// only owners and admins take.
+const InviteDialog = lazy(async () => ({ default: (await import('../teams/invite-dialog')).InviteDialog }));
+
 const READ_PERMISSION = 'engine.read';
 const REVOKE_PERMISSION = 'engine.revoke';
+const INVITE_PERMISSION = 'org.members.manage';
 
 /**
  * Read-only facts, a muted label before its value as in the peek cards; every value is plain text from our API. On a
@@ -67,6 +73,9 @@ function HeartbeatFields(props: { readonly heartbeat: HeartbeatView }) {
                 [m.engine_heartbeat_uptime(), formatters.formatDuration(heartbeat.uptimeS * 1000)],
                 [m.engine_heartbeat_agents(), formatters.formatNumber(heartbeat.agents)],
                 [m.engine_heartbeat_members(), formatters.formatNumber(heartbeat.members)],
+                ...(heartbeat.setup === undefined
+                    ? []
+                    : [[m.engine_heartbeat_setup(), setupStateLabel(heartbeat.setup)] as const]),
                 [m.engine_heartbeat_disk(), percent(heartbeat.diskPct)],
                 [m.engine_heartbeat_ram(), percent(heartbeat.ramPct)],
                 [m.engine_heartbeat_cpu(), cpuLoadLabel(heartbeat.cpuLoad)],
@@ -84,15 +93,17 @@ function HeartbeatFields(props: { readonly heartbeat: HeartbeatView }) {
  * guide link appears once its configured URL has loaded; the hint stands without it. When it was last seen is in the
  * page's summary, once.
  */
-function OfflineHint() {
+function OfflineHint({ engine }: { readonly engine: EngineView }) {
+    const pending = engine.heartbeat?.setup === 'pending';
+    const command = pending ? `ptbk onboarding --id ${engine.engineId} --json` : ENGINE_STATUS_COMMAND;
     const guide = useQuery(installGuideQuery(useApiClient()));
     return (
         <Banner tone="warning" title={m.engine_offline_title()}>
             <span className="flex flex-col items-start gap-2">
-                <span>{m.engine_offline_hint()}</span>
-                <CodeText value={ENGINE_STATUS_COMMAND} copyable copyLabel={m.engine_offline_copy()} />
+                <span>{pending ? m.engine_offline_setup_hint() : m.engine_offline_hint()}</span>
+                <CodeText value={command} copyable copyLabel={m.engine_offline_copy()} />
                 {guide.data === undefined ? null : (
-                    <ExternalLink href={`${guide.data}#${TROUBLESHOOTING_ANCHOR}`}>
+                    <ExternalLink href={troubleshootingLink(guide.data)}>
                         {m.engine_offline_troubleshooting()}
                     </ExternalLink>
                 )}
@@ -122,7 +133,11 @@ function StatusNotice(props: { readonly engine: EngineView }) {
     if (engine.status === 'unknown') {
         return <Banner tone="info">{m.engine_status_unknown_body()}</Banner>;
     }
-    return engine.status === 'offline' ? <OfflineHint /> : null;
+    if (engine.status === 'setup-pending') {
+        // A line, not a banner: nothing is wrong, the owner only has a step left, and the action is right above.
+        return <p className="text-sm text-text-muted">{m.engine_setup_pending_body()}</p>;
+    }
+    return engine.status === 'offline' ? <OfflineHint engine={engine} /> : null;
 }
 
 /** When it was last heard from, what it runs and how browsers reach it: the line under the title. */
@@ -153,11 +168,16 @@ function EngineDetail(props: {
     readonly engine: EngineView;
     readonly canRevoke: boolean;
     readonly canRename: boolean;
+    readonly canInvite: boolean;
 }) {
     const { engine } = props;
     const formatters = useLocale();
     const { team, givenName } = useEngineTeam(engine.engineId, engine.hostname);
     const name = givenName ?? engineLabel(engine);
+    const [inviting, setInviting] = useState(false);
+    const [invitedOnce, setInvitedOnce] = useState(false);
+    // People join an engine through its team; a suspended or revoked engine has nobody left to approve them.
+    const inviteTeam = props.canInvite && engine.status !== 'suspended' ? team : undefined;
     return (
         <Page
             title={
@@ -173,10 +193,29 @@ function EngineDetail(props: {
             actions={
                 <>
                     {props.canRename && givenName === null ? <RenameEngineButton engine={engine} /> : null}
+                    {inviteTeam === undefined ? null : (
+                        <Button
+                            variant="secondary"
+                            size="md"
+                            onClick={() => {
+                                setInviting(true);
+                                setInvitedOnce(true);
+                            }}
+                        >
+                            <UserPlus aria-hidden className="size-4" />
+                            {m.invite_to_engine()}
+                        </Button>
+                    )}
                     {engine.status === 'suspended' ? null : team?.isMember === true ? (
-                        <OpenTeamButton team={team} variant="primary" size="md" />
+                        <OpenTeamButton team={team} engine={engine} variant="primary" size="md" />
                     ) : (
-                        <EngineOpenLink name={name} hostname={engine.hostname} variant="primary" size="md" prominent />
+                        <EngineOpenLink
+                            name={name}
+                            hostname={engine.hostname}
+                            variant="primary"
+                            size="md"
+                            wording={engine.status === 'setup-pending' ? 'setup' : 'engine'}
+                        />
                     )}
                     {props.canRevoke && engine.status !== 'suspended' ? (
                         <EngineActionMenu engine={engine} name={name} />
@@ -257,6 +296,18 @@ function EngineDetail(props: {
                     </details>
                 )}
             </Section>
+            {inviteTeam === undefined || !invitedOnce ? null : (
+                <Suspense fallback={null}>
+                    <InviteDialog
+                        open={inviting}
+                        teamIds={[inviteTeam.teamId]}
+                        engineName={name}
+                        onClose={() => {
+                            setInviting(false);
+                        }}
+                    />
+                </Suspense>
+            )}
         </Page>
     );
 }
@@ -301,6 +352,7 @@ export function EngineDetailPage(props: { readonly engineId: string | null }) {
                 engine={engine.data}
                 canRevoke={permissions.includes(REVOKE_PERMISSION)}
                 canRename={canRename(permissions)}
+                canInvite={permissions.includes(INVITE_PERMISSION)}
             />
         );
     } else if (engine.isError) {

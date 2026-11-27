@@ -1,6 +1,6 @@
 // Fixtures for the dashboard scenario (X-05): a virtual passkey authenticator, the dashboard's screens as steps, and
 // mock engines started from the on-demand `mock-engine` service with what a test learned on the way (a link code).
-import type { Locator, Page, TestInfo } from '@playwright/test';
+import type { CDPSession, Locator, Page, TestInfo } from '@playwright/test';
 
 import type { OneOffContainer } from './compose.ts';
 import { expect, test as base } from './fixtures.ts';
@@ -39,9 +39,14 @@ export interface MockEngines {
     register(linkCode: string): Promise<RegisterReport>;
     /**
      * A fresh engine as an operator first starts it: a new key, no link code and no owner (M-08's first start), so it
-     * waits in local mode until `connect --link` runs inside it.
+     * waits in local mode until `connect --link` runs inside it. Its setup is done unless `setup: 'pending'` asks for
+     * an engine paired before setup, which opens on setup after the owner's passkey (M-10). `ownerHandoff: 'off'` makes
+     * it ignore the pairing tab's commitment (ADR 0023), so only the terminal's setup link sets up the owner.
      */
-    startUnlinked(): Promise<OneOffContainer>;
+    startUnlinked(options?: {
+        readonly setup?: 'pending' | 'done';
+        readonly ownerHandoff?: 'on' | 'off';
+    }): Promise<OneOffContainer>;
 }
 
 export interface LinkCodeView {
@@ -61,8 +66,8 @@ export interface DashboardSteps {
     /** Creates a link code on `/engines/new` and reads the install command and the code from the page. */
     createLinkCode(): Promise<LinkCodeView>;
     signOut(): Promise<void>;
-    /** Usernameless sign-in with the passkey the authenticator holds. */
-    signIn(): Promise<void>;
+    /** Continue with the address of the account whose passkey the virtual authenticator holds. */
+    signIn(email: string): Promise<void>;
     /** The engine list's rows once it has loaded, fetched anew (the list refreshes itself only every 60 s). */
     reloadEngineRows(): Promise<Locator>;
     /** Everything the dev outbox holds for `email`, oldest first. */
@@ -80,6 +85,8 @@ interface DashboardFixtures {
     mockEngines: MockEngines;
 }
 
+const authenticators = new WeakMap<Page, { readonly cdp: CDPSession; readonly id: string }>();
+
 /** A CTAP2 platform authenticator for one page's passkey ceremonies: each person and relying party holds its own. */
 export async function addPasskeyAuthenticator(page: Page): Promise<string> {
     const cdp = await page.context().newCDPSession(page);
@@ -94,7 +101,24 @@ export async function addPasskeyAuthenticator(page: Page): Promise<string> {
             automaticPresenceSimulation: true,
         },
     });
+    authenticators.set(page, { cdp, id: authenticatorId });
     return authenticatorId;
+}
+
+/**
+ * A popup is a tab of its own with no authenticator: give it one holding the passkeys of `from`, as a person's
+ * platform authenticator serves every window of the browser.
+ */
+export async function sharePasskeys(from: Page, to: Page): Promise<void> {
+    const source = authenticators.get(from);
+    if (source === undefined) throw new Error('the page has no authenticator to share');
+    await addPasskeyAuthenticator(to);
+    const target = authenticators.get(to);
+    if (target === undefined) throw new Error('no authenticator on the popup');
+    const { credentials } = await source.cdp.send('WebAuthn.getCredentials', { authenticatorId: source.id });
+    for (const credential of credentials) {
+        await target.cdp.send('WebAuthn.addCredential', { authenticatorId: target.id, credential });
+    }
 }
 
 function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
@@ -115,11 +139,11 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
         if (link === undefined) throw new Error('no emailed link');
         return link;
     };
-    const landing = page.getByRole('heading', { name: 'Engines', level: 1 });
+    const landing = page.getByRole('heading', { name: 'Projects', level: 1 });
     return {
         origin: DASHBOARD_ORIGIN,
         async signUp(email) {
-            await page.goto(`${DASHBOARD_ORIGIN}/signup`);
+            await page.goto(`${DASHBOARD_ORIGIN}/continue`);
             await page.getByLabel('Email').fill(email);
             // A run signs up more often than the per-IP limit allows; each sign-up comes from its own address.
             await page.route('**/api/auth/signup/start', (route) =>
@@ -130,7 +154,8 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
                     },
                 }),
             );
-            await page.getByRole('button', { name: 'Send the link' }).click();
+            // Continue always sends the email (D-34).
+            await page.getByRole('button', { name: 'Continue' }).click();
             await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
             await page.goto(await outboxLink(email, 'signup-link'));
             await page.getByRole('button', { name: 'Create passkey' }).click();
@@ -162,10 +187,19 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
         async signOut() {
             await page.getByRole('button', { name: /^Account menu for / }).click();
             await page.getByRole('menuitem', { name: 'Sign out' }).click();
-            await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+            await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
         },
-        async signIn() {
-            await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
+        async signIn(email) {
+            // The virtual authenticator answers the field's passkey autofill on its own, the one-tap sign-in, and the
+            // page may leave before the field is filled; "Use a passkey" covers a browser where it does not. Continue
+            // would only send an email (D-34).
+            const field = page.getByLabel('Email');
+            await expect(field.or(landing)).toBeVisible();
+            await field.fill(email, { timeout: 5_000 }).catch(() => undefined);
+            await page
+                .getByRole('button', { name: 'Use a passkey' })
+                .click({ timeout: 5_000 })
+                .catch(() => undefined);
             await expect(landing).toBeVisible();
         },
         async emails(email) {
@@ -176,7 +210,7 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
             await page.goto(`${DASHBOARD_ORIGIN}/engines/all`);
             const rows = page.getByRole('row').filter({ hasText: `.${ENGINE_DOMAIN}` });
             // Loaded: engine rows or the empty state, not the skeleton rows shown while the list loads.
-            await expect(rows.first().or(page.getByText('No engines yet', { exact: true }))).toBeVisible();
+            await expect(rows.first().or(page.getByText('No projects yet', { exact: true }))).toBeVisible();
             return rows;
         },
     };
@@ -234,9 +268,14 @@ export const test = base.extend<DashboardFixtures>({
                 await container.wait();
                 return parseRegisterReport(await container.logs('stdout'));
             },
-            async startUnlinked() {
+            async startUnlinked(options = {}) {
                 const container = await compose.run(ENGINE_SERVICE, {
-                    env: { PTBK_DATA_DIR: FRESH_DATA_DIR, MOCK_PASSKEYS: 'none' },
+                    env: {
+                        PTBK_DATA_DIR: FRESH_DATA_DIR,
+                        MOCK_PASSKEYS: 'none',
+                        MOCK_ONBOARDING: options.setup === 'pending' ? 'no-project' : 'completed',
+                        PTBK_OWNER_HANDOFF: options.ownerHandoff ?? 'on',
+                    },
                 });
                 containers.push(container);
                 return container;

@@ -1,8 +1,18 @@
-import { CpuLoad, EngineId, EngineVersion, Timestamp, UpdateState, type AnyHeartbeat } from '@ptbk/protocol';
+import {
+    CpuLoad,
+    EngineId,
+    EngineVersion,
+    OwnerHandoff,
+    SetupState,
+    Timestamp,
+    UpdateState,
+    type AnyHeartbeat,
+} from '@ptbk/protocol';
 import { z } from 'zod';
 
 import { orgIdSchema } from '../ids';
 import { localeSchema } from '../locale';
+import { countHeartbeat, engineActivitySchema } from '../usage/engine-activity';
 
 const SECOND_MS = 1000;
 const DAY_MS = 24 * 60 * 60 * SECOND_MS;
@@ -28,7 +38,10 @@ export function offlineAfterMs(timing: HeartbeatTiming): number {
 
 const count = z.int().min(0);
 
-/** What we keep of an accepted heartbeat: C-03's numbers and closed enums, and when it was sent and received. */
+/**
+ * What we keep of an accepted heartbeat: C-03's numbers and closed enums, and when it was sent and received. `setup` is
+ * absent from engines without browser setup and from payloads stored before C-15; both read as set up.
+ */
 export const heartbeatPayloadSchema = z.strictObject({
     ts: Timestamp,
     receivedAt: count,
@@ -40,6 +53,9 @@ export const heartbeatPayloadSchema = z.strictObject({
     update: UpdateState,
     agents: count,
     members: count,
+    setup: SetupState.optional(),
+    // The latest heartbeat's only: one without it clears it, as the engine's slot has closed (ADR 0023).
+    ownerHandoff: OwnerHandoff.optional(),
 });
 export type HeartbeatPayload = z.infer<typeof heartbeatPayloadSchema>;
 
@@ -94,6 +110,8 @@ const trackedSchema = z.strictObject({
     alert: outageAlertSchema,
     // Statuses stored before D-12 have no notice and owe none.
     notice: noticeSchema.default({ kind: 'none' }),
+    // Statuses stored before ADR 0022 start counting at their next heartbeat.
+    activity: engineActivitySchema.optional(),
 });
 
 /** After the retention purge: nothing about the engine but that it is offline and when it was last seen. */
@@ -183,10 +201,17 @@ export function acceptHeartbeat(input: {
             update: heartbeat.update,
             agents: heartbeat.agents,
             members: heartbeat.members,
+            ...(heartbeat.setup === undefined ? {} : { setup: heartbeat.setup }),
+            ...(heartbeat.ownerHandoff === undefined ? {} : { ownerHandoff: heartbeat.ownerHandoff }),
         },
         offlineSince: null,
         alert: { kind: 'none' },
         notice: noticeAfter(input.stored, heartbeat.members, input.receivedAt),
+        activity: countHeartbeat(
+            input.stored?.kind === 'tracked' ? input.stored.activity : undefined,
+            heartbeat,
+            input.receivedAt,
+        ),
     };
 }
 

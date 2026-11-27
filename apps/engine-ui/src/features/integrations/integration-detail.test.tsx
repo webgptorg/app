@@ -82,7 +82,7 @@ describe('integration detail', { timeout: TIMEOUT_MS }, () => {
         expect(within(secrets).getByText('Missing')).toBeDefined();
         expect(within(secrets).getByText('GITHUB_TOKEN')).toBeDefined();
         expect(within(secrets).queryByRole('link')).toBeNull();
-        expect(within(secrets).getByText(/set on the engine, not here/)).toBeDefined();
+        expect(within(secrets).getByText(/set in the project, not here/)).toBeDefined();
         const banner = screen
             .getByText('Secrets not available: GITHUB_TOKEN.')
             .closest('[role="alert"]') as HTMLElement;

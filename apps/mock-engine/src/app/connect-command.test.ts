@@ -1,4 +1,13 @@
-import { EngineVersion, Hostname, LinkCode, RelayId, deriveEngineFingerprint } from '@ptbk/protocol';
+import type { OwnerSetupCommitment } from '@ptbk/protocol';
+import {
+    EngineVersion,
+    Hostname,
+    LinkCode,
+    RelayId,
+    deriveEngineFingerprint,
+    newOwnerSetupSecret,
+    ownerSetupCommitment,
+} from '@ptbk/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { createMemoryIdentityStore } from '../adapters/memory-identity-store';
@@ -139,6 +148,8 @@ describe('runConnectCommand', () => {
         const joins: boolean[] = [];
         const shown: string[] = [];
         const apiUrls: string[] = [];
+        const handoffs: { commitment: string; registeredAtMs: number }[] = [];
+        let handoffOn = true;
         const deps = {
             identityStore: createMemoryIdentityStore(),
             registrations: createMemoryRegistrationStore(),
@@ -177,6 +188,10 @@ describe('runConnectCommand', () => {
                     return Promise.resolve(true);
                 },
             },
+            storeOwnerHandoff: (commitment: OwnerSetupCommitment, registeredAtMs: number) => {
+                if (handoffOn) handoffs.push({ commitment, registeredAtMs });
+                return Promise.resolve(handoffOn);
+            },
         };
         return {
             apiUrls,
@@ -189,6 +204,10 @@ describe('runConnectCommand', () => {
             logger,
             runEngine: (answer: LinkAnswer | null) => {
                 running = answer;
+            },
+            handoffs,
+            handoffOff: () => {
+                handoffOn = false;
             },
         };
     }
@@ -264,6 +283,44 @@ describe('runConnectCommand', () => {
         expect(joins).toEqual([true]);
         expect(shown).toContain(`  ${SETUP_URL}`);
         expect(shown.slice(-2)).toEqual([`opened ${SETUP_URL}`, 'Opened in your browser. Create your passkey there.']);
+    });
+
+    it('keeps the pairing tab’s commitment for the engine, and prints the setup link without opening it', async () => {
+        const { clock, dashboard, deps, handoffs, shown, runEngine } = setup();
+        runEngine({ outcome: 'linked', relays: 1 });
+        const commitment = await ownerSetupCommitment(newOwnerSetupSecret(createSeededRandom(2)));
+        const command = {
+            linkCode: dashboard.issueLinkCode('org-a', commitment),
+            dashboardOrigin: null,
+            json: false,
+            open: true,
+        };
+        const result = await runConnectCommand(command, CONFIG, { ...deps, terminal: true });
+        expect(result.exitCode).toBe(EXIT_CODE.ok);
+        expect(handoffs).toEqual([{ commitment, registeredAtMs: clock.nowMs() }]);
+        expect(shown).toContain(`  ${SETUP_URL}`);
+        expect(shown.some((line) => line.startsWith('opened'))).toBe(false);
+    });
+
+    it('opens the setup link as before when the handoff is off, or the dashboard sent no commitment', async () => {
+        for (const commitment of ['off', null] as const) {
+            const { dashboard, deps, handoffs, handoffOff, shown, runEngine } = setup();
+            runEngine({ outcome: 'linked', relays: 1 });
+            if (commitment === 'off') handoffOff();
+            const sent =
+                commitment === 'off'
+                    ? await ownerSetupCommitment(newOwnerSetupSecret(createSeededRandom(2)))
+                    : undefined;
+            const command = {
+                linkCode: dashboard.issueLinkCode('org-a', sent),
+                dashboardOrigin: null,
+                json: false,
+                open: true,
+            };
+            await runConnectCommand(command, CONFIG, { ...deps, terminal: true });
+            expect(handoffs).toEqual([]);
+            expect(shown).toContain(`opened ${SETUP_URL}`);
+        }
     });
 
     it('leaves the setup link to the engine with --json or without a terminal, and opens nothing with --no-open', async () => {

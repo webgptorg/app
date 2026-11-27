@@ -18,11 +18,13 @@ describe('engine order', () => {
             withStatus('e', 'owner-pending'),
             withStatus('f', 'online'),
             withStatus('g', 'unknown'),
+            withStatus('h', 'setup-pending'),
         ];
         expect(byAttention(engines).map((engine) => engine.engineId.charAt(0))).toEqual([
             'd',
             'g',
             'e',
+            'h',
             'b',
             'f',
             'c',
@@ -34,7 +36,9 @@ describe('engine order', () => {
     it('tells revoked engines and live reports apart', () => {
         expect(isRevoked(withStatus('a', 'suspended', 'owner'))).toBe(true);
         expect(isRevoked(withStatus('a', 'suspended', 'platform'))).toBe(false);
-        expect(['online', 'owner-pending'].every((status) => reportsLive({ status } as EngineView))).toBe(true);
+        expect(
+            ['online', 'owner-pending', 'setup-pending'].every((status) => reportsLive({ status } as EngineView)),
+        ).toBe(true);
         expect(
             (['offline', 'unknown', 'never-seen', 'suspended'] as const).some((status) => reportsLive({ status })),
         ).toBe(false);

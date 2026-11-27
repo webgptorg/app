@@ -11,6 +11,7 @@ import { createAppQueryClient } from './query-client';
 import { createAppRouter, preloadMatchedRouteChunks } from './router';
 import { createSignInRedirect } from './sign-in-redirect';
 import type { BrowserLocation } from './sign-in-redirect';
+import type { StepUpPopups } from '../features/step-up/step-up-popup';
 import type { ThemeMatchMedia } from './theme';
 
 /** The browser APIs the app touches outside React, passed in so tests can stand in for them. */
@@ -23,6 +24,7 @@ export interface BrowserDeps {
     readonly storage: PreferenceStorage | undefined;
     readonly matchMedia: ThemeMatchMedia;
     readonly timeZone: string;
+    readonly popups?: StepUpPopups | undefined;
 }
 
 export interface MountedApp {
@@ -42,7 +44,8 @@ export async function bootstrap(container: HTMLElement, browser: BrowserDeps): P
         }),
     );
     const engineApi = await createAppEngineApiClient({ origin: browser.location.origin, fetch: browser.fetch });
-    const queryClient = createAppQueryClient({ onUnauthenticated: createSignInRedirect(browser.location) });
+    const onUnauthenticated = createSignInRedirect(browser.location);
+    const queryClient = createAppQueryClient({ onUnauthenticated });
     const router = createAppRouter({ engineApi, queryClient, features: FEATURES }, { matchMedia: browser.matchMedia });
     preloadMatchedRouteChunks(router);
 
@@ -60,12 +63,14 @@ export async function bootstrap(container: HTMLElement, browser: BrowserDeps): P
                 engineApi={engineApi}
                 queryClient={queryClient}
                 router={router}
+                onUnauthenticated={onUnauthenticated}
                 browser={{
                     storage: browser.storage,
                     matchMedia: browser.matchMedia,
                     location: browser.location,
                     fetch: browser.fetch,
                     timeZone: browser.timeZone,
+                    popups: browser.popups,
                 }}
             />
             {devtools}

@@ -33,6 +33,7 @@ export function session(
         readonly memberships?: SessionView['memberships'];
         readonly steppedUpUntil?: number | null;
         readonly billingEnabled?: boolean;
+        readonly licensing?: boolean;
     } = {},
 ): SessionView {
     const cooldown = overrides.recoveryCooldownEndsAt ?? null;
@@ -57,6 +58,7 @@ export function session(
         ],
         steppedUpUntil: overrides.steppedUpUntil ?? null,
         billingEnabled: overrides.billingEnabled ?? true,
+        licensing: overrides.licensing ?? false,
     };
 }
 
@@ -134,13 +136,13 @@ export function linkCodeView(overrides: Partial<LinkCodeView> = {}): LinkCodeVie
             {
                 id: 'compose',
                 labelKey: 'docker-compose',
-                command: `docker compose run --rm engine promptbook-engine connect --link ${LINK_CODE}\ndocker compose up -d`,
+                command: `bun run dev:stack up --no-system\nbun run dev:link ${LINK_CODE}`,
                 docsAnchor: '2-docker-compose',
             },
             {
                 id: 'connect',
                 labelKey: 'already-running',
-                command: `promptbook-engine connect --link ${LINK_CODE}`,
+                command: `ptbk connect --link ${LINK_CODE}`,
                 docsAnchor: '3-link-an-engine-that-already-runs',
             },
         ],

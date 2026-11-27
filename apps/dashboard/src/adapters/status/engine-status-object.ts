@@ -53,6 +53,10 @@ export class EngineStatusObject extends DurableObject<Env> {
         return this.#get().getStatus();
     }
 
+    getActivity() {
+        return this.#get().getActivity();
+    }
+
     reset() {
         return this.#get().reset();
     }

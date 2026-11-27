@@ -2,9 +2,17 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/node.tsbuildinfo",
+    "lib": ["ES2024", "DOM"],
     "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["vite.config.ts", "drizzle.config.ts", "vitest.config.ts", "scripts/**/*", "test/**/*"],
+  "include": [
+    "src/raw-text.d.ts",
+    "vite.config.ts",
+    "drizzle.config.ts",
+    "vitest.config.ts",
+    "scripts/**/*",
+    "test/**/*"
+  ],
   "exclude": ["test/http/**/*", "test/csp/**/*"]
 }

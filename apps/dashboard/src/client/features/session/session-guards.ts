@@ -19,7 +19,7 @@ export async function requireSession(
     const session = await currentSession(context);
     if (session === null) {
         const returnTo = safeReturnTo(location.href);
-        throw redirect({ to: '/signin', search: returnTo === undefined ? {} : { returnTo }, replace: true });
+        throw redirect({ to: '/continue', search: returnTo === undefined ? {} : { returnTo }, replace: true });
     }
     return { session };
 }
@@ -49,6 +49,13 @@ export function requirePlatformAdmin(session: SessionView): void {
 /** With billing off the billing screens do not exist, the same 404 the server gives for their API. */
 export function requireBilling(session: SessionView): void {
     if (!session.billingEnabled) {
+        throw notFound();
+    }
+}
+
+/** `/license` exists only with billing `website`, for those who may read it; elsewhere it is not found. */
+export function requireLicensing(session: SessionView): void {
+    if (!session.licensing || !session.activeOrg.permissions.includes('license.read')) {
         throw notFound();
     }
 }

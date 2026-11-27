@@ -7,6 +7,7 @@ import {
     TUNNEL_PATH,
     parseLinkArgument,
 } from '@ptbk/protocol';
+import type { OnboardingSeed } from '@ptbk/engine-api/in-memory';
 import { z } from 'zod';
 
 import packageJson from '../../package.json';
@@ -75,12 +76,32 @@ export interface MockEngineConfig {
     /** `MOCK_DEV_LOGIN=enabled`: the sign-in page lets anyone pick a member. Refused with `NODE_ENV=production`. */
     readonly devLogin: boolean;
     /**
+     * `PTBK_OWNER_HANDOFF` (`on` by default, or `off`): whether the pairing tab's commitment from the registration
+     * answer becomes a second setup slot (ADR 0023). Off, only the engine's own setup link sets up the owner.
+     */
+    readonly ownerHandoff: boolean;
+    /**
      * `MOCK_PASSKEYS`: `none` (the default: a fresh engine that waits for its owner, as a real one does) or `seeded`
      * (the owner is set up).
      */
     readonly passkeys: 'seeded' | 'none';
-    /** `MOCK_ONBOARDING`: `pending` or `completed`; without it `empty` is pending and the other scenarios completed. */
-    readonly onboarding: 'pending' | 'completed' | null;
+    /**
+     * `MOCK_ONBOARDING`: `no-project` (paired before setup, which cannot be skipped), `pending` (setup waits, the
+     * project exists) or `completed`. Without it an engine that waits for its owner (`MOCK_PASSKEYS=none`) is
+     * `no-project`; with the owner seeded, `empty` is `pending` and the other scenarios `completed`.
+     */
+    readonly onboarding: OnboardingSeed | null;
+    /**
+     * `MOCK_LIVE_BROWSER=enabled`: advertises `browser-tab@1` with a fake browser, whatever the capability list says.
+     * A draft no environment advertises by accident, so it is off by default and refused with `NODE_ENV=production`.
+     */
+    readonly liveBrowser: boolean;
+    /**
+     * `MOCK_VOICE=enabled`: advertises `voice-input@1` and `voice-output@1` with the in-memory engine's fake transcriber
+     * and speech, whatever the capability list says. Not rolled out, so it is off by default and refused with
+     * `NODE_ENV=production`.
+     */
+    readonly voice: boolean;
     /** `MOCK_CONTROL=enabled` with `MOCK_CONTROL_HOST` and `MOCK_CONTROL_PORT`; refused with `NODE_ENV=production`. */
     readonly control: { readonly host: string; readonly port: number } | null;
     /** `PTBK_DASHBOARD_URL` and what goes with it; null runs the M1 dev mode on `PTBK_RELAYS`, without heartbeats. */
@@ -447,7 +468,12 @@ const envSchema = z.strictObject({
     ).default(1),
     MOCK_DEV_LOGIN: toggle.default('disabled'),
     MOCK_PASSKEYS: value(z.enum(['seeded', 'none']), 'must be seeded or none').default('none'),
-    MOCK_ONBOARDING: value(z.enum(['pending', 'completed']), 'must be pending or completed').optional(),
+    MOCK_ONBOARDING: value(
+        z.enum(['no-project', 'pending', 'completed']),
+        'must be no-project, pending or completed',
+    ).optional(),
+    MOCK_LIVE_BROWSER: toggle.default('disabled'),
+    MOCK_VOICE: toggle.default('disabled'),
     MOCK_CONTROL: toggle.default('disabled'),
     MOCK_CONTROL_HOST: value(
         z.union([z.ipv4(), z.ipv6(), HostnameSchema]),
@@ -476,6 +502,7 @@ const envSchema = z.strictObject({
     ).default(DEFAULT_HEARTBEAT_INTERVAL_S),
     MOCK_STATS: value(z.enum(['os', 'scenario']), 'must be os or scenario').default('os'),
     PTBK_UI_RELEASE_URL: parsed(parseReleaseUrl).optional(),
+    PTBK_OWNER_HANDOFF: value(z.enum(['on', 'off']), 'must be on or off').default('on'),
     PTBK_UPDATE_POLICY: value(z.enum(['auto', 'manual', 'pinned']), 'must be auto, manual or pinned').default('auto'),
     PTBK_PINNED_VERSION: value(EngineVersionSchema, 'must be a SemVer version').optional(),
     PTBK_UI_TRUST_POLICY_FILE: absoluteFilePath.optional(),
@@ -585,6 +612,10 @@ export function parseMockEngineConfig(env: Env): ParsedMockEngineConfig {
         if (result.data.MOCK_CONTROL === 'enabled') problems.push('MOCK_CONTROL: must not be enabled in production');
         if (result.data.MOCK_DEV_LOGIN === 'enabled')
             problems.push('MOCK_DEV_LOGIN: must not be enabled in production');
+        if (result.data.MOCK_LIVE_BROWSER === 'enabled') {
+            problems.push('MOCK_LIVE_BROWSER: must not be enabled in production');
+        }
+        if (result.data.MOCK_VOICE === 'enabled') problems.push('MOCK_VOICE: must not be enabled in production');
         if (result.data.MOCK_UI_FAKE_PROVENANCE === 'enabled') {
             problems.push('MOCK_UI_FAKE_PROVENANCE: must not be enabled in production');
         }
@@ -628,8 +659,11 @@ export function parseMockEngineConfig(env: Env): ParsedMockEngineConfig {
         capabilities: parsedEnv.MOCK_CAPABILITIES ?? PROFILE_CAPABILITY_NAMES[parsedEnv.MOCK_PROFILE],
         simulation: Object.freeze({ mode: parsedEnv.MOCK_SIMULATION, speed: parsedEnv.MOCK_SIMULATION_SPEED }),
         devLogin: parsedEnv.MOCK_DEV_LOGIN === 'enabled',
+        ownerHandoff: parsedEnv.PTBK_OWNER_HANDOFF === 'on',
         passkeys: parsedEnv.MOCK_PASSKEYS,
         onboarding: parsedEnv.MOCK_ONBOARDING ?? null,
+        liveBrowser: parsedEnv.MOCK_LIVE_BROWSER === 'enabled',
+        voice: parsedEnv.MOCK_VOICE === 'enabled',
         control:
             parsedEnv.MOCK_CONTROL === 'enabled'
                 ? Object.freeze({ host: parsedEnv.MOCK_CONTROL_HOST, port: parsedEnv.MOCK_CONTROL_PORT })

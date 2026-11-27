@@ -119,7 +119,7 @@ export const ACCESS_REQUEST_HANDLERS: Pick<
             const wrongCodes = (record.wrongCodes ?? 0) + 1;
             if (wrongCodes >= MAX_ACCESS_CODE_ATTEMPTS) ctx.state.accessRequests.delete(record.request.id);
             else ctx.state.accessRequests.set(record.request.id, { ...record, wrongCodes });
-            return fail('access-code-mismatch');
+            return fail('access-code-mismatch', { attemptsRemaining: MAX_ACCESS_CODE_ATTEMPTS - wrongCodes });
         }
         ctx.state.accessRequests.delete(record.request.id);
         const at = ctx.now();

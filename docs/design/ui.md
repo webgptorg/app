@@ -64,6 +64,8 @@ The agent detail tabs and the main sections come from the feature registry, so a
 - **Triggers:** inbound email addresses, schedules (once, interval, cron with next/last fire), webhooks later; fire history linked to runs; pause and resume.
 - **Integrations:** what each agent may use (MCP servers, calendar, repositories…), status and scopes, the secrets they reference by name, recent activity.
 - **Security:** what you verify and who gets in, for every member. The trust panel (engine identity and fingerprint), then a short checklist that opens into the details: UI bundle version and hash, TLS certificate and CT status, relays and tunnel state, hostnames, outbound destinations, exact last heartbeat payload (all with `security.read`); then access: sessions and passkeys (own, and others' with permission) and a pointer to the audit log.
+- **Setup** (`onboarding@1`): the engine's own setup questions, one prompt at a time, rendered only by kind and fields (never by a step's title or position), with the engine's progress as a timeline (down the side on wide screens, "Step x of y" over a segment per step on narrow ones; a step is named by the title this visit saw for it, else its number, and steps ahead are never named), Back on the start side and the step's one forward action on the end side as in the agent wizard, its work as a step list while it is busy (a failure stays above the next prompt), the facts of a step as a quiet label and value list, and other ways through a step as secondary actions or as a link to the engine's own page in a new tab. A secret is a masked field whose value lives only in the input and is emptied on submit. A step of a kind the UI does not know says it needs a newer UI and names `ptbk onboarding --id <engine-id>` on the host. While the engine has no project (`canDefer: false`) setup is the whole app: the shell shrinks to the lockup, engine switcher, language and sign-out, every path leads to setup, and the answers are kept for the next visit.
+- **The engine's browser** (`browser-tab@1`, draft, [ADR 0019](../adr/0019-live-sessions-inside-the-tunnel.md)): no page in the navigation; it shows where the work is. An agent stuck on a login or captcha asks for help on Home's "Needs you" and on its run or chat (reason, site, its message as text), with "Take over" behind step-up and Dismiss in the overflow menu. The run and the chat list the agent's open tabs with "Watch". The viewer draws the tab on a canvas, states plainly whether the member watches or is in control, says why a page is hidden or a session ended, and shows the run and chat the tab belongs to. While a session is live, every other page carries a slim line ("You're controlling the agent's browser on shop.example") with Open and End. The owner opens a fresh tab to sign in from a Wallet login's menu. Without the capability, none of it appears.
 - **Settings:** what you change: the update policy (with `security.read`, editable with `settings.manage`), language and theme.
 
 ## Trust mark
@@ -83,18 +85,23 @@ Visual identity v1 ([U-17](../plan/tasks/U-17-visual-identity.md), decided with 
 ### Colour
 
 - **Graphite chrome.** Neutrals are the `--ptbk-graphite-*` scale. The page is `--color-surface`; panels and popovers are `--color-raised`. Hover and selection are quiet washes of the text colour, not fills: `--color-hover` (5%) and `--color-selected` (8%). They read the same on any surface.
-- **No inverted fills.** Buttons are soft (see Parts); nothing is a near-black slab in light or a near-white one in dark. `--color-primary` (graphite) is left for small marks that need weight: a checked box, a switch that is on, a tab's indicator. The older `--color-accent*` names resolve to it, so nothing built on them turns teal.
+- **No inverted fills.** Buttons are soft (see Parts); nothing is a near-black slab in light or a near-white one in dark. `--color-primary` (graphite) is left for small marks that need weight: a checked box, a switch that is on, a tab's indicator. The older `--color-accent*` names resolve to it, so nothing built on them turns colourful.
 - **Colour comes from agents and status.**
   - Agents: `--color-agent-1..8`, or the agent's profile colour.
   - Status: `--color-success`, `--color-warning`, `--color-danger` and `--color-info`, each with a quiet `-soft` fill. `--color-live` marks running work.
-- **Teal has three jobs:** `--color-focus` (focus rings), `--color-link` (links in prose) and `--color-selection` (selected text). Nothing else is teal.
+- **Ink blue is the brand accent** ([Promptbook brand kit](https://www.ptbk.io/en/branding), `#17386C`; a lighter ink blue in dark). It has four jobs: `--color-focus` (focus rings), `--color-link` (links in prose), `--color-selection` (selected text) and the tint of the soft main button's wash. The kit's soft blue `#EEF4FB` is `--color-neutral-soft` in light.
 - **Dark mode is calm, never loud.** There is no bright cyan. Neutral pills sit on `--color-neutral-soft`, never on a black slab. Status fills are a trace of their hue over graphite.
 - **Lines.** `--color-hairline` separates sections and rows. `--color-divider` is a stronger separator. `--color-border` is only for control boundaries (inputs, checkboxes), at 3:1.
 - **Contrast.** Every text pair is AA (4.5:1) and every graphic pair 3:1, in both themes. `packages/ui/test/contrast.test.ts` enforces this, including the washes composited over the page.
 
+### Brand
+
+- **Logo.** `BrandMark` (the symbol) and `BrandLockup` (symbol and "promptbook" wordmark) in `@ptbk/ui` draw the kit's paths: ink blue in light, the kit's white artwork in dark. They keep a quarter of the symbol's height clear, never go below 32px (symbol) or 160px (lockup), and are never stretched, rotated or recoloured. They sit at the top of the engine UI's sidebar, in the dashboard's header and public pages, and are both apps' favicons. The trust mark stays separate.
+- **Robot.** The kit's robot (`BrandRobot`, `RobotGuide` with a speech bubble) is Promptbook speaking for itself: onboarding, the Home guide, empty main lists, sign-in and error pages. Agents keep their own characters. It is still and modest; its poses change only its pixel face.
+
 ### Type
 
-- **Inter everywhere.** Outfit is gone, and `font-display` is Inter too.
+- **Inter for text, Exo 2 for titles.** The brand kit's Exo 2 (600, self-hosted) is `font-display`: page titles and h1–h3. Everything else is Inter; the kit's Barlow is not used.
 - **Headings** (h1–h4) use `--heading-weight` (600) and tighter tracking (`--tracking-heading`, and `--tracking-display` for h1).
 - **Comfortable density:**
   - 14px body (`text-sm`, the `body` default);
@@ -106,6 +113,8 @@ Visual identity v1 ([U-17](../plan/tasks/U-17-visual-identity.md), decided with 
 ### Surfaces and layout
 
 - **An open layout.** A `Section` is a heading over content, separated from its neighbours by space and a hairline. There are no border-plus-shadow cards; `Card` remains as a quiet hairline panel until its users move to `Section`.
+- **Use the screen.** Lists, tables and detail pages take the full content width, capped only on very wide screens (`max-w-page`, 1680px). Reading width is kept only where prose needs it: the chat column (`max-w-chat`, about 830px), Settings (`Page width="reading"`) and onboarding. A table's one name column takes the slack (`meta.grow`) and truncates with a tooltip; the other columns stay compact on one line, so nothing scrolls sideways at 1280px and up.
+- **Chats fit the screen.** A route with `staticData.fillViewport` (a thread, the book) gets exactly the viewport: the header stays, the thread scrolls inside itself and the document never does. The thread header spans the content area (title, breadcrumbs and participants on the left, controls on the right) while the messages and composer share the centred chat column.
 - **Soft surfaces** (`soft-surface` with `--tint`) are only for live or actionable things: running work, needs-you, errors.
 - **Empty sections** collapse to one quiet line (`EmptyState variant="inline"`) or disappear. A whole empty view gets one calm line, one action and a small monochrome icon.
 - **What floats lifts.** Menus, popovers, hovercards and dialogs keep a soft `--shadow-overlay` over a hairline border. Radii are `--radius-control` (6px), `--radius-surface` (10px) and `--radius-small` (4px).
@@ -116,11 +125,12 @@ Visual identity v1 ([U-17](../plan/tasks/U-17-visual-identity.md), decided with 
   - Agents use `tone="agent"`: the name is in the agent's colour.
   - Every other entity uses `neutral`: text colour, with the hue only in the wash.
   - Entity-specific chips compose it in `apps/engine-ui/src/features/entities/`.
+  - Where an agent keeps its own look instead of a chip (a chat turn's avatar and name, a name inside a sentence), `AgentLink` gives it the same card and link. In a thread, every agent reference opens that one card, with what the agent does there and Mention added.
 - **`Avatar`** puts a picture on a wash of the agent's colour, so an agent looks the same everywhere. For agents it is the agent's own image when its book has one, else an illustration (`features/agents/illustrations/`): the engine's choice (`profile.illustration`, an ID from the set), a built-in agent's own character, a guess from keywords in the name and role (English and Czech), else the generic agent. Strokes use the readable tint colour, so they meet AA in both themes. The initial is only the fallback.
 - **`StatusPill` and `StatusDot`** cover the tones `live`, `waiting`, `success`, `warning`, `danger`, `info` and `neutral`. The state is always in words, and the hue lives in the dot and the wash.
 - **`Combobox`** replaces native `<select>` as screens move to it. `DateInput` is the native date control, styled: it is accessible, follows the browser's locale for date order, and opens the platform picker on phones.
 - **Buttons are soft:** a text-coloured label on a quiet wash or a hairline.
-  - `primary`, the main action, stands out only by a slightly stronger wash (`--color-wash-strong`), medium weight and its place.
+  - `primary`, the main action, stands out by a stronger wash with a line of ink blue, medium weight and its place. The wash is deeper in dark mode, where the light theme's would vanish on graphite.
   - `secondary` is the hairline without the wash; `ghost` has neither.
   - `danger` is a soft red wash (`--color-danger-wash`) with red text; `danger-ghost` is red text alone.
   - Hover and press deepen the wash (`-hover`, `-active`).
@@ -157,6 +167,8 @@ Short, meaningful, interruptible: new activity slides in, completed runs settle,
 ## Copy and language
 
 English and Czech from day one. Plain, warm, specific ("Lead bot is drafting replies to 3 emails"), no jargon in member-facing screens; precise terms in Security.
+
+On the dashboard, in engine-ui and on the gateway pages, call an engine a **project** in English and **projekt** in Czech, including navigation, accessible labels and account emails. The internal entity remains `Engine`: keep message keys, API contracts, permissions, identifiers, routes and commands unchanged.
 
 - **Toasts** echo the verb in the past tense: `<Name> <verb>.` ("Weekly report paused.", 'Run "Daily digest" stopped.'). A failure says what could not happen ('"Weekly report" could not be paused.'). The tone follows the outcome: a check that finds a problem is a warning, never a success.
 - **Runs are stopped**, never cancelled: the button, the status ("Stopping…", "Stopped") and the toast use the same verb as the agent's Stop.

@@ -1,3 +1,9 @@
+import {
+    OWNER_HANDOFF_LIFETIME_MS,
+    newOwnerSetupSecret,
+    ownerSetupCommitment,
+    ownerSetupCommitmentDigest,
+} from '@ptbk/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { createFakeClock } from '../../testing/fake-clock';
@@ -7,6 +13,7 @@ import {
     SETUP_SECRET_PATTERN,
     createInMemorySetupSecretStore,
     createSetupSecrets,
+    handoffSlot,
 } from './setup-secret';
 
 function setup() {
@@ -44,8 +51,8 @@ describe('setup secret', () => {
         const secret = await issue();
         expect(await secrets.check(secret)).toBe('valid');
         expect(await secrets.check(secret)).toBe('valid');
-        expect(await secrets.consume(secret)).toBe('valid');
-        expect(await secrets.consume(secret)).toBe('invalid');
+        expect(await secrets.consume(secret)).toEqual({ kind: 'valid', slot: 'setup-link' });
+        expect(await secrets.consume(secret)).toEqual({ kind: 'invalid' });
         expect(await secrets.check(secret)).toBe('invalid');
     });
 
@@ -62,7 +69,7 @@ describe('setup secret', () => {
             secrets.check(''),
         ]);
         expect(new Set(answers)).toEqual(new Set(['invalid']));
-        expect(await secrets.consume(secret)).toBe('invalid');
+        expect(await secrets.consume(secret)).toEqual({ kind: 'invalid' });
     });
 
     it('is replaced by every new link, so an old copy stops working', async () => {
@@ -79,7 +86,7 @@ describe('setup secret', () => {
         const secret = await issue();
         owner.set = true;
         expect(await secrets.check(secret)).toBe('owner-exists');
-        expect(await secrets.consume(secret)).toBe('owner-exists');
+        expect(await secrets.consume(secret)).toEqual({ kind: 'owner-exists' });
         expect(await secrets.issue()).toEqual({ kind: 'owner-exists' });
     });
 
@@ -87,7 +94,7 @@ describe('setup secret', () => {
         const { secrets, issue } = setup();
         const secret = await issue();
         const results = await Promise.all([secrets.consume(secret), secrets.consume(secret), secrets.consume(secret)]);
-        expect(results.filter((result) => result === 'valid')).toHaveLength(1);
+        expect(results.filter((result) => result.kind === 'valid')).toHaveLength(1);
     });
 
     it('can be revoked', async () => {
@@ -96,5 +103,103 @@ describe('setup secret', () => {
         await secrets.revoke();
         expect(store.current()).toBeNull();
         expect(await secrets.check(secret)).toBe('invalid');
+    });
+});
+
+describe('owner setup handoff slot (ADR 0023)', () => {
+    async function withHandoff(options: { readonly on?: boolean } = {}) {
+        const base = setup();
+        const handoffStore = createInMemorySetupSecretStore();
+        const secrets = createSetupSecrets({
+            store: base.store,
+            random: createSeededRandom(9),
+            clock: base.clock,
+            hasOwner: () => base.owner.set,
+            ...(options.on === false ? {} : { handoff: handoffStore }),
+        });
+        const tab = newOwnerSetupSecret(createSeededRandom(3));
+        const commitment = await ownerSetupCommitment(tab);
+        return { ...base, secrets, handoffStore, tab, commitment };
+    }
+
+    it('keeps only the commitment as a second slot for 30 minutes from registration', async () => {
+        const { clock, secrets, handoffStore, tab, commitment } = await withHandoff();
+        const registeredAtMs = clock.nowMs() - 1000;
+        expect(await secrets.acceptHandoff(commitment, registeredAtMs)).toBe('accepted');
+        expect(handoffStore.current()).toEqual({
+            sha256: Buffer.from(ownerSetupCommitmentDigest(commitment)).toString('hex'),
+            expiresAtMs: registeredAtMs + OWNER_HANDOFF_LIFETIME_MS,
+        });
+        expect(JSON.stringify(handoffStore.current())).not.toContain(tab);
+        expect(secrets.handoffLive()).toBe(true);
+        expect(await secrets.check(tab)).toBe('valid');
+        clock.advance(OWNER_HANDOFF_LIFETIME_MS - 1001);
+        expect(await secrets.check(tab)).toBe('valid');
+        clock.advance(1);
+        expect(secrets.handoffLive()).toBe(false);
+        expect(await secrets.check(tab)).toBe('invalid');
+        expect(await secrets.consume(tab)).toEqual({ kind: 'invalid' });
+    });
+
+    it('answers a wrong secret and the commitment itself like any wrong setup secret', async () => {
+        const { clock, secrets, commitment } = await withHandoff();
+        await secrets.acceptHandoff(commitment, clock.nowMs());
+        expect(await secrets.check(newOwnerSetupSecret(createSeededRandom(4)))).toBe('invalid');
+        expect(await secrets.check(commitment)).toBe('invalid');
+    });
+
+    it('spends both slots with the first owner, whichever secret set it up', async () => {
+        for (const via of ['setup-link', 'owner-handoff'] as const) {
+            const { clock, store, secrets, handoffStore, tab, commitment, issue } = await withHandoff();
+            await secrets.acceptHandoff(commitment, clock.nowMs());
+            const own = await issue();
+            expect(await secrets.consume(via === 'setup-link' ? own : tab)).toEqual({ kind: 'valid', slot: via });
+            expect(store.current()).toBeNull();
+            expect(handoffStore.current()).toBeNull();
+            expect(secrets.handoffLive()).toBe(false);
+            expect(await secrets.check(via === 'setup-link' ? tab : own)).toBe('invalid');
+        }
+    });
+
+    it('is ignored by an engine that has an owner, and dead once one appears', async () => {
+        const { clock, owner, secrets, handoffStore, tab, commitment } = await withHandoff();
+        owner.set = true;
+        expect(await secrets.acceptHandoff(commitment, clock.nowMs())).toBe('owner-exists');
+        expect(handoffStore.current()).toBeNull();
+        owner.set = false;
+        await secrets.acceptHandoff(commitment, clock.nowMs());
+        owner.set = true;
+        expect(secrets.handoffLive()).toBe(false);
+        expect(await secrets.check(tab)).toBe('owner-exists');
+        await secrets.loadHandoff();
+        expect(handoffStore.current()).toBeNull();
+    });
+
+    it('is ignored with handoff off', async () => {
+        const { clock, secrets, tab, commitment } = await withHandoff({ on: false });
+        expect(await secrets.acceptHandoff(commitment, clock.nowMs())).toBe('off');
+        expect(secrets.handoffLive()).toBe(false);
+        expect(await secrets.check(tab)).toBe('invalid');
+        await secrets.loadHandoff();
+        expect(secrets.handoffLive()).toBe(false);
+    });
+
+    it('survives a new setup link, but not owner --reset', async () => {
+        const { clock, secrets, handoffStore, tab, commitment, issue } = await withHandoff();
+        await secrets.acceptHandoff(commitment, clock.nowMs());
+        await issue();
+        expect(await secrets.check(tab)).toBe('valid');
+        await secrets.revoke();
+        expect(handoffStore.current()).toBeNull();
+        expect(await secrets.check(tab)).toBe('invalid');
+    });
+
+    it('picks up a slot another process stored', async () => {
+        const { clock, secrets, handoffStore, tab, commitment } = await withHandoff();
+        await handoffStore.save(handoffSlot(commitment, clock.nowMs()));
+        expect(secrets.handoffLive()).toBe(false);
+        await secrets.loadHandoff();
+        expect(secrets.handoffLive()).toBe(true);
+        expect(await secrets.check(tab)).toBe('valid');
     });
 });

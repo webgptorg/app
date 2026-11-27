@@ -22,6 +22,8 @@ export interface EngineEventsDeps {
     readonly clearTimeout?: (handle: unknown) => void;
     /** Where a subscriber's exception goes; by default it surfaces as an uncaught error. */
     readonly reportError?: (error: unknown) => void;
+    /** The session ended. Nothing else may be asking the engine, so the stream must say it, or the app goes quiet. */
+    readonly onUnauthenticated?: () => void;
 }
 
 const MAX_RETRY_DELAY_MS = 30_000;
@@ -93,6 +95,7 @@ export function createEngineEvents(deps: EngineEventsDeps): EngineEvents {
             if (response.kind === 'problem') {
                 if (isFinalRefusal(response.problem.status)) {
                     refused = true;
+                    if (response.problem.code === 'unauthenticated') deps.onUnauthenticated?.();
                     return;
                 }
                 retryLater();

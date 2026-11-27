@@ -1,4 +1,5 @@
 import { CircleAlert } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 import { useUiMessages } from '../../i18n/ui-provider';
 import { cx } from '../../internal/cx';
@@ -14,14 +15,30 @@ export interface ErrorStateProps {
     readonly retrying?: boolean;
     /** Technical detail (a problem code, a correlation ID) behind a disclosure, never the first thing users read. */
     readonly details?: string;
+    /** Replaces the alert icon, e.g. the brand robot on a full-page error. Decorative. */
+    readonly illustration?: ReactNode;
     readonly className?: string;
 }
 
-export function ErrorState({ title, message, onRetry, retrying = false, details, className }: ErrorStateProps) {
+export function ErrorState({
+    title,
+    message,
+    onRetry,
+    retrying = false,
+    details,
+    illustration,
+    className,
+}: ErrorStateProps) {
     const messages = useUiMessages();
     return (
         <div role="alert" className={cx('flex flex-col items-center gap-3 px-6 py-10 text-center', className)}>
-            <CircleAlert aria-hidden="true" className="size-8 text-(--error-state-icon)" />
+            {illustration === undefined ? (
+                <CircleAlert aria-hidden="true" className="size-8 text-(--error-state-icon)" />
+            ) : (
+                <span aria-hidden="true" className="inline-flex">
+                    {illustration}
+                </span>
+            )}
             <p className="font-display text-lg font-semibold text-(--error-state-title)">
                 {title ?? messages.errorTitle()}
             </p>

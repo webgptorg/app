@@ -37,16 +37,61 @@ export const PROBLEM_STATUS = {
     'file-infected': 409,
     /** The answer is to an onboarding prompt the engine has moved past; read the state again. */
     'onboarding-prompt-stale': 409,
+    /** "Skip for now" while the engine has no project yet (`canDefer` false); answers stay saved. */
+    'onboarding-not-deferrable': 409,
+    /** Someone else controls this browser tab; one controller at a time. */
+    'browser-tab-controlled': 409,
+    /** `MAX_BROWSER_PARTICIPANTS` − 1 watchers are open on this tab; the last place is kept for a controller. */
+    'browser-tab-full': 409,
+    /** Another sign-in session is open on the engine; one at a time. */
+    'browser-busy': 409,
+    'browser-session-ended': 409,
+    /** The live session's channel is already attached; one attachment per participant. */
+    'live-channel-attached': 409,
+    /** The help request was already resolved; its `resolution` says how. */
+    'browser-help-resolved': 409,
+    /** Speech was asked of a message that is still being written, failed, was cancelled or has no text. */
+    'message-not-speakable': 409,
+    /** The AI tool is not installed on the engine; it is installed on the host or through setup, not here. */
+    'ai-tool-not-installed': 409,
+    /** The answer is to a sign-in prompt the engine has moved past; read the sign-in again. */
+    'ai-tool-sign-in-stale': 409,
+    /** `updates@1`: under the `manual` policy nothing is scheduled, so there is no check to run early. */
+    'update-policy-manual': 409,
     'payload-too-large': 413,
     'unsupported-media-type': 415,
     'invalid-book': 422,
     /** The code typed to approve an access request is not the one shown to the person asking. */
     'access-code-mismatch': 422,
     'invalid-schedule': 422,
+    /** The engine's own origin, or one outside its allowlist for remote sign-in. */
+    'browser-origin-refused': 422,
+    /** The decoded clip is longer than `MAX_VOICE_CLIP_MS`. */
+    'voice-clip-too-long': 422,
+    /** The message's text is longer than `MAX_SPEECH_TEXT_LENGTH`. */
+    'speech-too-long': 422,
+    /** The AI tool cannot be signed in this way from the browser; its `signInMethods` lists the ways it can. */
+    'ai-tool-method-unsupported': 422,
     'rate-limited': 429,
+    /** `updates@1`: a check-now ran less than `UPDATE_CHECK_MIN_INTERVAL_MS` ago; the last result is still fresh. */
+    'update-check-too-soon': 429,
     'internal-error': 500,
     'reply-failed': 502,
+    /** The engine or its provider could not transcribe this clip (unreadable audio included); recording again may help. */
+    'transcription-failed': 502,
+    /** The engine or its provider could not make the audio; asking again later may help. */
+    'speech-failed': 502,
     unavailable: 503,
+    /**
+     * The capability is advertised, but no speech provider is ready right now (a harness signed out, a provider down).
+     * Runtime, not a missing capability: the UI keeps the control and says voice is unavailable for now.
+     */
+    'voice-unavailable': 503,
+    /**
+     * Work could not start because an AI tool it runs on needs signing in again (an expired or revoked sign-in, a
+     * removed key). The problem's `aiToolId` names the tool, so the UI can offer "Sign in again" (`ai-tools@1`).
+     */
+    'ai-tool-sign-in-required': 503,
 } as const satisfies Record<string, number>;
 
 export type ProblemCode = keyof typeof PROBLEM_STATUS;

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_OFF_PLAN, TEST_PLANS } from '../testing/billing-fixtures';
 import { TEST_INSTALL_VARS } from '../testing/install-fixtures';
+import { syntheticLicenseSecret } from '../testing/licensing-fixtures';
 import { stripeEvent, stripeSignatureHeader } from '../testing/stripe-signature';
 import { DEV_RATE_LIMIT_HMAC_KEY } from './config';
 import { createDashboard } from './create-dashboard';
@@ -254,6 +255,40 @@ describe('createDashboard adapter selection', () => {
             const signed = await stripeSignatureHeader(payload, WEBHOOK_SECRET, Date.now());
             const response = await dashboard.fetch(webhook(signed));
             expect([response.status, await response.json()]).toMatchObject([404, { code: 'not-found' }]);
+            for (const path of ['/api/billing', '/api/billing/checkout', '/api/billing/portal']) {
+                const method = path === '/api/billing' ? 'GET' : 'POST';
+                const answer = await dashboard.fetch(
+                    new Request(`https://app.ptbk.test${path}`, {
+                        method,
+                        headers: { 'Sec-Fetch-Site': 'same-origin' },
+                    }),
+                );
+                expect(answer.status, path).toBe(404);
+            }
+            expect(fetchSpy).not.toHaveBeenCalled();
+        });
+
+        it('mounts no Stripe route with billing website, and serves nothing without the website credential', async () => {
+            const fetchSpy = vi.spyOn(globalThis, 'fetch');
+            const { bindings } = productionBindings();
+            const withoutStripe = Object.fromEntries(
+                Object.entries(stagingVars).filter(([name]) => !name.startsWith('STRIPE_') && name !== 'BILLING_PLANS'),
+            );
+            const websiteVars = {
+                ...withoutStripe,
+                ...bindings,
+                ADAPTERS: { ...stagingVars.ADAPTERS, billing: 'website' },
+                WEBSITE_HANDOFF_URL: 'https://www.ptbk.io/cs/app/pripojit',
+            };
+            const unconfigured = createDashboard(env(websiteVars), { viteDevServer: false });
+            expect((await unconfigured.fetch(new Request('https://app.ptbk.test/v1/health'))).status).toBe(503);
+            const dashboard = createDashboard(
+                env({ ...websiteVars, PROMPTBOOK_APP_LICENSE_SECRET: syntheticLicenseSecret() }),
+                { viteDevServer: false },
+            );
+            expect((await dashboard.fetch(new Request('https://app.ptbk.test/v1/health'))).status).toBe(200);
+            const signed = await stripeSignatureHeader(payload, WEBHOOK_SECRET, Date.now());
+            expect((await dashboard.fetch(webhook(signed))).status).toBe(404);
             for (const path of ['/api/billing', '/api/billing/checkout', '/api/billing/portal']) {
                 const method = path === '/api/billing' ? 'GET' : 'POST';
                 const answer = await dashboard.fetch(

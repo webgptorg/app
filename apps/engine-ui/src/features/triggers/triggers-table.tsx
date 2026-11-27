@@ -1,6 +1,7 @@
 import { AgentId, TRIGGER_KINDS, TRIGGER_LIFECYCLES } from '@ptbk/engine-api';
 import type { ReadAgent, ReadTrigger } from '@ptbk/engine-api';
 import {
+    BrandRobot,
     Button,
     createDataTableColumnHelper,
     DataTable,
@@ -88,7 +89,7 @@ function useTriggerColumns(acrossAgents: boolean, fromAgent: boolean): DataTable
                 header: m.triggers_column_name(),
                 enableSorting: false,
                 enableHiding: false,
-                meta: { priority: 0, icon: <Zap className={ICON} /> },
+                meta: { priority: 0, grow: true, icon: <Zap className={ICON} /> },
                 cell: ({ row }) => <TriggerTitle trigger={row.original} fromAgent={fromAgent} />,
             }),
             column.accessor('lifecycle', {
@@ -295,6 +296,7 @@ export function TriggersTable({ search, onSearchChange, agentId }: TriggersTable
                           }
                         : {
                               icon: <CalendarClock />,
+                              ...(scope === 'agent' ? {} : { illustration: <BrandRobot pose="thinking" /> }),
                               title: m.triggers_empty_title(),
                               description: scope === 'agent' ? m.triggers_empty_agent_body() : m.triggers_empty_body(),
                           }
@@ -356,7 +358,13 @@ function triggerFilterFields({
                           value: agent.id,
                           label: agent.name,
                           icon: (
-                              <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />
+                              <AgentAvatar
+                                  name={agent.name}
+                                  agentKey={agent.id}
+                                  profile={agent.profile}
+                                  origin={agent.origin}
+                                  size="2xs"
+                              />
                           ),
                       })),
                       value: readOneParam(search.agentId),

@@ -1,6 +1,6 @@
 import { SemVer, UPDATE_POLICIES } from '@ptbk/engine-api';
 import type { ReadSecurityOverview, UpdatePolicy } from '@ptbk/engine-api';
-import { Banner, Button, Combobox, ErrorState, Input, Section, Skeleton, StatusPill, useLocale } from '@ptbk/ui';
+import { Button, CodeText, Combobox, ErrorState, Input, Section, Skeleton, StatusPill, useLocale } from '@ptbk/ui';
 import type { StatusTone } from '@ptbk/ui';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -13,8 +13,8 @@ import { m } from '../../paraglide/messages';
 import { securityKeys } from '../security/security-keys';
 import { updateStatusLabel } from '../security/security-labels';
 import { usePermissions } from '../session/use-permissions';
-import { useResumedStepUp } from '../step-up/step-up';
 import { PropertyList, PropertyRow } from './property-row';
+import { UiUpdateRows } from './ui-updates';
 
 type PolicyName = UpdatePolicy['policy'];
 
@@ -62,18 +62,14 @@ function parsePolicyChange(data: unknown): PolicyChange | undefined {
 
 interface PolicyFormProps {
     readonly current: ReadSecurityOverview['update'];
-    /** The change the member asked for before confirming it was them; shown again, never saved without a click. */
-    readonly resumed: PolicyChange | undefined;
     /** What a new pin starts from: pinning usually means "stay where you are". */
     readonly runningVersion: string;
 }
 
-function PolicyForm({ current, resumed, runningVersion }: PolicyFormProps) {
+function PolicyForm({ current, runningVersion }: PolicyFormProps) {
     const engineApi = useEngineApi();
-    const [policy, setPolicy] = useState<PolicyName>(resumed?.policy ?? current.policy);
-    const [version, setVersion] = useState(
-        resumed?.policy === 'pinned' ? resumed.pinnedVersion : (current.pinnedVersion ?? runningVersion),
-    );
+    const [policy, setPolicy] = useState<PolicyName>(current.policy);
+    const [version, setVersion] = useState(current.pinnedVersion ?? runningVersion);
     const [versionError, setVersionError] = useState<string | undefined>(undefined);
     const save = useStepUpAwareMutation({
         mutationFn: async (next: PolicyChange) =>
@@ -88,7 +84,8 @@ function PolicyForm({ current, resumed, runningVersion }: PolicyFormProps) {
         invalidates: [securityKeys.overview()],
         successMessage: (saved) => m.security_policy_saved({ policy: policyText(saved.policy, saved.pinnedVersion) }),
         errorMessage: () => m.security_policy_failed(),
-        resumeAs: { action: POLICY_ACTION, data: (next) => next },
+        // The policy is the whole input and no secret: back from a full-page step-up, it is saved without a click.
+        resumeAs: { action: POLICY_ACTION, data: (next) => next, rerun: parsePolicyChange },
     });
     const unchanged = policy === current.policy && (policy !== 'pinned' || version === current.pinnedVersion);
 
@@ -104,11 +101,6 @@ function PolicyForm({ current, resumed, runningVersion }: PolicyFormProps) {
 
     return (
         <form noValidate onSubmit={submit} className="flex flex-col divide-y divide-hairline">
-            {resumed === undefined || unchanged ? null : (
-                <div className="py-3">
-                    <Banner tone="info">{m.step_up_resumed()}</Banner>
-                </div>
-            )}
             <PropertyRow label={m.security_policy_label()} hint={POLICY_HINT[policy]()}>
                 {({ labelId, hintId }) => (
                     <Combobox
@@ -195,6 +187,12 @@ function UpdateFacts({ overview: { engine, update } }: { readonly overview: Read
                     </time>
                 </PropertyRow>
             )}
+            {/* Shown only with a newer version to install: the command is the engine's, copied and run by hand. */}
+            {update.command === null || update.availableVersion === null ? null : (
+                <PropertyRow label={m.updates_engine_command()} hint={m.updates_engine_command_hint()}>
+                    <CodeText value={update.command} copyable copyLabel={m.updates_copy_command()} />
+                </PropertyRow>
+            )}
         </>
     );
 }
@@ -205,7 +203,6 @@ function UpdateFacts({ overview: { engine, update } }: { readonly overview: Read
  */
 export function UpdatesSection({ query }: { readonly query: UseQueryResult<ReadSecurityOverview> }) {
     const { can } = usePermissions();
-    const resumed = useResumedStepUp(POLICY_ACTION, parsePolicyChange);
     let content;
     if (query.isError) {
         content = (
@@ -225,11 +222,11 @@ export function UpdatesSection({ query }: { readonly query: UseQueryResult<ReadS
         content = (
             <PropertyList>
                 <UpdateFacts overview={overview} />
+                <UiUpdateRows overview={overview} />
                 {can('settings.manage') ? (
                     <PolicyForm
-                        key={`${update.policy}:${update.pinnedVersion ?? ''}:${resumed === undefined ? '' : 'resumed'}`}
+                        key={`${update.policy}:${update.pinnedVersion ?? ''}`}
                         current={update}
-                        resumed={resumed}
                         runningVersion={overview.engine.version}
                     />
                 ) : (

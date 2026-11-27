@@ -85,6 +85,20 @@ describe('thread view', { timeout: TIMEOUT_MS }, () => {
         await expectNoAxeViolations(document.body);
     });
 
+    it("draws each author with the agent's illustration from its profile, not an initial", async () => {
+        const { engine } = ownChatEngine();
+        await renderThread(engine);
+        const author = within(history())
+            .getAllByText('Ada')
+            .map((name) => name.closest('header'))
+            .find((header) => header !== null);
+        // Ada's name says nothing; her role ("Research") makes her the analyst once her profile is known.
+        await waitFor(() => {
+            expect(author?.querySelector('svg[data-illustration="analyst"]')).not.toBeNull();
+        });
+        expect(author?.querySelector('[data-initial]')).toBeNull();
+    });
+
     it('follows the reply that answers a sent message, in order, as plain text until it completes, and announces it once', async () => {
         const { engine, control } = ownChatEngine();
         const app = await renderThread(engine);

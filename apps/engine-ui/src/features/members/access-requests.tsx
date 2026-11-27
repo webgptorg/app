@@ -9,7 +9,6 @@ import {
     Dialog,
     ErrorState,
     Field,
-    Input,
     RelativeTime,
     Section,
     STATUS_TINT_CLASSES,
@@ -17,13 +16,14 @@ import {
 import type { MenuEntry } from '@ptbk/ui';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { UserRoundCheck, UserX } from 'lucide-react';
-import { useId, useState } from 'react';
-import type { SyntheticEvent } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import type { ReactNode, SyntheticEvent } from 'react';
 
 import { cx } from '../../app/cx';
 import { m } from '../../paraglide/messages';
 import { roleLabel } from '../shell/role-label';
 import { useResumedStepUp } from '../step-up/step-up';
+import { AccessCodeInput } from './access-code-input';
 import { RoleField } from './member-dialogs';
 import { APPROVE_ACCESS_ACTION } from './use-member-mutations';
 import type { MemberMutations } from './use-member-mutations';
@@ -51,13 +51,23 @@ interface ApproveDialogProps {
     readonly onClose: () => void;
 }
 
-/** The code is what makes approving safe: the dashboard's name and email are only hints, the code ties the request to the person. */
+function mismatchMessage(name: string, attemptsRemaining: number | undefined): string {
+    return attemptsRemaining === undefined
+        ? m.access_code_mismatch({ name })
+        : m.access_code_mismatch_left({ name, count: attemptsRemaining });
+}
+
+/**
+ * The code is what makes approving safe: the dashboard's name and email are only hints, the code ties the request to
+ * the person. Role first, then the code: the sixth digit submits, and the engine may then ask for a fresh passkey.
+ */
 function ApproveDialog({ request, gone, initialRole, resumed, mutations, onClose }: ApproveDialogProps) {
     const formId = useId();
     const [code, setCode] = useState('');
     const [role, setRole] = useState<Role>(initialRole);
     const [error, setError] = useState<string | undefined>(undefined);
     const [mismatched, setMismatched] = useState(false);
+    const codeInput = useRef<HTMLInputElement>(null);
     if (gone) {
         return (
             <Dialog
@@ -79,11 +89,11 @@ function ApproveDialog({ request, gone, initialRole, resumed, mutations, onClose
             </Dialog>
         );
     }
-    const submit = (event: SyntheticEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        const typed = code.replace(/\s/g, '');
+    const approve = (typed: string) => {
+        if (mutations.approveAccess.isPending) return;
         if (!ACCESS_CODE_PATTERN.test(typed)) {
             setError(m.access_code_invalid());
+            codeInput.current?.focus();
             return;
         }
         setError(undefined);
@@ -91,15 +101,21 @@ function ApproveDialog({ request, gone, initialRole, resumed, mutations, onClose
             { request, code: typed, role },
             {
                 onSuccess: (outcome) => {
-                    if (outcome === 'approved') {
+                    if (outcome.kind === 'approved') {
                         onClose();
                         return;
                     }
                     setMismatched(true);
-                    setError(m.access_code_mismatch({ name: request.displayName }));
+                    setCode('');
+                    setError(mismatchMessage(request.displayName, outcome.attemptsRemaining));
+                    codeInput.current?.focus();
                 },
             },
         );
+    };
+    const submit = (event: SyntheticEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        approve(code);
     };
     return (
         <Dialog
@@ -107,6 +123,7 @@ function ApproveDialog({ request, gone, initialRole, resumed, mutations, onClose
             onClose={onClose}
             title={m.access_approve_title({ name: request.displayName })}
             description={m.access_approve_body({ name: request.displayName })}
+            initialFocusRef={codeInput}
             footer={
                 <>
                     <Button variant="ghost" onClick={onClose}>
@@ -118,26 +135,27 @@ function ApproveDialog({ request, gone, initialRole, resumed, mutations, onClose
                 </>
             }
         >
-            <form id={formId} noValidate onSubmit={submit} className="flex flex-col gap-4">
-                {resumed ? <Banner tone="info">{m.step_up_resumed()}</Banner> : null}
+            <form id={formId} noValidate onSubmit={submit} className="flex flex-col gap-5">
+                {resumed ? <Banner tone="info">{m.access_step_up_resumed()}</Banner> : null}
+                {/* From the dashboard's ticket: untrusted text, rendered as text and labelled as a hint. */}
+                <p className="text-sm break-words text-text-muted">
+                    {m.access_reported_by_organization({ email: request.email })}
+                </p>
+                <RoleField value={role} onChange={setRole} />
                 <Field label={m.access_code_label()} hint={m.access_code_hint()} error={error} required>
                     {(control) => (
-                        <Input
+                        <AccessCodeInput
                             {...control}
+                            ref={codeInput}
                             value={code}
-                            inputMode="numeric"
-                            autoComplete="off"
-                            spellCheck={false}
-                            maxLength={7}
-                            // Read out digit by digit and compared by eye: large, spaced and centred, like a sign-in code.
-                            className="h-14 w-48 text-center font-mono text-2xl tracking-[0.35em] tabular-nums"
-                            onChange={(event) => {
-                                setCode(event.target.value);
+                            onChange={(next) => {
+                                setCode(next);
+                                if (error !== undefined && next !== '') setError(undefined);
                             }}
+                            onComplete={approve}
                         />
                     )}
                 </Field>
-                <RoleField value={role} onChange={setRole} />
             </form>
         </Dialog>
     );
@@ -205,6 +223,10 @@ export interface AccessRequestsProps {
     readonly query: UseQueryResult<{ readonly items: readonly AccessRequest[] }>;
     readonly canManage: boolean;
     readonly mutations: MemberMutations;
+    /** `?request=<id>` from the approver's email or Home: that request's dialog opens on arrival. */
+    readonly linkedRequestId?: string | undefined;
+    /** The linked dialog was closed, so the page can drop `?request` from the URL. */
+    readonly onLinkClosed?: () => void;
 }
 
 interface Approving {
@@ -213,27 +235,69 @@ interface Approving {
     readonly resumed: boolean;
 }
 
+function LinkGoneDialog({ onClose }: { readonly onClose: () => void }) {
+    return (
+        <Dialog
+            open
+            onClose={onClose}
+            title={m.access_link_gone_title()}
+            description={m.access_link_gone_body()}
+            footer={
+                <Button variant="secondary" onClick={onClose}>
+                    {m.ui_close()}
+                </Button>
+            }
+        >
+            {null}
+        </Dialog>
+    );
+}
+
 /**
  * People the organization invited, waiting for someone here to let them in (`access-requests@1`). Nothing shows while
- * none wait. Coming back from step-up reopens the approval the member had started, without the code.
+ * none wait. Coming back from step-up reopens the approval the member had started, without the code; a link with
+ * `?request=<id>` opens that request's dialog, which still waits for the code, so the link alone changes nothing.
  */
-export function AccessRequests({ query, canManage, mutations }: AccessRequestsProps) {
+export function AccessRequests({ query, canManage, mutations, linkedRequestId, onLinkClosed }: AccessRequestsProps) {
     const [chosen, setChosen] = useState<Approving | null>(null);
     const [resumeDismissed, setResumeDismissed] = useState(false);
+    const [dismissedLink, setDismissedLink] = useState<string | undefined>(undefined);
+    const [opened, setOpened] = useState<string | undefined>(undefined);
     const resumed = useResumedStepUp(APPROVE_ACCESS_ACTION, parseResumedApproval);
     const requests = query.data?.items;
     const resumedRequest =
         resumed === undefined || resumeDismissed || !canManage
             ? undefined
             : requests?.find((candidate) => candidate.id === resumed.accessRequestId);
-    const approving: Approving | null =
-        chosen ??
-        (resumedRequest === undefined || resumed === undefined
-            ? null
-            : { request: resumedRequest, role: resumed.role, resumed: true });
+    const linked = !canManage || linkedRequestId === dismissedLink ? undefined : linkedRequestId;
+    const linkedRequest = linked === undefined ? undefined : requests?.find((candidate) => candidate.id === linked);
+    // A list cached before the request arrived would call it gone: only a list fetched on this visit decides that.
+    const { isFetchedAfterMount, isFetching, refetch } = query;
+    const linkUnchecked = linked !== undefined && linkedRequest === undefined && !isFetchedAfterMount;
+    useEffect(() => {
+        if (linkUnchecked && !isFetching) void refetch();
+    }, [linkUnchecked, isFetching, refetch]);
+    const linkGone =
+        linked !== undefined && linkedRequest === undefined && requests !== undefined && isFetchedAfterMount;
+    let arriving: Approving | null = null;
+    if (resumedRequest !== undefined && resumed !== undefined)
+        arriving = { request: resumedRequest, role: resumed.role, resumed: true };
+    else if (linkedRequest !== undefined)
+        arriving = { request: linkedRequest, role: linkedRequest.proposedRole, resumed: false };
+    // Held as chosen, so the dialog stays open to say why once the request leaves the list (the last wrong code).
+    const arrivingKey = arriving === null ? undefined : `${String(arriving.resumed)}:${arriving.request.id}`;
+    if (chosen === null && arriving !== null && arrivingKey !== opened) {
+        setOpened(arrivingKey);
+        setChosen(arriving);
+    }
+    const approving = chosen ?? arriving;
     const close = () => {
         setChosen(null);
         setResumeDismissed(true);
+        if (linked !== undefined) {
+            setDismissedLink(linked);
+            onLinkClosed?.();
+        }
     };
     if (query.isError) {
         return (
@@ -248,18 +312,21 @@ export function AccessRequests({ query, canManage, mutations }: AccessRequestsPr
             </Section>
         );
     }
-    const dialog =
-        approving === null ? null : (
+    let dialog: ReactNode = null;
+    if (approving !== null) {
+        const { request } = approving;
+        dialog = (
             <ApproveDialog
-                key={approving.request.id}
-                request={approving.request}
-                gone={requests !== undefined && !requests.some(({ id }) => id === approving.request.id)}
+                key={request.id}
+                request={request}
+                gone={requests !== undefined && !requests.some(({ id }) => id === request.id)}
                 initialRole={approving.role}
                 resumed={approving.resumed}
                 mutations={mutations}
                 onClose={close}
             />
         );
+    } else if (linkGone) dialog = <LinkGoneDialog onClose={close} />;
     // The dialog sits beside the card, not in it, so it outlives the last row: a request that disappears while it is
     // open says why instead of vanishing.
     return (

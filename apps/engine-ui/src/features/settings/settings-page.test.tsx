@@ -4,11 +4,13 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { LOCALE_STORAGE_KEY } from '../../app/locale-storage';
+import { STEP_UP_INTENT_KEY } from '../step-up/step-up-intent';
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderWithProviders } from '../../testing/render-with-providers';
+import { createFakePopups } from '../../testing/fake-popups';
 import { createMemoryStorage } from '../../testing/memory-storage';
 import { createSecurityEngine } from '../../testing/security-engine';
-import { problemResponse } from '../../testing/test-engine-api';
+import { TEST_NOW, problemResponse } from '../../testing/test-engine-api';
 
 const TIMEOUT_MS = 20_000;
 
@@ -61,7 +63,7 @@ describe('settings: updates', { timeout: TIMEOUT_MS }, () => {
         const version = screen.getByRole('textbox', { name: /^Version/ });
         expect((version as HTMLInputElement).value).toBe('1.0.0');
         expect(version.getAttribute('placeholder')).toBeNull();
-        expect(screen.getByText('This engine runs 1.0.0 now.')).toBeDefined();
+        expect(screen.getByText('This project runs 1.0.0 now.')).toBeDefined();
 
         await user.clear(version);
         await user.type(version, 'nope');
@@ -95,25 +97,89 @@ describe('settings: updates', { timeout: TIMEOUT_MS }, () => {
         expect(overview.kind === 'ok' && overview.data.update.policy).toBe('auto');
     });
 
-    it('brings the change back after the passkey check, for one more click', async () => {
+    it('saves the change once the passkey is confirmed in the popup, without another click', async () => {
+        const engine = createSecurityEngine();
+        const save = vi
+            .spyOn(engine.client.settings, 'setUpdatePolicy')
+            .mockImplementationOnce(() => problemResponse('step-up-required'));
+        const popups = createFakePopups();
+        const { user } = renderWithProviders({ path: '/settings', engineApi: engine.client, popups });
+        await choose(user, 'Policy', 'Manual');
+        await user.click(screen.getByRole('button', { name: 'Save policy' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Confirm it is you' });
+        await user.click(within(dialog).getByRole('button', { name: 'Continue with passkey' }));
+        expect(within(dialog).getByText(/in the window that opened/)).toBeDefined();
+        popups.confirm();
+        expect(await screen.findByText(/^Update policy set to/)).toBeDefined();
+        expect(save).toHaveBeenCalledTimes(2);
+        expect(save.mock.calls[1]?.[0]).toEqual({ policy: 'manual' });
+    });
+
+    it('saves the change by itself on return when the popup was blocked, once and only while fresh', async () => {
         const storage = createMemoryStorage();
-        const engine = createSecurityEngine({ stepUp: 'required' });
-        const first = renderWithProviders({ path: '/settings', engineApi: engine.client, storage });
-        await choose(first.user, 'Policy', 'Pinned to a version');
+        const engine = createSecurityEngine();
+        const save = vi
+            .spyOn(engine.client.settings, 'setUpdatePolicy')
+            .mockImplementationOnce(() => problemResponse('step-up-required'));
+        const first = renderWithProviders({
+            path: '/settings',
+            engineApi: engine.client,
+            storage,
+            popups: createFakePopups({ blocked: true }),
+        });
+        await choose(first.user, 'Policy', 'Manual');
         await first.user.click(screen.getByRole('button', { name: 'Save policy' }));
         const dialog = await screen.findByRole('dialog', { name: 'Confirm it is you' });
         await first.user.click(within(dialog).getByRole('button', { name: 'Continue with passkey' }));
         expect(first.location.assign).toHaveBeenCalledOnce();
         first.unmount();
 
+        const second = renderWithProviders({ path: '/settings', engineApi: engine.client, storage });
+        expect(await screen.findByText(/^Update policy set to/)).toBeDefined();
+        expect(save).toHaveBeenCalledTimes(2);
+        expect(save.mock.calls[1]?.[0]).toEqual({ policy: 'manual' });
+        second.unmount();
+
+        renderWithProviders({ path: '/settings', engineApi: engine.client, storage });
+        await screen.findByRole('button', { name: 'Save policy' });
+        expect(save).toHaveBeenCalledTimes(2);
+    });
+
+    it('drops a saved change older than two minutes instead of saving it', async () => {
+        const at = Date.now() - 3 * 60_000;
+        const storage = createMemoryStorage({
+            [STEP_UP_INTENT_KEY]: JSON.stringify({
+                action: 'settings.update-policy',
+                data: { policy: 'manual', pinnedVersion: '' },
+                auto: true,
+                path: '/settings',
+                at,
+            }),
+        });
+        const engine = createSecurityEngine();
         const save = vi.spyOn(engine.client.settings, 'setUpdatePolicy');
         renderWithProviders({ path: '/settings', engineApi: engine.client, storage });
-        expect(
-            await screen.findByText('You confirmed it is you. Check the change and save it once more.'),
-        ).toBeDefined();
-        expect(screen.getByRole('combobox', { name: 'Policy' }).textContent).toBe('Pinned to a version');
-        expect(screen.getByRole<HTMLInputElement>('textbox', { name: /^Version/ }).value).toBe('1.0.0');
+        await screen.findByRole('button', { name: 'Save policy' });
+        await waitFor(() => {
+            expect(storage.getItem(STEP_UP_INTENT_KEY)).toBe('');
+        });
         expect(save).not.toHaveBeenCalled();
+    });
+
+    it('says the passkey was not confirmed when the window is closed, and changes nothing', async () => {
+        const engine = createSecurityEngine({ stepUp: 'required' });
+        const save = vi.spyOn(engine.client.settings, 'setUpdatePolicy');
+        const popups = createFakePopups();
+        const { user } = renderWithProviders({ path: '/settings', engineApi: engine.client, popups });
+        await choose(user, 'Policy', 'Manual');
+        await user.click(screen.getByRole('button', { name: 'Save policy' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Confirm it is you' });
+        await user.click(within(dialog).getByRole('button', { name: 'Continue with passkey' }));
+        popups.opened[0]?.close();
+        expect(await within(dialog).findByText(/^It wasn't confirmed/, {}, { timeout: 3_000 })).toBeDefined();
+        await user.click(within(dialog).getByRole('button', { name: 'Try again' }));
+        expect(popups.open).toHaveBeenCalledTimes(2);
+        expect(save).toHaveBeenCalledOnce();
     });
 
     it('reports a refused change', async () => {
@@ -141,5 +207,75 @@ describe('settings: updates', { timeout: TIMEOUT_MS }, () => {
         await screen.findByRole('combobox', { name: 'Theme' });
         expect(screen.queryByRole('heading', { name: 'Updates' })).toBeNull();
         expect(get).not.toHaveBeenCalled();
+    });
+});
+
+describe('settings: app updates (updates@1)', { timeout: TIMEOUT_MS }, () => {
+    const later = new Date(TEST_NOW.getTime() + 3_600_000).toISOString();
+
+    it('runs the regular check early and says in plain words why a release waits', async () => {
+        const { user, engine, container } = renderSettings();
+        engine.controller.setUiRelease({ version: '1.1.0', eligibleAt: later });
+        const checkNow = await screen.findByRole('button', { name: 'Check now' });
+        expect(screen.getByText(/waits out its full delay/)).toBeDefined();
+        await user.click(checkNow);
+        const waiting = /Version 1\.1\.0 is verified and waits until .+ so anyone can inspect them first\./;
+        expect((await screen.findAllByText(waiting)).length).toBeGreaterThan(0);
+        // Waiting changes nothing: the app version row still shows the served 1.0.0, with no reload offered.
+        expect(within(updatesCard()).queryByRole('button', { name: 'Reload' })).toBeNull();
+        await expectNoAxeViolations(container);
+
+        await user.click(screen.getByRole('button', { name: 'Check now' }));
+        expect(await screen.findByText('A check ran a moment ago. Try again in a minute.')).toBeDefined();
+    });
+
+    it('says the store could not be reached, without alarm', async () => {
+        const { user, engine } = renderSettings();
+        engine.controller.failUiReleaseStore(true);
+        await user.click(await screen.findByRole('button', { name: 'Check now' }));
+        expect(
+            await screen.findByText('The release store could not be reached. The project tries again on its own.'),
+        ).toBeDefined();
+    });
+
+    it('offers no check under manual, and none without settings.manage or the capability', async () => {
+        const manual = renderSettings();
+        const { update } = manual.engine.controller.updateSecurity({});
+        manual.engine.controller.updateSecurity({ update: { ...update, policy: 'manual' } });
+        expect(await screen.findByText('Only when an owner approves a release on the server')).toBeDefined();
+        expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
+        manual.unmount();
+
+        renderSettings({ permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'settings.manage') });
+        expect(await screen.findByText('Next check')).toBeDefined();
+        expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
+    });
+
+    it('shows the command that updates the project on its server, and a reload once it serves a newer app', async () => {
+        const { engine } = renderSettings();
+        const overview = engine.controller.updateSecurity({});
+        engine.controller.updateSecurity({
+            update: {
+                ...overview.update,
+                status: 'available',
+                availableVersion: '1.1.0',
+                command: 'npm install --global ptbk@1.1.0',
+            },
+            ui: { ...overview.ui, version: '1.2.0' },
+        });
+        expect(await screen.findByText('npm install --global ptbk@1.1.0')).toBeDefined();
+        expect(screen.getByRole('button', { name: 'Copy update command' })).toBeDefined();
+        expect(screen.getByText(/can't update itself from the browser/)).toBeDefined();
+        expect(screen.getByText('The project now serves version 1.2.0. Reload this page to use it.')).toBeDefined();
+        expect(within(updatesCard()).getByRole('button', { name: 'Reload' })).toBeDefined();
+    });
+
+    it('offers a reload on every page once a check installed another app version', async () => {
+        const { engine } = renderSettings();
+        await screen.findByRole('button', { name: 'Check now' });
+        engine.controller.emit({ type: 'updates.changed', uiVersion: '1.0.0' });
+        engine.controller.emit({ type: 'updates.changed', uiVersion: '2.0.0' });
+        expect(await screen.findByText('A new version of the app is ready')).toBeDefined();
+        expect(screen.getByText(/Reload to use version 2\.0\.0\./)).toBeDefined();
     });
 });

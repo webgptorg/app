@@ -7,7 +7,10 @@ import {
     LinkCode,
     MAX_REGISTRY_HOSTNAMES,
     MAX_RELAYS,
+    OwnerHandoff,
+    OwnerSetupCommitment,
     RegistrationMode,
+    SetupState,
     Timestamp,
     UpdateState,
 } from '@ptbk/protocol';
@@ -24,9 +27,11 @@ import {
     quotaSchema,
 } from '../billing';
 import { engineLabelSchema } from '../engine-label';
+import { LINK_CODE_LIMITS } from '../link-code-limits';
 import { teamNameSchema } from '../team-name';
 import { environmentSchema } from '../environment';
 import { docsAnchorSchema, installPathIdSchema, installPathLabelKeySchema } from '../install-paths';
+import { installationOptionSchema } from '../engine-installation';
 import { defineRoute, NO_CONTENT, NO_INPUT } from './contract';
 import {
     authenticationOptionsSchema,
@@ -75,6 +80,8 @@ export const sessionViewSchema = z.strictObject({
     steppedUpUntil: timestampSchema.nullable(),
     /** False while the dashboard charges nobody (billing `off`): no billing screen, plan step or Checkout exists. */
     billingEnabled: z.boolean(),
+    /** True with billing `website` (ADR 0021): the website sells licences, and the billing screen becomes License. */
+    licensing: z.boolean(),
 });
 export type SessionView = z.infer<typeof sessionViewSchema>;
 
@@ -174,6 +181,8 @@ export const linkCodeViewSchema = z.strictObject({
         )
         .min(1)
         .max(installPathIdSchema.options.length),
+    /** Optional for legacy configurations; generated and disclosed only alongside the just-issued link code. */
+    installationOptions: z.array(installationOptionSchema).length(3).optional(),
     /** The public install guide; each path's `docsAnchor` is a heading in it. */
     installGuideUrl: z.url({ protocol: /^https$/ }).max(512),
     expiresAt: timestampSchema,
@@ -197,7 +206,7 @@ export type LinkEligibilityView = z.infer<typeof linkEligibilityViewSchema>;
 export const pendingLinkCodesViewSchema = z.strictObject({
     linkCodes: z
         .array(z.strictObject({ linkCodeId: idSchema, createdAt: timestampSchema, expiresAt: timestampSchema }))
-        .max(100),
+        .max(LINK_CODE_LIMITS.active),
 });
 export type PendingLinkCodesView = z.infer<typeof pendingLinkCodesViewSchema>;
 
@@ -237,12 +246,14 @@ const adminHostnameParams = z.strictObject({ engineId: EngineId, hostname: Hostn
 
 /**
  * `unknown`: the engine's status object did not answer in time; the rest of the list is unaffected. `owner-pending`: online,
- * but its heartbeat counts no member yet, so nobody has set up the owner's passkey on the engine.
+ * but its heartbeat counts no member yet, so nobody has set up the owner's passkey on the engine. `setup-pending`:
+ * online with an owner, but the engine reports its setup unfinished.
  */
 export const engineDisplayStatusSchema = z.enum([
     'suspended',
     'never-seen',
     'owner-pending',
+    'setup-pending',
     'online',
     'offline',
     'unknown',
@@ -266,6 +277,10 @@ export const heartbeatViewSchema = z.strictObject({
     update: UpdateState,
     agents: countSchema,
     members: countSchema,
+    /** Absent: the engine has no browser setup, or reported before it had one; read as set up. */
+    setup: SetupState.optional(),
+    /** `ready` while the pairing tab may open the engine's setup page (ADR 0023); absent otherwise. */
+    ownerHandoff: OwnerHandoff.optional(),
 });
 export type HeartbeatView = z.infer<typeof heartbeatViewSchema>;
 
@@ -329,12 +344,113 @@ const redirectSchema = z.strictObject({ url: z.url({ protocol: /^https?$/ }).max
 const ceremonyErrors = ['challenge-invalid', 'webauthn-failed'] as const;
 
 const SMALL_BODY_BYTES = 1024;
+/**
+ * The pairing tab's `SHA-256` of its owner setup secret (ADR 0023), never the secret. Optional, and so is the body:
+ * a request without one issues a code as before.
+ */
+const linkCodeInput = {
+    ...NO_INPUT,
+    body: z.strictObject({ ownerSetupCommitment: OwnerSetupCommitment.optional() }).optional(),
+    maxBodyBytes: SMALL_BODY_BYTES,
+} as const;
+
+const capacitySchema = z.number().int().nonnegative().nullable();
+
+const licenseCheckSchema = z.strictObject({
+    outcome: z.enum(['ok', 'warn', 'deny']),
+    reason: z.enum(['unlinked', 'missing', 'expired', 'over-limit']).nullable(),
+});
+export type LicenseCheckView = z.infer<typeof licenseCheckSchema>;
+
+/** ADR 0021's licence view: numbers, dates and the website's own plan name; never a price. */
+export const licenseViewSchema = z.strictObject({
+    /** The website account linked to the active organization, by whoever linked it. */
+    link: z.strictObject({ linkedAt: timestampSchema, linkedByEmail: z.string().nullable() }).nullable(),
+    /** `stale`: the website did not answer and this is the last snapshot; `unknown`: there is none. */
+    state: z.enum(['current', 'stale', 'unknown']),
+    /** Null while unknown; `trial`, `scheduled` and `expired` as the website and the grants say. */
+    status: z.enum(['active', 'trial', 'scheduled', 'expired', 'none']).nullable(),
+    /** The plan's name as the website writes it; plain text, never an entitlement. */
+    label: z.string().max(160).nullable(),
+    /** When the licence ends, ended or starts; null without an end date or a licence. */
+    term: z.strictObject({ kind: z.enum(['ends', 'ended', 'starts']), at: z.string() }).nullable(),
+    checkedAt: z.string().nullable(),
+    /** An https page on the website origin, which the server checked; the website's pricing page without a licence. */
+    manageUrl: z.string(),
+    grants: z.array(
+        z.strictObject({
+            id: z.string(),
+            validFrom: z.string(),
+            validUntil: z.string().nullable(),
+            active: z.boolean(),
+            /** Null is unlimited, zero is none. */
+            capabilities: z.strictObject({
+                engineProjects: capacitySchema,
+                specialists: capacitySchema,
+                controllingUsers: capacitySchema,
+                harnessInstances: capacitySchema,
+                browserProfiles: capacitySchema,
+                remoteControl: z.boolean(),
+            }),
+        }),
+    ),
+    coverage: z
+        .strictObject({
+            engines: z.strictObject({
+                used: z.number().int().nonnegative(),
+                covered: z.number().int().nonnegative(),
+                capacity: capacitySchema,
+            }),
+            people: z.strictObject({ used: z.number().int().nonnegative(), limit: capacitySchema }),
+        })
+        .nullable(),
+    /** Advisory: nothing is ever blocked by it. */
+    notice: z.enum(['unlinked', 'missing', 'expired', 'exceeded']).nullable(),
+    /** `LICENSE_ENFORCEMENT`: `advisory` warns at the check points, `enforce` may deny there. */
+    enforcement: z.enum(['advisory', 'enforce']),
+    /** How each check point would answer one more engine or person now. */
+    checks: z.strictObject({ engineLink: licenseCheckSchema, memberInvite: licenseCheckSchema }),
+});
+export type LicenseView = z.infer<typeof licenseViewSchema>;
+
+export const websitePendingViewSchema = z.strictObject({
+    /** The address the website verified; sign-up sends the App's own confirmation link to it. */
+    email: z.string(),
+    accountExists: z.boolean(),
+    expiresAt: timestampSchema,
+});
+export type WebsitePendingView = z.infer<typeof websitePendingViewSchema>;
+
+/** Why `/website-access` was reached without a pending link; the return route's only redirect parameter. */
+export const websiteAccessErrorSchema = z.enum(['expired', 'failed']);
+export type WebsiteAccessError = z.infer<typeof websiteAccessErrorSchema>;
+/**
+ * The website sends the browser back with its ticket, with an `error` slug when it could not issue one, or with nothing
+ * when the member cancelled there. Each shape is exact, so a ticket never rides along with an error.
+ */
+const websiteAccessReturnQuerySchema = z.union([
+    z.strictObject({ code: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }),
+    z.strictObject({ error: z.string().regex(/^[A-Za-z0-9_.-]{1,64}$/) }),
+    z.strictObject({}),
+]);
 /** Attestation objects with certificate chains run to a few kilobytes; base64url and JSON add a third. */
 const WEBAUTHN_BODY_BYTES = 64 * 1024;
 
 const emailInput = {
     ...NO_INPUT,
     body: z.strictObject({ email: emailSchema }),
+    maxBodyBytes: SMALL_BODY_BYTES,
+} as const;
+/**
+ * `context` says the request comes from an invitation (D-35): the email then speaks of joining, naming an organization
+ * only from a pending invitation the server finds for that address.
+ */
+const recoveryRequestInput = {
+    ...NO_INPUT,
+    body: z.strictObject({
+        email: emailSchema,
+        context: z.strictObject({ kind: z.literal('invite') }).optional(),
+    }),
     maxBodyBytes: SMALL_BODY_BYTES,
 } as const;
 const tokenInput = {
@@ -405,6 +521,16 @@ export const inviteViewSchema = z.strictObject({
 });
 export type InviteView = z.infer<typeof inviteViewSchema>;
 
+/** An invitation to the signed-in person's own address: the names the inviter chose, never its token. */
+export const inviteOfferViewSchema = z.strictObject({
+    inviteId: idSchema,
+    orgName: z.string().nullable(),
+    inviterEmail: z.string().nullable(),
+    teamNames: z.array(teamNameSchema),
+    expiresAt: timestampSchema,
+});
+export type InviteOfferView = z.infer<typeof inviteOfferViewSchema>;
+
 /** At most this many teams per invitation, and addresses per request. */
 export const MAX_INVITE_TEAMS = 50;
 export const MAX_INVITE_EMAILS = 20;
@@ -418,11 +544,18 @@ const teamNameInput = {
     body: z.strictObject({ name: teamNameSchema }),
     maxBodyBytes: SMALL_BODY_BYTES,
 } as const;
+/**
+ * The invitation token from the link's fragment; without it, the server uses the `__Host-` cookie the preview set, so a
+ * reload or another tab still finds the invitation (D-31).
+ */
 const inviteTokenInput = {
     ...NO_INPUT,
-    body: z.strictObject({ token: emailTokenSchema }),
+    body: z.strictObject({ token: emailTokenSchema.optional() }),
     maxBodyBytes: SMALL_BODY_BYTES,
 } as const;
+/** Where an accepted invitation put the person: its organization and the teams whose engines they may open next. */
+const joinedInviteSchema = z.strictObject({ orgId: idSchema, teamIds: z.array(idSchema) });
+const inviteJoinedSchema = z.strictObject({ session: sessionViewSchema, joined: joinedInviteSchema });
 
 /** The SPA's own API. Every `/api` endpoint is declared here and nowhere else. */
 export const apiRoutes = {
@@ -507,7 +640,7 @@ export const apiRoutes = {
         auth: 'public',
         permission: null,
         rateLimit: 'recovery-request-ip',
-        input: emailInput,
+        input: recoveryRequestInput,
         output: acceptedSchema,
         errorCodes: [],
     }),
@@ -788,9 +921,9 @@ export const apiRoutes = {
         auth: 'session',
         permission: 'engine.link',
         rateLimit: null,
-        input: NO_INPUT,
+        input: linkCodeInput,
         output: linkCodeViewSchema,
-        // `link-code-limit` (409): 5 unused codes at most, freed by cancelling one; `rate-limited` (429): 10 per hour.
+        // A full pending list returns 409. Exhausting the hourly issuance budget returns 429.
         errorCodes: ['not-entitled', 'engine-limit', 'link-code-limit'],
     }),
     /** The organization's codes still waiting for an engine, so an owner can see and cancel them. */
@@ -985,7 +1118,7 @@ export const apiRoutes = {
         auth: 'session',
         permission: 'engine.link',
         rateLimit: null,
-        input: { ...NO_INPUT, params: teamParams },
+        input: { ...linkCodeInput, params: teamParams },
         output: linkCodeViewSchema,
         errorCodes: ['not-entitled', 'engine-limit', 'link-code-limit', 'team-has-engine'],
     }),
@@ -1114,7 +1247,8 @@ export const apiRoutes = {
         output: z.strictObject({
             results: z.array(z.strictObject({ email: z.string(), outcome: z.enum(['invited', 'added']) })),
         }),
-        errorCodes: ['invalid-email', 'team-not-found'],
+        // `license-limit` (403): only with `LICENSE_ENFORCEMENT` `enforce`, which no environment sets yet.
+        errorCodes: ['invalid-email', 'team-not-found', 'license-limit'],
     }),
     resendInvite: defineRoute({
         method: 'POST',
@@ -1150,6 +1284,8 @@ export const apiRoutes = {
             teamNames: z.array(teamNameSchema),
             email: z.string(),
             expiresAt: timestampSchema,
+            /** Picks "Sign in and join" over "Join": only the link's holder learns it. */
+            hasAccount: z.boolean(),
         }),
         errorCodes: [],
     }),
@@ -1161,8 +1297,87 @@ export const apiRoutes = {
         permission: 'invite.accept',
         rateLimit: null,
         input: inviteTokenInput,
-        output: z.strictObject({ orgId: idSchema }),
+        output: joinedInviteSchema,
         errorCodes: ['invite-invalid', 'email-mismatch'],
+    }),
+    /**
+     * Pending invitations to the session's verified address, offered after any sign-in or sign-up (D-33). Limited per
+     * IP like the other invitation reads, though a session can only ever see its own.
+     */
+    listInviteOffers: defineRoute({
+        method: 'GET',
+        path: '/api/invites/offers',
+        auth: 'session',
+        permission: 'invite.accept',
+        rateLimit: 'public-read-ip',
+        input: NO_INPUT,
+        output: z.strictObject({ offers: z.array(inviteOfferViewSchema) }),
+        errorCodes: [],
+    }),
+    /**
+     * Accepts one of `listInviteOffers` without its token. Another address's invitation, or one no longer pending, is
+     * `invite-invalid` (404) alike, so IDs cannot be probed.
+     */
+    acceptInviteOffer: defineRoute({
+        method: 'POST',
+        path: '/api/invites/offers/:inviteId/accept',
+        auth: 'session',
+        permission: 'invite.accept',
+        rateLimit: 'verify-ip',
+        input: { ...NO_INPUT, params: inviteParams },
+        output: joinedInviteSchema,
+        errorCodes: ['invite-invalid'],
+    }),
+    /**
+     * One-step join for an address without an account (D-31): registration options bound to the invitation.
+     * `account-exists` (409) sends the page to "Sign in and join" instead.
+     */
+    inviteJoinOptions: defineRoute({
+        method: 'POST',
+        path: '/api/invites/join/options',
+        auth: 'public',
+        permission: null,
+        rateLimit: 'options-ip',
+        input: inviteTokenInput,
+        output: registrationOptionsResponse,
+        errorCodes: ['invite-invalid', 'account-exists'],
+    }),
+    /**
+     * Creates the account with the invitation's address, its passkey and a session, and accepts the invitation, in one
+     * transaction. The invitation link proves the address (emailed there, single use, 7 days), so no confirmation
+     * email follows.
+     */
+    inviteJoinVerify: defineRoute({
+        method: 'POST',
+        path: '/api/invites/join/verify',
+        auth: 'public',
+        permission: null,
+        rateLimit: 'verify-ip',
+        input: {
+            ...NO_INPUT,
+            body: z.strictObject({ token: emailTokenSchema.optional(), response: registrationResponseSchema }),
+            maxBodyBytes: WEBAUTHN_BODY_BYTES,
+        },
+        output: inviteJoinedSchema,
+        errorCodes: [...ceremonyErrors, 'invite-invalid', 'account-exists'],
+    }),
+    /**
+     * "Sign in and join": verifies an assertion made with `signinOptions`, accepts the invitation for that account and
+     * signs in to the invitation's organization. `email-mismatch` (403) signs nobody in.
+     */
+    inviteSigninVerify: defineRoute({
+        method: 'POST',
+        path: '/api/invites/signin/verify',
+        auth: 'public',
+        permission: null,
+        rateLimit: 'verify-ip',
+        input: {
+            ...NO_INPUT,
+            body: z.strictObject({ token: emailTokenSchema.optional(), response: authenticationResponseSchema }),
+            maxBodyBytes: WEBAUTHN_BODY_BYTES,
+        },
+        output: inviteJoinedSchema,
+        errorCodes: [...ceremonyErrors, 'invite-invalid', 'email-mismatch'],
     }),
 
     /**
@@ -1187,6 +1402,59 @@ export const apiRoutes = {
                 }),
             ),
         }),
+        errorCodes: [],
+    }),
+    // Website licensing (D-30, ADR 0021); mounted only with billing `website`.
+    websiteAccessStart: defineRoute({
+        method: 'GET',
+        path: '/api/website-access/start',
+        auth: 'public',
+        permission: null,
+        rateLimit: 'website-access-ip',
+        input: NO_INPUT,
+        output: NO_CONTENT,
+        responseType: 'redirect',
+        errorCodes: [],
+    }),
+    websiteAccessReturn: defineRoute({
+        method: 'GET',
+        path: '/api/website-access/return',
+        auth: 'public',
+        permission: null,
+        rateLimit: 'website-access-ip',
+        input: { ...NO_INPUT, query: websiteAccessReturnQuerySchema },
+        output: NO_CONTENT,
+        responseType: 'redirect',
+        errorCodes: [],
+    }),
+    websiteAccessPending: defineRoute({
+        method: 'GET',
+        path: '/api/website-access/pending',
+        auth: 'public',
+        permission: null,
+        rateLimit: 'website-access-ip',
+        input: NO_INPUT,
+        output: websitePendingViewSchema,
+        errorCodes: [],
+    }),
+    websiteAccessLink: defineRoute({
+        method: 'POST',
+        path: '/api/website-access/link',
+        auth: 'session',
+        permission: 'license.link',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: z.strictObject({ linked: z.literal(true) }),
+        errorCodes: ['pending-invalid', 'email-mismatch', 'website-link-conflict'],
+    }),
+    getLicense: defineRoute({
+        method: 'GET',
+        path: '/api/license',
+        auth: 'session',
+        permission: 'license.read',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: licenseViewSchema,
         errorCodes: [],
     }),
 } as const;

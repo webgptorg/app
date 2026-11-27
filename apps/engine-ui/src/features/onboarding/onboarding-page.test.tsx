@@ -1,18 +1,20 @@
 import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
-import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
+import { CHECK_MS, CREATE_MS, INSTALL_MS, createInMemoryEngine } from '@ptbk/engine-api/in-memory';
 import type { InMemoryEngineApiOptions } from '@ptbk/engine-api/in-memory';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderWithProviders } from '../../testing/render-with-providers';
+import { spoken } from '../../testing/spoken';
 import { TEST_NOW } from '../../testing/test-engine-api';
 
 const TIMEOUT_MS = 20_000;
 
 function pendingEngine(options: InMemoryEngineApiOptions = {}) {
-    return createInMemoryEngine({
-        clock: { now: () => TEST_NOW },
+    let now = TEST_NOW.getTime();
+    const engine = createInMemoryEngine({
+        clock: { now: () => new Date(now) },
         seed: {
             engine: { name: 'Test engine', hostname: 'engine.localhost', dashboardUrl: null, mode: 'local' },
             onboarding: 'pending',
@@ -21,9 +23,16 @@ function pendingEngine(options: InMemoryEngineApiOptions = {}) {
         capabilities: [KNOWN_CAPABILITIES.files, KNOWN_CAPABILITIES.onboarding],
         ...options,
     });
+    const advance = (ms: number) => {
+        now += ms;
+    };
+    return { ...engine, advance };
 }
 
 const continueButton = () => screen.getByRole('button', { name: 'Continue' });
+const timeline = () => within(screen.getByRole('list', { name: 'Setup steps' }));
+/** The robot guiding setup is decoration; its pose is the one thing about it worth checking. */
+const robotPose = () => document.querySelector('svg[data-pose]')?.getAttribute('data-pose');
 
 describe('onboarding', { timeout: TIMEOUT_MS }, () => {
     it('opens a new engine on its setup, and renders whatever the engine asks, with its progress', async () => {
@@ -33,17 +42,26 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
             expect(router.state.location.pathname).toBe('/onboarding');
         });
         expect(await screen.findByRole('heading', { level: 1, name: 'Your project' })).toBeDefined();
-        expect(screen.getByText('Step 1 of 4')).toBeDefined();
+        expect(timeline().getAllByRole('listitem')).toHaveLength(6);
+        expect(spoken(timeline().getByRole('listitem', { current: 'step' }))).toBe('Your project');
+        expect(screen.getByText(/Tell me a little about your project/)).toBeDefined();
+        expect(robotPose()).toBe('thinking');
         await expectNoAxeViolations(container);
 
         await user.type(screen.getByRole('textbox', { name: 'What are you working on?' }), 'Books for my bakery');
         await user.click(continueButton());
-        expect(await screen.findByRole('heading', { level: 1, name: 'AI tool' })).toBeDefined();
-        expect(screen.getByRole<HTMLInputElement>('radio', { name: /OpenAI Codex/ }).checked).toBe(true);
-        await user.click(screen.getByRole('radio', { name: /Claude Code/ }));
+        expect(await screen.findByRole('heading', { level: 1, name: 'AI tools' })).toBeDefined();
+        // The member's own answer took the form away; focus lands on the next step rather than on the page.
+        await waitFor(() => {
+            expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1 }));
+        });
+        expect(screen.getByRole<HTMLInputElement>('checkbox', { name: /OpenAI Codex/ }).checked).toBe(true);
+        await user.click(screen.getByRole('checkbox', { name: /OpenAI Codex/ }));
+        await user.click(screen.getByRole('checkbox', { name: /Claude Code/ }));
         await user.click(continueButton());
 
         expect(await screen.findByRole('heading', { level: 1, name: 'Sign in to Claude Code' })).toBeDefined();
+        expect(screen.getByText(/Sign in to your AI tool/)).toBeDefined();
         const link = screen.getByRole('link', { name: /Open the Claude Code sign-in page/ });
         expect(link.getAttribute('href')).toBe('https://claude.ai/oauth/authorize');
         expect(link.getAttribute('rel')).toBe('noopener noreferrer');
@@ -54,10 +72,35 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         await user.type(screen.getByRole('textbox', { name: 'Code from Claude Code' }), 'a1B2c3D4e5');
         await user.click(continueButton());
 
-        expect(await screen.findByRole('heading', { level: 1, name: 'Files' })).toBeDefined();
-        expect(screen.getByText('Step 4 of 4')).toBeDefined();
+        // The engine checks the tool, then creates the project; the page polls and lists its work meanwhile.
+        expect(await screen.findByText('Check Claude Code')).toBeDefined();
+        engine.advance(CHECK_MS);
+        expect(
+            await screen.findByRole('heading', { level: 1, name: 'Project name' }, { timeout: 5_000 }),
+        ).toBeDefined();
         await user.click(continueButton());
-        expect(await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Project folder' })).toBeDefined();
+        await user.click(continueButton());
+        expect(await screen.findByRole('heading', { level: 1, name: 'Create and start' })).toBeDefined();
+        // Each step this visit saw keeps the title it was last asked under; the engine's count stays the engine's.
+        expect(timeline().getAllByRole('listitem').map(spoken)).toEqual([
+            'Your project(done)',
+            'AI tools(done)',
+            'Sign in to Claude Code(done)',
+            'Project name(done)',
+            'Project folder(done)',
+            'Create and start',
+        ]);
+        expect(screen.getAllByRole('term').map((term) => term.textContent)).toContain('Folder');
+        await user.click(screen.getByRole('button', { name: 'Create and start' }));
+        const work = await screen.findByRole('list', { name: 'What the project is doing' });
+        expect(within(work).getByText(/^Create /)).toBeDefined();
+        engine.advance(CREATE_MS);
+        expect(
+            await screen.findByRole('heading', { level: 1, name: 'Your project is set up' }, { timeout: 5_000 }),
+        ).toBeDefined();
+        expect(screen.getByText('Done. Your agents can get to work.')).toBeDefined();
+        expect(robotPose()).toBe('finished');
         expect(screen.queryByRole('button', { name: 'Skip for now' })).toBeNull();
     });
 
@@ -66,7 +109,11 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         const { user } = renderWithProviders({ path: '/onboarding', engineApi: engine.client });
         await user.click(await screen.findByRole('button', { name: 'Continue' }));
         await user.click(await screen.findByRole('button', { name: 'Continue' }));
-        expect(await screen.findByRole('heading', { level: 1, name: 'Sign in to OpenAI Codex' })).toBeDefined();
+        expect(await screen.findByText('Install OpenAI Codex')).toBeDefined();
+        engine.advance(INSTALL_MS);
+        expect(
+            await screen.findByRole('heading', { level: 1, name: 'Sign in to OpenAI Codex' }, { timeout: 5_000 }),
+        ).toBeDefined();
         expect(screen.getByText('K7QF-3MRP')).toBeDefined();
         expect(screen.getByText('Waiting for you to finish signing in…')).toBeDefined();
 
@@ -98,7 +145,7 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
             expect(router.state.location.pathname).toBe('/agents/builtin-chatter/chat');
         });
         await router.navigate({ to: '/' });
-        const notice = await screen.findByText('Your engine is not set up yet');
+        const notice = await screen.findByText('Your project is not set up yet');
         const banner = notice.closest('[role]') ?? document.body;
         expect(
             within(banner as HTMLElement)
@@ -118,6 +165,6 @@ describe('onboarding', { timeout: TIMEOUT_MS }, () => {
         const { router } = renderWithProviders({ engineApi: engine.client });
         expect(await screen.findByRole('heading', { level: 1, name: /Good/ })).toBeDefined();
         expect(router.state.location.pathname).toBe('/');
-        expect(screen.queryByText('Your engine is not set up yet')).toBeNull();
+        expect(screen.queryByText('Your project is not set up yet')).toBeNull();
     });
 });

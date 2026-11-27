@@ -27,6 +27,11 @@ export interface StartupProgressDeps {
 export type SetupLinkShownBy = 'engine' | 'connect' | 'operator';
 
 export const NO_OWNER_LINE = `No owner yet. Run \`${ENGINE_COMMAND} setup-link\` on this host to get the setup link.`;
+/**
+ * Said when the owner came through the pairing tab rather than the printed link, so a claim by compromised dashboard
+ * code is never silent on the host (ADR 0023).
+ */
+export const HANDOFF_SETUP_LINE = `Owner set up from the dashboard tab that paired this engine. If that was not you, run \`${ENGINE_COMMAND} owner --reset\`.`;
 
 /** The engine's state as far as the owner's next step is concerned. */
 export interface OnboardingState {

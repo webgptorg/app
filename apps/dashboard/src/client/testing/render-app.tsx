@@ -13,7 +13,7 @@ import { App } from '../app';
 import { createFakePasskeys } from './fake-passkeys';
 import type { FakePasskeys } from './fake-passkeys';
 import { NOW } from './fixtures';
-import { createMemoryStorage } from './memory-storage';
+import { createMemorySessionStorage, createMemoryStorage } from './memory-storage';
 import { createScriptedApi, ok, problem } from './scripted-api';
 import type { ScriptedApi } from './scripted-api';
 
@@ -24,6 +24,8 @@ export interface RenderAppOptions {
     /** Called after the defaults are scripted, to add or override answers. */
     readonly script?: (api: ScriptedApi) => void;
     readonly storage?: PreferenceStorage;
+    /** The tab's `sessionStorage`; empty by default. */
+    readonly sessionStorage?: ReturnType<typeof createMemorySessionStorage>;
     /** Replaces the scripted API, e.g. with the real client over a fake `fetch`. */
     readonly apiClient?: ApiClient;
     /**
@@ -31,6 +33,8 @@ export interface RenderAppOptions {
      * for screens that change with time. The test installs them (`vi.useFakeTimers({ shouldAdvanceTime: true })`).
      */
     readonly fakeTimers?: { readonly advance: (ms: number) => unknown };
+    /** Scripts the authenticator before the first render, for ceremonies a screen starts on mount. */
+    readonly passkeys?: (passkeys: FakePasskeys) => void;
 }
 
 export interface RenderedApp extends RenderResult {
@@ -39,6 +43,7 @@ export interface RenderedApp extends RenderResult {
     readonly history: RouterHistory;
     readonly user: UserEvent;
     readonly storage: PreferenceStorage;
+    readonly sessionStorage: ReturnType<typeof createMemorySessionStorage>;
     /** URLs the app sent the browser to at the top level, in order. */
     readonly navigations: readonly string[];
 }
@@ -57,7 +62,9 @@ export function renderApp(options: RenderAppOptions = {}): RenderedApp {
     api.on(apiRoutes.listLinkCodes, ok({ linkCodes: [] }));
     options.script?.(api);
     const passkeys = createFakePasskeys();
+    options.passkeys?.(passkeys);
     const storage = options.storage ?? createMemoryStorage();
+    const sessionStorage = options.sessionStorage ?? createMemorySessionStorage();
     const history = createMemoryHistory({ initialEntries: [options.path ?? '/'] });
     const user =
         options.fakeTimers === undefined
@@ -69,6 +76,7 @@ export function renderApp(options: RenderAppOptions = {}): RenderedApp {
             apiClient={options.apiClient ?? api}
             browser={{
                 storage,
+                sessionStorage,
                 matchMedia: (query) => window.matchMedia(query),
                 passkeys,
                 now: options.fakeTimers === undefined ? () => NOW : () => Date.now(),
@@ -80,5 +88,5 @@ export function renderApp(options: RenderAppOptions = {}): RenderedApp {
             history={history}
         />,
     );
-    return { ...result, api, passkeys, history, user, storage, navigations };
+    return { ...result, api, passkeys, history, user, storage, sessionStorage, navigations };
 }

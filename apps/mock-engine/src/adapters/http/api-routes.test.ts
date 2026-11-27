@@ -33,9 +33,29 @@ describe('engine API routes', () => {
         const routes = createEngineApiRoutes({ core: () => core });
         const testChat = `${ENGINE_API_PREFIX}/agents/{agentId}/test-chat`;
         expect(routes.every((route) => route.auth === 'session')).toBe(true);
+        const voice = [
+            `${ENGINE_API_PREFIX}/chats/{chatId}/transcriptions`,
+            `${ENGINE_API_PREFIX}/chats/{chatId}/messages/{messageId}/speech`,
+        ];
+        const aiTools = [
+            `${ENGINE_API_PREFIX}/ai-tools/{aiToolId}/check`,
+            `${ENGINE_API_PREFIX}/ai-tools/{aiToolId}/sign-ins/{signInId}/answer`,
+        ];
         expect(
-            routes.filter((route) => route.path !== testChat).every((route) => route.rateLimit === 'engine-api-ip'),
+            routes
+                .filter(
+                    (route) => route.path !== testChat && !voice.includes(route.path) && !aiTools.includes(route.path),
+                )
+                .every((route) => route.rateLimit === 'engine-api-ip'),
         ).toBe(true);
+        expect(routes.filter((route) => aiTools.includes(route.path)).map((route) => route.rateLimit)).toEqual([
+            'engine-api-ai-tools-ip',
+            'engine-api-ai-tools-ip',
+        ]);
+        expect(routes.filter((route) => voice.includes(route.path)).map((route) => route.rateLimit)).toEqual([
+            'engine-api-voice-ip',
+            'engine-api-voice-ip',
+        ]);
         expect(routes.find((route) => route.path === testChat)?.rateLimit).toBe('engine-api-test-chat-ip');
         const stream = routes.find((route) => route.path === `${ENGINE_API_PREFIX}/events`);
         expect(stream?.headers?.safeParse({ 'last-event-id': '12' }).success).toBe(true);

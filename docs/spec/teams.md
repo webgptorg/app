@@ -100,8 +100,8 @@ sequenceDiagram
     participant M as Engine admin
     A->>D: Invite (email, teams)
     D->>P: Invitation email (7 days)
-    P->>D: Sign up / sign in, accept
-    P->>D: Open team
+    P->>D: Join on the invite page (new passkey, or sign in)
+    P->>D: Continue to the engine
     D->>P: Access ticket (signed, 15 min)
     P->>E: /auth/join with the ticket, registers a passkey
     E->>P: "Waiting for approval", shows a 6-digit code
@@ -114,8 +114,17 @@ sequenceDiagram
 1. **Invite.** An org owner or admin enters one or more email addresses, the org role (default member) and the teams.
    - The dashboard stores the invite with the token hashed, valid for 7 days and single use, and emails a link to `app.ptbk.io/invites/{token}`.
    - Inviting someone who is already in the organization only adds the teams.
-2. **Accept.** The person signs in, or signs up with a dashboard passkey, and accepts.
+2. **Join.** The invite page does it in one step, without leaving the page.
+   - An address without an account gets "Join {org}": one button registers a dashboard passkey, and the dashboard creates the account, its passkey and a session and accepts the invite, in one transaction.
+   - The invite link proves the address: it was emailed there, works once and lapses after 7 days. So this path sends no separate confirmation email, unlike a sign-up from scratch.
+   - An address with an account gets "Sign in and join": the passkey sign-in and the acceptance are one request. A passkey of another account accepts nothing (`email-mismatch`).
+   - Under "Sign in and join", "No passkey on this device? Email me a link" sends the account's recovery link to the invited address, as does the banner after a cancelled or failed sign-in. The request says it comes from an invitation, so the email and the page speak of adding a passkey to join, naming the organization only from a pending invitation the server finds for that address; without one, the plain recovery email goes out. It is the same recovery: other devices are signed out and the 72-hour hold applies, and both say so (D-35). The passkey that link adds signs the person in, and the invitation is then offered to them first (below). The invitation itself never adds a passkey to an existing account: whoever holds a forwarded link would take the account over.
+   - Signed in as another account, the page names both addresses. "Continue as {invited}" signs out there and shows the step for the invited address; "Stay signed in as {current}" goes to the dashboard. Another account never accepts.
+   - Pending invitations to the account's verified address are offered after any sign-in or sign-up, on home and after recovery: "You're invited to {org} by {inviter}" with Join (D-33). Accepting needs no token, since the verified address is what the link proves, and it never happens by itself. An invitation to another address, or one no longer pending, answers as one that does not exist.
+   - The preview says which of the two applies, so the invite's holder learns whether the address has an account. Only they do, and they hold a link sent to that address.
+   - The token rides in the link's fragment and stays in the page's memory. The preview also puts it in a `__Host-` cookie (HttpOnly, SameSite=Strict, an hour at most) that the join routes fall back to, so a reload or another tab still finds the invite. Joining clears it, and it is never logged.
    - They become an org member and a team member, with the state "waiting for access" on each team.
+   - The page then continues to the engine: with exactly one, it says "Next, confirm a passkey for the engine itself: it has its own secure address." and goes on to its ticket (step 3); with several, it lists them with "Open"; with none yet, it links to the dashboard.
 3. **Ticket.** The first time they open a team, the dashboard issues an access ticket and sends the browser to `https://<engine>/auth/join#<ticket>`. The ticket:
    - is signed with the dashboard's member key and valid for 15 minutes;
    - is bound to this user and this engine, with a single-use `ticketId`;
@@ -128,7 +137,7 @@ sequenceDiagram
    - The page shows "Waiting for approval" and a 6-digit code. It checks for approval, and signs the person in once approved.
 5. **Notify.**
    - The engine counts pending requests in its heartbeat.
-   - The dashboard emails the inviter, and the org owners and admins who are in that team: "{name} is waiting for access to {team}. Approve them in the engine: Members → Access requests."
+   - The dashboard emails the inviter, and the org owners and admins who are in that team: "{name} is waiting for access to {team}", with a link to `https://<engine>/members` and the steps (ask for the code, approve). The link cannot name the request: the heartbeat carries only a count, and the engine makes up its request IDs.
    - The engine UI shows a badge on Members.
 6. **Approve.** Someone with `members.manage` opens the request.
    - They see the name and email as reported by the dashboard (labelled as such) and the proposed role.
@@ -138,7 +147,7 @@ sequenceDiagram
    - A wrong code leaves the request pending, up to 5 wrong codes per request (`MAX_ACCESS_CODE_ATTEMPTS`). The fifth deletes the request: the waiting page says it was declined, the engine acks the ticket `declined`, and the person needs a new ticket (they open the team in the dashboard again). Six digits and five tries leave a guesser 5 chances in a million.
 7. **Confirm.**
    - The next heartbeat acks the ticket as `approved` (or `declined`), and the dashboard updates the person's state on the team to "Has access".
-   - It can then email them "You now have access to {team}".
+   - It then emails them "You're in: open {team}", with a link to `https://<engine>/`.
 
 **Limits**
 
@@ -147,7 +156,13 @@ sequenceDiagram
 - An engine keeps at most 20 pending requests; the 21st ticket is refused with "too many pending requests".
 - A ticket for a `dashboardUserId` that is already an active member just signs them in, or asks them to sign in.
 
-**Engines without a dashboard, or older engines.** The engine's own invite link (`POST /invites`) stays as the way to add people. Those members have no `dashboardUserId`, and the dashboard can neither see nor remove them.
+**Engines without a dashboard, or older engines.** The engine's own invite link (`POST /invites`) stays in the engine API as the way to add people. Those members have no `dashboardUserId`, and the dashboard can neither see nor remove them. Since everyone has a dashboard account, the engine UI no longer creates these links: its "Invite in the dashboard" opens the dashboard, and it still lists and revokes links made before.
+
+**Smoothing the steps** (D-31):
+
+- The approver's email links to `https://<engine>/members?request=<accessRequestId>`, which opens that request's approval in the engine UI. Opening it changes nothing: the dialog waits for the code. Home's "Needs you" lists each waiting person with the same link.
+- The approval dialog has the role and the code on one screen: six digit cells that take a pasted code and approve with the sixth digit, then the step-up. A wrong code says how many tries remain (`attemptsRemaining` on `access-code-mismatch`).
+- The join page says in one line why a second passkey is needed; the waiting page shows the code large, as "482 913", asks for status every few seconds and signs the person in as soon as they are approved.
 
 ## Removing a person
 

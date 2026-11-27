@@ -1,5 +1,5 @@
-import { PERMISSIONS } from '@ptbk/engine-api';
-import type { EngineApiClient, Permission } from '@ptbk/engine-api';
+import { KNOWN_CAPABILITIES, PERMISSIONS } from '@ptbk/engine-api';
+import type { CapabilityRef, EngineApiClient, Permission } from '@ptbk/engine-api';
 import { createDemoSeed, createInMemoryEngine } from '@ptbk/engine-api/in-memory';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
@@ -7,18 +7,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { expectNoAxeViolations } from '../../testing/axe';
 import { createMemoryStorage } from '../../testing/memory-storage';
 import { renderWithProviders } from '../../testing/render-with-providers';
-import { TEST_NOW } from '../../testing/test-engine-api';
+import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
 import { AGENT_VIEW_STORAGE_KEY } from './agent-view';
 
 // Each test renders the whole app on the in-memory engine; a shared CI runner is several times slower than a laptop.
 const TIMEOUT_MS = 20_000;
 
 /** The demo engine: Max runs a run, Ada a task, Chatter replies in a chat, and Iris asks the User something. */
-function demoEngine(permissions?: readonly Permission[]) {
+function demoEngine(permissions?: readonly Permission[], capabilities?: readonly CapabilityRef[]) {
     const engine = createInMemoryEngine({
         clock: { now: () => TEST_NOW },
         seed: createDemoSeed(TEST_NOW),
         ...(permissions === undefined ? {} : { member: { id: 'member-owner', permissions, role: 'member' } }),
+        ...(capabilities === undefined ? {} : { capabilities }),
     });
     const chats = { ...engine.client.chats };
     const runs = { ...engine.client.runs };
@@ -28,6 +29,7 @@ function demoEngine(permissions?: readonly Permission[]) {
         listAgentChats: vi.spyOn(chats, 'list'),
         listRuns: vi.spyOn(runs, 'list'),
         listAgents: vi.spyOn(agents, 'list'),
+        getStatus: vi.spyOn(agents, 'getStatus'),
     };
     const client: EngineApiClient = { ...engine.client, chats, runs, agents };
     return { client, spies };
@@ -174,6 +176,27 @@ describe('agents grid', { timeout: TIMEOUT_MS }, () => {
         expect(cardText('Max')).toContain('Idle');
         expect(engine.spies.listAllChats).not.toHaveBeenCalled();
         expect(engine.spies.listRuns).not.toHaveBeenCalled();
+    });
+
+    it('says Idle, never Unknown, on an engine that serves no status route, and asks it once per agent', async () => {
+        // The Reborn engine: tasks but no runs@1, and 404 for the draft GET /agents/{id}/status.
+        const engine = demoEngine(undefined, [KNOWN_CAPABILITIES.tasks]);
+        engine.spies.getStatus.mockImplementation(() => problemResponse('not-found'));
+        const { user } = await renderGrid('/agents', engine);
+        await waitFor(() => {
+            expect(cardText('Copywriter')).toContain('Idle');
+        });
+        expect(cardText('Ada')).toContain('Working · 1 task');
+        expect(cardText('Iris')).toContain('Needs you');
+        expect(screen.queryByText(/Unknown/)).toBeNull();
+
+        const asked = engine.spies.getStatus.mock.calls.length;
+        expect(new Set(engine.spies.getStatus.mock.calls.map(([agentId]) => agentId)).size).toBe(asked);
+        await user.click(card('Copywriter'));
+        const panel = await screen.findByRole('dialog', { name: 'Copywriter' });
+        expect(within(panel).getAllByText('Idle').length).toBeGreaterThan(0);
+        await user.keyboard('{Escape}');
+        expect(engine.spies.getStatus.mock.calls.length).toBe(asked);
     });
 
     it('offers no Chat in the panel without chats.write, and keeps the way to the agent', async () => {

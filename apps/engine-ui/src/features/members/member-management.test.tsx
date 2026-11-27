@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderWithProviders } from '../../testing/render-with-providers';
-import { createSecurityEngine, documentText } from '../../testing/security-engine';
+import { createSecurityEngine } from '../../testing/security-engine';
 import { problemResponse } from '../../testing/test-engine-api';
 
 const TIMEOUT_MS = 20_000;
@@ -21,12 +21,24 @@ const member = (id: string, displayName: string, role: 'owner' | 'admin' | 'memb
 });
 
 function teamEngine(
-    options: { permissions?: readonly Permission[]; stepUp?: 'required'; alone?: boolean; invites?: boolean } = {},
+    options: {
+        permissions?: readonly Permission[];
+        stepUp?: 'required';
+        alone?: boolean;
+        invites?: boolean;
+        dashboardUrl?: string | null;
+    } = {},
 ) {
     return createSecurityEngine({
         ...(options.permissions === undefined ? {} : { permissions: options.permissions }),
         ...(options.stepUp === undefined ? {} : { stepUp: options.stepUp }),
         seed: {
+            engine: {
+                name: 'Test engine',
+                hostname: 'engine.localhost',
+                dashboardUrl: options.dashboardUrl === undefined ? 'https://app.ptbk.io' : options.dashboardUrl,
+                mode: 'tunnel',
+            },
             members: options.alone
                 ? []
                 : [
@@ -137,42 +149,24 @@ describe('member management', { timeout: TIMEOUT_MS }, () => {
 });
 
 describe('invites', { timeout: TIMEOUT_MS }, () => {
-    it('creates an invite link, shows it once, and keeps it out of the cache', async () => {
+    it('sends people to the dashboard to invite, and never creates an engine invite link', async () => {
         const engine = teamEngine();
         const create = vi.spyOn(engine.client.members, 'createInvite');
-        const { user, container, queryClient } = renderWithProviders({ path: '/members', engineApi: engine.client });
-        await user.click(await screen.findByRole('button', { name: 'Invite member' }));
-        const form = screen.getByRole('dialog', { name: 'Invite a member' });
-        await pick(user, within(form).getByRole('combobox', { name: 'Role' }), 'Viewer');
-        await pick(user, within(form).getByRole('combobox', { name: 'Link works for' }), /^1 /);
+        const { container } = renderWithProviders({ path: '/members', engineApi: engine.client });
+        const invite = await screen.findByRole('link', { name: /^Invite in the dashboard/ });
+        expect(invite.getAttribute('href')).toBe('https://app.ptbk.io/');
+        expect(invite.getAttribute('target')).toBe('_blank');
+        expect(invite.getAttribute('rel')).toBe('noopener noreferrer');
+        expect(screen.queryByRole('button', { name: 'Invite member' })).toBeNull();
+        expect(screen.queryByText('Create invite link')).toBeNull();
         await expectNoAxeViolations(container);
-        await user.click(within(form).getByRole('button', { name: 'Create invite link' }));
+        expect(create).not.toHaveBeenCalled();
+    });
 
-        const shown = await screen.findByRole('dialog', { name: 'Invite link created' });
-        expect(shown.textContent).toContain('join as Viewer');
-        expect(shown.textContent).toContain('1 day');
-        const link = within(shown).getByRole<HTMLInputElement>('textbox', { name: 'Invite link' });
-        expect(link.value).toMatch(/^https:\/\/engine\.localhost\/auth\/invite#/);
-        expect(within(shown).queryByRole('link')).toBeNull();
-        const url = link.value;
-        const body = create.mock.calls[0]?.[0];
-        expect(body?.role).toBe('viewer');
-        expect(new Date(body?.expiresAt ?? 0).getTime() - Date.now()).toBeLessThanOrEqual(24 * 60 * 60_000);
-
-        await user.click(within(shown).getByRole('button', { name: 'Done' }));
-        expect(await screen.findByText('Invite as Viewer')).toBeDefined();
-        expect(documentText()).not.toContain(url);
-        const cache = JSON.stringify([
-            queryClient
-                .getQueryCache()
-                .getAll()
-                .map((query) => query.state.data),
-            queryClient
-                .getMutationCache()
-                .getAll()
-                .map((mutation) => mutation.state.data),
-        ]);
-        expect(cache).not.toContain(url);
+    it('offers no invite link while the engine reports no dashboard, since the bundle names no outside origin', async () => {
+        renderWithProviders({ path: '/members', engineApi: teamEngine({ dashboardUrl: null }).client });
+        expect(await screen.findByText('Petr Svoboda')).toBeDefined();
+        expect(screen.queryByRole('link', { name: /^Invite in the dashboard/ })).toBeNull();
     });
 
     it('revokes a pending invite after confirmation', async () => {
@@ -191,30 +185,32 @@ describe('invites', { timeout: TIMEOUT_MS }, () => {
         });
     });
 
-    it('asks for a fresh passkey before creating an invite, and shows no link', async () => {
-        const { user } = renderWithProviders({
-            path: '/members',
-            engineApi: teamEngine({ stepUp: 'required' }).client,
-        });
-        await user.click(await screen.findByRole('button', { name: 'Invite member' }));
-        await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Create invite link' }));
-        expect(await screen.findByRole('dialog', { name: 'Confirm it is you' })).toBeDefined();
-        expect(screen.queryByRole('textbox', { name: 'Invite link' })).toBeNull();
+    it('points to the dashboard from the empty state when you are alone', async () => {
+        renderWithProviders({ path: '/members', engineApi: teamEngine({ alone: true }).client });
+        const empty = (await screen.findByRole('heading', { name: 'Invite your team' })).parentElement as HTMLElement;
+        const region = empty.closest('div') as HTMLElement;
+        expect(within(region).getByText(/They ask for access here/)).toBeDefined();
+        expect(
+            within(region)
+                .getByRole('link', { name: /^Invite in the dashboard/ })
+                .getAttribute('href'),
+        ).toBe('https://app.ptbk.io/');
     });
 
-    it('invites the first teammate from an empty state when you are alone', async () => {
-        const { user } = renderWithProviders({ path: '/members', engineApi: teamEngine({ alone: true }).client });
-        const empty = (await screen.findByRole('heading', { name: 'Invite your team' })).parentElement as HTMLElement;
-        await user.click(within(empty.closest('div') as HTMLElement).getByRole('button', { name: 'Invite member' }));
-        expect(screen.getByRole('dialog', { name: 'Invite a member' })).toBeDefined();
+    it('offers no invite without members.manage', async () => {
+        const permissions = OWNER_PERMISSIONS.filter((permission) => permission !== 'members.manage');
+        renderWithProviders({ path: '/members', engineApi: teamEngine({ permissions }).client });
+        expect(
+            await screen.findByText('Owners and admins invite people from the dashboard and change their roles.'),
+        ).toBeDefined();
+        expect(screen.queryByRole('link', { name: /^Invite in the dashboard/ })).toBeNull();
     });
 
     it('hides invites on an engine that has not built them', async () => {
         const engine = teamEngine();
         vi.spyOn(engine.client.members, 'listInvites').mockImplementation(() => problemResponse('not-found'));
         renderWithProviders({ path: '/members', engineApi: engine.client });
-        expect(await screen.findByText('This engine does not support invites and role changes yet.')).toBeDefined();
-        expect(screen.queryByRole('button', { name: 'Invite member' })).toBeNull();
+        expect(await screen.findByText('This project does not support invites and role changes yet.')).toBeDefined();
         expect(screen.queryByRole('heading', { name: 'Pending invites' })).toBeNull();
         expect(screen.queryByRole('button', { name: /^Actions for/ })).toBeNull();
     });
@@ -222,6 +218,6 @@ describe('invites', { timeout: TIMEOUT_MS }, () => {
     it('reads in Czech', async () => {
         renderWithProviders({ path: '/members', engineApi: teamEngine({ invites: true }).client, locale: 'cs' });
         expect(await screen.findByText('Pozvánka: Pozorovatel')).toBeDefined();
-        expect(screen.getByRole('button', { name: 'Pozvat člena' })).toBeDefined();
+        expect(screen.getByRole('link', { name: /^Pozvat v dashboardu/ })).toBeDefined();
     });
 });

@@ -2,7 +2,10 @@ import { Button } from '@ptbk/ui';
 import { createContext, use, useId, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { ButtonLink } from '../../app/link';
+import { useAllows } from '../../app/registry/use-visible-features';
 import { useNow } from '../../app/ticker';
+import { AI_TOOLS_MANAGE } from '../ai-tools/ai-tools-queries';
 import { m } from '../../paraglide/messages';
 import type { RecheckView, WaitingView } from './message-views';
 import { tintStyle } from './references/agent-color';
@@ -157,6 +160,20 @@ export function WaitingCard({ view }: { readonly view: WaitingView }) {
 }
 
 /**
+ * The reply failed because an AI tool needs signing in again: the owner gets the way there, anyone else learns who can
+ * fix it. Retrying before that would only fail the same way.
+ */
+function SignInAgain({ aiToolId }: { readonly aiToolId: string }) {
+    const manages = useAllows(AI_TOOLS_MANAGE);
+    if (!manages) return <p className="text-sm text-text-muted">{m.chat_recheck_sign_in_owner()}</p>;
+    return (
+        <ButtonLink to="/settings/ai-tools" search={{ signIn: aiToolId }} size="sm" variant="primary" className="w-fit">
+            {m.ai_tools_sign_in_again()}
+        </ButtonLink>
+    );
+}
+
+/**
  * A failed reply the engine will attempt again by itself: its cause, a live countdown to the next attempt and Retry
  * now. The cause is engine text: rendered as text only.
  */
@@ -174,6 +191,7 @@ export function RecheckCard({ view }: { readonly view: RecheckView }) {
                 <span className="text-sm font-medium">{title}</span>
             </div>
             <p className="text-sm break-words text-text-muted">{view.cause}</p>
+            {view.aiToolId === null ? null : <SignInAgain aiToolId={view.aiToolId} />}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="meta">
                     {left > 0 ? m.chat_recheck_countdown({ time: formatClock(left) }) : m.chat_recheck_now()}

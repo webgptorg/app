@@ -57,7 +57,7 @@ describe('without files@1 or files.read', { timeout: TIMEOUT_MS }, () => {
         expect(screen.queryByRole('region', { name: 'Files' })).toBeNull();
         expect(engine.spies.stats).not.toHaveBeenCalled();
         renderWithProviders({ path: '/files', engineApi: engine.client });
-        expect(await screen.findByText(/not available on this engine/i)).toBeDefined();
+        expect(await screen.findByText(/not available in this project/i)).toBeDefined();
         expect(engine.spies.list).not.toHaveBeenCalled();
     });
 
@@ -71,7 +71,7 @@ describe('without files@1 or files.read', { timeout: TIMEOUT_MS }, () => {
     it('explains an agent Files tab the engine does not offer', async () => {
         const engine = createFilesEngine({ capabilities: WITHOUT_FILES });
         renderWithProviders({ path: '/agents/agent-ada/files', engineApi: engine.client });
-        expect(await screen.findByText(/not available on this engine/i)).toBeDefined();
+        expect(await screen.findByText(/not available in this project/i)).toBeDefined();
     });
 });
 

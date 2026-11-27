@@ -5,7 +5,7 @@ import { useEffect, useId, useMemo, useRef } from 'react';
 
 import { cx } from '../../../app/cx';
 import { m } from '../../../paraglide/messages';
-import { AgentAvatar } from '../../agents/agent-avatar';
+import { LookedUpAgentAvatar } from '../../agents/looked-up-agent-avatar';
 import { Composer } from '../../chat/composer';
 import { MessageList } from '../../chat/message-list';
 import { useCurrentMember } from '../../session/use-current-member';
@@ -154,12 +154,7 @@ export function TestChatPanel({
             {views.length === 0 ? (
                 // Like a fresh chat: the agent waits in the middle, and the hint sits above the composer it is about.
                 <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
-                    <AgentAvatar
-                        name={agentName}
-                        agentKey={agentId}
-                        profile={{ avatarUrl: null, color: null }}
-                        size="lg"
-                    />
+                    <LookedUpAgentAvatar agentKey={agentId} name={agentName} size="lg" />
                     <p className="max-w-xs text-sm text-text-muted">{intro}</p>
                 </div>
             ) : (

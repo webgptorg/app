@@ -22,7 +22,17 @@ import type {
     TeamView,
 } from '../shared/api/routes';
 import type { AuthHarness, TestBrowser, TestResponse } from './auth-harness';
-import { lastEmail, problemCode, requestOptions, signUp, uniqueEmail } from './auth-flows';
+import {
+    creationOptions,
+    lastEmail,
+    linkToken,
+    problemCode,
+    registerWith,
+    requestOptions,
+    signIn,
+    signUp,
+    uniqueEmail,
+} from './auth-flows';
 import { createTestEngine, type TestEngine } from './test-engine';
 import { signedHeartbeat, signedHeartbeatV2 } from './test-heartbeat';
 import { DEV_MEMBER_KEY } from '../app/config';
@@ -133,7 +143,7 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
             const token = inviteToken(email);
             const invited = await person(email);
             const accepted = await invited.browser.request('POST', '/api/invites/accept', { token });
-            expect(accepted.body).toEqual({ orgId: by.orgId });
+            expect(accepted.body).toEqual({ orgId: by.orgId, teamIds });
             expect((await invited.browser.request('POST', '/api/session/active-org', { orgId: by.orgId })).status).toBe(
                 200,
             );
@@ -285,6 +295,420 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
                 404,
                 'invite-invalid',
             );
+        });
+
+        describe('joining from the invitation page (D-31)', () => {
+            const JOIN_OPTIONS = '/api/invites/join/options';
+            const JOIN_VERIFY = '/api/invites/join/verify';
+            const SIGNIN_VERIFY = '/api/invites/signin/verify';
+
+            async function invited(teamNames: readonly string[] = ['Client A']) {
+                const boss = await owner();
+                const teamIds: string[] = [];
+                for (const name of teamNames) {
+                    teamIds.push((await createTeam(boss.browser, name)).teamId);
+                }
+                const email = uniqueEmail('joiner');
+                await invite(boss.browser, { emails: [email], role: 'member', teamIds });
+                return { boss, email, teamIds, token: inviteToken(email) };
+            }
+
+            interface Joined {
+                readonly session: SessionView;
+                readonly joined: { readonly orgId: string; readonly teamIds: readonly string[] };
+            }
+
+            it('creates the account, its passkey and a session in the organization, and accepts, in one step', async () => {
+                const { boss, email, teamIds, token } = await invited();
+                const browser = harness.browser({ ip: '203.0.113.200' });
+                const preview = await browser.request('POST', '/api/invites/preview', { token });
+                expect(preview.body).toMatchObject({ email, hasAccount: false });
+                expect(browser.cookies.get('__Host-ptbk_invite')).toBe(token);
+
+                // No token in the body, as after a reload: the cookie the preview set still has it.
+                const { verify } = await registerWith(browser, JOIN_OPTIONS, JOIN_VERIFY, {});
+                expect(verify.status).toBe(200);
+                const body = verify.body as Joined;
+                expect(body.joined).toEqual({ orgId: boss.orgId, teamIds });
+                expect(body.session.user.email).toBe(email);
+                expect(body.session.activeOrg).toMatchObject({ id: boss.orgId, role: 'member' });
+                expect(body.session.memberships.map((membership) => membership.orgId)).toEqual([boss.orgId]);
+                expect(browser.cookies.has('__Host-ptbk_invite')).toBe(false);
+                // No confirmation email: the invitation link proved the address.
+                expect(harness.outbox.sentTo(email).map((message) => message.template)).toEqual(['team-invite']);
+                expect((await teams(browser)).map((team) => [team.teamId, team.isMember])).toEqual([
+                    [teamIds[0], true],
+                ]);
+
+                const later = harness.browser({ authenticator: browser.authenticator });
+                expect((await signIn(later)).verify.status).toBe(200);
+                expectProblem(await browser.request('POST', JOIN_OPTIONS, { token }), 404, 'invite-invalid');
+            });
+
+            it('refuses the new-account path for an address with an account, and a lapsed invitation', async () => {
+                const { email, token } = await invited();
+                await person(email);
+                const browser = harness.browser({ ip: '203.0.113.201' });
+                expect((await browser.request('POST', '/api/invites/preview', { token })).body).toMatchObject({
+                    hasAccount: true,
+                });
+                expectProblem(await browser.request('POST', JOIN_OPTIONS, { token }), 409, 'account-exists');
+
+                const lapsed = await invited([]);
+                const late = harness.browser({ ip: '203.0.113.202' });
+                expect((await late.request('POST', '/api/invites/preview', { token: lapsed.token })).status).toBe(200);
+                // The invitation lapses during the passkey prompt: the challenge still holds, the invitation does not.
+                harness.clock.advance(7 * 24 * 60 * 60 * 1000 - 30_000);
+                const options = creationOptions(await late.request('POST', JOIN_OPTIONS, { token: lapsed.token }));
+                const response = await late.authenticator.register(options);
+                harness.clock.advance(60_000);
+                expectProblem(
+                    await late.request('POST', JOIN_VERIFY, { token: lapsed.token, response }),
+                    404,
+                    'invite-invalid',
+                );
+                expectProblem(await late.request('POST', JOIN_OPTIONS, { token: lapsed.token }), 404, 'invite-invalid');
+                expectProblem(await late.request('POST', '/api/invites/preview', {}), 404, 'not-found');
+                expect(late.cookies.has('__Host-ptbk_invite')).toBe(false);
+            });
+
+            it('makes no second account when the address signs up between options and verify', async () => {
+                const { email, token } = await invited();
+                const browser = harness.browser({ ip: '203.0.113.203' });
+                const options = creationOptions(await browser.request('POST', JOIN_OPTIONS, { token }));
+                const response = await browser.authenticator.register(options);
+                await person(email);
+                expectProblem(await browser.request('POST', JOIN_VERIFY, { token, response }), 409, 'account-exists');
+                expect(browser.cookies.has('__Host-ptbk_session')).toBe(false);
+            });
+
+            it('refuses a reused invitation and a challenge issued for another invitation', async () => {
+                const first = await invited();
+                const browser = harness.browser({ ip: '203.0.113.204' });
+                const { verify } = await registerWith(browser, JOIN_OPTIONS, JOIN_VERIFY, { token: first.token });
+                expect(verify.status).toBe(200);
+                const again = harness.browser({ ip: '203.0.113.205' });
+                expectProblem(await again.request('POST', JOIN_OPTIONS, { token: first.token }), 404, 'invite-invalid');
+
+                const second = await invited();
+                const third = await invited();
+                const mixed = harness.browser({ ip: '203.0.113.206' });
+                const options = creationOptions(await mixed.request('POST', JOIN_OPTIONS, { token: second.token }));
+                const response = await mixed.authenticator.register(options);
+                expectProblem(
+                    await mixed.request('POST', JOIN_VERIFY, { token: third.token, response }),
+                    400,
+                    'challenge-invalid',
+                );
+                expect((await mixed.request('POST', '/api/invites/preview', { token: third.token })).status).toBe(200);
+            });
+
+            it('signs an existing account in to the organization and accepts, and refuses another account', async () => {
+                const { boss, email, teamIds, token } = await invited();
+                // Still signed in to the account's own organization: signing in to join replaces that session.
+                const joiner = await person(email);
+
+                const stranger = await person();
+                const strangerOptions = requestOptions(
+                    await stranger.browser.request('POST', '/api/auth/signin/options'),
+                );
+                expectProblem(
+                    await stranger.browser.request('POST', SIGNIN_VERIFY, {
+                        token,
+                        response: await stranger.browser.authenticator.assert(strangerOptions),
+                    }),
+                    403,
+                    'email-mismatch',
+                );
+
+                const { browser } = joiner;
+                await browser.request('POST', '/api/invites/preview', { token });
+                const options = requestOptions(await browser.request('POST', '/api/auth/signin/options'));
+                const response = await browser.authenticator.assert(options);
+                const verify = await browser.request('POST', SIGNIN_VERIFY, { response });
+                expect(verify.status).toBe(200);
+                const body = verify.body as Joined;
+                expect(body.joined).toEqual({ orgId: boss.orgId, teamIds });
+                expect(body.session.activeOrg.id).toBe(boss.orgId);
+                expect(body.session.memberships.map((membership) => membership.orgId).sort()).toEqual(
+                    [joiner.orgId, boss.orgId].sort(),
+                );
+                expect(browser.cookies.has('__Host-ptbk_invite')).toBe(false);
+
+                const reused = requestOptions(await browser.request('POST', '/api/auth/signin/options'));
+                expectProblem(
+                    await browser.request('POST', SIGNIN_VERIFY, {
+                        token,
+                        response: await browser.authenticator.assert(reused),
+                    }),
+                    404,
+                    'invite-invalid',
+                );
+            });
+
+            it('refuses a passkey the ceremony did not ask for', async () => {
+                const { email, token } = await invited();
+                const browser = harness.browser({ ip: '203.0.113.207' });
+                const { verify } = await registerWith(
+                    browser,
+                    JOIN_OPTIONS,
+                    JOIN_VERIFY,
+                    { token },
+                    { origin: 'https://evil.example' },
+                );
+                expect([verify.status, problemCode(verify)]).toEqual([401, 'webauthn-failed']);
+
+                const joiner = await person(email);
+                await joiner.browser.request('POST', '/api/auth/signout');
+                const options = requestOptions(await joiner.browser.request('POST', '/api/auth/signin/options'));
+                const forged = await joiner.browser.authenticator.assert(options, { origin: 'https://evil.example' });
+                expectProblem(
+                    await joiner.browser.request('POST', SIGNIN_VERIFY, { token, response: forged }),
+                    401,
+                    'webauthn-failed',
+                );
+                // No challenge from this browser: a replayed assertion has nothing to answer.
+                const replayed = await joiner.browser.authenticator.assert(options);
+                expectProblem(
+                    await harness.browser({ ip: '203.0.113.208' }).request('POST', SIGNIN_VERIFY, {
+                        token,
+                        response: replayed,
+                    }),
+                    400,
+                    'challenge-invalid',
+                );
+            });
+
+            it('signs in and joins from a browser that has no session', async () => {
+                const { boss, email, token } = await invited();
+                const joiner = await person(email);
+                await joiner.browser.request('POST', '/api/auth/signout');
+                const options = requestOptions(await joiner.browser.request('POST', '/api/auth/signin/options'));
+                const response = await joiner.browser.authenticator.assert(options);
+                const verify = await joiner.browser.request('POST', SIGNIN_VERIFY, { token, response });
+                expect(verify.status).toBe(200);
+                expect((verify.body as Joined).session.activeOrg.id).toBe(boss.orgId);
+            });
+
+            it('accepts with the cookie when already signed in, and says which teams it was for', async () => {
+                const { boss, email, teamIds, token } = await invited();
+                const joiner = await person(email);
+                await joiner.browser.request('POST', '/api/invites/preview', { token });
+                const accepted = await joiner.browser.request('POST', '/api/invites/accept', {});
+                expect(accepted.body).toEqual({ orgId: boss.orgId, teamIds });
+                expectProblem(await joiner.browser.request('POST', '/api/invites/accept', {}), 404, 'invite-invalid');
+            });
+
+            it('rate-limits the join ceremony per IP', async () => {
+                const { token } = await invited();
+                const browser = harness.browser({ ip: '203.0.113.210' });
+                for (let attempt = 0; attempt < 30; attempt++) {
+                    expect((await browser.request('POST', JOIN_OPTIONS, { token })).status).toBe(200);
+                }
+                expectProblem(await browser.request('POST', JOIN_OPTIONS, { token }), 429, 'rate-limited');
+                for (let attempt = 0; attempt < 30; attempt++) {
+                    await browser.request('POST', JOIN_VERIFY, { token, response: {} });
+                }
+                expectProblem(
+                    await browser.request('POST', SIGNIN_VERIFY, { token, response: {} }),
+                    429,
+                    'rate-limited',
+                );
+            });
+        });
+
+        describe('offering pending invitations after sign-in (D-33)', () => {
+            const OFFERS = '/api/invites/offers';
+            const accept = (inviteId: string) => `/api/invites/offers/${inviteId}/accept`;
+
+            interface Offer {
+                readonly inviteId: string;
+                readonly orgName: string | null;
+                readonly inviterEmail: string | null;
+                readonly teamNames: readonly string[];
+                readonly expiresAt: number;
+            }
+
+            async function offers(browser: TestBrowser): Promise<readonly Offer[]> {
+                const response = await browser.request('GET', OFFERS);
+                expect(response.status).toBe(200);
+                return (response.body as { offers: Offer[] }).offers;
+            }
+
+            async function invitedTo(by: Person, email: string, teamIds: readonly string[] = []): Promise<string> {
+                harness.clock.advance(1);
+                expect((await invite(by.browser, { emails: [email], role: 'member', teamIds })).status).toBe(200);
+                const listed = (await by.browser.request('GET', '/api/org/members')).body as {
+                    invites: { inviteId: string; email: string }[];
+                };
+                return listed.invites.find((pending) => pending.email === email.toLowerCase())?.inviteId ?? '';
+            }
+
+            it('offers the invitations to the account’s address, from any organization, and accepts one by ID', async () => {
+                const boss = await owner();
+                const team = await createTeam(boss.browser);
+                const email = uniqueEmail('offered');
+                const first = await invitedTo(boss, email.toUpperCase(), [team.teamId]);
+                const elsewhere = await owner();
+                const second = await invitedTo(elsewhere, email);
+                // Signed up from scratch, not from the link: the invitation waits for them all the same.
+                const joiner = await person(email);
+
+                expect(await offers(joiner.browser)).toEqual([
+                    {
+                        inviteId: second,
+                        orgName: null,
+                        inviterEmail: elsewhere.email,
+                        teamNames: [],
+                        expiresAt: expect.any(Number) as number,
+                    },
+                    {
+                        inviteId: first,
+                        orgName: null,
+                        inviterEmail: boss.email,
+                        teamNames: ['Client A'],
+                        expiresAt: expect.any(Number) as number,
+                    },
+                ]);
+                const accepted = await joiner.browser.request('POST', accept(first));
+                expect(accepted.body).toEqual({ orgId: boss.orgId, teamIds: [team.teamId] });
+                expect((await offers(joiner.browser)).map((offer) => offer.inviteId)).toEqual([second]);
+                expectProblem(await joiner.browser.request('POST', accept(first)), 404, 'invite-invalid');
+
+                const session = (await joiner.browser.request('GET', '/api/session')).body as SessionView;
+                expect(session.activeOrg.id).toBe(joiner.orgId);
+                expect(session.memberships.map((membership) => membership.orgId)).toContain(boss.orgId);
+                expect((await joiner.browser.request('POST', accept(second))).status).toBe(200);
+                expect(await offers(joiner.browser)).toEqual([]);
+            });
+
+            it('never offers or accepts another address’s, a lapsed, a revoked or a used invitation', async () => {
+                const boss = await owner();
+                const email = uniqueEmail('offered');
+                const forSomeoneElse = await invitedTo(boss, uniqueEmail('someone-else'));
+                const revoked = await invitedTo(boss, email);
+                const used = await invitedTo(boss, email);
+                const usedToken = inviteToken(email);
+                const joiner = await person(email);
+                const stranger = await person();
+
+                expect(await offers(stranger.browser)).toEqual([]);
+                expectProblem(await stranger.browser.request('POST', accept(revoked)), 404, 'invite-invalid');
+                expectProblem(await joiner.browser.request('POST', accept(forSomeoneElse)), 404, 'invite-invalid');
+
+                expect((await boss.browser.request('POST', `/api/invites/${revoked}/revoke`)).status).toBe(204);
+                expect((await joiner.browser.request('POST', '/api/invites/accept', { token: usedToken })).status).toBe(
+                    200,
+                );
+                expect(await offers(joiner.browser)).toEqual([]);
+                expectProblem(await joiner.browser.request('POST', accept(revoked)), 404, 'invite-invalid');
+                expectProblem(await joiner.browser.request('POST', accept(used)), 404, 'invite-invalid');
+
+                const late = uniqueEmail('late');
+                const lapsed = await invitedTo(boss, late);
+                harness.clock.advance(7 * 24 * 60 * 60 * 1000);
+                const latecomer = await person(late);
+                expect(await offers(latecomer.browser)).toEqual([]);
+                expectProblem(await latecomer.browser.request('POST', accept(lapsed)), 404, 'invite-invalid');
+            });
+
+            describe('adding a passkey from the invitation page (D-35)', () => {
+                const RECOVERY = '/api/auth/recovery/request';
+                const fromInvite = { kind: 'invite' };
+
+                it('words the recovery email for joining, then offers the invitation once the passkey is added', async () => {
+                    const boss = await owner();
+                    const email = uniqueEmail('offered');
+                    const laptop = await person(email);
+                    const inviteId = await invitedTo(boss, email);
+                    const phone = harness.browser({ ip: '203.0.113.230' });
+
+                    expect((await phone.request('POST', RECOVERY, { email, context: fromInvite })).status).toBe(202);
+                    const sent = lastEmail(harness, email);
+                    expect(sent).toMatchObject({ template: 'invite-passkey-link', orgName: null });
+                    expect(sent.template === 'invite-passkey-link' ? sent.link : '').toMatch(
+                        /^https:\/\/app\.ptbk\.test\/recover\?via=invite#[\w-]{43}$/,
+                    );
+
+                    const token = linkToken(harness, email);
+                    const { verify } = await registerWith(
+                        phone,
+                        '/api/auth/recovery/options',
+                        '/api/auth/recovery/verify',
+                        { token },
+                    );
+                    expect(verify.status).toBe(200);
+                    expect((await offers(phone)).map((offer) => offer.inviteId)).toEqual([inviteId]);
+                    // The same recovery underneath: the other device is signed out and the notice goes out.
+                    expectProblem(await laptop.browser.request('GET', '/api/session'), 401, 'unauthorized');
+                    expect(lastEmail(harness, email)).toMatchObject({ template: 'recovery-notice' });
+                });
+
+                it('sends the plain recovery email without a pending invitation or without the context', async () => {
+                    const boss = await owner();
+                    const loner = await person(uniqueEmail('loner'));
+                    const invited = await person(uniqueEmail('offered'));
+                    await invitedTo(boss, invited.email);
+                    const device = harness.browser({ ip: '203.0.113.231' });
+
+                    expect(
+                        (await device.request('POST', RECOVERY, { email: loner.email, context: fromInvite })).status,
+                    ).toBe(202);
+                    expect((await device.request('POST', RECOVERY, { email: invited.email })).status).toBe(202);
+                    for (const { email } of [loner, invited]) {
+                        expect(lastEmail(harness, email)).toEqual(
+                            expect.objectContaining({
+                                template: 'recovery-link',
+                                link: expect.stringMatching(/^https:\/\/app\.ptbk\.test\/recover#/) as string,
+                            }),
+                        );
+                    }
+                });
+
+                it('answers the same for any address and rejects any other context', async () => {
+                    const boss = await owner();
+                    const email = uniqueEmail('offered');
+                    await person(email);
+                    await invitedTo(boss, email);
+                    const device = harness.browser({ ip: '203.0.113.232' });
+                    const known = await device.request('POST', RECOVERY, { email, context: fromInvite });
+                    const unknown = await device.request('POST', RECOVERY, {
+                        email: uniqueEmail(),
+                        context: fromInvite,
+                    });
+                    expect([known.status, JSON.stringify(known.body)]).toEqual([
+                        unknown.status,
+                        JSON.stringify(unknown.body),
+                    ]);
+                    expect([...known.headers]).toEqual([...unknown.headers]);
+
+                    for (const context of [
+                        { kind: 'invite', orgName: 'Not from the server' },
+                        { kind: 'recovery' },
+                        'invite',
+                        null,
+                    ]) {
+                        expectProblem(
+                            await device.request('POST', RECOVERY, { email, context }),
+                            400,
+                            'invalid-request',
+                        );
+                    }
+                });
+            });
+
+            it('needs a session and limits both routes per IP', async () => {
+                const browser = harness.browser({ ip: '203.0.113.220' });
+                const inviteId = 'a'.repeat(26);
+                for (let attempt = 0; attempt < 30; attempt++) {
+                    expectProblem(await browser.request('POST', accept(inviteId)), 401, 'unauthorized');
+                }
+                expectProblem(await browser.request('POST', accept(inviteId)), 429, 'rate-limited');
+                for (let attempt = 0; attempt < 120; attempt++) {
+                    expectProblem(await browser.request('GET', OFFERS), 401, 'unauthorized');
+                }
+                expectProblem(await browser.request('GET', OFFERS), 429, 'rate-limited');
+            });
         });
 
         it('resends and revokes pending invitations, and lists them with the organization’s people', async () => {
@@ -616,7 +1040,12 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
             await beatV2(engine, { accessRequests: 1 });
             const waiting = harness.outbox.sentTo(boss.email).filter((m) => m.template === 'access-waiting');
             expect(waiting).toHaveLength(1);
-            expect(waiting[0]).toMatchObject({ requesterEmail: member.email, teamName: 'Client A' });
+            const hostname = `${engine.engineId}.engines.ptbk.test`;
+            expect(waiting[0]).toMatchObject({
+                requesterEmail: member.email,
+                teamName: 'Client A',
+                link: `https://${hostname}/members`,
+            });
             await beatV2(engine, { accessRequests: 1 });
             expect(harness.outbox.sentTo(boss.email).filter((m) => m.template === 'access-waiting')).toHaveLength(1);
 
@@ -624,6 +1053,8 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
             expect(lastEmail(harness, member.email)).toMatchObject({
                 template: 'access-granted',
                 teamName: 'Client A',
+                hostname,
+                link: `https://${hostname}/`,
             });
             expect(
                 (await members(boss.browser, team.teamId)).members.find((p) => p.userId === member.userId)?.access,

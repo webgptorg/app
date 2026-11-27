@@ -1,7 +1,8 @@
-import { ENGINE_API_ROUTES } from '@ptbk/engine-api';
+import { ENGINE_API_ROUTES, SPEECH_FORMATS } from '@ptbk/engine-api';
 import type { EngineApiRouteId, RouteDefinition } from '@ptbk/engine-api';
 
 import { CHAT_MESSAGE, validBook } from '../../fixtures/books';
+import { SILENT_CLIP_MS, silentWav } from '../../fixtures/audio';
 import { randomToken } from '../../random';
 import type { ApiRequest } from './api';
 import type { World } from './world';
@@ -81,6 +82,9 @@ const BODIES: Partial<Record<EngineApiRouteId, BodyBuilder>> = {
             name: world.name('integration'),
             url: 'https://mcp.conformance.invalid/',
         }),
+    transcribeVoiceClip: () => Promise.resolve(silentWav(SILENT_CLIP_MS)),
+    startAiToolSignIn: () => Promise.resolve({ method: 'account' }),
+    speakChatMessage: () => Promise.resolve({ formats: [...SPEECH_FORMATS] }),
     testAgentDraft: (world) =>
         Promise.resolve({ book: validBook(world.name('draft')), messages: [{ role: 'user', content: CHAT_MESSAGE }] }),
     updateIntegration: async (world) => {
@@ -98,7 +102,19 @@ export async function plausibleBody(route: RouteDefinition, world: World): Promi
     if (route.body === undefined) return undefined;
     const body = await BODIES[route.id as EngineApiRouteId]?.(world);
     if (body !== undefined && body !== null) return body;
-    return route.body.kind === 'multipart' ? new FormData() : {};
+    return emptyBody(route.body.kind);
+}
+
+/** A body of the route's kind with nothing in it; a binary one is a valid, silent clip so no cap refuses it first. */
+function emptyBody(kind: NonNullable<RouteDefinition['body']>['kind']): unknown {
+    switch (kind) {
+        case 'multipart':
+            return new FormData();
+        case 'binary':
+            return silentWav(SILENT_CLIP_MS);
+        case 'json':
+            return {};
+    }
 }
 
 /** Placeholder IDs with a plausible body, for routes the world has no resources for. */
@@ -108,9 +124,7 @@ export async function placeholderRequest(route: RouteDefinition, world: World | 
         world === null
             ? route.body === undefined
                 ? undefined
-                : route.body.kind === 'multipart'
-                  ? new FormData()
-                  : {}
+                : emptyBody(route.body.kind)
             : await plausibleBody(route, world);
     return { params, ...(body === undefined ? {} : { body }) };
 }

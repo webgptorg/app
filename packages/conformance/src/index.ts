@@ -10,7 +10,18 @@ export type {
     ResourceTracker,
 } from './check';
 export { CheckFailure, CheckSkip, Findings, PASS, fail, skip } from './check';
-export type { ConformanceTarget, MemberPrivateResources, SessionCredential, SessionSubject } from './target';
+export type {
+    AiToolsTarget,
+    ConformanceTarget,
+    LiveBrowserPage,
+    LiveBrowserTarget,
+    LiveChannelClient,
+    LiveChannelEvent,
+    LiveChannelOpen,
+    MemberPrivateResources,
+    SessionCredential,
+    SessionSubject,
+} from './target';
 export type { CheckResult, CheckScope, ConformanceReport, RunChecksOptions, RunConformanceOptions } from './runner';
 export { runChecks, runConformance } from './runner';
 export type { ReportSummary } from './report';

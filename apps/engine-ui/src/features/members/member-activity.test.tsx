@@ -23,10 +23,10 @@ describe('member and engine activity summaries', () => {
             '<img src=x> changed from Member to Admin',
         ],
         [{ kind: 'member.removed', ...member }, '<img src=x> was removed'],
-        [{ kind: 'engine.update-available', version: '2.0.0' }, 'Engine version 2.0.0 is available'],
+        [{ kind: 'engine.update-available', version: '2.0.0' }, 'Update 2.0.0 is available'],
         [
             { kind: 'engine.updated', fromVersion: '1.0.0', toVersion: '2.0.0' },
-            'The engine was updated from 1.0.0 to 2.0.0',
+            'The project was updated from 1.0.0 to 2.0.0',
         ],
         [
             { kind: 'engine.relay-disconnected', relay: 'relay-fsn.ptbk.example' },

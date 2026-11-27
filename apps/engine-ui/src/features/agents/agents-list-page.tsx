@@ -1,6 +1,7 @@
 import { AGENT_RUN_STATES, AGENT_VISIBILITIES, FolderId, KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { Agent, AgentRunState, AgentVisibility } from '@ptbk/engine-api';
 import {
+    BrandRobot,
     Button,
     createDataTableColumnHelper,
     DataTable,
@@ -129,9 +130,11 @@ function useAgentColumns(withVisibility: boolean): DataTableColumnDef<Agent>[] {
                 id: 'description',
                 header: m.agents_column_role(),
                 enableSorting: false,
-                meta: { icon: <Text className="size-3.5" />, priority: 5 },
+                meta: { icon: <Text className="size-3.5" />, priority: 5, grow: true },
                 cell: ({ getValue }) => (
-                    <span className="line-clamp-1 max-w-md break-words text-text-muted">{getValue<string>()}</span>
+                    <span title={getValue<string>()} className="line-clamp-1 break-words text-text-muted">
+                        {getValue<string>()}
+                    </span>
                 ),
             }),
             column.accessor('id', {
@@ -284,6 +287,7 @@ export function AgentsListPage() {
     ) : (
         <EmptyState
             icon={<Bot aria-hidden />}
+            illustration={<BrandRobot pose="assembling" />}
             title={m.agents_empty_title()}
             description={canCreate ? m.agents_empty_body() : m.agents_empty_body_chat()}
             action={newAgent ?? undefined}
@@ -412,6 +416,7 @@ export function AgentsListPage() {
                                   action: <Button onClick={clear}>{m.agents_clear_filters()}</Button>,
                               }
                             : {
+                                  illustration: <BrandRobot pose="assembling" />,
                                   title: m.agents_empty_title(),
                                   description: canCreate ? m.agents_empty_body() : m.agents_empty_body_chat(),
                                   ...(newAgent === null ? {} : { action: newAgent }),

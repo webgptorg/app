@@ -2,6 +2,7 @@ import type { EngineId } from '@ptbk/protocol';
 
 import type { InviteId, LinkCodeId, OrgId, TeamId, UserId } from '../domain/ids';
 import type {
+    InvitePreview,
     InviteRecord,
     MemberAccess,
     RefusedRemovalRecord,
@@ -140,7 +141,35 @@ export function createMemoryTeamStore(deps: {
         createdAt: invite.createdAt,
         expiresAt: invite.expiresAt,
     });
+    const preview = (invite: StoredInvite): InvitePreview => ({
+        invite: strip(invite),
+        orgName: deps.auth.orgs.get(invite.orgId)?.name ?? null,
+        teamNames: liveTeams(invite.orgId)
+            .filter((team) => invite.teamIds.includes(team.id))
+            .map((team) => team.name),
+    });
 
+    const accept = (
+        tokenHash: string,
+        userId: UserId,
+        entry: Omit<TeamAudit, 'actorUserId'>,
+    ): { readonly kind: 'accepted'; readonly orgId: OrgId } | { readonly kind: 'invalid' } => {
+        const invite = state.invites.find((candidate) => candidate.tokenHash === tokenHash);
+        if (invite === undefined || !isPending(invite, entry.at)) {
+            return { kind: 'invalid' };
+        }
+        invite.acceptedAt = entry.at;
+        if (membership(invite.orgId, userId) === null) {
+            deps.auth.memberships.push({ orgId: invite.orgId, userId, role: invite.role, createdAt: entry.at });
+        }
+        for (const teamId of invite.teamIds) {
+            if (liveTeam(invite.orgId, teamId) !== null && !inTeam(teamId, userId)) {
+                state.members.push({ teamId, userId, createdAt: entry.at, access: 'none' });
+            }
+        }
+        audit(invite.orgId, { ...entry, actorUserId: userId }, 'invite.accept', 'invite', invite.id);
+        return { kind: 'accepted', orgId: invite.orgId };
+    };
     const store: TeamStore = {
         create(team, creator, entry) {
             state.teams.set(team.id, { ...team, deletedAt: null });
@@ -432,7 +461,11 @@ export function createMemoryTeamStore(deps: {
                     other.usedAt === null &&
                     now < other.expiresAt
                 ) {
-                    deps.registration.linkCodes.set(other.codeHash, { ...other, expiresAt: now });
+                    deps.registration.linkCodes.set(other.codeHash, {
+                        ...other,
+                        expiresAt: now,
+                        ownerSetupCommitment: null,
+                    });
                 }
             }
             state.linkCodeTeams.set(linkCodeId, teamId);
@@ -547,19 +580,20 @@ export function createMemoryTeamStore(deps: {
                     .map(strip),
             );
         },
+        listInvitesForEmail(email, now) {
+            return Promise.resolve(
+                state.invites
+                    .filter((invite) => invite.email === email && isPending(invite, now))
+                    .sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? -1 : 1))
+                    .map((invite) => ({
+                        ...preview(invite),
+                        inviterEmail: deps.auth.users.get(invite.invitedByUserId)?.email ?? null,
+                    })),
+            );
+        },
         previewInvite(tokenHash, now) {
             const invite = state.invites.find((candidate) => candidate.tokenHash === tokenHash);
-            if (invite === undefined || !isPending(invite, now)) {
-                return Promise.resolve(null);
-            }
-            const teamNames = liveTeams(invite.orgId)
-                .filter((team) => invite.teamIds.includes(team.id))
-                .map((team) => team.name);
-            return Promise.resolve({
-                invite: strip(invite),
-                orgName: deps.auth.orgs.get(invite.orgId)?.name ?? null,
-                teamNames,
-            });
+            return Promise.resolve(invite === undefined || !isPending(invite, now) ? null : preview(invite));
         },
         renewInvite(orgId, inviteId, renewal, entry) {
             const index = state.invites.findIndex(
@@ -586,22 +620,31 @@ export function createMemoryTeamStore(deps: {
             audit(orgId, entry, 'invite.revoke', 'invite', inviteId);
             return Promise.resolve('revoked');
         },
-        acceptInvite(tokenHash, userId, entry) {
+        acceptInvite: (tokenHash, userId, entry) => Promise.resolve(accept(tokenHash, userId, entry)),
+        acceptInviteAsNewUser(tokenHash, account, entry) {
             const invite = state.invites.find((candidate) => candidate.tokenHash === tokenHash);
-            if (invite === undefined || !isPending(invite, entry.at)) {
+            if (invite === undefined || !isPending(invite, entry.at) || invite.orgId !== account.session.activeOrgId) {
                 return Promise.resolve({ kind: 'invalid' });
             }
-            invite.acceptedAt = entry.at;
-            if (membership(invite.orgId, userId) === null) {
-                deps.auth.memberships.push({ orgId: invite.orgId, userId, role: invite.role, createdAt: entry.at });
+            const user = { ...account.user, email: invite.email };
+            const taken = [...deps.auth.users.values()].some(
+                (other) =>
+                    other.id === user.id ||
+                    other.email === user.email ||
+                    (other.webauthnUserId.length === user.webauthnUserId.length &&
+                        other.webauthnUserId.every((byte, index) => byte === user.webauthnUserId[index])),
+            );
+            if (
+                taken ||
+                deps.auth.passkeys.has(account.passkey.credentialId) ||
+                deps.auth.sessions.has(account.session.idHash)
+            ) {
+                return Promise.resolve({ kind: 'conflict' });
             }
-            for (const teamId of invite.teamIds) {
-                if (liveTeam(invite.orgId, teamId) !== null && !inTeam(teamId, userId)) {
-                    state.members.push({ teamId, userId, createdAt: entry.at, access: 'none' });
-                }
-            }
-            audit(invite.orgId, { ...entry, actorUserId: userId }, 'invite.accept', 'invite', invite.id);
-            return Promise.resolve({ kind: 'accepted', orgId: invite.orgId });
+            deps.auth.users.set(user.id, user);
+            deps.auth.passkeys.set(account.passkey.credentialId, account.passkey);
+            deps.auth.sessions.set(account.session.idHash, account.session);
+            return Promise.resolve(accept(tokenHash, user.id, entry));
         },
     };
     return { ...store, state };

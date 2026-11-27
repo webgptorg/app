@@ -2,6 +2,7 @@ import type { PreferenceStorage } from '@ptbk/ui';
 import { createContext, use } from 'react';
 import type { ReactNode } from 'react';
 
+import type { OwnerSetupStorage } from '../features/engines/owner-handoff';
 import type { PasskeyAuthenticator } from '../features/passkeys/passkey-authenticator';
 
 /** `window.matchMedia`, injected so tests can drive the system theme and reduced motion. */
@@ -13,6 +14,8 @@ export type AppMatchMedia = (
 export interface AppBrowser {
     /** Theme preference; `undefined` when the browser refuses storage. */
     readonly storage: PreferenceStorage | undefined;
+    /** This tab's `sessionStorage`, for the owner setup secret only; `undefined` when the browser refuses storage. */
+    readonly sessionStorage: OwnerSetupStorage | undefined;
     readonly matchMedia: AppMatchMedia;
     /** WebAuthn ceremonies; `@simplewebauthn/browser` in the app, a scripted fake in tests. */
     readonly passkeys: PasskeyAuthenticator;

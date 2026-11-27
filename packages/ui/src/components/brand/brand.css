@@ -1,0 +1,30 @@
+/*
+ * The kit's artwork colours. Light uses the published light artwork; dark swaps to the kit's all-white artwork, which
+ * the kit pairs with ink blue or black and which graphite's near-black carries the same way. The robot keeps its light
+ * shell in both themes, as the kit requires.
+ */
+:root {
+    --brand-mark-blue: var(--artwork-blue);
+    --brand-mark-ink: var(--artwork-ink);
+    --brand-robot-ink: var(--artwork-blue);
+    --brand-robot-screen: var(--artwork-ink);
+    --brand-robot-white: var(--artwork-white);
+    --brand-robot-shell-1: var(--artwork-robot-shell-1);
+    --brand-robot-shell-2: var(--artwork-robot-shell-2);
+    --brand-robot-shell-3: var(--artwork-robot-shell-3);
+    --brand-robot-shell-4: var(--artwork-robot-shell-4);
+    --brand-robot-shell-5: var(--artwork-robot-shell-5);
+    --brand-robot-shell-6: var(--artwork-robot-shell-6);
+    --brand-robot-shell-7: var(--artwork-robot-shell-7);
+    --brand-robot-shell-8: var(--artwork-robot-shell-8);
+    --brand-robot-shell-9: var(--artwork-robot-shell-9);
+    --brand-robot-steel: var(--artwork-robot-steel);
+    --brand-robot-sky: var(--artwork-robot-sky);
+    --brand-guide-bubble: var(--color-brand-soft);
+    --brand-guide-text: var(--color-text);
+}
+
+.dark {
+    --brand-mark-blue: var(--artwork-white);
+    --brand-mark-ink: var(--artwork-white);
+}

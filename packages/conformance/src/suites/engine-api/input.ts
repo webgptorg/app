@@ -60,7 +60,10 @@ export const INPUT_CHECKS: readonly ConformanceCheck[] = [
         title: 'A request body with a field the contract does not declare is refused with 400 validation-failed',
         async run(ctx) {
             const world = await createWorld(ctx);
-            const routes = ENGINE_API_ROUTE_LIST.filter((route) => route.body !== undefined);
+            // A raw body has no fields to add one to.
+            const routes = ENGINE_API_ROUTE_LIST.filter(
+                (route) => route.body !== undefined && route.body.kind !== 'binary',
+            );
             const findings = await expectRefusal(
                 world,
                 routes,

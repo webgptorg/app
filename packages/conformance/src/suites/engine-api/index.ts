@@ -2,6 +2,7 @@ import { ENGINE_API_ROUTES } from '@ptbk/engine-api';
 
 import type { ConformanceSuite } from '../../check';
 import { ACTIVITY_CHECKS } from './activity';
+import { AI_TOOL_CHECKS } from './ai-tools';
 import { EngineApi } from './api';
 import { AGENT_CHECKS } from './agents';
 import { AUDIT_CHECKS } from './audit';
@@ -24,6 +25,8 @@ import { SUITE } from './support';
 import { TASK_CHECKS } from './tasks';
 import { TEST_CHAT_CHECKS } from './test-chat';
 import { TRIGGER_CHECKS } from './triggers';
+import { UPDATES_CHECKS } from './updates';
+import { VOICE_CHECKS } from './voice';
 import { WALLET_CHECKS } from './wallet';
 
 /** v1: the engine API that engine-ui depends on (C-04, C-07), checked through the gateway as a browser would. */
@@ -47,6 +50,9 @@ export const ENGINE_API_SUITE: ConformanceSuite = {
         ...TEST_CHAT_CHECKS,
         ...LIVE_CHECKS,
         ...ONBOARDING_CHECKS,
+        ...VOICE_CHECKS,
+        ...AI_TOOL_CHECKS,
+        ...UPDATES_CHECKS,
         ...ACTIVITY_CHECKS,
         ...AUDIT_CHECKS,
         ...PERMISSION_CHECKS,

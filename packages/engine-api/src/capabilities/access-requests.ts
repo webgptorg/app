@@ -62,7 +62,8 @@ export const ACCESS_REQUEST_ROUTES = {
         description:
             'The member gets the role in the body, the passkey registered with the request and the ticket’s ' +
             '`dashboardUserId`. A wrong code is 422 `access-code-mismatch` and leaves the request pending, except ' +
-            'the fifth wrong code for a request, which also deletes it.',
+            'the fifth wrong code for a request, which also deletes it. The problem carries `attemptsRemaining`, ' +
+            'the wrong codes the request still survives (0: this one deleted it).',
         permission: 'members.manage',
         capability,
         params: AccessRequestParams,

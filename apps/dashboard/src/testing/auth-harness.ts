@@ -8,6 +8,9 @@ import { createFakeEmailSender, type FakeEmailSender } from '../adapters/email/f
 import { createMemoryLogger, type MemoryLogger } from '../adapters/memory-logger';
 import { createMemoryRateLimiter } from '../adapters/rate-limit/memory-rate-limiter';
 import { cryptoRandom } from '../adapters/crypto-random';
+import { createConfiguredEngineInstallReleaseSource } from '../adapters/registration/configured-engine-install-release-source';
+import type { EngineInstallReleaseSource } from '../domain/registration/engine-install-release-source';
+import type { EngineInstallRelease } from '../shared/engine-installation';
 import { createSimpleWebAuthnRelyingParty } from '../adapters/webauthn/simple-webauthn-relying-party';
 import { parseConfig, DEV_MEMBER_KEY, DEV_RATE_LIMIT_HMAC_KEY } from '../app/config';
 import { authLinks, type DashboardDeps } from '../app/deps';
@@ -32,6 +35,13 @@ import type { HeartbeatEngineReader } from '../domain/status/heartbeat-engine-re
 import type { RouteContract } from '../shared/api/contract';
 import { syntheticWebhookSecret, TEST_OFF_PLAN, TEST_PLANS } from './billing-fixtures';
 import { createFixedEntitlements } from '../domain/billing/entitlements';
+import { createAdvisoryEntitlements } from '../domain/licensing/advisory-entitlements';
+import type { WebsiteLicensingStore } from '../domain/licensing/website-licensing-store';
+import { createFakeWebsite, FAKE_HANDOFF_URL, type FakeWebsite } from './fake-website';
+import { createWebsiteIdentityExchange } from '../adapters/licensing/website-handoff-client';
+import { createWebsiteLicenseHttpApi } from '../adapters/licensing/website-license-api';
+import { syntheticLicenseSecret } from './licensing-fixtures';
+import { createMemoryWebsiteLicensingStore } from './memory-website-licensing-store';
 import { createPlanCatalogue, planCatalogueSchema } from '../domain/billing/plan-catalogue';
 import { TEST_INSTALL_VARS } from './install-fixtures';
 import { createSoftwareAuthenticator, type SoftwareAuthenticator } from './software-authenticator';
@@ -52,6 +62,9 @@ import { createMemoryRegistryReader, createMemoryRelayTokenStore } from './memor
 import { createMemoryRelayPresenceStore } from './memory-relay-presence-store';
 import type { RelayPresenceStore } from '../domain/presence/relay-presence-store';
 import { createTestBilling } from './test-billing';
+import { createUsageRecorder } from '../domain/usage/usage-recorder';
+import type { UsageStore } from '../domain/usage/usage-store';
+import { createMemoryUsageStore, type MemoryUsageStore } from './memory-usage-store';
 import {
     createMemoryDashboardMetrics,
     type MemoryDashboardMetrics,
@@ -103,6 +116,11 @@ export interface AuthHarness {
     /** The engines' status objects, in process, with their alarms fired by hand. */
     readonly engineStatuses: MemoryEngineStatuses;
     readonly relayPresence: RelayPresenceStore;
+    /** The usage events the routes and status objects recorded (ADR 0022). */
+    readonly usage: MemoryUsageStore;
+    /** The fake website the App talks to with billing `website`, and the store it links accounts in. */
+    readonly website: FakeWebsite;
+    readonly websiteLicensing: WebsiteLicensingStore;
     /** Sends `body` exactly as given, for routes whose signature covers the raw bytes. */
     post(
         path: string,
@@ -126,6 +144,14 @@ function matches(pattern: string, path: string): boolean {
     return want.length === got.length && want.every((part, index) => part.startsWith(':') || part === got[index]);
 }
 
+/** The real HTTP adapters, talking to the fake website, so the handoff and licence tests cover them too. */
+function websitePorts(
+    store: WebsiteLicensingStore,
+    api: { readonly websiteOrigin: string; readonly secret: string; readonly fetch: typeof fetch },
+) {
+    return { store, licenses: createWebsiteLicenseHttpApi(api), identities: createWebsiteIdentityExchange(api) };
+}
+
 /** Outputs are strict schemas: a field the contract does not declare fails the test that caused it. */
 function expectDeclaredOutput(routes: readonly RouteContract[], method: string, path: string, text: string): void {
     const route = routes.find((candidate) => candidate.method === method && matches(candidate.path, path));
@@ -139,8 +165,15 @@ export function createAuthHarness(options: {
     readonly store: AuthStore;
     readonly rateLimiter?: (clock: FakeClock) => RateLimiter;
     readonly email?: 'fake' | 'cloudflare';
-    /** `off` grants {@link TEST_OFF_PLAN} to everyone and mounts no billing route; the store is still there to inspect. */
-    readonly billing?: 'fake' | 'off';
+    /**
+     * `off` grants {@link TEST_OFF_PLAN} to everyone and mounts no billing route; the store is still there to inspect.
+     * `website` mounts no billing route either; licences come from {@link AuthHarness.website}.
+     */
+    readonly billing?: 'fake' | 'off' | 'website';
+    /** With billing `website`; an in-memory store by default (the D1 one in the workers project). */
+    readonly websiteLicensing?: WebsiteLicensingStore;
+    /** With billing `website`: `LICENSE_ENFORCEMENT`, unset (advisory) by default. */
+    readonly licenseEnforcement?: 'advisory' | 'enforce';
     /** Defaults to an in-memory store; the auth tests that use the default never touch billing. */
     readonly billingStore?: BillingStore;
     /** Default to in-memory stores whose organizations always exist. */
@@ -170,18 +203,32 @@ export function createAuthHarness(options: {
     readonly teams?: TeamStore;
     /** The `RELAYS` var's relay IDs; one relay by default. */
     readonly relays?: readonly string[];
+    /** Where usage events go instead of `usage`, e.g. a store that fails. */
+    readonly usageStore?: Pick<UsageStore, 'insertEvents'>;
+    readonly engineInstallation?: EngineInstallRelease;
+    readonly installReleases?: EngineInstallReleaseSource;
 }): AuthHarness {
     const clock = createFakeClock(START_MS);
     const timer = createManualTimer();
     const webhookSecret = syntheticWebhookSecret();
     const outbox = createFakeEmailSender();
     const logger = createMemoryLogger();
+    const licenseSecret = syntheticLicenseSecret();
+    const website = createFakeWebsite({ secret: licenseSecret, nowMs: () => clock.nowMs() });
+    const websiteLicensing =
+        options.websiteLicensing ??
+        createMemoryWebsiteLicensingStore((userId) =>
+            'state' in options.store
+                ? ((options.store as { readonly state: MemoryAuthState }).state.users.get(userId)?.email ?? null)
+                : null,
+        );
     const config = parseConfig({
         ENVIRONMENT: 'dev',
         DASHBOARD_ORIGIN: ORIGIN,
         ENGINE_DOMAIN: 'engines.ptbk.test',
         RELAYS: (options.relays ?? ['relay-1.ptbk.test']).map((relayId) => ({ relayId, region: 'eu-central' })),
         ...TEST_INSTALL_VARS,
+        ...(options.engineInstallation === undefined ? {} : { ENGINE_INSTALLATION: options.engineInstallation }),
         ADAPTERS: { email: options.email ?? 'fake', billing: options.billing ?? 'fake', rateLimit: 'memory' },
         EMAIL_FROM: 'no-reply@ptbk.test',
         ABUSE_EMAIL: 'abuse@ptbk.test',
@@ -189,7 +236,15 @@ export function createAuthHarness(options: {
         MEMBER_KEY: DEV_MEMBER_KEY,
         ...(options.billing === 'off'
             ? { BILLING_OFF_PLAN: TEST_OFF_PLAN }
-            : { BILLING_PLANS: TEST_PLANS, STRIPE_WEBHOOK_SECRET: webhookSecret }),
+            : options.billing === 'website'
+              ? {
+                    WEBSITE_HANDOFF_URL: FAKE_HANDOFF_URL,
+                    PROMPTBOOK_APP_LICENSE_SECRET: licenseSecret,
+                    ...(options.licenseEnforcement === undefined
+                        ? {}
+                        : { LICENSE_ENFORCEMENT: options.licenseEnforcement }),
+                }
+              : { BILLING_PLANS: TEST_PLANS, STRIPE_WEBHOOK_SECRET: webhookSecret }),
         ...(options.heartbeat === undefined ? {} : { HEARTBEAT: options.heartbeat }),
     });
     const testBilling = createTestBilling({
@@ -222,9 +277,17 @@ export function createAuthHarness(options: {
     const dns = createFakeDnsResolver();
     const customHostnames = options.customHostnames ?? engineHostnames;
     const heartbeatEngines = options.heartbeatEngines ?? createMemoryHeartbeatEngineReader(registration.engines);
+    const usage = createMemoryUsageStore();
+    const usageRecorder = createUsageRecorder({
+        store: options.usageStore ?? usage,
+        clock,
+        random: cryptoRandom,
+        logger,
+    });
     const engineStatuses = createMemoryEngineStatuses({
         clock,
         logger,
+        usage: usageRecorder,
         timing: config.heartbeat,
         heartbeatEngines,
         recipients: options.alertRecipients ?? { forEngineStatus: () => Promise.resolve([]) },
@@ -236,6 +299,7 @@ export function createAuthHarness(options: {
     const relayPresence = options.relayPresence ?? createMemoryRelayPresenceStore();
     const deps: DashboardDeps = {
         config,
+        installReleases: options.installReleases ?? createConfiguredEngineInstallReleaseSource(),
         clock,
         random: cryptoRandom,
         timer,
@@ -250,7 +314,17 @@ export function createAuthHarness(options: {
         devOutbox: options.email === 'cloudflare' ? null : outbox,
         ...(config.billing.adapter === 'off'
             ? { billing: null, entitlements: createFixedEntitlements(config.billing.grant) }
-            : { billing: testBilling.billing, entitlements: testBilling.entitlements }),
+            : config.billing.adapter === 'website'
+              ? { billing: null, entitlements: createAdvisoryEntitlements() }
+              : { billing: testBilling.billing, entitlements: testBilling.entitlements }),
+        licensing:
+            config.billing.adapter === 'website'
+                ? websitePorts(websiteLicensing, {
+                      websiteOrigin: config.billing.websiteOrigin,
+                      secret: config.billing.licenseSecret,
+                      fetch: website.fetch,
+                  })
+                : null,
         linkCodes: registration.linkCodes,
         engines: registration.engines,
         teams,
@@ -264,6 +338,7 @@ export function createAuthHarness(options: {
         heartbeatEngines,
         engineStatus: options.wrapEngineStatus?.(engineStatuses) ?? engineStatuses,
         relayPresence,
+        usage: usageRecorder,
     };
     const { app: http, routes } = createHttpApp({
         ...deps,
@@ -302,6 +377,9 @@ export function createAuthHarness(options: {
         dns,
         engineStatuses,
         relayPresence,
+        usage,
+        website,
+        websiteLicensing,
         settle,
         async post(path, body, headers = {}, postOptions = {}) {
             const response = await http.request(

@@ -1,3 +1,4 @@
+import type { HeartbeatInput } from '@ptbk/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { engineLabelSchema } from '../../shared/engine-label';
@@ -14,6 +15,7 @@ import {
     type AlertRecipient,
 } from './engine-status';
 import { createEngineStatusService } from './engine-status-service';
+import { createTestUsage } from '../../testing/test-usage';
 
 const OFFLINE_AFTER_MS = (3 * 60 + 15) * 1000;
 const OWNER: AlertRecipient = { email: 'owner@example.test', locale: 'cs' };
@@ -31,7 +33,11 @@ describe('engine status service', () => {
     function setup(options: Parameters<typeof createStatusTestDeps>[0] = {}) {
         const t = createStatusTestDeps({ recipients: new Map([[orgId, [OWNER]]]), ...options });
         const service = createEngineStatusService(t.deps);
-        const beat = async (seq: number, atMs = t.clock.nowMs(), overrides: { members?: number } = {}) => {
+        const beat = async (
+            seq: number,
+            atMs = t.clock.nowMs(),
+            overrides: Partial<Pick<HeartbeatInput, 'members' | 'setup' | 'agents' | 'ownerHandoff'>> = {},
+        ) => {
             const { body, signature } = await signedHeartbeat(engine, seq, atMs, overrides);
             return service.recordHeartbeat({
                 engineId: engine.engineId,
@@ -82,6 +88,38 @@ describe('engine status service', () => {
         t.clock.advance(60_000);
         expect((await t.beat(2)).kind).toBe('accepted');
         expect(t.storage.alarmAt()).toBe(START + 60_000 + OFFLINE_AFTER_MS);
+    });
+
+    it('stores the setup state each heartbeat reports, and none when a heartbeat leaves it out', async () => {
+        const t = setup();
+        const setupOf = async () => {
+            const status = await t.service.getStatus();
+            return status.state === 'never-seen' ? undefined : status.payload;
+        };
+        await t.beat(1, t.clock.nowMs(), { setup: 'pending' });
+        expect(await setupOf()).toMatchObject({ setup: 'pending' });
+        t.clock.advance(60_000);
+        await t.beat(2, t.clock.nowMs(), { setup: 'done' });
+        expect(await setupOf()).toMatchObject({ setup: 'done' });
+        t.clock.advance(60_000);
+        await t.beat(3);
+        expect(await setupOf()).not.toHaveProperty('setup');
+    });
+
+    it('keeps the latest heartbeat’s owner handoff signal only, so one without it clears it (ADR 0023)', async () => {
+        const t = setup();
+        const payloadOf = async () => {
+            const status = await t.service.getStatus();
+            return status.state === 'never-seen' ? undefined : status.payload;
+        };
+        await t.beat(1, t.clock.nowMs(), { members: 0 });
+        expect(await payloadOf()).not.toHaveProperty('ownerHandoff');
+        t.clock.advance(5_000);
+        await t.beat(2, t.clock.nowMs(), { members: 0, ownerHandoff: 'ready' });
+        expect(await payloadOf()).toMatchObject({ members: 0, ownerHandoff: 'ready' });
+        t.clock.advance(60_000);
+        await t.beat(3, t.clock.nowMs(), { members: 1 });
+        expect(await payloadOf()).not.toHaveProperty('ownerHandoff');
     });
 
     it('refuses an equal and a lower seq as replayed, through verifyHeartbeat with the stored lastSeq', async () => {
@@ -549,6 +587,8 @@ describe('engine status service', () => {
             alert: { kind: 'none' },
         };
         expect(storedEngineStatusSchema.parse(legacy)).toMatchObject({ notice: { kind: 'none' } });
+        // Nor did it know setup states: its payload parses without one, which reads as set up.
+        expect(storedEngineStatusSchema.parse(legacy)).not.toHaveProperty('payload.setup');
     });
 
     describe('a heartbeat accepted while the alarm is sending', () => {
@@ -609,6 +649,103 @@ describe('engine status service', () => {
             expect(t.sentOf('engine-back-online')).toEqual([
                 expect.objectContaining({ lastSeenAt: START, backOnlineAt: backAt }),
             ]);
+        });
+    });
+
+    describe('usage data (ADR 0022)', () => {
+        it('records the first heartbeat and the setup completion once each, and nothing for the beats between', async () => {
+            const t = setup();
+            for (const [seq, state] of [
+                [1, 'pending'],
+                [2, 'pending'],
+                [3, 'done'],
+                [4, 'done'],
+            ] as const) {
+                t.clock.advance(60_000);
+                expect((await t.beat(seq, t.clock.nowMs(), { setup: state })).kind).toBe('accepted');
+            }
+            expect(t.usage.state.events.map((row) => [row.event, row.orgId, row.engineId, row.props])).toEqual([
+                ['engine.first_heartbeat', orgId, engine.engineId, '{"setup":"pending"}'],
+                ['engine.setup_completed', orgId, engine.engineId, '{}'],
+            ]);
+        });
+
+        it('counts each UTC day’s heartbeats in the status it saves, keeping the day before', async () => {
+            const t = setup();
+            expect(await t.service.getActivity()).toBeNull();
+            await t.beat(1);
+            t.clock.advance(60_000);
+            await t.beat(2, t.clock.nowMs(), { setup: 'pending', agents: 5 });
+            const midnight = Date.UTC(2027, 0, 16);
+            t.clock.set(midnight + 30_000);
+            await t.beat(3);
+            const last = { engineVersion: '1.4.2', members: 2, updateState: 'none', cpuLoad: 'low' };
+            expect(await t.service.getActivity()).toEqual({
+                current: {
+                    day: '2027-01-16',
+                    beats: 1,
+                    firstBeatAt: midnight + 30_000,
+                    lastBeatAt: midnight + 30_000,
+                    agents: 3,
+                    setup: null,
+                    ...last,
+                },
+                previous: {
+                    day: '2027-01-15',
+                    beats: 2,
+                    firstBeatAt: START,
+                    lastBeatAt: START + 60_000,
+                    agents: 5,
+                    setup: 'pending',
+                    ...last,
+                },
+            });
+        });
+
+        it('answers no activity for a status saved before it was counted', async () => {
+            const t = setup();
+            await t.beat(1);
+            const stored = t.storage.stored();
+            if (stored?.kind !== 'tracked') {
+                throw new Error('expected a tracked status');
+            }
+            await t.storage.save({ ...stored, activity: undefined });
+            expect(await t.service.getActivity()).toBeNull();
+        });
+
+        it('answers no activity for a purged engine', async () => {
+            const t = setup();
+            await t.beat(1);
+            await t.fireAlarm();
+            await t.fireAlarm();
+            expect(t.storage.stored()).toMatchObject({ kind: 'purged' });
+            expect(await t.service.getActivity()).toBeNull();
+        });
+
+        it('accepts the heartbeat when the event cannot be written', async () => {
+            const t = setup();
+            const service = createEngineStatusService({
+                ...t.deps,
+                usage: createTestUsage({
+                    store: { insertEvents: () => Promise.reject(new Error('D1 unavailable')) },
+                    logger: t.logger,
+                }).recorder,
+            });
+            const { body, signature } = await signedHeartbeat(engine, 1, t.clock.nowMs());
+            const outcome = await service.recordHeartbeat({
+                engineId: engine.engineId,
+                orgId,
+                publicKey: engine.publicKey,
+                rawBody: body,
+                signatureHeader: signature,
+                receivedAt: t.clock.nowMs(),
+            });
+            expect(outcome.kind).toBe('accepted');
+            expect(t.logger.entries).toContainEqual({
+                level: 'warn',
+                event: 'usage.record-failed',
+                fields: { error: 'Error', events: 1 },
+            });
         });
     });
 

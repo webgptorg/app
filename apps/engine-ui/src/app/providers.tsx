@@ -5,6 +5,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { useMemo } from 'react';
 
+import { LiveSessionsProvider } from '../features/browser/live-sessions';
 import { StepUpProvider } from '../features/step-up/step-up';
 import { BrowserProvider } from './browser-context';
 import type { AppBrowser } from './browser-context';
@@ -27,10 +28,23 @@ export interface AppProvidersProps {
     readonly engineEvents?: EngineEvents;
     /** Defaults to the browser's clock, ticking once a second while the page is visible. */
     readonly ticker?: Ticker;
+    /** The same sign-in redirect the query client uses, for the event stream's 401. */
+    readonly onUnauthenticated?: () => void;
 }
 
-export function AppProviders({ engineApi, queryClient, router, browser, engineEvents, ticker }: AppProvidersProps) {
-    const defaultEvents = useMemo(() => createEngineEvents({ engineApi }), [engineApi]);
+export function AppProviders({
+    engineApi,
+    queryClient,
+    router,
+    browser,
+    engineEvents,
+    ticker,
+    onUnauthenticated,
+}: AppProvidersProps) {
+    const defaultEvents = useMemo(
+        () => createEngineEvents({ engineApi, ...(onUnauthenticated === undefined ? {} : { onUnauthenticated }) }),
+        [engineApi, onUnauthenticated],
+    );
     const defaultTicker = useMemo(() => createBrowserTicker(), []);
     return (
         <BrowserProvider browser={browser}>
@@ -41,8 +55,14 @@ export function AppProviders({ engineApi, queryClient, router, browser, engineEv
                         <EngineEventsProvider events={engineEvents ?? defaultEvents}>
                             <TickerProvider ticker={ticker ?? defaultTicker}>
                                 <QueryClientProvider client={queryClient}>
-                                    <StepUpProvider location={browser.location} storage={browser.storage}>
-                                        <RouterProvider router={router} />
+                                    <StepUpProvider
+                                        location={browser.location}
+                                        storage={browser.storage}
+                                        popups={browser.popups}
+                                    >
+                                        <LiveSessionsProvider>
+                                            <RouterProvider router={router} />
+                                        </LiveSessionsProvider>
                                     </StepUpProvider>
                                 </QueryClientProvider>
                             </TickerProvider>

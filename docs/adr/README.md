@@ -22,4 +22,9 @@ One file per decision. Copy [0000-template.md](0000-template.md), take the next 
 | [0016](0016-engine-capabilities.md)               | Engine capabilities and a typed, extensible activity model            | Accepted |
 | [0017](0017-billing-entitlements.md)              | Billing through entitlements                                          | Accepted |
 | [0018](0018-teams-and-member-access.md)           | Teams, access requests and dashboard removals                         | Proposed |
-| [0019](0019-live-sessions-inside-the-tunnel.md)   | Live audio, video and the browser tab ride inside the engine's TLS    | Proposed |
+| [0019](0019-live-sessions-inside-the-tunnel.md)   | Live audio, video and the browser tab ride inside the engine's TLS    | Accepted |
+| [0022](0022-usage-data-in-d1.md)                  | Usage data in D1: closed events and daily rollups, no engine content  | Accepted |
+| [0023](0023-owner-setup-handoff.md)               | Owner setup handoff from the pairing browser                          | Accepted |
+| [0026](0026-teams-v2.md)                          | Teams v2: departments with team admins and several projects           | Accepted |
+| [0027](0027-notifications.md)                     | Notifications: one system, in-app and email, counts only from engines | Accepted |
+| [0028](0028-clean-removal.md)                     | One "Remove project", an engine that knows, and a signed unlink       | Accepted |

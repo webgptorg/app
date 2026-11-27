@@ -7,7 +7,7 @@ import { createRoot } from 'react-dom/client';
 
 import { createApiClient } from './api/api-client';
 import { App } from './app';
-import { safeLocalStorage } from './core/storage';
+import { safeLocalStorage, safeSessionStorage } from './core/storage';
 import { createBrowserPasskeyAuthenticator } from './features/passkeys/browser-passkey-authenticator';
 
 const storage = safeLocalStorage();
@@ -27,6 +27,7 @@ createRoot(container).render(
             apiClient={createApiClient({ fetch: (input, init) => fetch(input, init) })}
             browser={{
                 storage,
+                sessionStorage: safeSessionStorage(),
                 matchMedia,
                 passkeys: createBrowserPasskeyAuthenticator(),
                 now: () => Date.now(),

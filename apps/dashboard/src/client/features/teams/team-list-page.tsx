@@ -1,12 +1,13 @@
-import { Button, EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
+import { BrandRobot, Button, EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { Plus, UsersRound } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import { apiRoutes, type EngineView, type TeamView } from '../../../shared/api/routes';
 import type { TeamName } from '../../../shared/team-name';
+import { LicenseNotice } from '../licensing/license-notice';
 import { useApiClient } from '../../api/api-client-context';
 import { dataOrThrow, enginesQuery } from '../../api/queries';
 import { Link } from '../../core/link';
@@ -16,6 +17,7 @@ import { EngineStatusPill } from '../engines/engine-status-pill';
 import { PendingLinkCodes } from '../engines/pending-link-codes';
 import { Page } from '../shell/page';
 import { useSession } from '../session/use-session';
+import { InviteOffers } from './invite-offers';
 import { OpenTeamButton } from './open-team-button';
 import { TeamNameDialog } from './team-name-dialog';
 import { teamKeys, teamsQuery } from './team-queries';
@@ -51,7 +53,7 @@ function TeamRow(props: { readonly team: TeamView; readonly engine: EngineView |
                     <span>{m.team_people_count({ count: team.memberCount })}</span>
                 </span>
             </div>
-            <OpenTeamButton team={team} />
+            <OpenTeamButton team={team} engine={engine} />
         </li>
     );
 }
@@ -128,7 +130,7 @@ export function TeamListPage() {
         if (teams.data.length === 0) {
             return (
                 <EmptyState
-                    icon={<UsersRound aria-hidden className="size-6" />}
+                    illustration={<BrandRobot pose="assembling" size="md" />}
                     title={canManage ? m.teams_empty_title() : m.teams_empty_member_title()}
                     headingLevel={2}
                     description={canManage ? m.teams_empty_body() : m.teams_empty_member_body()}
@@ -150,6 +152,8 @@ export function TeamListPage() {
             title={m.teams_title()}
             {...(canManage && (teams.data?.length ?? 0) > 0 ? { actions: <NewTeamButton primary /> } : {})}
         >
+            <InviteOffers />
+            <LicenseNotice />
             {content()}
             {canLink ? <PendingLinkCodes /> : null}
         </Page>

@@ -72,6 +72,11 @@ export const FileVersionId = z.string().regex(OPAQUE_ID_PATTERN).brand<'FileVers
 export type FileVersionId = z.infer<typeof FileVersionId>;
 export const LiveSessionId = z.string().regex(OPAQUE_ID_PATTERN).brand<'LiveSessionId', 'inout'>();
 export type LiveSessionId = z.infer<typeof LiveSessionId>;
+/** An AI tool's stable name on the engine, e.g. `claude-code`; the same on every engine for the same tool. */
+export const AiToolId = z.string().regex(OPAQUE_ID_PATTERN).brand<'AiToolId', 'inout'>();
+export type AiToolId = z.infer<typeof AiToolId>;
+export const AiToolSignInId = z.string().regex(OPAQUE_ID_PATTERN).brand<'AiToolSignInId', 'inout'>();
+export type AiToolSignInId = z.infer<typeof AiToolSignInId>;
 
 /** An ID of any kind, for fields whose kind is given by another field (audit targets); chat IDs included. */
 export const OpaqueId = z.string().regex(ENGINE_REF_PATTERN);
@@ -171,7 +176,8 @@ export type Diagnostic = z.infer<typeof Diagnostic>;
 
 /**
  * RFC 9457 problem details. Extensions are declared like any other field, because the schema is strict:
- * `errors` with `validation-failed` and `invalid-schedule`, `requiredPermission` with `forbidden`, `diagnostics` with `invalid-book`.
+ * `errors` with `validation-failed` and `invalid-schedule`, `requiredPermission` with `forbidden`, `diagnostics` with `invalid-book`,
+ * `attemptsRemaining` with `access-code-mismatch`, `aiToolId` with `ai-tool-sign-in-required`.
  */
 export const ProblemDetails = z.strictObject({
     type: z.string().min(1).max(2048),
@@ -183,6 +189,10 @@ export const ProblemDetails = z.strictObject({
     errors: z.array(z.strictObject({ path: z.string().max(1024), message: z.string().max(1024) })).optional(),
     requiredPermission: Permission.optional(),
     diagnostics: z.array(Diagnostic).optional(),
+    /** Wrong codes the access request still survives, 0 once this one deleted it. Older engines omit it. */
+    attemptsRemaining: z.int().min(0).max(1000).optional(),
+    /** With `ai-tool-sign-in-required`: the AI tool to sign in again (`ai-tools@1`). */
+    aiToolId: AiToolId.optional(),
 });
 export type ProblemDetails = z.infer<typeof ProblemDetails>;
 

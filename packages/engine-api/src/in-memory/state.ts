@@ -17,10 +17,14 @@ import type { AccessRequestRecord } from './access-requests';
 import type { OnboardingRecord } from './onboarding';
 import type { ChatEvent, ChatRecord, RequestKeyRecord } from './threads';
 import type { InMemoryWallet } from './wallet';
+import type { InMemoryBrowser } from './live';
 import type { Passkey } from '../passkeys';
 import type { SecurityOverview } from '../security';
 import type { Session } from '../sessions';
 import type { Settings } from '../settings';
+import type { InMemoryUpdates } from './updates';
+import type { InMemoryVoice } from './voice';
+import type { InMemoryAiTools } from './ai-tools';
 
 export interface AgentRecord {
     agent: Agent;
@@ -85,6 +89,11 @@ export interface InMemoryState {
     readonly invites: Map<string, Invite>;
     readonly accessRequests: Map<string, AccessRequestRecord>;
     readonly onboarding: OnboardingRecord;
+    readonly voice: InMemoryVoice;
+    /** The project's AI tools and the sign-ins in progress (`ai-tools@1`). */
+    readonly aiTools: InMemoryAiTools;
+    /** `updates@1`: the plugged-in UI updater, or the fake release store's levers. */
+    readonly updates: InMemoryUpdates;
     readonly folders: Map<string, Folder>;
     readonly agents: Map<string, AgentRecord>;
     readonly chats: Map<string, ChatRecord>;
@@ -96,6 +105,8 @@ export interface InMemoryState {
     readonly replies: Map<string, ReplyRecord>;
     readonly integrationSecrets: Map<string, IntegrationSecret>;
     readonly wallet: InMemoryWallet;
+    /** The fake browser's tabs, live sessions and help requests (`browser-tab@1`). */
+    readonly browser: InMemoryBrowser;
     readonly apiTokens: Map<string, ApiToken>;
     readonly passkeys: Map<string, Passkey>;
     readonly sessions: Map<string, Session>;

@@ -1,4 +1,4 @@
-import type { Timestamp } from '@ptbk/protocol';
+import type { SetupState, Timestamp } from '@ptbk/protocol';
 import {
     EngineVersion,
     HEARTBEAT_MAX_BODY_BYTES,
@@ -21,7 +21,7 @@ import type { DashboardApi } from '../dashboard/dashboard-api';
 import { registerEngine } from '../registration/register';
 import { isoSeconds } from './build-heartbeat';
 import type { HeartbeatStatus, HeartbeatTeams } from './heartbeat-loop';
-import { DEFAULT_HEARTBEAT_INTERVAL_S, createHeartbeatLoop } from './heartbeat-loop';
+import { DEFAULT_HEARTBEAT_INTERVAL_S, SETUP_CHECK_MS, createHeartbeatLoop } from './heartbeat-loop';
 import { createScenarioSystemStats } from './scenario-system-stats';
 import type { SeqStore } from './seq-store';
 
@@ -35,6 +35,8 @@ interface SetupOptions {
     readonly seqs?: (fallback: SeqStore) => SeqStore;
     readonly api?: (fake: FakeDashboard) => DashboardApi;
     readonly teams?: HeartbeatTeams;
+    readonly setup?: () => SetupState | null;
+    readonly ownerHandoff?: () => boolean;
 }
 
 async function setup(options: SetupOptions = {}) {
@@ -67,13 +69,18 @@ async function setup(options: SetupOptions = {}) {
         api: options.api?.(fake) ?? fake.api,
         seqs: options.seqs?.(memorySeqs) ?? memorySeqs,
         system: createScenarioSystemStats(() => 'small-team'),
-        engine: { counts: () => ({ agents: 3, members: 2 }), updateState: () => 'none' },
+        engine: {
+            counts: () => ({ agents: 3, members: 2 }),
+            updateState: () => 'none',
+            setup: options.setup ?? (() => null),
+        },
         identity,
         version: VERSION,
         intervalS: options.intervalS ?? DEFAULT_HEARTBEAT_INTERVAL_S,
         startedAtMs: START_MS,
         onStatus: (status) => statuses.push(status),
         ...(options.teams === undefined ? {} : { teams: options.teams }),
+        ...(options.ownerHandoff === undefined ? {} : { ownerHandoff: options.ownerHandoff }),
     });
     return { clock, logger, identity, fake, loop, statuses, memorySeqs };
 }
@@ -433,6 +440,58 @@ describe('createHeartbeatLoop', () => {
         started.loop.beatNow();
         await flush(10);
         expect(started.fake.heartbeats).toHaveLength(3);
+    });
+
+    it('reports setup in every beat, and beats at once when setup finishes', async () => {
+        let setupState: SetupState = 'pending';
+        const started = await setup({ setup: () => setupState });
+        const setupOf = (index: number) => {
+            const beat = started.fake.heartbeats[index];
+            if (beat === undefined) throw new Error(`no beat ${String(index)}`);
+            return Heartbeat.parse(JSON.parse(new TextDecoder().decode(beat.rawBody))).setup;
+        };
+        started.loop.start();
+        await received(started, 1);
+        expect(setupOf(0)).toBe('pending');
+        started.clock.advance(SETUP_CHECK_MS * 5);
+        await flush(5);
+        expect(started.fake.heartbeats).toHaveLength(1);
+
+        setupState = 'done';
+        started.clock.advance(SETUP_CHECK_MS);
+        await received(started, 2);
+        expect(setupOf(1)).toBe('done');
+        started.clock.advance(SETUP_CHECK_MS * 5);
+        await flush(5);
+        expect(started.fake.heartbeats).toHaveLength(2);
+        await started.loop.stop();
+    });
+
+    it('carries ownerHandoff only while ready, and beats within a second of it turning ready', async () => {
+        let ready = false;
+        const started = await setup({ ownerHandoff: () => ready });
+        const handoffOf = (index: number) => {
+            const beat = started.fake.heartbeats[index];
+            if (beat === undefined) throw new Error(`no beat ${String(index)}`);
+            return Heartbeat.parse(JSON.parse(new TextDecoder().decode(beat.rawBody))).ownerHandoff;
+        };
+        started.loop.start();
+        await received(started, 1);
+        expect(handoffOf(0)).toBeUndefined();
+
+        ready = true;
+        started.clock.advance(SETUP_CHECK_MS);
+        await received(started, 2);
+        expect(handoffOf(1)).toBe('ready');
+        started.clock.advance(SETUP_CHECK_MS * 5);
+        await flush(5);
+        expect(started.fake.heartbeats).toHaveLength(2);
+
+        ready = false;
+        started.clock.advance(DEFAULT_HEARTBEAT_INTERVAL_S * 1000);
+        await received(started, 3);
+        expect(handoffOf(2)).toBeUndefined();
+        await started.loop.stop();
     });
 
     it('sends one more beat after a beat in flight when asked to beat now meanwhile', async () => {
