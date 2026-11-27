@@ -169,7 +169,13 @@ describe('runScheduled', () => {
                 .filter((entry) => entry.event === 'cron.job-failed')
                 .map((entry) => entry.job)
                 .sort();
-            expect(failed).toEqual(['ct-watch', 'link-code-commitments', 'meter-history', 'public-face', 'usage-rollup']);
+            expect(failed).toEqual([
+                'ct-watch',
+                'link-code-commitments',
+                'meter-history',
+                'public-face',
+                'usage-rollup',
+            ]);
         } finally {
             errors.mockRestore();
         }
