@@ -32,6 +32,8 @@ export interface PageReport {
     readonly wideOverflowPx: number;
     /** Cumulative layout shift after load. */
     readonly layoutShift: number;
+    /** What moved in each shift, so a CI failure names its cause without a trace. */
+    readonly layoutShifts: readonly string[];
 }
 
 export function expectCleanPage(report: PageReport): void {
@@ -42,7 +44,9 @@ export function expectCleanPage(report: PageReport): void {
     expect.soft(report.axeViolations, 'serious or critical axe violations').toEqual([]);
     expect.soft(report.overflowPx, 'horizontal overflow at 360 px').toBeLessThanOrEqual(0);
     expect.soft(report.wideOverflowPx, 'horizontal overflow at 1280 px').toBeLessThanOrEqual(0);
-    expect.soft(report.layoutShift, 'cumulative layout shift').toBeLessThan(MAX_LAYOUT_SHIFT);
+    expect
+        .soft(report.layoutShift, `cumulative layout shift:\n${report.layoutShifts.join('\n')}`)
+        .toBeLessThan(MAX_LAYOUT_SHIFT);
 }
 
 interface Fixtures {
@@ -103,7 +107,7 @@ export const test = base.extend<Fixtures>({
             await page.waitForLoadState('networkidle');
             // Read before axe runs: axe is test tooling injected over CDP, not part of the bundle.
             const cspViolations = await page.evaluate(() => window.__ptbkCspViolations ?? []);
-            const layoutShift = await measureLayoutShift(page);
+            const { layoutShift, layoutShifts } = await measureLayoutShift(page);
             const axe = await new AxeBuilder({ page }).analyze();
             const axeViolations = axe.violations
                 .filter((violation) => violation.impact === 'serious' || violation.impact === 'critical')
@@ -124,27 +128,51 @@ export const test = base.extend<Fixtures>({
                 overflowPx,
                 wideOverflowPx,
                 layoutShift,
+                layoutShifts,
             };
         });
     },
 });
 
-async function measureLayoutShift(page: Page): Promise<number> {
+async function measureLayoutShift(page: Page): Promise<Pick<PageReport, 'layoutShift' | 'layoutShifts'>> {
     return page.evaluate(
         () =>
-            new Promise<number>((resolve) => {
+            new Promise<Pick<PageReport, 'layoutShift' | 'layoutShifts'>>((resolve) => {
+                interface LayoutShift extends PerformanceEntry {
+                    readonly value: number;
+                    readonly hadRecentInput: boolean;
+                    readonly sources: readonly {
+                        readonly node: Node | null;
+                        readonly previousRect: DOMRectReadOnly;
+                        readonly currentRect: DOMRectReadOnly;
+                    }[];
+                }
+                const rect = ({ x, y, width, height }: DOMRectReadOnly) =>
+                    `${x.toFixed(0)},${y.toFixed(0)} ${width.toFixed(0)}×${height.toFixed(0)}`;
+                const describe = (node: Node | null) => {
+                    const element = node instanceof Element ? node : (node?.parentElement ?? null);
+                    if (element === null) return 'a removed node';
+                    const label = element.textContent.trim().slice(0, 40);
+                    return `<${element.tagName.toLowerCase()} class="${element.getAttribute('class') ?? ''}"> "${label}"`;
+                };
                 const observer = new PerformanceObserver(() => undefined);
                 observer.observe({ type: 'layout-shift', buffered: true });
                 // Buffered entries land in the observer's buffer synchronously; one frame lets late shifts in too.
                 requestAnimationFrame(() => {
-                    const entries = observer.takeRecords() as (PerformanceEntry & {
-                        readonly value: number;
-                        readonly hadRecentInput: boolean;
-                    })[];
+                    const entries = (observer.takeRecords() as LayoutShift[]).filter((entry) => !entry.hadRecentInput);
                     observer.disconnect();
-                    resolve(
-                        entries.filter((entry) => !entry.hadRecentInput).reduce((sum, entry) => sum + entry.value, 0),
-                    );
+                    resolve({
+                        layoutShift: entries.reduce((sum, entry) => sum + entry.value, 0),
+                        layoutShifts: entries.map(
+                            (entry) =>
+                                `${entry.value.toFixed(3)} at ${entry.startTime.toFixed(0)} ms: ${entry.sources
+                                    .map(
+                                        (source) =>
+                                            `${describe(source.node)} ${rect(source.previousRect)} → ${rect(source.currentRect)}`,
+                                    )
+                                    .join('; ')}`,
+                        ),
+                    });
                 });
             }),
     );

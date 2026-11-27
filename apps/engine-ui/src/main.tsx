@@ -15,6 +15,13 @@ applyTheme(readThemePreference(storage), document.documentElement, matchMedia);
 
 document.documentElement.dataset['uiVersion'] = __PTBK_UI_VERSION__;
 
+// The browser fetches a web font only once text needs it, after the route's chunks and data: on a busy engine Inter
+// then swaps in under text already drawn in its fallback, and a long thread rewraps by hundreds of pixels. Asked for
+// now, while the app is still starting, the fonts are there before any text is. The sample covers Czech's letters too.
+for (const family of ['Inter Variable', 'JetBrains Mono Variable']) {
+    void document.fonts.load(`1em "${family}"`, 'Aa čřšžůě').catch(() => undefined);
+}
+
 const container = document.getElementById('root');
 if (container === null) {
     throw new Error('index.html has no #root element');
