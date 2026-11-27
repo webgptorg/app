@@ -14,7 +14,7 @@ Billing counts what an organization uses: projects, agents and members (Seb, 202
 - ADR 0025 (Proposed), as its own docs PR.
 - The meter interface and the v1 meters: `projects` (the dashboard's own active engines), `agents` and `members` (the engine's last reported heartbeat counts), `people` (the organization's dashboard members).
 - Readings per organization, team and project; unknown counts stay unknown, never zero.
-- A daily history in D1 (`usage_daily_meters`), written by the existing `usage-rollup` job, with ADR 0022's retention.
+- A daily history in D1 (`usage_daily_meters`), written every 15 minutes beside ADR 0022's rollup, with its retention.
 - Plan configuration for meter quotas and `overLimit` (`block` or `warn`); the entitlements port answers them for every billing adapter.
 - A limit check that answers `ok`, `warn` or `block` for "one more" of a meter: the hook the upgrade flow calls.
 - `GET /api/usage`, read-only: current readings with their limits.
@@ -24,7 +24,7 @@ Out of scope: payments, Stripe changes, the admin console, any UI, and wiring th
 ## Acceptance criteria
 
 - [ ] ADR 0025 opened as a docs PR, with the two open decisions marked for Seb.
-- [ ] A new meter is one file and one entry in the closed list; no migration, route or plan-schema change.
+- [ ] A new meter is one file, one entry in the closed list and its quota names; no migration or route change.
 - [ ] Readings cover: no heartbeat yet (unreported, not zero), a revoked or suspended engine (not counted), a team without a project (zero), a project without a team.
 - [ ] The history job is idempotent and keeps each day's last value and peak.
 - [ ] Every billing adapter answers the new quotas and `overLimit`; existing plan configuration parses unchanged.

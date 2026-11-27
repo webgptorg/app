@@ -40,6 +40,8 @@ A meter is a pure function from those facts to a reading (`apps/dashboard/src/do
 interface Meter {
   readonly id: MeterId; // a closed list: 'projects' | 'agents' | 'members' | 'people'
   readonly quotas: { readonly org: Quota | null; readonly project: Quota | null };
+  /** The dashboard can stop only what it creates itself; what an engine creates can only be reported. */
+  readonly createdBy: 'dashboard' | 'engine';
   measure(facts: OrgUsageFacts): MeterReading;
 }
 
@@ -67,11 +69,11 @@ The v1 meters:
 
 A project without a heartbeat yet is `unreported` for `agents` and `members`: unknown is never zero (ADR 0021). A team without a project has zero of every engine-side meter, which is known. `members` sums per project because the dashboard cannot de-duplicate engine members; `people` is the de-duplicated count of the people the dashboard invited. A plan limits whichever it needs.
 
-A new meter, such as "agents that ran in the period" (`agents-active`), is one file and one entry in the closed list, plus the heartbeat field it reads. No migration, route or plan-schema change: its quotas are named `<meter>.max` and `<meter>.per-project.max`, and the history stores meters by name.
+A new meter, such as "agents that ran in the period" (`agents-active`), is one file, one entry in the closed list and its quota names (`<meter>.max`, `<meter>.per-project.max`) in the closed quota list, plus the heartbeat field it reads. No migration or route change: plans that leave its quotas out are unlimited, and the history stores meters by name.
 
 ### Daily history
 
-`usage_daily_meters` stores each reading per UTC day: `(day, org_id, scope, scope_id, meter)` with `value`, `unreported` and `peak`, where `scope` is `org`, `team` or `project` and `scope_id` the organization, team or engine ID. The `usage-rollup` job (ADR 0022's `*/15` cron) measures every organization with a project or a team after it writes the engine days, and rewrites today's rows: `value` is the latest reading, `peak` the day's highest. A repeated run changes nothing beyond the latest value, and the last run of a day leaves that day's final value. Retention is the rollups' 25 months, and rows go with their organization (`ON DELETE CASCADE`). `meter` has no CHECK, like `usage_events.event`.
+`usage_daily_meters` stores each reading per UTC day: `(day, org_id, scope, scope_id, meter)` with `value`, `unreported` and `peak`, where `scope` is `org`, `team` or `project` and `scope_id` the organization, team or engine ID. The `meter-history` job runs on ADR 0022's `*/15` cron beside the usage rollup, measures every organization with a project or a team, and rewrites today's rows. It reads the engine days the rollup wrote, so its engine counts trail by at most one run. Of each row, `value` is the latest reading, `peak` the day's highest. A repeated run changes nothing beyond the latest value, and the last run of a day leaves that day's final value. Retention is the rollups' 25 months, and rows go with their organization (`ON DELETE CASCADE`). `meter` has no CHECK, like `usage_events.event`. Each project's latest engine day is found through a new index on `usage_daily_engines (engine_id, day)`.
 
 Organizations with neither a project nor a team are not written: their readings are zero apart from `people`, which `memberships` already holds.
 
@@ -125,7 +127,7 @@ The admin console's over-limit list is a query: the latest `usage_daily_meters` 
 
 ### Exposure
 
-`GET /api/usage` (session, `usage.read`: owners and admins) answers the current readings of every meter with their limits and the plan's `overLimit`. It is read-only; the team view and the admin console use it or the table.
+`GET /api/usage` (session, `usage.read`: owners and admins) answers the current readings of every meter with their limits and the plan's `overLimit`, and the organization's totals for the last 31 days. It is read-only; the team view and the admin console use it or the table.
 
 ## Open decisions for Seb
 
