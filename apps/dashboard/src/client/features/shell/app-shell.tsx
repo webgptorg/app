@@ -61,7 +61,7 @@ export function AppFrame({ session, children }: { readonly session: SessionView;
                                         <Link
                                             to={entry.to}
                                             variant="standalone"
-                                            className="inline-flex h-8 items-center gap-1.5 rounded-control px-2.5 text-sm text-text-muted no-underline hover:bg-hover hover:text-text motion-safe:transition-colors motion-safe:duration-(--motion-state) aria-[current=page]:bg-selected aria-[current=page]:font-medium aria-[current=page]:text-text"
+                                            className="inline-flex h-8 items-center gap-1.5 rounded-control px-2.5 pointer-coarse:h-10 text-sm text-text-muted no-underline hover:bg-hover hover:text-text motion-safe:transition-colors motion-safe:duration-(--motion-state) aria-[current=page]:bg-selected aria-[current=page]:font-medium aria-[current=page]:text-text"
                                             activeProps={{ 'aria-current': 'page' }}
                                         >
                                             <entry.icon aria-hidden className="hidden size-4 opacity-80 lg:block" />

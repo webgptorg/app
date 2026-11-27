@@ -24,8 +24,8 @@ export interface IconButtonProps extends Omit<
 }
 
 const SQUARE: Readonly<Record<ButtonSize, string>> = {
-    sm: 'size-8 px-0',
-    md: 'size-10 px-0',
+    sm: 'size-8 px-0 pointer-coarse:size-10',
+    md: 'size-10 px-0 pointer-coarse:size-11',
     lg: 'size-11 px-0',
 };
 

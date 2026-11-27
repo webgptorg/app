@@ -3,7 +3,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import type { CSSProperties, FocusEvent, KeyboardEvent, ReactNode } from 'react';
 
 import { useUiMessages } from '../../i18n/ui-provider';
-import { CONTROL_HEIGHT, controlClassName, invalidAttribute } from '../../internal/control';
+import { CONTROL_HEIGHT, controlClassName, invalidAttribute, TOUCH_HEIGHT } from '../../internal/control';
 import { cx } from '../../internal/cx';
 
 export interface ComboboxOption {
@@ -48,7 +48,10 @@ const VIEWPORT_MARGIN = 8;
 const PAGE_STEP = 10;
 const TYPEAHEAD_RESET_MS = 500;
 
-const SIZE_CLASSES = CONTROL_HEIGHT;
+const SIZE_CLASSES = {
+    sm: `${CONTROL_HEIGHT.sm} ${TOUCH_HEIGHT.sm}`,
+    md: `${CONTROL_HEIGHT.md} ${TOUCH_HEIGHT.md}`,
+} as const;
 
 interface Placement {
     /** Above the trigger the popup is held by its bottom edge, so a shrinking filtered list stays attached. */

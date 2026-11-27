@@ -85,7 +85,7 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
                                             onClick={onNavigate}
                                             {...label.target(text)}
                                             className={cx(
-                                                'group/nav flex min-h-8 items-center gap-2.5 rounded-control px-2.5 text-sm text-text-muted no-underline',
+                                                'group/nav flex min-h-8 items-center gap-2.5 rounded-control px-2.5 text-sm text-text-muted no-underline pointer-coarse:min-h-10',
                                                 'hover:bg-hover hover:text-text',
                                                 // Inset, so the scrolling nav doesn't clip the ring.
                                                 'focus-visible:-outline-offset-2',

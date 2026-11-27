@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, MouseEvent, ReactNode, Ref } from 'react';
 
-import { CONTROL_HEIGHT } from '../../internal/control';
+import { CONTROL_HEIGHT, TOUCH_HEIGHT } from '../../internal/control';
 import { cx } from '../../internal/cx';
 import { mergeTooltipHandlers, useTooltip } from '../tooltip/tooltip';
 import { Spinner } from '../spinner/spinner';
@@ -60,8 +60,8 @@ const DISABLED_CLASSES: Readonly<Record<ButtonVariant, string>> = {
 };
 
 const SIZE_CLASSES: Readonly<Record<ButtonSize, string>> = {
-    sm: cx(CONTROL_HEIGHT.sm, 'gap-1.5 px-2.5 text-xs'),
-    md: cx(CONTROL_HEIGHT.md, 'gap-2 px-3.5 text-sm'),
+    sm: cx(CONTROL_HEIGHT.sm, TOUCH_HEIGHT.sm, 'gap-1.5 px-2.5 text-xs'),
+    md: cx(CONTROL_HEIGHT.md, TOUCH_HEIGHT.md, 'gap-2 px-3.5 text-sm'),
     // The one action of a page with nothing else to do (sign in with a passkey); never on a line with other controls.
     lg: 'min-h-11 gap-2 px-5 text-sm',
 };

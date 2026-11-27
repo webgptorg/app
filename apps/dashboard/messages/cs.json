@@ -431,6 +431,7 @@
   "invite_title": "Pozvat lidi",
   "invite_title_engine": "Pozvat lidi do projektu {engine}",
   "invite_to_engine": "Pozvat do tohoto projektu",
+  "invite_to_engine_short": "Pozvat",
   "link_codes_actions": "Akce pro připojovací kód vytvořený {created}",
   "link_codes_body": "Každý funguje jednou, dokud nevyprší. Ty, které už nepotřebujete, zneplatněte.",
   "link_codes_revoke": "Zneplatnit kód",

@@ -1,5 +1,5 @@
 import { createContext, use, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import type { CSSProperties, FocusEvent, PointerEvent, ReactNode } from 'react';
+import type { CSSProperties, FocusEvent, MouseEvent, PointerEvent, ReactNode } from 'react';
 
 /** Spread onto the element the card is about (a chip, a name); it keeps its own role and click action. */
 export interface HovercardTriggerProps {
@@ -7,7 +7,12 @@ export interface HovercardTriggerProps {
     readonly 'aria-expanded': boolean;
     readonly 'aria-controls': string;
     readonly onPointerEnter: (event: PointerEvent<HTMLElement>) => void;
-    readonly onPointerLeave: () => void;
+    readonly onPointerLeave: (event: PointerEvent<HTMLElement>) => void;
+    readonly onPointerDown: (event: PointerEvent<HTMLElement>) => void;
+    readonly onPointerUp: () => void;
+    readonly onPointerCancel: () => void;
+    readonly onClickCapture: (event: MouseEvent<HTMLElement>) => void;
+    readonly onContextMenu: (event: MouseEvent<HTMLElement>) => void;
     readonly onFocus: (event: FocusEvent<HTMLElement>) => void;
     readonly onBlur: (event: FocusEvent<HTMLElement>) => void;
 }
@@ -32,6 +37,8 @@ export interface HovercardOptions {
 }
 
 export const HOVERCARD_OPEN_DELAY_MS = 300;
+/** A touch has no hover: holding the trigger this long opens the card instead, as a link preview does on a phone. */
+export const HOVERCARD_LONG_PRESS_MS = 500;
 
 const HovercardHideContext = createContext<() => void>(() => undefined);
 
@@ -66,7 +73,8 @@ function isKeyboardFocus(element: HTMLElement): boolean {
 
 /**
  * A small card about the thing under the pointer or the keyboard focus, with actions of its own. It opens after a
- * hover delay or at once on keyboard focus, stays while the pointer or focus is on it, and Esc closes it and puts
+ * hover delay, at once on keyboard focus, or on a long press on a touch screen, where a tap stays the trigger's own
+ * action. It stays while the pointer or focus is on it, a tap elsewhere closes it, and Esc closes it and puts
  * focus back on the trigger (WCAG 1.4.13). A non-modal dialog in the top layer, placed through the CSSOM so the
  * engine's CSP holds; it closes when the page scrolls, so it never drifts from its trigger.
  */
@@ -79,6 +87,10 @@ export function useHovercard({
     const cardRef = useRef<HTMLSpanElement>(null);
     const anchorRef = useRef<HTMLElement | null>(null);
     const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const pressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const pressing = useRef<HTMLElement | null>(null);
+    // Set once a long press opened the card, so the click that ends the press does not also follow the link.
+    const pressed = useRef(false);
     const [open, setOpen] = useState(false);
     const [position, setPosition] = useState<CSSProperties | undefined>(undefined);
 
@@ -91,7 +103,18 @@ export function useHovercard({
         clearTimeout(timer.current);
         setOpen(false);
     }, []);
-    const scheduleHide = () => {
+    const cancelPress = () => {
+        clearTimeout(pressTimer.current);
+        pressing.current = null;
+    };
+    const openByPress = (anchor: HTMLElement) => {
+        cancelPress();
+        pressed.current = true;
+        show(anchor);
+    };
+    const scheduleHide = (event?: PointerEvent<HTMLElement>) => {
+        // A finger leaves the element as it lifts; only a mouse moving away means the card is no longer wanted.
+        if (event?.pointerType === 'touch') return;
         clearTimeout(timer.current);
         timer.current = setTimeout(() => {
             setOpen(false);
@@ -134,10 +157,19 @@ export function useHovercard({
             if (event.target instanceof Node && cardRef.current?.contains(event.target) === true) return;
             setOpen(false);
         };
+        // A tap elsewhere closes it; a tap may move no focus, so blur alone would leave the card open.
+        const onPointerDown = (event: Event) => {
+            const target = event.target;
+            if (!(target instanceof Node)) return;
+            if (cardRef.current?.contains(target) === true || anchorRef.current?.contains(target) === true) return;
+            setOpen(false);
+        };
         document.addEventListener('keydown', onKeyDown, true);
+        document.addEventListener('pointerdown', onPointerDown, true);
         window.addEventListener('scroll', onScroll, true);
         return () => {
             document.removeEventListener('keydown', onKeyDown, true);
+            document.removeEventListener('pointerdown', onPointerDown, true);
             window.removeEventListener('scroll', onScroll, true);
         };
     }, [open]);
@@ -145,6 +177,7 @@ export function useHovercard({
     useEffect(
         () => () => {
             clearTimeout(timer.current);
+            clearTimeout(pressTimer.current);
         },
         [],
     );
@@ -168,6 +201,30 @@ export function useHovercard({
                 }, openDelayMs);
             },
             onPointerLeave: scheduleHide,
+            onPointerDown: (event) => {
+                pressed.current = false;
+                if (event.pointerType !== 'touch') return;
+                const anchor = event.currentTarget;
+                cancelPress();
+                pressing.current = anchor;
+                pressTimer.current = setTimeout(() => {
+                    openByPress(anchor);
+                }, HOVERCARD_LONG_PRESS_MS);
+            },
+            // The browser cancels the pointer when the finger starts to scroll, so a scroll never opens the card.
+            onPointerUp: cancelPress,
+            onPointerCancel: cancelPress,
+            onClickCapture: (event) => {
+                if (!pressed.current) return;
+                pressed.current = false;
+                event.preventDefault();
+                event.stopPropagation();
+            },
+            // Some phones raise their own link menu for a long press, sometimes before the timer: the card wins.
+            onContextMenu: (event) => {
+                if (pressing.current !== null) openByPress(pressing.current);
+                if (pressed.current) event.preventDefault();
+            },
             onFocus: (event) => {
                 if (isKeyboardFocus(event.currentTarget)) show(event.currentTarget);
             },

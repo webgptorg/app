@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `packages/ui`, `apps/dashboard`, `apps/engine-ui` · **Milestone:** M5
 - **Depends on:** U-17, U-27
-- **Status:** in progress (feat/u-28-phone-use)
+- **Status:** done (#389)
 - **Spec:** —; ADRs: [0015](../../adr/0015-ui-architecture-and-design-system.md), [0016](../../adr/0016-engine-capabilities.md)
 
 ## Goal
@@ -25,8 +25,8 @@ The responsive brief in [ui.md](../../design/ui.md#responsive) says "works from 
 
 ## Acceptance criteria
 
-- [ ] Problems found and fixed listed in the PR, with before and after screenshots.
-- [ ] Every main screen of both apps fits 375 px with no horizontal overflow (phone specs in `apps/dashboard/test/csp` and `apps/engine-ui/test/csp`).
-- [ ] Hovercards and other hover-only affordances have a tap path.
-- [ ] engine-ui and dashboard tests, the CSP suites and the bundle budgets pass.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Problems found and fixed listed in the PR, with before and after screenshots.
+- [x] Every main screen of both apps fits 375 and 360 px with no horizontal overflow (`phone.spec.ts` in `apps/dashboard/test/csp` and `apps/engine-ui/test/csp`).
+- [x] Hovercards open on a long press while a tap still opens the entity (`hovercard.test.tsx`, engine-ui `phone.spec.ts`).
+- [x] engine-ui and dashboard tests, the CSP suites and the bundle budgets pass.
+- [x] **Status** line above set to `done (#<PR>)`.

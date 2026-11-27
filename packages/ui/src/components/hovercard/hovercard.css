@@ -5,3 +5,12 @@
     --hovercard-radius: var(--radius-surface);
     --hovercard-shadow: var(--shadow-overlay);
 }
+
+/* A long press opens the card on a touch screen, so it must not also select the text or raise the browser's callout. */
+@media (pointer: coarse) {
+    [aria-haspopup='dialog'][aria-controls] {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+}
