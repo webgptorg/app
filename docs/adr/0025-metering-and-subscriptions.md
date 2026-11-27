@@ -1,6 +1,6 @@
 # 0025. Meters, plan limits and subscription sources
 
-- **Status:** Proposed
+- **Status:** Accepted (Seb, 2026-11-27)
 - **Date:** 2026-11-27
 - **Extends:** [ADR 0017](0017-billing-entitlements.md) (the entitlements port, plans as configuration), [ADR 0021](0021-website-license-authority.md) (the website owns licences; coverage is advisory) and [ADR 0022](0022-usage-data-in-d1.md) (usage data in D1)
 
@@ -16,6 +16,8 @@ Seb's further decisions, fixed for this ADR:
 - The subscription source is a connector: website licences (today), Stripe (ADR 0017), or a manual grant from a future platform admin console. The rest of the dashboard asks only the entitlements port.
 - Over a limit, running work is never stopped. Creating something new (another project) shows an upgrade flow; whether the limit blocks or only warns is set per plan. A future admin console lists organizations over a limit, for sales.
 - Engine-reported counts (heartbeat `agents`, `members`) are trusted. Sudden drops get flagged in the admin console later.
+- Every defined agent counts for now, disabled and archived ones included. The agent count stays swappable for "agents that ran in the period" later.
+- Who takes the money, our Stripe or Pavol's website, is open and is Pavol's question. Both stay pluggable subscription sources behind the one entitlements port.
 
 ## Decision
 
@@ -109,7 +111,7 @@ A subscription source is a connector that resolves an organization to the plan e
 
 `ADAPTERS.billing` selects the money connector, as today. A manual grant, once it exists, overrides the money connector for its organization while it is valid, so sales can extend a trial or a custom deal without touching the website or Stripe.
 
-The website connector does not map licence capabilities onto meters yet. ADR 0021 forbids silently relabelling heartbeat `agents` as `specialists` or `members` as `controllingUsers`. If Seb confirms they mean the same thing, the mapping is a table in the website connector (`engineProjects` → `engines.max`, `specialists` → `agents.per-project.max`, `controllingUsers` → `members.per-project.max`), and ADR 0021's coverage keeps deciding which grant covers which project.
+The website connector does not map licence capabilities onto meters yet. ADR 0021 forbids silently relabelling heartbeat `agents` as `specialists` or `members` as `controllingUsers`. The working assumption (Seb, 2026-11-27: "probably yes") is that they mean the same thing: a licence's `specialists` are our agents and its `controllingUsers` our members. Pavol confirms it before anything relies on it. Once he does, the mapping is a table in the website connector (`engineProjects` → `engines.max`, `specialists` → `agents.per-project.max`, `controllingUsers` → `members.per-project.max`), and ADR 0021's coverage keeps deciding which grant covers which project.
 
 ### Limit checks and the upgrade flow
 
@@ -129,10 +131,12 @@ The admin console's over-limit list is a query: the latest `usage_daily_meters` 
 
 `GET /api/usage` (session, `usage.read`: owners and admins) answers the current readings of every meter with their limits and the plan's `overLimit`, and the organization's totals for the last 31 days. It is read-only; the team view and the admin console use it or the table.
 
-## Open decisions for Seb
+## Open questions for Pavol
 
-1. **Who takes the money: the website, Stripe, or both.** The design works with any: each is a connector behind the same port, and `ADAPTERS.billing` picks one per deployment. Running both at once needs a rule for which connector an organization uses (for example, a website link wins over a Stripe customer) and must never create two subscriptions for one customer (ADR 0021). Until decided, the website stays the authority for its offer.
-2. **Whether disabled or archived agents count.** The `agents` meter reads heartbeat `agents` as defined today, which counts every agent. If only some should count, the engine reports a second number (an additive heartbeat field) and a new meter reads it; plans move to its quotas, nothing else changes.
+1. **Who takes the money: our Stripe or the website.** The design works with either: each is a connector behind the same port, and `ADAPTERS.billing` picks one per deployment. Running both at once would need a rule for which connector an organization uses (for example, a website link wins over a Stripe customer) and must never create two subscriptions for one customer (ADR 0021). Until it is settled, the website stays the authority for its offer.
+2. **Whether `specialists` and `controllingUsers` are our agents and members.** The working assumption above says yes. Confirmed, the website connector gains its mapping table. If not, the licence keeps its own counts and ADR 0021's coverage alone decides.
+
+Counting only some agents later (for example, not the disabled or archived ones, or only those that ran) needs no decision here. The engine reports a second number (an additive heartbeat field) and a new meter reads it. Plans move to its quotas, and nothing else changes.
 
 ## Alternatives considered
 

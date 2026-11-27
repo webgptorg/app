@@ -11,7 +11,7 @@ Billing counts what an organization uses: projects, agents and members (Seb, 202
 
 ## Scope
 
-- ADR 0025 (Proposed), as its own docs PR.
+- ADR 0025, as its own docs PR (accepted by Seb, 2026-11-27).
 - The meter interface and the v1 meters: `projects` (the dashboard's own active engines), `agents` and `members` (the engine's last reported heartbeat counts), `people` (the organization's dashboard members).
 - Readings per organization, team and project; unknown counts stay unknown, never zero.
 - A daily history in D1 (`usage_daily_meters`), written every 15 minutes beside ADR 0022's rollup, with its retention.
@@ -23,7 +23,7 @@ Out of scope: payments, Stripe changes, the admin console, any UI, and wiring th
 
 ## Acceptance criteria
 
-- [x] ADR 0025 opened as a docs PR, with the two open decisions marked for Seb.
+- [x] ADR 0025 opened as a docs PR and accepted, with its open questions listed for Pavol.
 - [x] A new meter is one file, one entry in the closed list and its quota names; no migration or route change.
 - [x] Readings cover: no heartbeat yet (unreported, not zero), a revoked or suspended engine (not counted), a team without a project (zero), a project without a team.
 - [x] The history job is idempotent and keeps each day's last value and peak.
