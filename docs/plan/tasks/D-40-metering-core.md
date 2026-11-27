@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M5
 - **Depends on:** D-07, D-30
-- **Status:** in progress (docs/d-39-metering-adr)
+- **Status:** done (#388)
 - **Design:** [ADR 0025](../../adr/0025-metering-and-subscriptions.md), extending [ADR 0017](../../adr/0017-billing-entitlements.md), [0021](../../adr/0021-website-license-authority.md) and [0022](../../adr/0022-usage-data-in-d1.md)
 
 ## Goal
@@ -23,10 +23,10 @@ Out of scope: payments, Stripe changes, the admin console, any UI, and wiring th
 
 ## Acceptance criteria
 
-- [ ] ADR 0025 opened as a docs PR, with the two open decisions marked for Seb.
-- [ ] A new meter is one file, one entry in the closed list and its quota names; no migration or route change.
-- [ ] Readings cover: no heartbeat yet (unreported, not zero), a revoked or suspended engine (not counted), a team without a project (zero), a project without a team.
-- [ ] The history job is idempotent and keeps each day's last value and peak.
-- [ ] Every billing adapter answers the new quotas and `overLimit`; existing plan configuration parses unchanged.
-- [ ] The limit check: under, at and over the limit, unlimited, unreported counts, `warn` versus `block`.
-- [ ] `GET /api/usage` is declared through the route helper with a permission; members cannot read it.
+- [x] ADR 0025 opened as a docs PR, with the two open decisions marked for Seb.
+- [x] A new meter is one file, one entry in the closed list and its quota names; no migration or route change.
+- [x] Readings cover: no heartbeat yet (unreported, not zero), a revoked or suspended engine (not counted), a team without a project (zero), a project without a team.
+- [x] The history job is idempotent and keeps each day's last value and peak.
+- [x] Every billing adapter answers the new quotas and `overLimit`; existing plan configuration parses unchanged.
+- [x] The limit check: under, at and over the limit, unlimited, unreported counts, `warn` versus `block`.
+- [x] `GET /api/usage` is declared through the route helper with a permission; members cannot read it.
