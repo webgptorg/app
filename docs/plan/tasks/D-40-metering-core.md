@@ -1,7 +1,7 @@
 # D-40. Metering and subscription core
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M5
-- **Depends on:** D-07, D-30
+- **Depends on:** D-07
 - **Status:** done (#388)
 - **Design:** [ADR 0025](../../adr/0025-metering-and-subscriptions.md), extending [ADR 0017](../../adr/0017-billing-entitlements.md), [0021](../../adr/0021-website-license-authority.md) and [0022](../../adr/0022-usage-data-in-d1.md)
 
