@@ -217,6 +217,8 @@ export function useHovercard({
             onClickCapture: (event) => {
                 if (!pressed.current) return;
                 pressed.current = false;
+                // A press that a phone ended without a click must not swallow the next Enter on the trigger.
+                if (event.detail === 0) return;
                 event.preventDefault();
                 event.stopPropagation();
             },

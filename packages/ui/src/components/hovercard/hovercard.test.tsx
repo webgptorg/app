@@ -111,7 +111,7 @@ describe('Hovercard', () => {
         expect(isOpen(card())).toBe(true);
         fireEvent.pointerUp(trigger(), { pointerType: 'touch' });
         fireEvent.pointerLeave(trigger(), { pointerType: 'touch' });
-        fireEvent.click(trigger());
+        fireEvent.click(trigger(), { detail: 1 });
         act(() => {
             vi.advanceTimersByTime(500);
         });
@@ -123,7 +123,7 @@ describe('Hovercard', () => {
 
         fireEvent.pointerDown(trigger(), { pointerType: 'touch' });
         fireEvent.pointerUp(trigger(), { pointerType: 'touch' });
-        fireEvent.click(trigger());
+        fireEvent.click(trigger(), { detail: 1 });
         act(() => {
             vi.advanceTimersByTime(1000);
         });
@@ -131,8 +131,36 @@ describe('Hovercard', () => {
         expect(isOpen(card())).toBe(false);
     });
 
+    it('lets Enter activate the trigger after a long press that ended without a click', () => {
+        const onClick = vi.fn();
+        renderUi(
+            <Hovercard label="Copywriter" content={<span>{'Writes copy.'}</span>}>
+                {(props) => (
+                    <button type="button" {...props} onClick={onClick}>
+                        {'@Copywriter'}
+                    </button>
+                )}
+            </Hovercard>,
+        );
+        fireEvent.pointerDown(trigger(), { pointerType: 'touch' });
+        act(() => {
+            vi.advanceTimersByTime(HOVERCARD_LONG_PRESS_MS);
+        });
+        fireEvent.pointerUp(trigger(), { pointerType: 'touch' });
+        fireEvent.click(trigger(), { detail: 0 });
+        expect(onClick).toHaveBeenCalledOnce();
+    });
+
     it('lets a scroll cancel the press, and opens at once when the phone raises its own menu', () => {
         renderUi(<Sample />);
+        fireEvent.pointerDown(trigger(), { pointerType: 'mouse', button: 2 });
+        const rightClick = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+        act(() => {
+            trigger().dispatchEvent(rightClick);
+        });
+        expect(rightClick.defaultPrevented).toBe(false);
+        expect(isOpen(card())).toBe(false);
+
         fireEvent.pointerDown(trigger(), { pointerType: 'touch' });
         fireEvent.pointerCancel(trigger(), { pointerType: 'touch' });
         act(() => {
