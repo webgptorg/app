@@ -26,5 +26,7 @@ describeTeamStoreContract('memory', () => {
             ),
         auditActions: (orgId) =>
             Promise.resolve(registration.state.orgAudit.filter((row) => row.orgId === orgId).map((row) => row.action)),
+        storedCommitment: (codeHash) =>
+            Promise.resolve(registration.state.linkCodes.get(codeHash)?.ownerSetupCommitment ?? null),
     };
 });

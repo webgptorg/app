@@ -1,4 +1,11 @@
-import { Ed25519PublicKey, EngineId, EngineVersion, Hostname, RegistrationMode } from '@ptbk/protocol';
+import {
+    Ed25519PublicKey,
+    EngineId,
+    EngineVersion,
+    Hostname,
+    OwnerSetupCommitment,
+    RegistrationMode,
+} from '@ptbk/protocol';
 import {
     and,
     asc,
@@ -90,8 +97,8 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
             // One transaction decides which quota refused the code and writes only when both have room.
             const statements = [
                 sql`SELECT 1 WHERE ${active} >= ${LINK_CODE_LIMITS.active}`,
-                sql`INSERT INTO ${linkCodes} (id, code_hash, org_id, created_by_user_id, created_at, expires_at)
-                    SELECT ${record.id}, ${record.codeHash}, ${orgId}, ${record.createdByUserId}, ${createdAt}, ${record.expiresAt}
+                sql`INSERT INTO ${linkCodes} (id, code_hash, org_id, created_by_user_id, created_at, expires_at, owner_setup_commitment)
+                    SELECT ${record.id}, ${record.codeHash}, ${orgId}, ${record.createdByUserId}, ${createdAt}, ${record.expiresAt}, ${record.ownerSetupCommitment}
                     WHERE ${active} < ${LINK_CODE_LIMITS.active} AND ${recent} < ${LINK_CODE_LIMITS.perHour}`,
             ].map((statement) => {
                 const query = dialect.sqlToQuery(statement);
@@ -126,7 +133,7 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
         async cancel(orgId, id, now) {
             const rows = await db
                 .update(linkCodes)
-                .set({ expiresAt: now })
+                .set({ expiresAt: now, ownerSetupCommitment: null })
                 .where(
                     and(
                         eq(linkCodes.id, id),
@@ -156,11 +163,19 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
 
         async findRedeemable(codeHash, now) {
             const row = await db
-                .select({ orgId: linkCodes.orgId })
+                .select({ orgId: linkCodes.orgId, ownerSetupCommitment: linkCodes.ownerSetupCommitment })
                 .from(linkCodes)
                 .where(and(eq(linkCodes.codeHash, codeHash), isNull(linkCodes.usedAt), gt(linkCodes.expiresAt, now)))
                 .get();
-            return row === undefined ? null : orgIdSchema.parse(row.orgId);
+            return row === undefined
+                ? null
+                : {
+                      orgId: orgIdSchema.parse(row.orgId),
+                      ownerSetupCommitment:
+                          row.ownerSetupCommitment === null
+                              ? null
+                              : OwnerSetupCommitment.parse(row.ownerSetupCommitment),
+                  };
         },
 
         async redeemForNewEngine(codeHash, engine, maxActiveEngines) {
@@ -175,7 +190,7 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
             const [consumed] = await db.batch([
                 db
                     .update(linkCodes)
-                    .set({ usedAt: now, engineId: engine.engineId })
+                    .set({ usedAt: now, engineId: engine.engineId, ownerSetupCommitment: null })
                     .where(
                         and(
                             redeemable(codeHash, engine.orgId, now),
@@ -220,7 +235,7 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
             const [consumed] = await db.batch([
                 db
                     .update(linkCodes)
-                    .set({ usedAt: refresh.now, engineId: refresh.engineId })
+                    .set({ usedAt: refresh.now, engineId: refresh.engineId, ownerSetupCommitment: null })
                     .where(
                         and(
                             redeemable(codeHash, refresh.orgId, refresh.now),

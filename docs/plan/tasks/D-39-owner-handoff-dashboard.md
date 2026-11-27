@@ -19,6 +19,6 @@ After the copied command pairs an engine, the tab that showed it opens the engin
 
 ## Acceptance criteria
 
-- [ ] Route tests: the commitment is optional, strict (wrong length, unknown field refused), stored, answered once, and nulled on redeem, cancel and expiry.
-- [ ] SPA tests: no redirect without `S`, before `ready`, with members, or when offline; one redirect that deletes `S` first.
+- [x] Route tests: the commitment is optional, strict (wrong length, unknown field refused), stored, answered once, and nulled on redeem, cancel and expiry.
+- [x] SPA tests: no redirect without `S`, before `ready`, with members, or when offline; one redirect that deletes `S` first.
 - [ ] **Status** line above set to `done (#<PR>)`.

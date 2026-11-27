@@ -1,3 +1,4 @@
+import { ownerSetupCommitment, OwnerSetupSecret } from '@ptbk/protocol';
 import { createFormatters } from '@ptbk/ui';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -17,6 +18,7 @@ import {
     NOW,
     session,
 } from '../../testing/fixtures';
+import { createMemorySessionStorage } from '../../testing/memory-storage';
 import { renderApp } from '../../testing/render-app';
 import type { ScriptedApi } from '../../testing/scripted-api';
 import { ok, problem } from '../../testing/scripted-api';
@@ -53,6 +55,15 @@ const SETUP_OWNER_PENDING = engineView({
     status: 'owner-pending',
     heartbeat: READY.heartbeat === null ? null : { ...READY.heartbeat, members: 0, setup: 'pending' },
 });
+/** An engine that holds this tab's commitment and serves browsers (ADR 0023). */
+const HANDOFF_READY = engineView({
+    status: 'owner-pending',
+    reachableRelays: 1,
+    heartbeat: READY.heartbeat === null ? null : { ...READY.heartbeat, members: 0, ownerHandoff: 'ready' },
+});
+const HANDOFF_TEXT = "Opening your project's setup…";
+const SECRET_KEY = `ptbk.ownerSetup.${LINK_ID}`;
+
 const SETUP_PENDING = engineView({
     status: 'setup-pending',
     heartbeat: READY.heartbeat === null ? null : { ...READY.heartbeat, setup: 'pending' },
@@ -682,7 +693,7 @@ describe('new engine page', () => {
 
         it('announces state changes only, politely', async () => {
             renderApp({ path: '/engines/new', session: OWNER, script: linking([LINKED], [OWNER_PENDING]) });
-            await screen.findByText(OWNER_TEXT);
+            await screen.findByText('Project online, version 1.4.2.', { selector: 'li p' });
             const live = progress().querySelectorAll('[aria-live="polite"]');
             expect(live).toHaveLength(1);
             expect(live[0]?.textContent).toBe(
@@ -750,6 +761,107 @@ describe('new engine page', () => {
             expect(screen.queryByRole('heading', { name: 'Install command' })).toBeNull();
             expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
             expect(app.api.callsTo(apiRoutes.getLinkCode)).toEqual([{ params: { linkCodeId: LINK_ID } }]);
+        });
+
+        describe('owner setup handoff (ADR 0023)', () => {
+            it('sends only the commitment of a secret it keeps in this tab’s session storage', async () => {
+                const app = renderApp({ path: '/engines/new', session: OWNER, script: linking([PENDING]) });
+                await waitFor(() => {
+                    expect(app.history.location.search).toBe(`?link=${LINK_ID}`);
+                });
+                const secret = OwnerSetupSecret.parse(app.sessionStorage.getItem(SECRET_KEY));
+                expect([...app.sessionStorage.entries.keys()]).toEqual([SECRET_KEY]);
+                expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([
+                    { body: { ownerSetupCommitment: await ownerSetupCommitment(secret) } },
+                ]);
+                expect(JSON.stringify(app.api.calls)).not.toContain(secret);
+                expect(app.history.location.href).not.toContain(secret);
+                expect(app.navigations).toEqual([]);
+            });
+
+            it('replaces the secret when it issues a new code in the same tab', async () => {
+                const app = renderApp({
+                    path: '/engines/new',
+                    session: OWNER,
+                    script: (api) => {
+                        eligible()(api);
+                        api.once(apiRoutes.createLinkCode, ok(linkCode()));
+                        api.on(apiRoutes.createLinkCode, ok(linkCode({ linkCodeId: OTHER_LINK_ID })));
+                        scriptProgress(api, [{ status: 'expired' }], []);
+                    },
+                });
+                const [renew] = await screen.findAllByRole('button', { name: 'Create a new link code' });
+                if (renew === undefined) throw new Error('no renew button');
+                await app.user.click(renew);
+                await waitFor(() => {
+                    expect([...app.sessionStorage.entries.keys()]).toEqual([`ptbk.ownerSetup.${OTHER_LINK_ID}`]);
+                });
+            });
+
+            it('opens the setup page once the engine is ready, deletes the secret and does it once', async () => {
+                const fake = useFakeClock();
+                const secret = OwnerSetupSecret.parse('AAECAwQFBgcICQoLDA0ODw');
+                const app = renderApp({
+                    path: `/engines/new?link=${LINK_ID}`,
+                    session: OWNER,
+                    fakeTimers: fake,
+                    sessionStorage: createMemorySessionStorage({ [SECRET_KEY]: secret }),
+                    script: (api) => {
+                        eligible()(api);
+                        scriptProgress(api, [LINKED], [OWNER_PENDING, HANDOFF_READY]);
+                    },
+                });
+                expect(await screen.findByText(OWNER_TEXT)).toBeTruthy();
+                expect(app.navigations).toEqual([]);
+                expect(app.sessionStorage.getItem(SECRET_KEY)).toBe(secret);
+
+                await elapse(LINK_POLL_MS);
+                await waitFor(() => {
+                    expect(app.navigations).toEqual([`https://${HOSTNAME}/setup#${secret}`]);
+                });
+                expect(app.sessionStorage.entries.size).toBe(0);
+                expect(screen.getByText(HANDOFF_TEXT, { selector: 'li p' })).toBeTruthy();
+                expect(screen.queryByText(OWNER_TEXT)).toBeNull();
+                expect(app.history.location.href).not.toContain(secret);
+
+                await elapse(3 * LINK_POLL_MS);
+                expect(app.navigations).toHaveLength(1);
+            });
+
+            it('keeps today’s copy and stays in a tab without the secret', async () => {
+                const fake = useFakeClock();
+                const app = renderApp({
+                    path: `/engines/new?link=${LINK_ID}`,
+                    session: OWNER,
+                    fakeTimers: fake,
+                    script: (api) => {
+                        eligible()(api);
+                        scriptProgress(api, [LINKED], [HANDOFF_READY]);
+                    },
+                });
+                expect(await screen.findByText(OWNER_TEXT)).toBeTruthy();
+                await elapse(2 * LINK_POLL_MS);
+                expect(app.navigations).toEqual([]);
+                expect(screen.queryByText(HANDOFF_TEXT)).toBeNull();
+            });
+
+            it('stays on the page while the ready engine is not reachable through a relay yet', async () => {
+                const fake = useFakeClock();
+                const app = renderApp({
+                    path: `/engines/new?link=${LINK_ID}`,
+                    session: OWNER,
+                    fakeTimers: fake,
+                    sessionStorage: createMemorySessionStorage({ [SECRET_KEY]: 'AAECAwQFBgcICQoLDA0ODw' }),
+                    script: (api) => {
+                        eligible()(api);
+                        scriptProgress(api, [LINKED], [{ ...HANDOFF_READY, reachableRelays: 0 }]);
+                    },
+                });
+                expect(await screen.findByText(OWNER_TEXT)).toBeTruthy();
+                await elapse(2 * LINK_POLL_MS);
+                expect(app.navigations).toEqual([]);
+                expect(app.sessionStorage.getItem(SECRET_KEY)).toBe('AAECAwQFBgcICQoLDA0ODw');
+            });
         });
 
         it('lets the owner name the linked engine, and the ready step opens it by that name', async () => {

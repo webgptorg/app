@@ -193,6 +193,9 @@ export const linkCodes = sqliteTable(
         engineId: text('engine_id'),
         // The team the new engine joins (teams spec); null links a team of its own, named after the engine.
         teamId: text('team_id'),
+        // base64url(SHA-256) of the pairing tab's owner setup secret (ADR 0023), never the secret. Handed to the engine
+        // once, at registration; nulled when the code is redeemed or cancelled, and never read once it has expired.
+        ownerSetupCommitment: text('owner_setup_commitment'),
     },
     (t) => [
         index('link_codes_org_id_created_at_idx').on(t.orgId, t.createdAt),

@@ -100,7 +100,7 @@ export function createMemoryRegistrationStores(deps: {
             if (!redeemable(code, orgId, now)) {
                 return Promise.resolve('not-found');
             }
-            state.linkCodes.set(code.codeHash, { ...code, expiresAt: now });
+            state.linkCodes.set(code.codeHash, { ...code, expiresAt: now, ownerSetupCommitment: null });
             return Promise.resolve('cancelled');
         },
         findState(orgId, id, now) {
@@ -117,7 +117,11 @@ export function createMemoryRegistrationStores(deps: {
         },
         findRedeemable(codeHash, now) {
             const code = state.linkCodes.get(codeHash);
-            return Promise.resolve(redeemable(code, null, now) ? code.orgId : null);
+            return Promise.resolve(
+                redeemable(code, null, now)
+                    ? { orgId: code.orgId, ownerSetupCommitment: code.ownerSetupCommitment }
+                    : null,
+            );
         },
         redeemForNewEngine(codeHash, engine, maxActiveEngines) {
             const code = state.linkCodes.get(codeHash);
@@ -128,7 +132,12 @@ export function createMemoryRegistrationStores(deps: {
             ) {
                 return Promise.resolve('conflict');
             }
-            state.linkCodes.set(codeHash, { ...code, usedAt: engine.createdAt, engineId: engine.engineId });
+            state.linkCodes.set(codeHash, {
+                ...code,
+                usedAt: engine.createdAt,
+                engineId: engine.engineId,
+                ownerSetupCommitment: null,
+            });
             state.engines.set(engine.engineId, engine);
             return Promise.resolve('redeemed');
         },
@@ -142,7 +151,12 @@ export function createMemoryRegistrationStores(deps: {
             ) {
                 return Promise.resolve('conflict');
             }
-            state.linkCodes.set(codeHash, { ...code, usedAt: refresh.now, engineId: refresh.engineId });
+            state.linkCodes.set(codeHash, {
+                ...code,
+                usedAt: refresh.now,
+                engineId: refresh.engineId,
+                ownerSetupCommitment: null,
+            });
             state.engines.set(refresh.engineId, {
                 ...engine,
                 mode: refresh.mode,

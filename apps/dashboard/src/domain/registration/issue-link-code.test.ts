@@ -35,6 +35,7 @@ describe('issueLinkCode', () => {
                 createdByUserId: expect.any(String) as string,
                 createdAt: NOW,
                 expiresAt: NOW + LINK_CODE_TTL_MS,
+                ownerSetupCommitment: null,
                 usedAt: null,
                 engineId: null,
             },
