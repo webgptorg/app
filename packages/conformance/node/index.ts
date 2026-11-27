@@ -2,6 +2,7 @@ import type { PlatformSuite } from './harness/platform';
 import { ENGINE_API_PLATFORM_SUITE } from './suites/engine-api';
 import { HEARTBEAT_SUITE } from './suites/heartbeat';
 import { MEMBER_ACCESS_SUITE } from './suites/member-access';
+import { OWNER_HANDOFF_SUITE } from './suites/owner-handoff';
 import { REGISTRATION_SUITE } from './suites/registration';
 import { TUNNEL_SUITE } from './suites/tunnel';
 import { UI_LOADER_PLATFORM_SUITE } from './suites/ui-loader';
@@ -68,6 +69,7 @@ export {
     ENGINE_API_PLATFORM_SUITE,
     HEARTBEAT_SUITE,
     MEMBER_ACCESS_SUITE,
+    OWNER_HANDOFF_SUITE,
     REGISTRATION_SUITE,
     TUNNEL_SUITE,
     UI_LOADER_PLATFORM_SUITE,
@@ -82,6 +84,7 @@ export const PLATFORM_SUITES: readonly PlatformSuite[] = [
     REGISTRATION_SUITE,
     HEARTBEAT_SUITE,
     MEMBER_ACCESS_SUITE,
+    OWNER_HANDOFF_SUITE,
     TUNNEL_SUITE,
     UI_LOADER_PLATFORM_SUITE,
 ];
