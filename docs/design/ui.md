@@ -125,6 +125,7 @@ Visual identity v1 ([U-17](../plan/tasks/U-17-visual-identity.md), decided with 
   - Agents use `tone="agent"`: the name is in the agent's colour.
   - Every other entity uses `neutral`: text colour, with the hue only in the wash.
   - Entity-specific chips compose it in `apps/engine-ui/src/features/entities/`.
+  - Where an agent keeps its own look instead of a chip (a chat turn's avatar and name, a name inside a sentence), `AgentLink` gives it the same card and link. In a thread, every agent reference opens that one card, with what the agent does there and Mention added.
 - **`Avatar`** puts a picture on a wash of the agent's colour, so an agent looks the same everywhere. For agents it is the agent's own image when its book has one, else an illustration (`features/agents/illustrations/`): the engine's choice (`profile.illustration`, an ID from the set), a built-in agent's own character, a guess from keywords in the name and role (English and Czech), else the generic agent. Strokes use the readable tint colour, so they meet AA in both themes. The initial is only the fallback.
 - **`StatusPill` and `StatusDot`** cover the tones `live`, `waiting`, `success`, `warning`, `danger`, `info` and `neutral`. The state is always in words, and the hue lives in the dot and the wash.
 - **`Combobox`** replaces native `<select>` as screens move to it. `DateInput` is the native date control, styled: it is accessible, follows the browser's locale for date order, and opens the platform picker on phones.

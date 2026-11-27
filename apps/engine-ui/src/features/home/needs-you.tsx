@@ -1,3 +1,4 @@
+import { AgentId } from '@ptbk/engine-api';
 import type { AccessRequest, ReadChat, ReadTask } from '@ptbk/engine-api';
 import { EmptyState, Section, Skeleton, STATUS_TINT_CLASSES } from '@ptbk/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -9,7 +10,7 @@ import { cx } from '../../app/cx';
 import { useEngineApi } from '../../app/engine-api-context';
 import { ButtonLink } from '../../app/link';
 import type { Attention, FeatureDefinition } from '../../app/registry/feature';
-import { useVisibleFeatures } from '../../app/registry/use-visible-features';
+import { useAllows, useVisibleFeatures } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
 import { chatEntriesQueryOptions } from '../chat/chat-queries';
@@ -17,7 +18,7 @@ import { tintStyle } from '../chat/references/agent-color';
 import { chatName } from '../chat/chat-name';
 import { useOpenHelpRequests } from '../browser/browser-queries';
 import { HelpRequestsSlot } from '../browser/browser-slots';
-import { EntityChip } from '../entities/entity-chip';
+import { AgentLink, ENTITY_REQUIREMENTS, EntityChip } from '../entities/entity-chip';
 import { useWaitingAccessRequests } from '../members/members-feature';
 import { questionQuote } from './question-text';
 import { useAgentLook } from './use-agent-look';
@@ -76,6 +77,7 @@ function QuestionItem({ chat }: { readonly chat: ReadChat }) {
     );
     const name = author?.name ?? question?.author.key ?? '';
     const look = useAgentLook(question?.author.key ?? '');
+    const canOpenAgents = useAllows(ENTITY_REQUIREMENTS.agent);
     if (question === undefined) return null;
     return (
         <NeedsYouItem
@@ -91,7 +93,16 @@ function QuestionItem({ chat }: { readonly chat: ReadChat }) {
             }
             title={
                 <>
-                    <span>{m.home_asks_you({ name })}</span>
+                    <span>
+                        <AgentLink
+                            id={AgentId.safeParse(question.author.key).data ?? null}
+                            name={name}
+                            canOpen={canOpenAgents}
+                        >
+                            {name}
+                        </AgentLink>{' '}
+                        {m.home_asks_you_after_name()}
+                    </span>
                     <span className="ms-1.5 font-normal text-text-muted">{chatName(chat)}</span>
                 </>
             }

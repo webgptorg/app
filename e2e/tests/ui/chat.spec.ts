@@ -24,9 +24,12 @@ async function expectInert(page: Page): Promise<void> {
     await expect(history.getByText('<img src=https://attacker.example/i>', { exact: false }).first()).toBeVisible();
     await expect(history.locator('img, script, iframe, object, embed, [src], [srcset]')).toHaveCount(0);
     await expect(history.locator('a[href^="javascript:" i]')).toHaveCount(0);
+    // A turn's author links to the agent inside the app; only links in the agent's own output must leave it.
     const hrefs = await history
         .locator('a[href]')
-        .evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+        .evaluateAll((links) =>
+            links.filter((link) => link.closest('header') === null).map((link) => link.getAttribute('href')),
+        );
     expect(hrefs.filter((href) => href?.startsWith('https://') !== true)).toEqual([]);
 }
 
