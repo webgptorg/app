@@ -95,7 +95,7 @@ test('invite, approve, use the engine, and a dashboard removal ends the session 
     mockEngines,
 }) => {
     test.setTimeout(420_000);
-    const engine = await linkTeamEngine(page, dashboard, () => mockEngines.startUnlinked(), TEAM);
+    const engine = await linkTeamEngine(page, dashboard, mockEngines, TEAM);
     const { person, email } = await inviteAndApprove(browser, page, engine, dashboard);
 
     await expect
@@ -135,7 +135,7 @@ test('with dashboard removals switched off, the person stays and the team page s
     mockEngines,
 }) => {
     test.setTimeout(420_000);
-    const engine = await linkTeamEngine(page, dashboard, () => mockEngines.startUnlinked(), TEAM);
+    const engine = await linkTeamEngine(page, dashboard, mockEngines, TEAM);
     const { person, email } = await inviteAndApprove(browser, page, engine, dashboard);
     const { owner } = engine;
 

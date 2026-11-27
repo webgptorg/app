@@ -24,8 +24,11 @@ test('diagnoses, saves, lists, compares and restores book versions', async ({ pa
     await page.goto(appUrl(`/agents/${required(agent, 'agent').id}/book`));
     const editor = page.getByTestId('book-editor');
     const history = page.getByRole('table', { name: 'History' });
+    // One per version; counting rows instead would count the skeleton rows while the history still loads.
+    const versions = history.getByRole('button', { name: 'View' });
     await expect(editor.locator('.tok-heading').first()).toBeVisible();
-    const versionsBefore = await history.getByRole('row').count();
+    await expect(versions.first()).toBeVisible();
+    const versionsBefore = await versions.count();
 
     await appendLine(page, INVALID_LINE);
     await expect(editor.locator('.cm-lintRange-error')).toHaveText(INVALID_LINE);
@@ -40,15 +43,15 @@ test('diagnoses, saves, lists, compares and restores book versions', async ({ pa
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByText('Book saved as a new version')).toBeVisible();
     await expect(page.getByText('All changes saved')).toBeVisible();
-    await expect(history.getByRole('row')).toHaveCount(versionsBefore + 1);
+    await expect(versions).toHaveCount(versionsBefore + 1);
 
     // The version before the save: the second newest.
-    await history.getByRole('button', { name: 'View' }).nth(1).click();
+    await versions.nth(1).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Compare with current' }).click();
     await expect(dialog.getByTestId('book-viewer').locator('.cm-deletedChunk')).toBeVisible();
     await dialog.getByRole('button', { name: 'Restore this version' }).click();
     await expect(page.getByText('Version restored as a new version')).toBeVisible();
-    await expect(history.getByRole('row')).toHaveCount(versionsBefore + 2);
+    await expect(versions).toHaveCount(versionsBefore + 2);
     await expect(editor).not.toContainText(`META COLOR ${VALID_COLOUR}`);
 });

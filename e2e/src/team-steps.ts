@@ -2,11 +2,11 @@
 // their own browser context, authenticator and client address, as they would their own laptop.
 import { randomInt } from 'node:crypto';
 
-import type { Browser, Frame, Page } from '@playwright/test';
+import type { Browser, Frame, Page, Route } from '@playwright/test';
 import { devices } from '@playwright/test';
 
 import type { OneOffContainer } from './compose.ts';
-import type { DashboardSteps } from './dashboard.ts';
+import type { DashboardSteps, MockEngines } from './dashboard.ts';
 import { ENGINE_CLI, addPasskeyAuthenticator, expect, sharePasskeys, uniqueEmail } from './dashboard.ts';
 import type { OutboxEmail } from './dashboard-outputs.ts';
 import { devInstallLinkCode, parseSetupLink, terminalIdentity } from './dashboard-outputs.ts';
@@ -73,17 +73,22 @@ export async function withStepUp(
         if (frame === page.mainFrame() && new URL(frame.url()).pathname.startsWith('/auth/')) left.push(frame.url());
     };
     page.on('framenavigated', onNavigation);
+    // The popup starts the prompt as soon as it has the options. One that starts before the popup has its authenticator
+    // waits for a passkey that never comes (minutes, not an error), so the options wait for the shared passkeys.
+    const shared = Promise.withResolvers<undefined>();
+    const holdOptions = async (route: Route): Promise<void> => {
+        await shared.promise;
+        await route.continue();
+    };
+    await page.context().route('**/auth/step-up/options', holdOptions);
     const opened = page.waitForEvent('popup');
     await stepUp.click();
     const popup = await opened;
-    await sharePasskeys(page, popup);
-    // The page starts the prompt by itself; if that ran before the popup had the passkey, it offers the button.
     const closed = popup.waitForEvent('close');
-    const confirm = popup.locator('section[data-state="ready"] button[data-action="confirm"]');
-    const ready = confirm.waitFor().then(() => 'ready' as const);
-    ready.catch(() => undefined);
-    if ((await Promise.race([closed.then(() => 'closed' as const), ready])) === 'ready') await confirm.click();
+    await sharePasskeys(page, popup);
+    shared.resolve(undefined);
     await closed;
+    await page.context().unroute('**/auth/step-up/options', holdOptions);
     await done();
     page.off('framenavigated', onNavigation);
     expect(left).toEqual([]);
@@ -127,7 +132,7 @@ export async function newPerson(browser: Browser): Promise<Person> {
 export async function linkTeamEngine(
     page: Page,
     dashboard: DashboardSteps,
-    startUnlinked: () => Promise<OneOffContainer>,
+    mockEngines: Pick<MockEngines, 'startUnlinked'>,
     team: string,
 ): Promise<TeamEngine> {
     const ownerEmail = uniqueEmail('teams-admin');
@@ -141,7 +146,9 @@ export async function linkTeamEngine(
     await expect(page).toHaveURL(/\/engines\/new\?.*link=[a-z2-7]{26}/);
     const linkCode = devInstallLinkCode((await page.getByRole('tabpanel').locator('code').textContent()) ?? '');
 
-    const container = await startUnlinked();
+    // Owner setup by the terminal's link: with the handoff (ADR 0023) on, this tab could leave for the setup page before
+    // it shows owner-pending. The handoff has its own journey in onboarding.spec.ts.
+    const container = await mockEngines.startUnlinked({ ownerHandoff: 'off' });
     await expect
         .poll(async () => (await container.exec([...ENGINE_CLI, 'status', '--json'])).exitCode, {
             timeout: 60_000,

@@ -60,7 +60,7 @@ test('a new colleague joins from the invite in one step and is let in from the a
     mockEngines,
 }) => {
     test.setTimeout(420_000);
-    const engine = await linkTeamEngine(page, dashboard, () => mockEngines.startUnlinked(), TEAM);
+    const engine = await linkTeamEngine(page, dashboard, mockEngines, TEAM);
     const { owner } = engine;
     const jana = uniqueEmail('jana');
     const engineRpId = new URL(engine.origin).hostname;
@@ -162,7 +162,7 @@ test('an existing account signs in and joins; a member cannot approve, and the f
     mockEngines,
 }) => {
     test.setTimeout(420_000);
-    const engine = await linkTeamEngine(page, dashboard, () => mockEngines.startUnlinked(), TEAM);
+    const engine = await linkTeamEngine(page, dashboard, mockEngines, TEAM);
     const { owner } = engine;
     const petr = uniqueEmail('petr');
     const petrs = await newPerson(browser);
