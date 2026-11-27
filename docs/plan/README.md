@@ -127,6 +127,7 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [M-09](tasks/M-09-mock-engine-teams.md)                  | Mock engine: join page, access requests, revocations                                         | M    | M3        |
 | [D-13](tasks/D-13-teams-dashboard-api.md)                | Dashboard teams: data, roles, invites, tickets, revocations                                  | D    | M3        |
 | [D-14](tasks/D-14-teams-dashboard-ui.md)                 | Dashboard teams screens                                                                      | D    | M3        |
+| [D-39](tasks/D-39-metering-core.md)                      | Metering and subscription core: meters, daily history, plan limits                           | D    | M5        |
 | [U-15](tasks/U-15-access-requests.md)                    | Engine UI: access requests and dashboard removals                                            | U    | M3        |
 | [X-09](tasks/X-09-e2e-teams.md)                          | E2E: invite, approve, remove                                                                 | X    | M3        |
 | [I-01](tasks/I-01-relay-hosts.md)                        | Relay hosts: provisioning and hardening                                                      | I    | M4        |
