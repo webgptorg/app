@@ -19,13 +19,16 @@ const SUITE_TIMEOUT_MS = 300_000;
 const MOCK_SKIPS = {
     'engine-api.live-audio.session': 'skip: capability-not-advertised',
     'engine-api.me.own-passkeys': 'skip: the member has no passkey to revoke (listing passed)',
+    // The mock serves notifications@1 from M-16 on; until then its routes are the unadvertised ones that answer 404.
+    ...Object.fromEntries(
+        ENGINE_API_SUITE.checks
+            .filter(({ id }) => id.startsWith('engine-api.notifications.'))
+            .map(({ id }) => [id, 'skip: capability-not-advertised']),
+    ),
 };
 
-/** With `MOCK_VOICE=enabled` the mock advertises every capability this contract defines. */
-const WITH_VOICE = {
-    ...MOCK_SKIPS,
-    'engine-api.capabilities.unadvertised-404': 'skip: the engine advertises every capability this contract defines',
-};
+/** With `MOCK_VOICE=enabled` the mock advertises every capability this contract defines but `notifications@1`. */
+const WITH_VOICE = MOCK_SKIPS;
 
 /**
  * Without voice and the live browser their checks skip, and their routes are the unadvertised ones that must answer
