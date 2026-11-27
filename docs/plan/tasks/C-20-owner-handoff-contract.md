@@ -2,7 +2,7 @@
 
 - **Lane:** C · **Module:** `packages/protocol`, `packages/conformance` · **Milestone:** M5
 - **Depends on:** C-08, C-15
-- **Status:** in progress (feat/c-20-owner-handoff-contract)
+- **Status:** done (#382)
 - **Spec:** Pairing and identity; ADRs: [0023](../../adr/0023-owner-setup-handoff.md), [0010](../../adr/0010-protocol-design-principles.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -27,7 +27,7 @@ The two contract fields of ADR 0023, and platform checks that prove an engine ta
 
 ## Acceptance criteria
 
-- [ ] Strict in, tolerant out for both fields; refusal tests for wrong lengths, padding, standard base64 and unknown signal values.
-- [ ] `protocol` coverage thresholds of 90% hold.
-- [ ] Each owner-handoff check fails against a fake that breaks its rule, and skips against an engine without support.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Strict in, tolerant out for both fields; refusal tests for wrong lengths, padding, standard base64 and unknown signal values.
+- [x] `protocol` coverage thresholds of 90% hold.
+- [x] Each owner-handoff check fails against a fake that breaks its rule, and skips against an engine without support.
+- [x] **Status** line above set to `done (#382)`.
