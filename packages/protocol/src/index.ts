@@ -19,6 +19,8 @@ export type { DefaultHostnameMatch } from './engine-id';
 export { FINGERPRINT_DERIVATION, FINGERPRINT_GRID_SIZE, deriveEngineFingerprint } from './fingerprint';
 export type { EngineFingerprint } from './fingerprint';
 export {
+    ATTENTION_KINDS,
+    AttentionKind,
     CpuLoad,
     HEARTBEAT_MAX_BODY_BYTES,
     HEARTBEAT_MAX_SKEW_MS,
@@ -28,9 +30,11 @@ export {
     HEARTBEAT_REPLY_MAX_BYTES,
     Heartbeat,
     HeartbeatAck,
+    HeartbeatAttention,
     HeartbeatReply,
     HeartbeatV2,
     MAX_HEARTBEAT_ACKS,
+    MAX_HEARTBEAT_ATTENTION,
     MAX_HEARTBEAT_COUNT,
     MAX_HEARTBEAT_REVOCATIONS,
     SetupState,

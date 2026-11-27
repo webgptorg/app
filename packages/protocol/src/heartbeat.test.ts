@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeBase64Url } from './base64url';
 import type { Bytes } from './bytes';
 import { concatBytes, utf8Encode } from './bytes';
-import type { HeartbeatAck, HeartbeatInput, VerifyHeartbeatInput } from './heartbeat';
+import type { HeartbeatAck, HeartbeatAttention, HeartbeatInput, VerifyHeartbeatInput } from './heartbeat';
 import { SIGNED_MEMBER_MESSAGE_MAX_LENGTH } from './member-access';
 import {
     HEARTBEAT_MAX_BODY_BYTES,
@@ -11,6 +11,8 @@ import {
     Heartbeat,
     HeartbeatReply,
     MAX_HEARTBEAT_ACKS,
+    MAX_HEARTBEAT_ATTENTION,
+    MAX_HEARTBEAT_COUNT,
     MAX_HEARTBEAT_REVOCATIONS,
     TolerantHeartbeatReply,
     buildHeartbeat,
@@ -295,7 +297,7 @@ describe('verifyHeartbeat', () => {
                 return concatBytes(body, utf8Encode(' '.repeat(length - body.length)));
             };
             const atLimit = await signed(padded(HEARTBEAT_MAX_BODY_BYTES));
-            expect(atLimit.rawBody.length).toBe(4096);
+            expect(atLimit.rawBody.length).toBe(12_288);
             expect((await atLimit.verify()).kind).toBe('accepted');
             const over = await signed(padded(HEARTBEAT_MAX_BODY_BYTES + 1));
             await expect(over.verify()).resolves.toEqual({ kind: 'invalid-body' });
@@ -498,5 +500,125 @@ describe('heartbeat v2 (ADR 0018)', () => {
             v: 1,
             revocations: ['t'],
         });
+    });
+});
+
+describe('attention in heartbeat v2 (ADR 0027)', () => {
+    const KINDS = ['agent-waiting', 'task-failed', 'tool-sign-in'] as const;
+    const longestAttention: HeartbeatAttention[] = Array.from({ length: MAX_HEARTBEAT_ATTENTION }, (_, index) => ({
+        to: `${'u'.repeat(62)}${String(Math.floor(index / KINDS.length)).padStart(2, '0')}`,
+        kind: KINDS[index % KINDS.length] ?? 'agent-waiting',
+        count: MAX_HEARTBEAT_COUNT,
+    }));
+    const longestAcks: HeartbeatAck[] = Array.from({ length: MAX_HEARTBEAT_ACKS }, (_, index) => ({
+        id: `${'a'.repeat(62)}${String(index).padStart(2, '0')}`,
+        outcome: 'refused-disabled',
+    }));
+
+    async function verdictOf(identity: TestIdentity, rawBody: Bytes) {
+        return verifyHeartbeat({
+            rawBody,
+            signatureHeader: await signHeartbeat(identity.signer, rawBody),
+            engineId: identity.engineId,
+            publicKey: identity.publicKey,
+            lastSeq: null,
+            now: Timestamp.parse(TS),
+        });
+    }
+
+    it('fits every entry beside every ack under the body cap, with every ID and count at its largest', async () => {
+        const identity = await freshIdentity();
+        const rawBody = buildHeartbeatV2({
+            ...inputFor(identity.engineId, { agents: 1_000_000, members: 1_000_000, uptimeS: 2 ** 31 }),
+            accessRequests: 1_000_000,
+            acks: longestAcks,
+            attention: longestAttention,
+        });
+        expect(rawBody.length).toBeLessThanOrEqual(HEARTBEAT_MAX_BODY_BYTES);
+        const verdict = await verdictOf(identity, rawBody);
+        if (verdict.kind !== 'accepted' || verdict.heartbeat.v !== 2) throw new Error('expected a v2 heartbeat');
+        expect(verdict.heartbeat.attention).toEqual(longestAttention);
+    });
+
+    it('leaves the field out while sharing is off, and sends an empty list while it is on and nothing waits', async () => {
+        const identity = await freshIdentity();
+        const base = { ...inputFor(identity.engineId), accessRequests: 0, acks: [] };
+        const off = JSON.parse(new TextDecoder().decode(buildHeartbeatV2(base))) as object;
+        expect(off).not.toHaveProperty('attention');
+        const on = await verdictOf(identity, buildHeartbeatV2({ ...base, attention: [] }));
+        expect(on.kind === 'accepted' && on.heartbeat.v === 2 && on.heartbeat.attention).toEqual([]);
+    });
+
+    it('sends project-wide counts without `to`, and only the schema’s fields of each entry', async () => {
+        const identity = await freshIdentity();
+        const entries = [
+            { kind: 'tool-sign-in', count: 1 },
+            { to: 'dashboard-user-petr', kind: 'agent-waiting', count: 2, title: 'Approve the invoice' },
+        ] as unknown as HeartbeatAttention[];
+        const body = new TextDecoder().decode(
+            buildHeartbeatV2({ ...inputFor(identity.engineId), accessRequests: 0, acks: [], attention: entries }),
+        );
+        expect(body).not.toContain('invoice');
+        expect((JSON.parse(body) as { attention: unknown }).attention).toEqual([
+            { kind: 'tool-sign-in', count: 1 },
+            { to: 'dashboard-user-petr', kind: 'agent-waiting', count: 2 },
+        ]);
+    });
+
+    it.each([
+        ['65 entries', { attention: [...longestAttention, { kind: 'task-failed', count: 1 }] }],
+        ['an unknown kind', { attention: [{ kind: 'chat-unread', count: 1 }] }],
+        ['a zero count', { attention: [{ kind: 'task-failed', count: 0 }] }],
+        ['a count over the cap', { attention: [{ kind: 'task-failed', count: MAX_HEARTBEAT_COUNT + 1 }] }],
+        ['a fractional count', { attention: [{ kind: 'task-failed', count: 1.5 }] }],
+        ['a recipient that is an email', { attention: [{ to: 'petr@example.com', kind: 'task-failed', count: 1 }] }],
+        ['an empty recipient', { attention: [{ to: '', kind: 'task-failed', count: 1 }] }],
+        ['a null recipient', { attention: [{ to: null, kind: 'task-failed', count: 1 }] }],
+        ['an entry that carries text', { attention: [{ kind: 'task-failed', count: 1, title: 'Invoices' }] }],
+        [
+            'two entries for the same person and kind',
+            {
+                attention: [
+                    { to: 'u1', kind: 'agent-waiting', count: 1 },
+                    { to: 'u1', kind: 'agent-waiting', count: 2 },
+                ],
+            },
+        ],
+        [
+            'two project-wide entries of one kind',
+            {
+                attention: [
+                    { kind: 'tool-sign-in', count: 1 },
+                    { kind: 'tool-sign-in', count: 1 },
+                ],
+            },
+        ],
+        ['not a list', { attention: { 'agent-waiting': 1 } }],
+    ])('refuses a v2 body with %s', async (_, change) => {
+        const identity = await freshIdentity();
+        const base = JSON.parse(
+            new TextDecoder().decode(buildHeartbeatV2({ ...inputFor(identity.engineId), accessRequests: 0, acks: [] })),
+        ) as Record<string, unknown>;
+        expect(await verdictOf(identity, utf8Encode(JSON.stringify({ ...base, ...change })))).toEqual({
+            kind: 'invalid-body',
+        });
+    });
+
+    it('accepts one person’s different kinds and different people’s same kind', async () => {
+        const identity = await freshIdentity();
+        const attention: HeartbeatAttention[] = [
+            { to: 'u1', kind: 'agent-waiting', count: 1 },
+            { to: 'u1', kind: 'task-failed', count: 1 },
+            { to: 'u2', kind: 'agent-waiting', count: 3 },
+            { kind: 'agent-waiting', count: 1 },
+        ];
+        const rawBody = buildHeartbeatV2({ ...inputFor(identity.engineId), accessRequests: 0, acks: [], attention });
+        expect((await verdictOf(identity, rawBody)).kind).toBe('accepted');
+    });
+
+    it('never carries attention in a v1 body', async () => {
+        const identity = await freshIdentity();
+        const v1 = JSON.parse(new TextDecoder().decode(buildHeartbeat(inputFor(identity.engineId)))) as object;
+        expect(Heartbeat.safeParse({ ...v1, attention: [] }).success).toBe(false);
     });
 });
