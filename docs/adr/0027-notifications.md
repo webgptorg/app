@@ -1,14 +1,16 @@
 # 0027. Notifications: one system, in-app and email, counts only from engines
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-27
-- **Decisions from:** Seb, roadmap interview of 2026-11-27
-- **Builds on:** [ADR 0018](0018-teams-and-member-access.md), [ADR 0016](0016-engine-capabilities.md), [ADR 0022](0022-usage-data-in-d1.md), [ADR 0026](0026-teams-v2.md) (team admins, proposed)
+- **Deciders:** Seb (roadmap interview and review of 2026-11-27)
+- **Builds on:** [ADR 0018](0018-teams-and-member-access.md), [ADR 0016](0016-engine-capabilities.md), [ADR 0022](0022-usage-data-in-d1.md), [ADR 0026](0026-teams-v2.md) (team admins), [ADR 0025](0025-metering-and-subscriptions.md) (plan limits)
 
-## Open questions for Seb
+## Decisions on the questions raised
 
-1. **Per-person counts.** "An agent is waiting for you" is personal, so this ADR has the engine attribute counts to the dashboard user they are for. The platform then learns, per person and project, how many open items of each kind they have. The alternative is project-wide counts only, which go to the project's admins and never reach a member about their own work. This ADR proposes per-person counts.
-2. **Daily summary default.** Proposed: off for everyone, offered after the third email in a week. On by default for org owners would cut their mail further.
+Seb accepted the proposals on 2026-11-27:
+
+1. **Per-person counts.** "An agent is waiting for you" is personal, so the engine attributes counts to the dashboard user they are for. The platform then learns, per person and project, how many open items of each kind they have, and the engine owner can switch this off. Project-wide counts alone would never reach a member about their own work.
+2. **The daily summary is off by default for everyone**, org owners included. It is offered after a person's third email in a week.
 
 ## Context
 
@@ -26,7 +28,7 @@ What happens inside a project is engine content. The dashboard stores none (AGEN
    - Email goes out only if the notification was not seen in-app within 15 minutes.
    - Repeats merge: one open notification per person, project and kind, whose count goes up.
    - At most one email per person and project per hour.
-   - An optional daily summary replaces the immediate emails for the kinds the person chooses.
+   - An optional daily summary replaces the immediate emails for the kinds the person chooses. It is off by default and offered after a person's third email in a week.
 4. **Emails never carry content.** "2 things need you in Marketing site", the project's label (account metadata) and a link to `https://<hostname>/`. The dashboard knows no item IDs, so it never deep-links.
 5. **Security and account emails stay outside.** Sign-up and recovery links, recovery notices, invitations and "you're in" emails are sent as today and cannot be turned off.
 
@@ -49,6 +51,8 @@ What happens inside a project is engine content. The dashboard stores none (AGEN
 \* Only to people with access to that project, since only they can approve.
 
 \*\* When the limit blocks a link they started.
+
+A plan limit is one of [ADR 0025](0025-metering-and-subscriptions.md)'s meters (projects, every defined agent including disabled ones, members) reaching its quota, whichever subscription source the plan comes from, our Stripe or the website. The notification names the meter and links to the upgrade flow the source supplies; under a `warn` plan or the website's advisory licence it informs and never blocks.
 
 \*\*\* Project-wide: to the project's managers the dashboard knows (below).
 
@@ -109,15 +113,15 @@ Web Push from app.ptbk.io would carry the same content-free text through Apple's
 
 ## Threat analysis
 
-| Case                                 | Result                                                                                                                                                                                                                                           |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Forged counts                        | The heartbeat is signed by the engine key and verified before parsing, as today.                                                                                                                                                                 |
-| A malicious engine spams people      | It reaches only people the dashboard sent to it, whose access it approved. Merging and the hourly cap bound the mail; anyone can switch the kind off, or leave the team.                                                                         |
-| The platform learns activity         | Per person, project and kind: how many open items, every 60 seconds. Not what, not when each happened. Only the open row is kept, deleted 30 days after it closes. The owner can switch it off; strict mode starts off. This is open question 1. |
-| Content leaks into email             | The field holds a closed enum and a number; the email names the dashboard's own project label and hostname. Nothing from the engine is rendered.                                                                                                 |
-| Phishing through our emails          | Links go only to app.ptbk.io and the project's registered hostname. A compromised dashboard could link to a lookalike, as it could today; passkeys are bound to the real hostname, so a lookalike cannot sign anyone in.                         |
-| Mail to someone who left             | Recipients are checked again at send time against team membership and approved access.                                                                                                                                                           |
-| Unsubscribe token forged or replayed | Signed, bound to person and kind, and only ever turns email off.                                                                                                                                                                                 |
+| Case                                 | Result                                                                                                                                                                                                                                          |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Forged counts                        | The heartbeat is signed by the engine key and verified before parsing, as today.                                                                                                                                                                |
+| A malicious engine spams people      | It reaches only people the dashboard sent to it, whose access it approved. Merging and the hourly cap bound the mail; anyone can switch the kind off, or leave the team.                                                                        |
+| The platform learns activity         | Per person, project and kind: how many open items, every 60 seconds. Not what, not when each happened. Only the open row is kept, deleted 30 days after it closes. The owner can switch it off; strict mode starts off. Accepted as decision 1. |
+| Content leaks into email             | The field holds a closed enum and a number; the email names the dashboard's own project label and hostname. Nothing from the engine is rendered.                                                                                                |
+| Phishing through our emails          | Links go only to app.ptbk.io and the project's registered hostname. A compromised dashboard could link to a lookalike, as it could today; passkeys are bound to the real hostname, so a lookalike cannot sign anyone in.                        |
+| Mail to someone who left             | Recipients are checked again at send time against team membership and approved access.                                                                                                                                                          |
+| Unsubscribe token forged or replayed | Signed, bound to person and kind, and only ever turns email off.                                                                                                                                                                                |
 
 What the platform can do to an engine does not change: this ADR adds one field the engine sends, nothing the platform sends.
 
@@ -133,7 +137,7 @@ What the platform can do to an engine does not change: this ADR adds one field t
 ## Alternatives considered
 
 - **The engine emails people itself.** Content stays local, but every engine needs a mail setup and deliverability work, and an outbound destination. The owner may still add it later as an engine feature.
-- **Project-wide counts only.** Less metadata, but a member never hears about their own waiting agent; see open question 1.
+- **Project-wide counts only.** Less metadata, but a member never hears about their own waiting agent. Rejected in decision 1.
 - **The dashboard asks the engine what is new.** There is no command channel into the engine, by design. Rejected.
 - **Encrypted content in the email.** Mail clients cannot decrypt it, and the dashboard would hold ciphertext of engine content. Rejected.
 - **Email at once, no delay.** Simplest, but people working in the project would get mail about what they are looking at.
@@ -143,4 +147,4 @@ What the platform can do to an engine does not change: this ADR adds one field t
 - People hear about what needs them without the platform learning what it is, and daily users get almost no mail.
 - New metadata on the platform: per-person counts of waiting work. It is listed in the spec and the privacy policy, and the owner can turn it off.
 - The engine team builds an inbox capability and the counts; until then, only platform notifications exist.
-- Several engine features this relies on (members, access requests) are not on the real engine yet, so per-person counts reach no one there until they ship.
+- The real engine already handles dashboard tickets (`members@1`, `access-requests@1` since 0.119.0-139), so it knows dashboard user IDs; per-person counts reach people once it ships `notifications@1` and the `attention` field.
