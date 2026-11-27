@@ -80,6 +80,11 @@ export const KNOWN_CAPABILITIES = {
      * normal UI check early. Without it those fields are `null` and the UI offers no "Check now".
      */
     updates: { id: 'updates', version: 1 },
+    /**
+     * The engine's inbox (ADR 0027): items with their content for each member, unseen counts, and the owner's switch
+     * for sending those counts in the heartbeat. Without it the UI shows no inbox and the heartbeat no `attention`.
+     */
+    notifications: { id: 'notifications', version: 1 },
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export type KnownCapability = (typeof KNOWN_CAPABILITIES)[keyof typeof KNOWN_CAPABILITIES];

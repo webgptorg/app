@@ -78,6 +78,7 @@ describe('supports', () => {
             'voice-output@1',
             'ai-tools@1',
             'updates@1',
+            'notifications@1',
         ]);
     });
 });

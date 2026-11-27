@@ -53,6 +53,8 @@ export const AUDIT_ACTIONS = [
     'settings.update',
     'settings.update-policy',
     'settings.dashboard-removals',
+    /** `notifications@1`: the owner let the heartbeat carry unseen counts, or stopped it. */
+    'settings.dashboard-attention',
     /** `updates@1`: a member ran the UI update check early; the check's own outcome is in `GET /security`. */
     'updates.ui-check',
     'wallet.record.save',

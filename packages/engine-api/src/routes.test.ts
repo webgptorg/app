@@ -83,6 +83,8 @@ const CAPABILITY_BY_PATH = [
     ['/wallet', KNOWN_CAPABILITIES.wallet],
     ['/ai-tools', KNOWN_CAPABILITIES.aiTools],
     ['/updates', KNOWN_CAPABILITIES.updates],
+    ['/me/notifications', KNOWN_CAPABILITIES.notifications],
+    ['/settings/dashboard-attention', KNOWN_CAPABILITIES.notifications],
 ] as const;
 
 /** Core features an engine may leave out: these routes share paths with core routes that stay, so they go by ID. */
@@ -220,7 +222,7 @@ describe('capability routes', () => {
     it('declares its capability and a permission on every route of a capability', () => {
         for (const route of capabilityRoutes) {
             expect(route.capability, route.id).toEqual(expectedCapability(route));
-            expect(route.permission, route.id).not.toBeNull();
+            if (!isSelfService(route)) expect(route.permission, route.id).not.toBeNull();
         }
     });
 
@@ -234,6 +236,7 @@ describe('capability routes', () => {
 
     it('requires a non-read permission on every mutating capability route', () => {
         for (const route of capabilityRoutes.filter((candidate) => candidate.method !== 'GET')) {
+            if (isSelfService(route)) continue;
             expect(route.permission, route.id).not.toBeNull();
             if (route.permission !== null) {
                 expect(isReadPermission(route.permission), route.id).toBe(READ_ONLY_POSTS.has(route.id));
