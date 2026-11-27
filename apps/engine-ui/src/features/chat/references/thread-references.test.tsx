@@ -72,8 +72,10 @@ async function renderThread(working = false) {
 /** A chip of the finished reply once it renders as markdown: the plain-text fallback before it swaps out once. */
 function replyChip(history: HTMLElement, name: string) {
     return waitFor(() => {
-        const chip = within(history).getAllByRole('button', { name })[0];
-        expect(chip?.closest('div.gap-3')).toBeTruthy();
+        const chip = within(history)
+            .getAllByRole('button', { name })
+            .find((candidate) => candidate.closest('div.gap-3') !== null);
+        expect(chip).toBeTruthy();
         return chip as HTMLElement;
     });
 }
@@ -86,7 +88,10 @@ describe('references in a thread', { timeout: TIMEOUT_MS }, () => {
         fireEvent.pointerEnter(chip, { pointerType: 'mouse' });
         const card = await screen.findByRole('dialog', { name: 'Ada' });
         expect(chip.getAttribute('aria-expanded')).toBe('true');
-        expect(within(card).getByText('Research')).toBeDefined();
+        // The agent's card from everywhere else, with what it does in this thread.
+        expect(await within(card).findByText('Research')).toBeDefined();
+        expect(within(card).getByText('Status')).toBeDefined();
+        expect(within(card).getByText('Working')).toBeDefined();
         expect(within(card).getByText(/^Working · 1:00$/)).toBeDefined();
         expect(within(card).getByText('Read')).toBeDefined();
         expect(within(card).getByRole('link', { name: 'Open agent' }).getAttribute('href')).toBe(
@@ -100,6 +105,42 @@ describe('references in a thread', { timeout: TIMEOUT_MS }, () => {
         expect(composer.getAttribute('placeholder')).toBe('Message Ada…');
         expect(screen.getByRole('button', { name: 'Stop addressing Ada' })).toBeDefined();
         expect(document.activeElement).toBe(composer);
+    });
+
+    it('opens the same agent card from the author of a turn, on hover and on keyboard focus, and Esc closes it', async () => {
+        const { app, history } = await renderThread();
+        const author = within(history).getByRole('link', { name: 'Ada' });
+        expect(author.getAttribute('href')).toBe(`/agents/${CHAT_AGENT_ID}`);
+        expect(author.getAttribute('aria-haspopup')).toBe('dialog');
+
+        await app.user.hover(author);
+        const card = await screen.findByRole('dialog', { name: 'Ada' });
+        expect(await within(card).findByText('Research')).toBeDefined();
+        expect(within(card).getByText('Agent')).toBeDefined();
+        expect(within(card).getByText('Not working in this thread right now')).toBeDefined();
+        expect(within(card).getByRole('link', { name: 'Open agent' }).getAttribute('href')).toBe(
+            `/agents/${CHAT_AGENT_ID}`,
+        );
+        expect(within(card).getByRole('button', { name: 'Mention' })).toBeDefined();
+        await expectNoAxeViolations(document.body);
+        await app.user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog', { name: 'Ada' })).toBeNull();
+        await app.user.unhover(author);
+
+        for (let step = 0; step < 40 && document.activeElement !== author; step += 1) await app.user.tab();
+        expect(document.activeElement).toBe(author);
+        expect(await screen.findByRole('dialog', { name: 'Ada' })).toBeDefined();
+        await app.user.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog', { name: 'Ada' })).toBeNull();
+        expect(document.activeElement).toBe(author);
+    });
+
+    it('opens the agent card from the agent of a task in the thread', async () => {
+        const { app, history } = await renderThread();
+        const task = within(history).getByRole('region', { name: TASK });
+        await app.user.hover(within(task).getByRole('button', { name: '@Ada' }));
+        const card = await screen.findByRole('dialog', { name: 'Ada' });
+        expect(await within(card).findByText('Research')).toBeDefined();
     });
 
     it('addresses the agent when its chip is clicked, and the message goes out as +@Name', async () => {

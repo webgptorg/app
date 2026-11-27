@@ -40,9 +40,13 @@ export interface MockEngines {
     /**
      * A fresh engine as an operator first starts it: a new key, no link code and no owner (M-08's first start), so it
      * waits in local mode until `connect --link` runs inside it. Its setup is done unless `setup: 'pending'` asks for
-     * an engine paired before setup, which opens on setup after the owner's passkey (M-10).
+     * an engine paired before setup, which opens on setup after the owner's passkey (M-10). `ownerHandoff: 'off'` makes
+     * it ignore the pairing tab's commitment (ADR 0023), so only the terminal's setup link sets up the owner.
      */
-    startUnlinked(options?: { readonly setup?: 'pending' | 'done' }): Promise<OneOffContainer>;
+    startUnlinked(options?: {
+        readonly setup?: 'pending' | 'done';
+        readonly ownerHandoff?: 'on' | 'off';
+    }): Promise<OneOffContainer>;
 }
 
 export interface LinkCodeView {
@@ -270,6 +274,7 @@ export const test = base.extend<DashboardFixtures>({
                         PTBK_DATA_DIR: FRESH_DATA_DIR,
                         MOCK_PASSKEYS: 'none',
                         MOCK_ONBOARDING: options.setup === 'pending' ? 'no-project' : 'completed',
+                        PTBK_OWNER_HANDOFF: options.ownerHandoff ?? 'on',
                     },
                 });
                 containers.push(container);

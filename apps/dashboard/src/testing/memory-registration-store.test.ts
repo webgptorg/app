@@ -23,5 +23,6 @@ describeRegistrationStoreContract('memory', () => {
             return Promise.resolve();
         },
         orgAudit: (orgId) => Promise.resolve(state.orgAudit.filter((entry) => entry.orgId === orgId)),
+        storedCommitment: (codeHash) => Promise.resolve(state.linkCodes.get(codeHash)?.ownerSetupCommitment ?? null),
     };
 });

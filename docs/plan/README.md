@@ -145,6 +145,9 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [E-03](tasks/E-03-real-engine-swap.md)                   | Run conformance and e2e against the real engine                                              | E    | M5        |
 | [E-04](tasks/E-04-engine-agent-kit.md)                   | Engine implementation kit for coding agents                                                  | E    | M5        |
 | [E-05](tasks/E-05-onboarding.md)                         | Onboarding: product spec and engine install guide                                            | E    | M3        |
+| [C-20](tasks/C-20-owner-handoff-contract.md)             | Owner setup handoff: contract and conformance                                                | C    | M5        |
+| [M-15](tasks/M-15-mock-engine-owner-handoff.md)          | Mock engine: the owner setup handoff slot                                                    | M    | M5        |
+| [D-39](tasks/D-39-owner-handoff-dashboard.md)            | Dashboard: finish owner setup from the pairing tab                                           | D    | M5        |
 
 ## Parallel waves
 

@@ -52,6 +52,13 @@ function abuse(withFeeds: boolean): AbuseJobDeps {
     };
 }
 
+const clearedAt: number[] = [];
+const linkCodes = {
+    clearExpiredCommitments: (now: number) => {
+        clearedAt.push(now);
+        return Promise.resolve(0);
+    },
+};
 const usage = {
     store: createMemoryUsageStore(),
     engineStatus: { getActivity: () => Promise.resolve(null) },
@@ -84,6 +91,7 @@ describe('Cron Triggers and scheduled jobs (I-04, I-05)', () => {
             },
             abuse: abuse(true),
             usage,
+            linkCodes,
         });
         expect(jobs.map((job) => `${job.name} ${job.cron}`)).toEqual([
             `relay-monitor ${EVERY_MINUTE}`,
@@ -91,20 +99,21 @@ describe('Cron Triggers and scheduled jobs (I-04, I-05)', () => {
             `public-face ${EVERY_15_MINUTES}`,
             `abuse-feeds ${EVERY_15_MINUTES}`,
             `usage-rollup ${EVERY_15_MINUTES}`,
+            `link-code-commitments ${EVERY_15_MINUTES}`,
         ]);
         const crons = [...new Set(jobs.map((job) => job.cron))].sort();
         expect(crons).toEqual([EVERY_MINUTE, EVERY_15_MINUTES]);
         // The usage rollup needs no monitoring, so it runs wherever cron runs.
-        expect(scheduledJobs({ monitoring: null, abuse: null, usage }).map((job) => job.name)).toEqual([
+        expect(scheduledJobs({ monitoring: null, abuse: null, usage, linkCodes }).map((job) => job.name)).toEqual([
             'usage-rollup',
+            'link-code-commitments',
         ]);
         // Without a feed provider the 15-minute cron still has its jobs, so a run never finds none registered.
-        expect(scheduledJobs({ monitoring: null, abuse: abuse(false), usage }).map((job) => job.name)).toEqual([
-            'ct-watch',
-            'public-face',
-            'usage-rollup',
-        ]);
+        expect(
+            scheduledJobs({ monitoring: null, abuse: abuse(false), usage, linkCodes }).map((job) => job.name),
+        ).toEqual(['ct-watch', 'public-face', 'usage-rollup', 'link-code-commitments']);
         for (const job of jobs.slice(1)) await job.run({ scheduledTime: 0, signal: new AbortController().signal });
+        expect(clearedAt).toEqual([0]);
         for (const [name, config] of [['dev', wrangler] as const, ...Object.entries(wrangler.env)]) {
             expect([...config.triggers.crons].sort(), name).toEqual(crons);
             expect(

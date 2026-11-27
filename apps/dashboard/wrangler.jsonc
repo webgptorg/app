@@ -136,12 +136,12 @@
                 "DASHBOARD_ORIGIN": "https://app.ptbk.io",
                 "ENGINE_DOMAIN": "engines.ptbk.link",
                 "RELAYS": [{ "relayId": "relay-fsn.ptbk.link", "region": "eu-central" }],
-                // Reviewed fallback, 0.119.0-131 checked 2026-11-23. Issuance resolves npm latest and its matching
+                // Reviewed fallback, 0.119.0-139 checked 2026-11-27. Issuance resolves npm latest and its matching
                 // published Windows digest.
                 // The bootstrap is immutable and verified before sudo. No owner setup secret reaches Dashboard.
                 "ENGINE_INSTALLATION": {
-                    "version": "0.119.0-131",
-                    "windowsSha256": "1bb46215441c35edaf8012935d245603c382f268de9bef979f5d062288ce938f",
+                    "version": "0.119.0-139",
+                    "windowsSha256": "2cd595726429978a2aef05baf972edeca68651becf620f03d5ce3bef0f520c36",
                     "bootstrapRevision": "eda1a109787d164046d1f73732705e8a9afa76ec",
                     "bootstrapSha256": "8635addd31a056c97ffb234f07f9e845f57783923e185f3fb07f783d730288cd",
                 },

@@ -36,7 +36,7 @@ describe('engine status service', () => {
         const beat = async (
             seq: number,
             atMs = t.clock.nowMs(),
-            overrides: Partial<Pick<HeartbeatInput, 'members' | 'setup' | 'agents'>> = {},
+            overrides: Partial<Pick<HeartbeatInput, 'members' | 'setup' | 'agents' | 'ownerHandoff'>> = {},
         ) => {
             const { body, signature } = await signedHeartbeat(engine, seq, atMs, overrides);
             return service.recordHeartbeat({
@@ -104,6 +104,22 @@ describe('engine status service', () => {
         t.clock.advance(60_000);
         await t.beat(3);
         expect(await setupOf()).not.toHaveProperty('setup');
+    });
+
+    it('keeps the latest heartbeat’s owner handoff signal only, so one without it clears it (ADR 0023)', async () => {
+        const t = setup();
+        const payloadOf = async () => {
+            const status = await t.service.getStatus();
+            return status.state === 'never-seen' ? undefined : status.payload;
+        };
+        await t.beat(1, t.clock.nowMs(), { members: 0 });
+        expect(await payloadOf()).not.toHaveProperty('ownerHandoff');
+        t.clock.advance(5_000);
+        await t.beat(2, t.clock.nowMs(), { members: 0, ownerHandoff: 'ready' });
+        expect(await payloadOf()).toMatchObject({ members: 0, ownerHandoff: 'ready' });
+        t.clock.advance(60_000);
+        await t.beat(3, t.clock.nowMs(), { members: 1 });
+        expect(await payloadOf()).not.toHaveProperty('ownerHandoff');
     });
 
     it('refuses an equal and a lower seq as replayed, through verifyHeartbeat with the stored lastSeq', async () => {

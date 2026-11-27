@@ -1,4 +1,4 @@
-import { EngineVersion } from '@ptbk/protocol';
+import { EngineVersion, OwnerSetupCommitment } from '@ptbk/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { cryptoRandom } from '../adapters/crypto-random';
@@ -27,6 +27,12 @@ export interface RegistrationStoreFixture {
     adminAudit(engineId: string): Promise<readonly AdminAuditEntry[]>;
     /** The organization's `org_audit_log` rows, oldest first; the repository itself has no read. */
     orgAudit(orgId: OrgId): Promise<readonly StoredOrgAuditEntry[]>;
+    /** The code's stored owner setup commitment, which no store method reads once the code is spent. */
+    storedCommitment(codeHash: string): Promise<string | null>;
+}
+
+function commitment(): OwnerSetupCommitment {
+    return OwnerSetupCommitment.parse(toBase64Url(cryptoRandom.bytes(32)));
 }
 
 function audit(at: number): OrgEngineAudit {
@@ -53,6 +59,7 @@ function codeRecord(orgId: OrgId, overrides: Partial<LinkCodeRecord> = {}): Link
         createdByUserId: newUserId(cryptoRandom),
         createdAt: NOW,
         expiresAt: NOW + TTL,
+        ownerSetupCommitment: null,
         ...overrides,
     };
 }
@@ -117,10 +124,70 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
         it('finds a code by hash until it expires', async () => {
             const code = codeRecord(orgA);
             await fixture.linkCodes.insert(code);
-            expect(await fixture.linkCodes.findRedeemable(code.codeHash, NOW)).toBe(orgA);
-            expect(await fixture.linkCodes.findRedeemable(code.codeHash, NOW + TTL - 1)).toBe(orgA);
+            expect((await fixture.linkCodes.findRedeemable(code.codeHash, NOW))?.orgId).toBe(orgA);
+            expect((await fixture.linkCodes.findRedeemable(code.codeHash, NOW + TTL - 1))?.orgId).toBe(orgA);
             expect(await fixture.linkCodes.findRedeemable(code.codeHash, NOW + TTL)).toBeNull();
             expect(await fixture.linkCodes.findRedeemable(codeRecord(orgA).codeHash, NOW)).toBeNull();
+        });
+
+        it('hands out a code’s owner setup commitment while it is redeemable, and none once it has expired', async () => {
+            const withCommitment = codeRecord(orgA, { ownerSetupCommitment: commitment() });
+            const without = codeRecord(orgA);
+            await fixture.linkCodes.insert(withCommitment);
+            await fixture.linkCodes.insert(without);
+            expect(await fixture.linkCodes.findRedeemable(withCommitment.codeHash, NOW + TTL - 1)).toEqual({
+                orgId: orgA,
+                ownerSetupCommitment: withCommitment.ownerSetupCommitment,
+            });
+            expect(await fixture.linkCodes.findRedeemable(without.codeHash, NOW)).toEqual({
+                orgId: orgA,
+                ownerSetupCommitment: null,
+            });
+            expect(await fixture.linkCodes.findRedeemable(withCommitment.codeHash, NOW + TTL)).toBeNull();
+        });
+
+        it('nulls the commitment in the write that redeems a code, for a new and for a known engine', async () => {
+            const first = codeRecord(orgA, { ownerSetupCommitment: commitment() });
+            await fixture.linkCodes.insert(first);
+            const row = engineRecord(engine, orgA, { createdAt: NOW + 1, updatedAt: NOW + 1 });
+            expect(await fixture.linkCodes.redeemForNewEngine(first.codeHash, row, null)).toBe('redeemed');
+            expect(await fixture.storedCommitment(first.codeHash)).toBeNull();
+
+            const second = codeRecord(orgA, { ownerSetupCommitment: commitment() });
+            await fixture.linkCodes.insert(second);
+            const refresh = {
+                engineId: engine.engineId,
+                orgId: orgA,
+                mode: 'tunnel',
+                engineVersion: EngineVersion.parse('2.0.0'),
+                now: NOW + 2,
+            } as const;
+            expect(await fixture.linkCodes.redeemForExistingEngine(second.codeHash, refresh)).toBe('redeemed');
+            expect(await fixture.storedCommitment(second.codeHash)).toBeNull();
+        });
+
+        it('keeps the commitment of a code whose redemption lost, and nulls it when the code is cancelled', async () => {
+            const code = codeRecord(orgA, { ownerSetupCommitment: commitment() });
+            await fixture.linkCodes.insert(code);
+            const foreign = engineRecord(engine, orgB, { createdAt: NOW + 1 });
+            expect(await fixture.linkCodes.redeemForNewEngine(code.codeHash, foreign, null)).toBe('conflict');
+            expect(await fixture.storedCommitment(code.codeHash)).toBe(code.ownerSetupCommitment);
+            expect(await fixture.linkCodes.cancel(orgA, code.id, NOW + 1)).toBe('cancelled');
+            expect(await fixture.storedCommitment(code.codeHash)).toBeNull();
+        });
+
+        it('clears the commitment of every expired code, and of no code still redeemable', async () => {
+            const expiring = codeRecord(orgA, { ownerSetupCommitment: commitment() });
+            const later = codeRecord(orgB, { ownerSetupCommitment: commitment(), expiresAt: NOW + TTL * 2 });
+            await fixture.linkCodes.insert(expiring);
+            await fixture.linkCodes.insert(later);
+            await fixture.linkCodes.clearExpiredCommitments(NOW + TTL - 1);
+            expect(await fixture.storedCommitment(expiring.codeHash)).toBe(expiring.ownerSetupCommitment);
+            // Codes other tests left behind may expire at the same time in a shared database.
+            expect(await fixture.linkCodes.clearExpiredCommitments(NOW + TTL)).toBeGreaterThanOrEqual(1);
+            expect(await fixture.storedCommitment(expiring.codeHash)).toBeNull();
+            expect(await fixture.storedCommitment(later.codeHash)).toBe(later.ownerSetupCommitment);
+            expect(await fixture.linkCodes.clearExpiredCommitments(NOW + TTL)).toBe(0);
         });
 
         it('refuses a second code with the same hash', async () => {
@@ -258,8 +325,8 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
                     null,
                 ),
             ).toBe('conflict');
-            expect(await fixture.linkCodes.findRedeemable(again.codeHash, NOW + 5)).toBe(orgA);
-            expect(await fixture.linkCodes.findRedeemable(foreign.codeHash, NOW + 5)).toBe(orgB);
+            expect((await fixture.linkCodes.findRedeemable(again.codeHash, NOW + 5))?.orgId).toBe(orgA);
+            expect((await fixture.linkCodes.findRedeemable(foreign.codeHash, NOW + 5))?.orgId).toBe(orgB);
         });
 
         it('refreshes an active engine of the code organization with a new code', async () => {
@@ -305,8 +372,8 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
             expect(await fixture.linkCodes.redeemForExistingEngine(code.codeHash, { ...refresh, orgId: orgA })).toBe(
                 'conflict',
             );
-            expect(await fixture.linkCodes.findRedeemable(code.codeHash, NOW + 10)).toBe(orgA);
-            expect(await fixture.linkCodes.findRedeemable(foreign.codeHash, NOW + 10)).toBe(orgB);
+            expect((await fixture.linkCodes.findRedeemable(code.codeHash, NOW + 10))?.orgId).toBe(orgA);
+            expect((await fixture.linkCodes.findRedeemable(foreign.codeHash, NOW + 10))?.orgId).toBe(orgB);
             expect(await fixture.engines.findForRegistration(engine.engineId)).toEqual({
                 ...row,
                 status: 'suspended',

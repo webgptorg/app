@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "16fc50af-699c-474c-aafd-06c13e7cbcb4",
+  "id": "48c0a243-1421-4b0b-a792-23adc1999367",
   "prevId": "09119aaf-5312-42cd-9a23-cd067a9b8677",
   "tables": {
     "access_tickets": {
@@ -739,20 +739,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "vps_provider": {
-          "name": "vps_provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "vps_resource_id": {
-          "name": "vps_resource_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "id": {
           "name": "id",
           "type": "text",
@@ -804,6 +790,13 @@
         },
         "team_id": {
           "name": "team_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "owner_setup_commitment": {
+          "name": "owner_setup_commitment",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -2243,30 +2236,6 @@
           "isUnique": true
         }
       },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "vps_oauth_clients": {
-      "name": "vps_oauth_clients",
-      "columns": {
-        "callback": {
-          "name": "callback",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "client_id": {
-          "name": "client_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

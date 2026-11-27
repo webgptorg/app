@@ -10,13 +10,14 @@ import type {
     TaskId,
     TriggerId,
 } from '@ptbk/engine-api';
-import { EntityChip as ChipCore } from '@ptbk/ui';
-import type { EntityChipTriggerProps, StatusTone } from '@ptbk/ui';
+import { EntityChip as ChipCore, Hovercard } from '@ptbk/ui';
+import type { EntityChipTriggerProps, HovercardOptions, StatusTone } from '@ptbk/ui';
 import { Link } from '@tanstack/react-router';
 import { Activity, FileText, ListTodo, MessageSquare, Plug, User, Zap } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import type { ReactNode } from 'react';
 
+import { cx } from '../../app/cx';
 import type { FeatureRequirement } from '../../app/registry/feature';
 import { useAllows } from '../../app/registry/use-visible-features';
 import { AgentAvatar, NO_AGENT_PROFILE } from '../agents/agent-avatar';
@@ -25,6 +26,7 @@ import { useAgentLook } from '../home/use-agent-look';
 import { agentColor } from '../chat/references/agent-color';
 import { splitTaskName } from '../tasks/task-name';
 import { CardFallback } from './card-fallback';
+import type { AgentCardHere } from './entity-cards';
 
 // The cards' queries and formatting load on the first hover, not with every screen that shows a chip: Home is part
 // of the entry chunk, and a chip is there long before anyone opens its card.
@@ -219,5 +221,61 @@ function KnownEntityChip(props: EntityChipProps) {
                       },
                   })}
         />
+    );
+}
+
+/**
+ * The agent's card as every reference to it shows it, for a hovercard on something other than this chip (a chat
+ * chip that mentions on click). A thread passes what the agent does there as `here`.
+ */
+export function agentHovercard(agentId: AgentId, name: string, here?: AgentCardHere): HovercardOptions {
+    return {
+        label: name,
+        content: (
+            <Suspense fallback={<CardFallback />}>
+                <AgentCard agentId={agentId} name={name} here={here} />
+            </Suspense>
+        ),
+    };
+}
+
+/**
+ * An agent in its own look rather than a chip (a chat turn's avatar and name), as a link to the agent with the same
+ * card the chip has. An unresolved agent, or one the member may not open, is the plain content.
+ */
+export function AgentLink({
+    id,
+    name,
+    canOpen,
+    here,
+    className,
+    children,
+}: {
+    readonly id: AgentId | null;
+    readonly name: string;
+    /** The member may open agents (`ENTITY_REQUIREMENTS.agent`). */
+    readonly canOpen: boolean;
+    readonly here?: AgentCardHere | undefined;
+    readonly className?: string | undefined;
+    readonly children: ReactNode;
+}) {
+    if (id === null || !canOpen) return <span className={className}>{children}</span>;
+    return (
+        <Hovercard {...agentHovercard(id, name, here)}>
+            {(trigger) => (
+                <Link
+                    {...trigger}
+                    to="/agents/$agentId"
+                    params={{ agentId: id }}
+                    // The wash reaches past the content by its own padding, so hovering shifts nothing.
+                    className={cx(
+                        '-mx-1 rounded-control px-1 no-underline hover:bg-hover motion-safe:transition-[background-color] motion-safe:duration-(--motion-state)',
+                        className,
+                    )}
+                >
+                    {children}
+                </Link>
+            )}
+        </Hovercard>
     );
 }

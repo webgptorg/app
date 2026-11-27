@@ -263,6 +263,10 @@ async function readBody(context: Context, contract: RouteContract): Promise<Pars
     if (body === RAW_BODY) {
         return { kind: 'ok', value: bytes };
     }
+    // No body at all is `undefined`, which only a schema that declares the body optional accepts.
+    if (bytes.byteLength === 0) {
+        return parseWith(body, undefined);
+    }
     try {
         return parseWith(body, JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes)));
     } catch {

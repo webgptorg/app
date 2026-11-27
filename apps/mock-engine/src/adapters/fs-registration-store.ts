@@ -11,11 +11,14 @@ export const REGISTRATION_FILE = 'registration.json';
 
 const MAX_FILE_BYTES = 16 * 1024;
 
-/** What `registration.json` holds: the dashboard's response as checked, and which dashboard sent it. Never the link code. */
+/**
+ * What `registration.json` holds: the dashboard's response as checked, and which dashboard sent it. Never the link
+ * code, and not the owner setup commitment, which is a setup slot that must not outlive its 30 minutes (ADR 0023).
+ */
 const StoredRegistration = z.strictObject({
     v: z.literal(1),
     dashboardUrl: z.url({ protocol: /^https$/ }).max(2048),
-    ...RegisterEngineResponse.shape,
+    ...RegisterEngineResponse.omit({ ownerSetupCommitment: true }).shape,
 });
 
 /** A registration file that cannot be trusted or read. Messages name the path, never its content. */

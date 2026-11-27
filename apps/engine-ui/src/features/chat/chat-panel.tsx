@@ -10,6 +10,7 @@ import { useEngineApi } from '../../app/engine-api-context';
 import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
 import { agentListQueryOptions } from '../agents/agents-queries';
+import { ENTITY_REQUIREMENTS } from '../entities/entity-chip';
 import { useCurrentMember } from '../session/use-current-member';
 import { usePermissions } from '../session/use-permissions';
 import { entriesInOrder } from './chat-cache';
@@ -66,6 +67,7 @@ export function ChatPanel({ chat, canWrite, fill = false }: ChatPanelProps) {
         enabled: can('agents.read'),
     });
     const canOpenTasks = useAllows({ capability: KNOWN_CAPABILITIES.tasks, permission: 'tasks.read' });
+    const canOpenAgents = useAllows(ENTITY_REQUIREMENTS.agent);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     // Persists across sends; ThreadPage keys this panel by thread, so it never follows the member elsewhere.
     const [addressee, setAddressee] = useState<ComposerAgent | null>(null);
@@ -79,9 +81,10 @@ export function ChatPanel({ chat, canWrite, fill = false }: ChatPanelProps) {
                 chat,
                 agents: projectAgents.data?.items ?? [],
                 canOpenTasks,
+                canOpenAgents,
                 onMention: canWrite ? setAddressee : undefined,
             }),
-        [chat, projectAgents.data, canOpenTasks, canWrite],
+        [chat, projectAgents.data, canOpenTasks, canOpenAgents, canWrite],
     );
     const mentionables = useMemo(() => [...references.agents.values()], [references]);
     const mainName = mainAgentName(chat) ?? m.chat_agents();

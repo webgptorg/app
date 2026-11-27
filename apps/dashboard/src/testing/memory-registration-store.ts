@@ -119,12 +119,21 @@ export function createMemoryRegistrationStores(deps: {
                     .sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : -1))
                     .map(({ id, createdAt, expiresAt }) => ({ id, createdAt, expiresAt })),
             ),
+        clearExpiredCommitments(now) {
+            let cleared = 0;
+            for (const code of codes()) {
+                if (code.ownerSetupCommitment === null || code.expiresAt > now) continue;
+                state.linkCodes.set(code.codeHash, { ...code, ownerSetupCommitment: null });
+                cleared++;
+            }
+            return Promise.resolve(cleared);
+        },
         cancel(orgId, id, now) {
             const code = codes().find((candidate) => candidate.id === id);
             if (!redeemable(code, orgId, now)) {
                 return Promise.resolve('not-found');
             }
-            state.linkCodes.set(code.codeHash, { ...code, expiresAt: now });
+            state.linkCodes.set(code.codeHash, { ...code, expiresAt: now, ownerSetupCommitment: null });
             return Promise.resolve('cancelled');
         },
         findState(orgId, id, now) {
@@ -141,7 +150,11 @@ export function createMemoryRegistrationStores(deps: {
         },
         findRedeemable(codeHash, now) {
             const code = state.linkCodes.get(codeHash);
-            return Promise.resolve(redeemable(code, null, now) ? code.orgId : null);
+            return Promise.resolve(
+                redeemable(code, null, now)
+                    ? { orgId: code.orgId, ownerSetupCommitment: code.ownerSetupCommitment }
+                    : null,
+            );
         },
         redeemForNewEngine(codeHash, engine, maxActiveEngines) {
             const code = state.linkCodes.get(codeHash);
@@ -152,7 +165,12 @@ export function createMemoryRegistrationStores(deps: {
             ) {
                 return Promise.resolve('conflict');
             }
-            state.linkCodes.set(codeHash, { ...code, usedAt: engine.createdAt, engineId: engine.engineId });
+            state.linkCodes.set(codeHash, {
+                ...code,
+                usedAt: engine.createdAt,
+                engineId: engine.engineId,
+                ownerSetupCommitment: null,
+            });
             state.engines.set(engine.engineId, engine);
             return Promise.resolve('redeemed');
         },
@@ -166,7 +184,12 @@ export function createMemoryRegistrationStores(deps: {
             ) {
                 return Promise.resolve('conflict');
             }
-            state.linkCodes.set(codeHash, { ...code, usedAt: refresh.now, engineId: refresh.engineId });
+            state.linkCodes.set(codeHash, {
+                ...code,
+                usedAt: refresh.now,
+                engineId: refresh.engineId,
+                ownerSetupCommitment: null,
+            });
             state.engines.set(refresh.engineId, {
                 ...engine,
                 mode: refresh.mode,

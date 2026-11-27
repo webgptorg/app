@@ -16,6 +16,7 @@ import {
     ed25519SignatureToBytes,
 } from './ids';
 import { LinkCode } from './link-code';
+import { OwnerSetupCommitment } from './owner-handoff';
 import { SIGNING_CONTEXT, signingInput } from './signing-input';
 
 export const REGISTER_PATH = '/v1/engines/register';
@@ -56,6 +57,12 @@ const responseShape = {
      * pins it. `null` from a dashboard without teams: such an engine refuses every ticket and revocation.
      */
     memberKey: Ed25519PublicKey.nullable().default(null),
+    /**
+     * SHA-256 of the pairing tab's setup secret, if that tab made one (ADR 0023). An engine that supports the handoff
+     * keeps it as a second setup slot for `OWNER_HANDOFF_LIFETIME_MS`; one that has an owner or runs with handoff off
+     * ignores it. Sent once: the dashboard drops it when the code is redeemed.
+     */
+    ownerSetupCommitment: OwnerSetupCommitment.nullable().default(null),
 };
 
 /** As the dashboard sends it. */

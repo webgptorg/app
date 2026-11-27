@@ -7,6 +7,7 @@ import type {
     HeartbeatVerification,
     Hostname,
     LinkCode,
+    OwnerSetupCommitment,
     RegisterEngineResponse,
     Signer,
 } from '@ptbk/protocol';
@@ -104,8 +105,11 @@ export interface FakeDashboard {
     readonly url: string;
     readonly registrations: readonly ReceivedRegistration[];
     readonly heartbeats: readonly ReceivedHeartbeat[];
-    /** A new one-time link code for `org` (default `org-conformance`). */
-    issueLinkCode(org?: string): LinkCode;
+    /**
+     * A new one-time link code for `org` (default `org-conformance`). With `ownerSetupCommitment`, the registration
+     * that redeems it carries that commitment once, as a pairing tab that drew a setup secret would (ADR 0023).
+     */
+    issueLinkCode(org?: string, ownerSetupCommitment?: OwnerSetupCommitment): LinkCode;
     suspend(engineId: EngineId): void;
     /** Signs access tickets and member revocations; its public half goes out as `memberKey` at registration. */
     readonly memberSigner: Signer;
@@ -145,6 +149,7 @@ export async function startFakeDashboard(
 ): Promise<FakeDashboard> {
     const relays = options.relays ?? UNREACHABLE_RELAYS;
     const linkCodes = new Map<string, string>();
+    const commitments = new Map<string, OwnerSetupCommitment>();
     const consumed = new Set<string>();
     const engines = new Map<EngineId, StoredEngine>();
     const memberSigner = await createWebCryptoSigner(await generateEd25519KeyPair({ extractable: false }));
@@ -198,7 +203,9 @@ export async function startFakeDashboard(
             hostname: defaultHostname(engineId, ctx.engineDomain),
             relays: [...relays],
             memberKey: ed25519PublicKeyFromBytes(memberSigner.publicKey()),
+            ownerSetupCommitment: commitments.get(request.linkCode) ?? null,
         };
+        commitments.delete(request.linkCode);
         return jsonAnswer(200, options.decorateRegistration?.(response) ?? response);
     }
 
@@ -301,9 +308,10 @@ export async function startFakeDashboard(
         url,
         registrations,
         heartbeats,
-        issueLinkCode(org = 'org-conformance') {
+        issueLinkCode(org = 'org-conformance', ownerSetupCommitment) {
             const code = generateLinkCode(ctx.random);
             linkCodes.set(code, org);
+            if (ownerSetupCommitment !== undefined) commitments.set(code, ownerSetupCommitment);
             return code;
         },
         suspend(engineId) {
@@ -383,6 +391,8 @@ export interface RegisteredEngineOptions extends EngineOptions {
     readonly relays?: readonly Hostname[];
     /** Scripted answers for the dashboard; a script must let the first registration and heartbeat through. */
     readonly dashboard?: Omit<FakeDashboardOptions, 'relays'>;
+    /** Handed to the engine in its registration answer (ADR 0023). */
+    readonly ownerSetupCommitment?: OwnerSetupCommitment;
 }
 
 export interface EngineIdentity {
@@ -416,7 +426,7 @@ export async function startRegisteredEngine(
             ...(options.relays === undefined ? {} : { relays: options.relays }),
         }),
     );
-    const linkCode = dashboard.issueLinkCode();
+    const linkCode = dashboard.issueLinkCode(undefined, options.ownerSetupCommitment);
     const engine = await ctx.engine({
         ...(options.dataDir === undefined ? {} : { dataDir: options.dataDir }),
         env: { ...dashboard.env, PTBK_LINK_CODE: linkCode, ...options.env },

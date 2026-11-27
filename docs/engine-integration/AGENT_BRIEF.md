@@ -24,6 +24,18 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-27: Owner setup handoff from the pairing tab (ADR 0023)
+
+- **Changed:** additive, no version bump ([ADR 0023](../adr/0023-owner-setup-handoff.md)). The dashboard tab that showed the install command draws its own setup secret `S` and gives you only `ownerSetupCommitment = base64url(SHA-256(S))` in `RegisterEngineResponse` (`null` from tabs and dashboards without it). Once your heartbeat says `ownerHandoff: "ready"`, that tab sends the owner to `https://<hostname>/setup#S`, so a server install ends at the passkey prompt with nothing copied from SSH. Reference: `PTBK_OWNER_HANDOFF` in the mock engine ([setup-secret.ts](../../apps/mock-engine/src/domain/onboarding/setup-secret.ts), [passkey-gateway.ts](../../apps/mock-engine/src/domain/gateway/passkey-gateway.ts), [heartbeat-loop.ts](../../apps/mock-engine/src/domain/heartbeat/heartbeat-loop.ts)); checklist ENG-131; the `owner-handoff` conformance suite.
+- **Redo:**
+  1. **Second slot.** On a fresh registration whose answer carries a commitment, while the engine has no owner and the handoff is on, keep it next to your own setup secret: the decoded digest as the same hex SHA-256 you store for yours, and an expiry 30 minutes from registration (`OWNER_HANDOFF_LIFETIME_MS`). Never in the stored registration, never logged. With an owner, or with the handoff off, ignore it.
+  2. **Either slot.** `/setup/options` and `/setup/verify` accept a secret that matches either slot; wrong, expired and spent secrets keep their one answer (`setup-link-invalid`). The first owner passkey spends both slots. `--setup-link` replaces only your own slot; `--reset-owner` drops the handoff slot too.
+  3. **Signal.** While the handoff slot is live, there is no owner and the address serves `/setup` (relay connected, certificate valid), send `ownerHandoff: "ready"` in heartbeat v1 or v2, and send a heartbeat as soon as that starts rather than at the next interval (the suite allows 10 s). Leave it out otherwise, and always when no dashboard gave you a commitment.
+  4. **Setting.** An engine setting turns the handoff off, and strict mode turns it off by default; then only the terminal link sets up the owner. The mock calls it `PTBK_OWNER_HANDOFF=off`; use that name if it is an environment variable.
+  5. **Audit and terminal.** Audit the owner's first passkey through the handoff as `passkey.register` with `details: { "via": "owner-handoff" }` and the client IP, and say on the terminal that the owner was set up from the dashboard tab, naming `ptbk connect --reset-owner`.
+  6. **No auto-open.** On a local desktop, while the handoff slot is live, do not open your own setup link in the browser (two setup pages would race); still print it with its QR code.
+  - Then run `ptbk-conformance --suite owner-handoff`: it skips until your heartbeat signals, then checks the timing, both slots, the spent secret after setup and a restart, the audit entry, and no signal without a commitment. It cannot move your clock, so test the 30-minute expiry and the ignored commitment with an owner yourself.
+
 ### 2026-11-24: Show more in onboarding choices
 
 The engine orders choices and may send `featured: false` for secondary integrations. Send Local models last with its disk estimate and include detected selections in `initial`. Older engines may omit `featured`, so the signed UI keeps its existing minimum engine API version.

@@ -30,6 +30,7 @@ import { troubleshootingLink } from './engine-guide';
 import { LINK_POLL_MS, LinkProgress, useObservedLink } from './link-progress';
 import type { ObservedLink } from './link-progress';
 import { linkCodeQuery, linkEligibilityQuery } from './link-queries';
+import { canKeepOwnerSetupSecret, drawOwnerSetup, keepOwnerSetupSecret } from './owner-handoff';
 import { LinkSteps } from './link-steps';
 import { InstallationCopyBlock } from './installation-copy-block';
 import { installationTabs } from './installation-options';
@@ -361,14 +362,28 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
     const session = useSession();
     const navigate = useNavigate();
     const toast = useToast();
+    const browser = useBrowser();
     // Only to say "trial" or "subscription" in the thanks after Checkout.
     const billing = useQuery({ ...billingQuery(api), enabled: props.search.checkout === 'success' });
     const [issued, setIssued] = useState<LinkCodeView | null>(null);
     const create = useAppMutation<LinkCodeView>({
-        mutationFn: async () =>
-            props.search.team === undefined
-                ? dataOrThrow(await api.call(apiRoutes.createLinkCode, {}))
-                : dataOrThrow(await api.call(apiRoutes.createTeamLinkCode, { params: { teamId: props.search.team } })),
+        // The owner setup secret (ADR 0023) lives only in this closure and the tab's sessionStorage; the request carries
+        // its commitment. Without storage there could be no redirect, so no commitment either.
+        mutationFn: async () => {
+            const tab = browser.sessionStorage;
+            const handoff = canKeepOwnerSetupSecret(tab) ? await drawOwnerSetup() : null;
+            const body = handoff === null ? undefined : { ownerSetupCommitment: handoff.commitment };
+            const view =
+                props.search.team === undefined
+                    ? dataOrThrow(await api.call(apiRoutes.createLinkCode, { body }))
+                    : dataOrThrow(
+                          await api.call(apiRoutes.createTeamLinkCode, { params: { teamId: props.search.team }, body }),
+                      );
+            if (handoff !== null && tab !== undefined) {
+                keepOwnerSetupSecret(tab, view.linkCodeId, handoff.secret, issued?.linkCodeId ?? props.search.link);
+            }
+            return view;
+        },
         errorMessage: (error) => {
             if (problemCode(error) === LINK_CODE_LIMIT) {
                 return m.engines_new_code_limit_title();

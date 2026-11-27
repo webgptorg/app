@@ -6,6 +6,8 @@ import {
     defaultHostname,
     ed25519PublicKeyFromBytes,
     generateLinkCode,
+    newOwnerSetupSecret,
+    ownerSetupCommitment,
     verifyRegistration,
 } from '@ptbk/protocol';
 import { describe, expect, it } from 'vitest';
@@ -93,9 +95,17 @@ describe('registerEngine', () => {
             relays: RELAYS,
             memberKey: null,
         };
-        expect(outcome).toEqual({ kind: 'registered', registration: expected });
+        expect(outcome).toEqual({ kind: 'registered', registration: expected, ownerSetupCommitment: null });
         expect(await store.load()).toEqual(expected);
         expect(received(dashboard).mode).toBe('tunnel');
+    });
+
+    it('hands over the pairing tab’s commitment once, and never stores it with the registration', async () => {
+        const { dashboard, store, deps } = await setup();
+        const commitment = await ownerSetupCommitment(newOwnerSetupSecret(createSeededRandom(4)));
+        const outcome = await registerEngine(deps(dashboard.issueLinkCode('org-a', commitment)));
+        expect(outcome.kind === 'registered' && outcome.ownerSetupCommitment).toBe(commitment);
+        expect(JSON.stringify(await store.load())).not.toContain(commitment);
     });
 
     it('reports an existing registration without a network call', async () => {

@@ -7,6 +7,8 @@ import {
     LinkCode,
     MAX_REGISTRY_HOSTNAMES,
     MAX_RELAYS,
+    OwnerHandoff,
+    OwnerSetupCommitment,
     RegistrationMode,
     SetupState,
     Timestamp,
@@ -279,6 +281,8 @@ export const heartbeatViewSchema = z.strictObject({
     members: countSchema,
     /** Absent: the engine has no browser setup, or reported before it had one; read as set up. */
     setup: SetupState.optional(),
+    /** `ready` while the pairing tab may open the engine's setup page (ADR 0023); absent otherwise. */
+    ownerHandoff: OwnerHandoff.optional(),
 });
 export type HeartbeatView = z.infer<typeof heartbeatViewSchema>;
 
@@ -342,6 +346,15 @@ const redirectSchema = z.strictObject({ url: z.url({ protocol: /^https?$/ }).max
 const ceremonyErrors = ['challenge-invalid', 'webauthn-failed'] as const;
 
 const SMALL_BODY_BYTES = 1024;
+/**
+ * The pairing tab's `SHA-256` of its owner setup secret (ADR 0023), never the secret. Optional, and so is the body:
+ * a request without one issues a code as before.
+ */
+const linkCodeInput = {
+    ...NO_INPUT,
+    body: z.strictObject({ ownerSetupCommitment: OwnerSetupCommitment.optional() }).optional(),
+    maxBodyBytes: SMALL_BODY_BYTES,
+} as const;
 
 const capacitySchema = z.number().int().nonnegative().nullable();
 
@@ -910,7 +923,7 @@ export const apiRoutes = {
         auth: 'session',
         permission: 'engine.link',
         rateLimit: null,
-        input: NO_INPUT,
+        input: linkCodeInput,
         output: linkCodeViewSchema,
         // A full pending list returns 409. Exhausting the hourly issuance budget returns 429.
         errorCodes: ['not-entitled', 'engine-limit', 'link-code-limit'],
@@ -1163,7 +1176,7 @@ export const apiRoutes = {
         auth: 'session',
         permission: 'engine.link',
         rateLimit: null,
-        input: { ...NO_INPUT, params: teamParams },
+        input: { ...linkCodeInput, params: teamParams },
         output: linkCodeViewSchema,
         errorCodes: ['not-entitled', 'engine-limit', 'link-code-limit', 'team-has-engine'],
     }),

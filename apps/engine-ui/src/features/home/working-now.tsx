@@ -1,4 +1,4 @@
-import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
+import { AgentId, KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { ReadChat, ReadRun, ReadTask } from '@ptbk/engine-api';
 import { EmptyState, Section } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
@@ -13,7 +13,7 @@ import { AgentAvatar } from '../agents/agent-avatar';
 import { StepLine } from '../chat/references/agent-hovercard';
 import { formatClock, useElapsedMs } from '../chat/references/elapsed';
 import { chatName } from '../chat/chat-name';
-import { EntityChip } from '../entities/entity-chip';
+import { AgentLink, ENTITY_REQUIREMENTS, EntityChip } from '../entities/entity-chip';
 import { runTitle } from '../runs/run-format';
 import { runListQueryOptions } from '../runs/runs-queries';
 import { useAgentLook } from './use-agent-look';
@@ -55,6 +55,7 @@ function ChatWork({ chat, working }: { readonly chat: ReadChat; readonly working
     );
     const name = author?.name ?? working.author.key;
     const look = useAgentLook(working.author.key);
+    const canOpenAgents = useAllows(ENTITY_REQUIREMENTS.agent);
     const latest = working.steps.at(-1);
     return (
         <WorkRow
@@ -69,7 +70,16 @@ function ChatWork({ chat, working }: { readonly chat: ReadChat; readonly working
             }
             title={
                 <>
-                    <span className="font-medium">{m.home_working_in_chat({ name })}</span>
+                    <span className="font-medium">
+                        <AgentLink
+                            id={AgentId.safeParse(working.author.key).data ?? null}
+                            name={name}
+                            canOpen={canOpenAgents}
+                        >
+                            {name}
+                        </AgentLink>{' '}
+                        {m.home_replying_in_after_name()}
+                    </span>
                     <Link
                         to="/chats/$chatId"
                         params={{ chatId: chat.id }}

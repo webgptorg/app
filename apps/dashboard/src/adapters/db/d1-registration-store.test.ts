@@ -7,7 +7,7 @@ import { orgAuditEntryIdSchema, orgIdSchema, userIdSchema } from '../../domain/i
 import { createDatabase } from './client';
 import { createD1AuthStore } from './d1-auth-store';
 import { createD1EngineStore, createD1LinkCodeStore, createD1PlatformEngineStore } from './d1-registration-store';
-import { adminAuditLog, orgAuditLog } from './schema';
+import { adminAuditLog, linkCodes, orgAuditLog } from './schema';
 
 describeRegistrationStoreContract('D1', () => {
     const db = createDatabase(env.DB);
@@ -48,6 +48,14 @@ describeRegistrationStoreContract('D1', () => {
                 orgId: orgIdSchema.parse(row.orgId),
                 actorUserId: userIdSchema.parse(row.actorUserId),
             }));
+        },
+        async storedCommitment(codeHash) {
+            const row = await db
+                .select({ ownerSetupCommitment: linkCodes.ownerSetupCommitment })
+                .from(linkCodes)
+                .where(eq(linkCodes.codeHash, codeHash))
+                .get();
+            return row?.ownerSetupCommitment ?? null;
         },
     };
 });

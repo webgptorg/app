@@ -59,6 +59,8 @@ export interface HeartbeatLoopDeps {
     readonly onStatus?: (status: HeartbeatStatus) => void;
     /** Teams (ADR 0018): while `enabled()`, beats are v2 with these facts, and replies' revocations go to `apply`. */
     readonly teams?: HeartbeatTeams;
+    /** Whether the pairing tab may send the owner to `/setup` now (ADR 0023); beats carry `ownerHandoff` while true. */
+    readonly ownerHandoff?: () => boolean;
 }
 
 export interface HeartbeatTeams {
@@ -100,6 +102,7 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
     let cancelTimer: (() => void) | null = null;
     let cancelSetupCheck: (() => void) | null = null;
     let lastSetup = deps.engine.setup();
+    let lastHandoff = false;
     let inFlight: Promise<void> | null = null;
     let beatAfterInFlight = false;
     let abort = new AbortController();
@@ -136,6 +139,7 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
                 counts: deps.engine.counts(),
                 update: deps.engine.updateState(),
                 setup: deps.engine.setup(),
+                ownerHandoff: deps.ownerHandoff?.() === true ? 'ready' : null,
                 ...(teams === null ? {} : { teams: { accessRequests: teams.pendingRequests(), acks } }),
             },
             { clock, signer, signal },
@@ -200,12 +204,15 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
         send();
     }
 
-    // Setup finishes in engine time, often while nobody calls the engine, so the loop looks for it itself.
+    // Setup finishes in engine time, often while nobody calls the engine, so the loop looks for it itself. The
+    // handoff turns ready when the certificate arrives, and the pairing tab is waiting for exactly that beat.
     function checkSetup(): void {
         cancelSetupCheck = clock.setTimeout(checkSetup, SETUP_CHECK_MS);
         const setup = deps.engine.setup();
-        if (lastSetup === 'pending' && setup === 'done') beatNow();
+        const handoff = deps.ownerHandoff?.() === true;
+        if ((lastSetup === 'pending' && setup === 'done') || (handoff && !lastHandoff)) beatNow();
         lastSetup = setup;
+        lastHandoff = handoff;
     }
 
     return {

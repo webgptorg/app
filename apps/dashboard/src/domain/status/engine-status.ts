@@ -2,6 +2,7 @@ import {
     CpuLoad,
     EngineId,
     EngineVersion,
+    OwnerHandoff,
     SetupState,
     Timestamp,
     UpdateState,
@@ -53,6 +54,8 @@ export const heartbeatPayloadSchema = z.strictObject({
     agents: count,
     members: count,
     setup: SetupState.optional(),
+    // The latest heartbeat's only: one without it clears it, as the engine's slot has closed (ADR 0023).
+    ownerHandoff: OwnerHandoff.optional(),
 });
 export type HeartbeatPayload = z.infer<typeof heartbeatPayloadSchema>;
 
@@ -199,6 +202,7 @@ export function acceptHeartbeat(input: {
             agents: heartbeat.agents,
             members: heartbeat.members,
             ...(heartbeat.setup === undefined ? {} : { setup: heartbeat.setup }),
+            ...(heartbeat.ownerHandoff === undefined ? {} : { ownerHandoff: heartbeat.ownerHandoff }),
         },
         offlineSince: null,
         alert: { kind: 'none' },
