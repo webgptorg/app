@@ -1,11 +1,13 @@
 import type { Entitlements } from '../billing/entitlements';
 import type { OrgId } from '../ids';
 import { OPEN_LICENSE_GATE, type LicenseGate } from '../licensing/license-service';
-import type { EngineStore } from './engine-store';
+import { checkMeterLimit } from '../metering/meter-limits';
+import type { MeteringStore } from '../metering/metering-store';
 
 export type EntitlementDenial = 'not-entitled' | 'engine-limit';
 
 type EngineCreationDecision =
+    /** `maxActiveEngines` is the redemption's cap: `null` when unlimited or when the plan only warns (ADR 0025). */
     | { readonly kind: 'allowed'; readonly maxActiveEngines: number | null }
     | { readonly kind: 'denied'; readonly reason: EntitlementDenial };
 
@@ -25,7 +27,7 @@ export interface EngineCreationPolicy {
 
 export function createEngineCreationPolicy(deps: {
     readonly entitlements: Entitlements;
-    readonly engines: Pick<EngineStore, 'countActive'>;
+    readonly metering: Pick<MeteringStore, 'readOrgFacts'>;
     /** The `engine.link` check point; it denies only with `LICENSE_ENFORCEMENT` `enforce`. */
     readonly licenseGate?: LicenseGate;
 }): EngineCreationPolicy {
@@ -35,11 +37,21 @@ export function createEngineCreationPolicy(deps: {
         if (!(await deps.entitlements.allows(orgId, 'engines.create', signal))) {
             return { kind: 'denied', reason: 'not-entitled' };
         }
-        const max = await deps.entitlements.limit(orgId, 'engines.max', signal);
-        if (max !== null && (await deps.engines.countActive(orgId)) >= max) {
+        const projects = await checkMeterLimit(
+            { entitlements: deps.entitlements, store: deps.metering },
+            orgId,
+            { meter: 'projects', adding: 1 },
+            signal,
+        );
+        if (projects.outcome === 'block') {
             return { kind: 'denied', reason: 'engine-limit' };
         }
-        return { kind: 'allowed', maxActiveEngines: max };
+        // A plan that only warns must not let the redemption's own race guard block either.
+        const blocks = (await deps.entitlements.overLimit(orgId, signal)) === 'block';
+        return {
+            kind: 'allowed',
+            maxActiveEngines: blocks ? await deps.entitlements.limit(orgId, 'engines.max', signal) : null,
+        };
     }
 
     // Asked when someone links, never when an engine redeems a code it already holds: an install under way finishes.

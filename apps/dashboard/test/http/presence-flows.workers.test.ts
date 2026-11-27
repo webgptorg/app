@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { beforeEach } from 'vitest';
 
 import { createDatabase } from '../../src/adapters/db/client';
+import { createD1MeteringStore } from '../../src/adapters/db/d1-metering-store';
 import { createD1AuthStore } from '../../src/adapters/db/d1-auth-store';
 import { createD1BillingStore } from '../../src/adapters/db/d1-billing-store';
 import {
@@ -29,6 +30,7 @@ describePresenceFlows('relay presence on D1', () => {
                 engines: createD1EngineStore(db),
                 platformEngines: createD1PlatformEngineStore(db),
             },
+            metering: createD1MeteringStore(db),
             relayTokens: createD1RelayTokenStore(db),
             registry: createD1RegistryReader(db),
             relayPresence: createD1RelayPresenceStore(db),

@@ -4,6 +4,7 @@ import type { UserRecord } from '../auth/records';
 import { newSecret, sha256Hex } from '../auth/secrets';
 import { newInviteId, newOrgAuditEntryId, type InviteId, type OrgId, type TeamId, type UserId } from '../ids';
 import type { Locale } from '../locale';
+import { checkMeterLimit, type MeterLimitDeps } from '../metering/meter-limits';
 import type { EmailMessage, EmailSender } from '../ports/email-sender';
 import type { OrgRole } from '../roles';
 import type { InviteOffer, InviteRecord, TeamStore } from './team-store';
@@ -17,6 +18,7 @@ export interface InviteDeps extends TeamDeps {
     readonly accounts: Pick<AccountStore, 'findUserByEmail' | 'findMembership'>;
     readonly email: EmailSender;
     readonly inviteLink: (token: string) => string;
+    readonly meterLimits: MeterLimitDeps;
 }
 
 /** Who sends the invitations, as the email names them: the session's own user and organization. */
@@ -46,7 +48,8 @@ export type CreateInvitesOutcome =
           /** Sends the emails; run after the response, like every other email. */
           readonly deliver: (signal: AbortSignal) => Promise<void>;
       }
-    | { readonly kind: 'forbidden' | 'team-not-found' };
+    /** The plan's `people.max` blocks (ADR 0025); nothing was written. */
+    | { readonly kind: 'forbidden' | 'team-not-found' | 'people-limit' };
 
 async function inviteEmail(
     deps: InviteDeps,
@@ -77,6 +80,7 @@ export async function createInvites(
     deps: InviteDeps,
     actor: Inviter,
     request: InviteRequest,
+    signal: AbortSignal,
 ): Promise<CreateInvitesOutcome> {
     if (request.role === 'owner' && actor.orgRole !== 'owner') {
         return { kind: 'forbidden' };
@@ -85,13 +89,29 @@ export async function createInvites(
     if (teams.some((team) => team === null)) {
         return { kind: 'team-not-found' };
     }
-    const results: InviteResult[] = [];
-    const emails: { readonly invite: InviteRecord; readonly token: string }[] = [];
+    const recipients: { readonly email: EmailAddress; readonly memberId: UserId | null }[] = [];
     for (const email of new Set(request.emails)) {
         const user = await deps.accounts.findUserByEmail(email);
-        if (user !== null && (await deps.accounts.findMembership(actor.orgId, user.id)) !== null) {
+        const memberId =
+            user !== null && (await deps.accounts.findMembership(actor.orgId, user.id)) !== null ? user.id : null;
+        recipients.push({ email, memberId });
+    }
+    // Pending invitations don't count, so accepting several can pass the limit: an acceptance is never refused. Only
+    // newcomers are checked, so an organization already over its limit can still add its own people to teams.
+    const newcomers = recipients.filter((recipient) => recipient.memberId === null).length;
+    if (
+        newcomers > 0 &&
+        (await checkMeterLimit(deps.meterLimits, actor.orgId, { meter: 'people', adding: newcomers }, signal))
+            .outcome === 'block'
+    ) {
+        return { kind: 'people-limit' };
+    }
+    const results: InviteResult[] = [];
+    const emails: { readonly invite: InviteRecord; readonly token: string }[] = [];
+    for (const { email, memberId } of recipients) {
+        if (memberId !== null) {
             for (const teamId of request.teamIds) {
-                await deps.teams.addMember(actor.orgId, teamId, user.id, teamAudit(deps, actor));
+                await deps.teams.addMember(actor.orgId, teamId, memberId, teamAudit(deps, actor));
             }
             results.push({ email, outcome: 'added' });
             continue;

@@ -1248,8 +1248,9 @@ export const apiRoutes = {
         output: z.strictObject({
             results: z.array(z.strictObject({ email: z.string(), outcome: z.enum(['invited', 'added']) })),
         }),
-        // `license-limit` (403): only with `LICENSE_ENFORCEMENT` `enforce`, which no environment sets yet.
-        errorCodes: ['invalid-email', 'team-not-found', 'license-limit'],
+        // `license-limit` (403): only with `LICENSE_ENFORCEMENT` `enforce`, which no environment sets yet. `people-limit`
+        // (403): the plan's `people.max` under `overLimit: block` (ADR 0025); a plan that warns lets the invitations go.
+        errorCodes: ['invalid-email', 'team-not-found', 'license-limit', 'people-limit'],
     }),
     resendInvite: defineRoute({
         method: 'POST',

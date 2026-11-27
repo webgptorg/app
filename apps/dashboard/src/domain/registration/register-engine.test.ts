@@ -274,6 +274,16 @@ describe('registerEngine', () => {
         expect((await t.register(await first.register(other))).kind).toBe('registered');
     });
 
+    it('registers a new engine past engines.max on a plan that only warns (ADR 0025)', async () => {
+        const t = setup();
+        const org = testOrgId();
+        t.entitlements.grant(org, { enginesMax: 1, overLimit: 'warn' });
+        for (let engine = 0; engine < 2; engine++) {
+            const code = await t.issue(org);
+            expect((await t.register(await (await createTestEngine()).register(code))).kind).toBe('registered');
+        }
+    });
+
     it('retries once when a concurrent registration of the same key won, and answers as re-registration', async () => {
         let raced = false;
         const t = setup({

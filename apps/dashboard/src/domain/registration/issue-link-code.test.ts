@@ -72,6 +72,14 @@ describe('issueLinkCode', () => {
         expect(t.stores.state.linkCodes.size).toBe(1);
     });
 
+    it('issues past engines.max on a plan that only warns (ADR 0025)', async () => {
+        const t = setup();
+        t.entitlements.grant(t.orgId, { enginesMax: 1, overLimit: 'warn' });
+        const engine = await createTestEngine();
+        t.stores.state.engines.set(engine.engineId, engineRecord(engine, t.orgId));
+        expect((await t.issue()).kind).toBe('issued');
+    });
+
     it('allows at most 100 active codes per organization, until one expires or is cancelled', async () => {
         const t = setup();
         const ids: LinkCodeId[] = [];
