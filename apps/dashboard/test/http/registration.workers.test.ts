@@ -96,6 +96,7 @@ describe('POST /v1/engines/register on the built Worker', () => {
             hostname: `${engineId}.engines.ptbk.test`,
             relays: ['relay.ptbk.test'],
             memberKey,
+            ownerSetupCommitment: null,
         });
         const row = await env.DB.prepare('SELECT org_id, public_key FROM engines WHERE engine_id = ?')
             .bind(engineId)
