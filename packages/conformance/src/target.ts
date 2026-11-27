@@ -1,4 +1,4 @@
-import type { BrowserHelpReason, EngineApiRouteId, Permission } from '@ptbk/engine-api';
+import type { BrowserHelpReason, EngineApiRouteId, NotificationKind, Permission } from '@ptbk/engine-api';
 
 /**
  * Who a session is for. Subjects are permission sets, never role names: which role holds which permission is engine
@@ -44,6 +44,22 @@ export interface ConformanceTarget {
     readonly liveBrowser?: LiveBrowserTarget;
     /** Test-mode levers for `ai-tools@1`; without them `engine-api.ai-tools.sign-in-required` skips. */
     readonly aiTools?: AiToolsTarget;
+    /** A test-mode lever for `notifications@1`; without it the checks that need items skip. */
+    readonly notifications?: NotificationsTarget;
+}
+
+/** Something needs a member or the project's managers, as engine work would raise it. */
+export interface NewTargetNotification {
+    /** The member it is for, from `GET /me`; `null` for a project-wide item. */
+    readonly memberId: string | null;
+    readonly kind: NotificationKind;
+    /** Shown in the inbox; the checks put a random token here to look for it where it must never be. */
+    readonly title: string;
+}
+
+export interface NotificationsTarget {
+    /** Raises an open, unseen item and answers its ID. */
+    raise(input: NewTargetNotification): Promise<string>;
 }
 
 export interface AiToolsTarget {

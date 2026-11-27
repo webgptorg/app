@@ -35,7 +35,7 @@ sequenceDiagram
 - Set `ts` to the current UTC time (RFC 3339 with `Z`). The dashboard refuses a heartbeat more than `HEARTBEAT_MAX_SKEW_MS` (2 minutes) away from its own clock.
 - Send only what the schema allows: `version` (SemVer), `uptimeS`, `diskPct` and `ramPct` rounded to tens, `cpuLoad` (`CpuLoad`: `low`, `medium`, `high`), `update` (`UpdateState`: `none`, `available`, `pending`, `installing`), and the counts `agents` and `members` (0 to `MAX_HEARTBEAT_COUNT`). Count agents that are not deleted (soft-deleted agents in the trash are left out, as in `GET /agents` by default) and members who can sign in: status `active` and at least one registered passkey. `members` is therefore 0 until the owner's first passkey and again after `owner --reset`, which is how the dashboard tells an engine still waiting for its owner ([installation.md](installation.md#what-the-dashboard-reads)). An engine with `onboarding@1` also sends `setup` (`SetupState`: `pending` from pairing until its setup completes, then `done`); the dashboard shows "Setup not finished" on a paired engine still `pending`. Leave it out without browser setup. An engine holding an owner setup handoff slot sends `ownerHandoff: "ready"` (`OwnerHandoff`) while that slot is live, it has no owner and its address serves `/setup` (relay connected, certificate valid), and sends a heartbeat as soon as that starts, without waiting for the interval ([ADR 0023](../adr/0023-owner-setup-handoff.md)); leave it out otherwise, and always when no dashboard gave you a commitment.
 - Round percentages with `buildHeartbeat`'s rule: to the nearest ten, halves up (`Math.round(value / 10) * 10`). A value outside 0–100 is a bug and throws.
-- Show the last heartbeat body **verbatim** in the security panel: `GET /security` returns it as `lastHeartbeat.body`, the exact bytes sent, as text, with `sentAt` ([engine-api.md](engine-api.md)). The owner can see everything we learn.
+- Show the last heartbeat body **verbatim** in the security panel: `GET /security` returns it as `lastHeartbeat.body`, the exact bytes sent, as text, with `sentAt` ([engine-api.md](engine-api.md#notifications)). The owner can see everything we learn.
 
 ## Heartbeat v2 and the reply (teams)
 
@@ -47,7 +47,7 @@ Once the engine handles access tickets and member revocations ([ADR 0018](../adr
 - With dashboard removals switched off, still delete a pending request from the person the revocation names, then ack `refused-disabled`.
 - An engine registered without a member key keeps sending v1.
 
-## Things waiting: `attention` (notifications)
+## Things waiting (notifications)
 
 An engine with `notifications@1` ([ADR 0027](../adr/0027-notifications.md), [engine-api.md](engine-api.md)) tells the dashboard how many things wait for whom, so it can email people who are away. Only counts: never what the items are, their titles or when each happened.
 
