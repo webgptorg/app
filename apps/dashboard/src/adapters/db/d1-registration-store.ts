@@ -17,6 +17,7 @@ import {
     isNotNull,
     isNull,
     lt,
+    lte,
     ne,
     notExists,
     or,
@@ -128,6 +129,15 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
                 createdAt: row.createdAt,
                 expiresAt: row.expiresAt,
             }));
+        },
+
+        async clearExpiredCommitments(now) {
+            const rows = await db
+                .update(linkCodes)
+                .set({ ownerSetupCommitment: null })
+                .where(and(isNotNull(linkCodes.ownerSetupCommitment), lte(linkCodes.expiresAt, now)))
+                .returning({ id: linkCodes.id });
+            return rows.length;
         },
 
         async cancel(orgId, id, now) {

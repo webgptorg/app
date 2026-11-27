@@ -95,6 +95,15 @@ export function createMemoryRegistrationStores(deps: {
                     .sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : -1))
                     .map(({ id, createdAt, expiresAt }) => ({ id, createdAt, expiresAt })),
             ),
+        clearExpiredCommitments(now) {
+            let cleared = 0;
+            for (const code of codes()) {
+                if (code.ownerSetupCommitment === null || code.expiresAt > now) continue;
+                state.linkCodes.set(code.codeHash, { ...code, ownerSetupCommitment: null });
+                cleared++;
+            }
+            return Promise.resolve(cleared);
+        },
         cancel(orgId, id, now) {
             const code = codes().find((candidate) => candidate.id === id);
             if (!redeemable(code, orgId, now)) {

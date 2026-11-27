@@ -56,8 +56,8 @@ export type Redemption = 'redeemed' | 'conflict';
  * Link codes in D1, looked up by hash for redemption and by ID, within the organization, for their state. A code is
  * redeemable while it is unused and `now < expiresAt`. Redemption marks the code used and writes the engine in one
  * transaction, so a database error never burns a code and two registrations racing for one code cannot both win.
- * Redemption and cancellation null the owner setup commitment in the same write; an expired code keeps its column but
- * is never redeemable, so it never hands the commitment out.
+ * Redemption and cancellation null the owner setup commitment in the same write. An expired code is never redeemable,
+ * so it never hands the commitment out, and `clearExpiredCommitments` nulls its column too.
  */
 export interface LinkCodeStore {
     /** Checks both organization quotas and inserts the code in one transaction. */
@@ -77,4 +77,6 @@ export interface LinkCodeStore {
     redeemForNewEngine(codeHash: string, engine: EngineRecord, maxActiveEngines: number | null): Promise<Redemption>;
     /** Only if the code is still redeemable for `refresh.orgId` and the engine is active in that organization. */
     redeemForExistingEngine(codeHash: string, refresh: EngineRefresh): Promise<Redemption>;
+    /** Nulls the owner setup commitment of every code expired at `now` (ADR 0023); how many it cleared. */
+    clearExpiredCommitments(now: number): Promise<number>;
 }

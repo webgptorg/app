@@ -145,6 +145,20 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
             expect(await fixture.storedCommitment(code.codeHash)).toBeNull();
         });
 
+        it('clears the commitment of every expired code, and of no code still redeemable', async () => {
+            const expiring = codeRecord(orgA, { ownerSetupCommitment: commitment() });
+            const later = codeRecord(orgB, { ownerSetupCommitment: commitment(), expiresAt: NOW + TTL * 2 });
+            await fixture.linkCodes.insert(expiring);
+            await fixture.linkCodes.insert(later);
+            await fixture.linkCodes.clearExpiredCommitments(NOW + TTL - 1);
+            expect(await fixture.storedCommitment(expiring.codeHash)).toBe(expiring.ownerSetupCommitment);
+            // Codes other tests left behind may expire at the same time in a shared database.
+            expect(await fixture.linkCodes.clearExpiredCommitments(NOW + TTL)).toBeGreaterThanOrEqual(1);
+            expect(await fixture.storedCommitment(expiring.codeHash)).toBeNull();
+            expect(await fixture.storedCommitment(later.codeHash)).toBe(later.ownerSetupCommitment);
+            expect(await fixture.linkCodes.clearExpiredCommitments(NOW + TTL)).toBe(0);
+        });
+
         it('refuses a second code with the same hash', async () => {
             const code = codeRecord(orgA);
             await fixture.linkCodes.insert(code);
