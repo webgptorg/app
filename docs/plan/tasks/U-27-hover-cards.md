@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M5
 - **Depends on:** U-16, U-17
-- **Status:** in review (feat/u-27-hover-cards)
+- **Status:** done (#380)
 - **Spec:** —; ADRs: [0015](../../adr/0015-ui-architecture-and-design-system.md)
 
 ## Goal
