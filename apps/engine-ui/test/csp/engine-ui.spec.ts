@@ -245,9 +245,12 @@ test.describe('the built bundle under the engine CSP', () => {
         await page.waitForLoadState('networkidle');
 
         expect(await history.locator('img, script, iframe, object, embed, [src], [srcset]').count()).toBe(0);
+        // A turn's author links to the agent inside the app; only links in the agent's own output must leave it.
         const hrefs = await history
             .locator('a[href]')
-            .evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+            .evaluateAll((links) =>
+                links.filter((link) => link.closest('header') === null).map((link) => link.getAttribute('href')),
+            );
         expect(hrefs.length).toBeGreaterThan(0);
         expect(hrefs.every((href) => href?.startsWith('https://') === true)).toBe(true);
         await expect(history.getByText('<script>alert(1)</script>', { exact: false }).first()).toBeVisible();
