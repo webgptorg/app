@@ -32,7 +32,7 @@ The Ubuntu VPS script uses the upstream installer. It verifies the immutable scr
 
 The installation page opens the terminal command for the browser’s platform. The macOS/Linux, Windows PowerShell and Ubuntu VPS commands sit together at the start of one tab list, followed by the AI prompts, the Windows EXE and configured commands. Each command can be copied directly. The running-project tab also offers the pairing address when available. The Ubuntu VPS command carries one muted line naming its requirements (Ubuntu 24.04 x64 with systemd, run as root or with sudo). Under the tabs, next to the expiry line, a muted note says agents act with the host’s permissions, files and signed-in services, and that sharing a project can give colleagues indirect access to them. Both are available in Czech and English.
 
-AI prompts carry the same one-line commands, preserve data/sign-ins and native approvals, and leave agenda/harness choices to the engine UI. No engine name is represented as a known project path. Dashboard and its payloads never know an owner setup secret.
+AI prompts carry the same one-line commands, preserve data/sign-ins and native approvals, and leave agenda/harness choices to the engine UI. No engine name is represented as a known project path. Dashboard and its payloads never know an owner setup secret: the pairing tab keeps its handoff secret in `sessionStorage` and the dashboard stores and relays only its SHA-256, nulled once the code is redeemed, cancelled or expired ([ADR 0023](../adr/0023-owner-setup-handoff.md)).
 
 ## Reviewed artifacts and limits
 
@@ -44,7 +44,7 @@ Source-checkout versions are never used for release selection. A verified comman
 
 - Related draft #256 covers the older Ubuntu-only path. Coordinate this broader follow-up; do not land duplicate default flows.
 - Preserve issuance-only handling, expiry/copy feedback, CZ/EN and mobile tabs. No pairing secret enters URL queries, persistent client storage, project files or logs.
-- Owner setup happens on the engine origin. Continue through `onboarding@1`/`files@1`; stale `promptId` submissions remain the engine's responsibility.
+- Owner setup happens on the engine origin. The pairing tab goes there by itself once the engine signals `ownerHandoff: "ready"`; the engine still prints its own setup link, and opens none on the desktop while the handoff is live. Continue through `onboarding@1`/`files@1`; stale `promptId` submissions remain the engine's responsibility.
 - Full UI needs approved `PTBK_UI_RELEASE_URL` and `PTBK_UI_TRUST_POLICY_FILE`. Check signatures, manifest/API range, delay, revocations and `/api/v1/security` UI facts. Relay reachability is insufficient.
 - Before release, complete one real engine walkthrough from a new pairing through passkey, brief/file, native harness login and usable project, including deferral. Record Windows 5.1, native EXE/DMG and real VPS runs separately from portable PowerShell and fixtures.
 

@@ -1,4 +1,4 @@
-import { Hostname, type LinkCode, type RegisterEngineRequest } from '@ptbk/protocol';
+import { Hostname, type LinkCode, type OwnerSetupCommitment, type RegisterEngineRequest } from '@ptbk/protocol';
 
 import { cryptoRandom } from '../adapters/crypto-random';
 import { createFakeClock } from '../adapters/fake-clock';
@@ -53,7 +53,7 @@ export function createTestRegistration(
         engineDomain: options.engineDomain ?? TEST_ENGINE_DOMAIN,
         relays: TEST_RELAYS,
     };
-    const tryIssue = (orgId: OrgId) =>
+    const tryIssue = (orgId: OrgId, ownerSetupCommitment: OwnerSetupCommitment | null = null) =>
         issueLinkCode(
             {
                 linkCodes: stores.linkCodes,
@@ -63,6 +63,7 @@ export function createTestRegistration(
                 linkCodeTtlMs: options.linkCodeTtlMs ?? LINK_CODE_TTL_MS,
             },
             { orgId, userId: newUserId(cryptoRandom) },
+            ownerSetupCommitment,
             signal,
         );
     return {
@@ -72,8 +73,8 @@ export function createTestRegistration(
         teams,
         entitlements,
         tryIssue,
-        async issue(orgId: OrgId): Promise<LinkCode> {
-            const outcome = await tryIssue(orgId);
+        async issue(orgId: OrgId, ownerSetupCommitment: OwnerSetupCommitment | null = null): Promise<LinkCode> {
+            const outcome = await tryIssue(orgId, ownerSetupCommitment);
             if (outcome.kind !== 'issued') {
                 throw new Error(`no link code: ${outcome.reason}`);
             }

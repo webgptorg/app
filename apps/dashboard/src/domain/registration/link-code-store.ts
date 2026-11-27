@@ -1,4 +1,4 @@
-import type { EngineId, EngineVersion, RegistrationMode } from '@ptbk/protocol';
+import type { EngineId, EngineVersion, OwnerSetupCommitment, RegistrationMode } from '@ptbk/protocol';
 
 import type { LinkCodeId, OrgId, UserId } from '../ids';
 import type { EngineRecord } from './engine-store';
@@ -11,6 +11,14 @@ export interface LinkCodeRecord {
     readonly createdByUserId: UserId;
     readonly createdAt: number;
     readonly expiresAt: number;
+    /** From the pairing tab (ADR 0023): only `SHA-256` of its setup secret, which the engine receives once. */
+    readonly ownerSetupCommitment: OwnerSetupCommitment | null;
+}
+
+/** What registration learns from a redeemable code: its organization and the commitment to hand the engine. */
+export interface RedeemableLinkCode {
+    readonly orgId: OrgId;
+    readonly ownerSetupCommitment: OwnerSetupCommitment | null;
 }
 
 export type LinkCodeInsertOutcome = 'inserted' | 'link-code-limit' | 'rate-limited';
@@ -48,6 +56,8 @@ export type Redemption = 'redeemed' | 'conflict';
  * Link codes in D1, looked up by hash for redemption and by ID, within the organization, for their state. A code is
  * redeemable while it is unused and `now < expiresAt`. Redemption marks the code used and writes the engine in one
  * transaction, so a database error never burns a code and two registrations racing for one code cannot both win.
+ * Redemption and cancellation null the owner setup commitment in the same write. An expired code is never redeemable,
+ * so it never hands the commitment out, and `clearExpiredCommitments` nulls its column too.
  */
 export interface LinkCodeStore {
     /** Checks both organization quotas and inserts the code in one transaction. */
@@ -61,10 +71,12 @@ export interface LinkCodeStore {
     cancel(orgId: OrgId, id: LinkCodeId, now: number): Promise<'cancelled' | 'not-found'>;
     /** Null for a code of another organization, exactly as for one that does not exist. */
     findState(orgId: OrgId, id: LinkCodeId, now: number): Promise<LinkCodeState | null>;
-    /** The organization a redeemable code belongs to: how registration learns the organization. */
-    findRedeemable(codeHash: string, now: number): Promise<OrgId | null>;
+    /** A redeemable code's organization and commitment: how registration learns the organization. */
+    findRedeemable(codeHash: string, now: number): Promise<RedeemableLinkCode | null>;
     /** Consumes the code only if the engine is new and its organization still has capacity. */
     redeemForNewEngine(codeHash: string, engine: EngineRecord, maxActiveEngines: number | null): Promise<Redemption>;
     /** Only if the code is still redeemable for `refresh.orgId` and the engine is active in that organization. */
     redeemForExistingEngine(codeHash: string, refresh: EngineRefresh): Promise<Redemption>;
+    /** Nulls the owner setup commitment of every code expired at `now` (ADR 0023); how many it cleared. */
+    clearExpiredCommitments(now: number): Promise<number>;
 }

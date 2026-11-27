@@ -461,7 +461,11 @@ export function createMemoryTeamStore(deps: {
                     other.usedAt === null &&
                     now < other.expiresAt
                 ) {
-                    deps.registration.linkCodes.set(other.codeHash, { ...other, expiresAt: now });
+                    deps.registration.linkCodes.set(other.codeHash, {
+                        ...other,
+                        expiresAt: now,
+                        ownerSetupCommitment: null,
+                    });
                 }
             }
             state.linkCodeTeams.set(linkCodeId, teamId);

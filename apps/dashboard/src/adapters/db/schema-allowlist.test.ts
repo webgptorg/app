@@ -51,7 +51,8 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'team_id',
     ],
     // One-time link codes: the code only as SHA-256, who issued it for which organization, a 30-minute lifetime, the
-    // engine that redeemed it and the team that engine joins.
+    // engine that redeemed it and the team that engine joins, and until it is spent the SHA-256 of the pairing tab's
+    // owner setup secret (ADR 0023), never the secret.
     link_codes: [
         'code_hash',
         'org_id',
@@ -62,6 +63,7 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'engine_id',
         'id',
         'team_id',
+        'owner_setup_commitment',
     ],
     // Teams (ADR 0018): a name the organization typed, and who is in it. No engine content.
     teams: ['id', 'org_id', 'name', 'created_at', 'deleted_at'],

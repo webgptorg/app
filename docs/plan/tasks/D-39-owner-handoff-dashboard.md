@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M5
 - **Depends on:** C-20, D-36
-- **Status:** todo
+- **Status:** done (#383)
 - **Spec:** Pairing and identity; ADR [0023](../../adr/0023-owner-setup-handoff.md); [onboarding.md](../../design/onboarding.md), step 4
 
 ## Goal
@@ -19,6 +19,6 @@ After the copied command pairs an engine, the tab that showed it opens the engin
 
 ## Acceptance criteria
 
-- [ ] Route tests: the commitment is optional, strict (wrong length, unknown field refused), stored, answered once, and nulled on redeem, cancel and expiry.
-- [ ] SPA tests: no redirect without `S`, before `ready`, with members, or when offline; one redirect that deletes `S` first.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Route tests: the commitment is optional, strict (wrong length, unknown field refused), stored, answered once, and nulled on redeem, cancel and expiry.
+- [x] SPA tests: no redirect without `S`, before `ready`, with members, or when offline; one redirect that deletes `S` first.
+- [x] **Status** line above set to `done (#383)`.

@@ -464,6 +464,7 @@
   "link_progress_owner": "Finish in the browser window that opened on the project's computer: create your passkey there. Nothing opened? Open the setup link the project's terminal shows, or run {command} on that computer for a new one (in the project folder if it already exists). This page updates when you're done.",
   "link_progress_owner_announcement": "Project online. Finish in the browser window that opened on the project's computer, or run {command} on that computer.",
   "link_progress_owner_done": "Owner set up.",
+  "link_progress_owner_handoff": "Opening your project's setup…",
   "link_progress_proxy_troubleshooting": "Troubleshoot proxies and outbound connections",
   "link_progress_ready": "Your project is ready",
   "link_progress_ready_body": "Open it and sign in with the passkey you just created for it.",

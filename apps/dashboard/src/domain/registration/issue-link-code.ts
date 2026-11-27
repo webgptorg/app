@@ -1,4 +1,4 @@
-import { generateLinkCode, type LinkCode } from '@ptbk/protocol';
+import { generateLinkCode, type LinkCode, type OwnerSetupCommitment } from '@ptbk/protocol';
 
 import { sha256Hex } from '../auth/secrets';
 import { newLinkCodeId, type LinkCodeId, type OrgId, type UserId } from '../ids';
@@ -30,10 +30,14 @@ export type IssueLinkCodeOutcome =
       }
     | { readonly kind: 'denied'; readonly reason: EntitlementDenial | Exclude<LinkCodeInsertOutcome, 'inserted'> };
 
-/** The plaintext code exists only in this answer; the store keeps its SHA-256. */
+/**
+ * The plaintext code exists only in this answer; the store keeps its SHA-256. `ownerSetupCommitment` comes from the
+ * pairing tab (ADR 0023) and is stored as given, for the engine that redeems the code.
+ */
 export async function issueLinkCode(
     deps: IssueLinkCodeDeps,
     issuer: { readonly orgId: OrgId; readonly userId: UserId },
+    ownerSetupCommitment: OwnerSetupCommitment | null,
     signal: AbortSignal,
 ): Promise<IssueLinkCodeOutcome> {
     const decision = await deps.policy.checkEligibility(issuer.orgId, signal);
@@ -52,6 +56,7 @@ export async function issueLinkCode(
         createdByUserId: issuer.userId,
         createdAt: now,
         expiresAt,
+        ownerSetupCommitment,
     });
     if (inserted !== 'inserted') return { kind: 'denied', reason: inserted };
     return { kind: 'issued', linkCodeId, linkCode, expiresAt };
