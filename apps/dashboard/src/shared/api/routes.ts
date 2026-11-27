@@ -29,6 +29,7 @@ import {
 import { engineLabelSchema } from '../engine-label';
 import { LINK_CODE_LIMITS } from '../link-code-limits';
 import { teamNameSchema } from '../team-name';
+import { usageViewSchema } from './usage';
 import { environmentSchema } from '../environment';
 import { docsAnchorSchema, installPathIdSchema, installPathLabelKeySchema } from '../install-paths';
 import { installationOptionSchema } from '../engine-installation';
@@ -1455,6 +1456,16 @@ export const apiRoutes = {
         rateLimit: null,
         input: NO_INPUT,
         output: licenseViewSchema,
+        errorCodes: [],
+    }),
+    getUsage: defineRoute({
+        method: 'GET',
+        path: '/api/usage',
+        auth: 'session',
+        permission: 'usage.read',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: usageViewSchema,
         errorCodes: [],
     }),
 } as const;

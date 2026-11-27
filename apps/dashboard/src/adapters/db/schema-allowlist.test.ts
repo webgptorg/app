@@ -178,6 +178,9 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     ],
     // Who used the dashboard on which day, in which organization, from `sessions.last_seen_at`. Kept 25 months.
     usage_daily_people: ['day', 'org_id', 'user_id'],
+    // Each meter's count per day and organization, team or project (ADR 0025): counts the dashboard holds or the
+    // heartbeat reports, nothing from inside an engine. Kept 25 months.
+    usage_daily_meters: ['day', 'org_id', 'scope', 'scope_id', 'meter', 'value', 'unreported', 'peak'],
     // Live WebAuthn ceremonies, at most 5 minutes each.
     webauthn_challenges: ['id', 'challenge', 'purpose', 'user_id', 'token_hash', 'webauthn_user_id', 'expires_at'],
     // Website licensing (D-30): which website account (its subject UUID) licenses the organization, who linked it, when.

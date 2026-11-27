@@ -1,3 +1,4 @@
+import { createMemoryMeteringStore } from '../../testing/memory-metering-store';
 import { describe, expect, it } from 'vitest';
 
 import { createFakeEmailSender } from '../../adapters/email/fake-email-sender';
@@ -96,6 +97,13 @@ function app(options: {
         },
         relayPresence: createMemoryRelayPresenceStore(),
         usage: { record: () => Promise.resolve() },
+        metering: createMemoryMeteringStore({
+            engines: () => [],
+            teams: () => [],
+            teamMembers: () => [],
+            memberships: () => [],
+            engineDays: () => [],
+        }),
         licensing: null,
         assets: { fetch: assets } as unknown as Fetcher,
         viteDevServer: options.viteDevServer,

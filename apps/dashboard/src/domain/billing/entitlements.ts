@@ -1,10 +1,10 @@
-import type { Feature, Quota } from '../../shared/billing';
+import type { Feature, MeterQuota, OverLimit, Quota } from '../../shared/billing';
 import type { OrgId } from '../ids';
 import { billingState, usesSubscribedPlan } from './billing-state';
 import type { BillingStore, SubscriptionRecord } from './billing-store';
 import type { Plan, PlanCatalogue, PlanEntitlements } from './plan-catalogue';
 
-export type { Feature, Quota };
+export type { Feature, MeterQuota, OverLimit, Quota };
 
 /**
  * The only thing the rest of the dashboard asks about billing (ADR 0017): never a plan name, a card or a Stripe
@@ -13,7 +13,9 @@ export type { Feature, Quota };
 export interface Entitlements {
     allows(orgId: OrgId, feature: Feature, signal: AbortSignal): Promise<boolean>;
     /** `null` means unlimited. */
-    limit(orgId: OrgId, quota: Quota, signal: AbortSignal): Promise<number | null>;
+    limit(orgId: OrgId, quota: Quota | MeterQuota, signal: AbortSignal): Promise<number | null>;
+    /** Whether a limit stops something new from being created or only warns (ADR 0025); never running work. */
+    overLimit(orgId: OrgId, signal: AbortSignal): Promise<OverLimit>;
 }
 
 /**
@@ -35,6 +37,7 @@ export function createSubscriptionEntitlements(deps: {
     return {
         allows: async (orgId, feature) => (await planOf(orgId)).features.includes(feature),
         limit: async (orgId, quota) => (await planOf(orgId)).quotas[quota],
+        overLimit: async (orgId) => (await planOf(orgId)).overLimit,
     };
 }
 
@@ -47,5 +50,6 @@ export function createFixedEntitlements(grant: PlanEntitlements): Entitlements {
     return {
         allows: (_orgId, feature) => Promise.resolve(grant.features.includes(feature)),
         limit: (_orgId, quota) => Promise.resolve(grant.quotas[quota]),
+        overLimit: () => Promise.resolve(grant.overLimit),
     };
 }

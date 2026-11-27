@@ -20,6 +20,7 @@ import {
     createD1LinkCodeStore,
     createD1PlatformEngineStore,
 } from '../adapters/db/d1-registration-store';
+import { createD1MeteringStore } from '../adapters/db/d1-metering-store';
 import { createD1UsageStore } from '../adapters/db/d1-usage-store';
 import { createD1RelayPresenceStore } from '../adapters/db/d1-relay-presence-store';
 import { createD1TeamStore } from '../adapters/db/d1-team-store';
@@ -256,6 +257,7 @@ export function createDashboard(
         engineStatus: createDurableObjectEngineStatus(env.ENGINE_STATUS),
         relayPresence: createD1RelayPresenceStore(db),
         usage: createUsageRecorder({ store: createD1UsageStore(db), clock: systemClock, random: cryptoRandom, logger }),
+        metering: createD1MeteringStore(db),
         licensing,
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: config.dashboardOrigin, rpName: RP_NAME }),
         rateLimiter: rateLimiter(env, config, dev),

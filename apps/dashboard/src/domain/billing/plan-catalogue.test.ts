@@ -20,7 +20,16 @@ describe('plan catalogue', () => {
             stripeProductId: null,
             stripePriceId: null,
             features: [],
-            quotas: { 'engines.max': 0, 'custom-domains.max': 0 },
+            quotas: {
+                'engines.max': 0,
+                'custom-domains.max': 0,
+                'agents.max': null,
+                'agents.per-project.max': null,
+                'members.max': null,
+                'members.per-project.max': null,
+                'people.max': null,
+            },
+            overLimit: 'block',
             trialDays: null,
         });
         expect(catalogue.plans.map((plan) => plan.id)).toEqual(['starter', 'scale']);
@@ -37,6 +46,22 @@ describe('plan catalogue', () => {
         expect(catalogue.byId('scale')).toMatchObject({ name: { en: 'Scale', cs: 'Růst' }, price: null });
         expect(catalogue.byId('starter')?.trialDays).toBeNull();
         expect(catalogue.byId('scale')?.trialDays).toBe(14);
+    });
+
+    it('leaves meter quotas a plan omits unlimited, and blocks unless the plan says warn', () => {
+        const catalogue = createPlanCatalogue(planCatalogueSchema.parse(TEST_PLANS));
+        expect(catalogue.byId('starter')?.quotas['agents.per-project.max']).toBeNull();
+        expect(catalogue.byId('starter')?.overLimit).toBe('block');
+        expect(catalogue.byId('scale')?.quotas['agents.per-project.max']).toBe(20);
+        expect(catalogue.byId('scale')?.overLimit).toBe('warn');
+        expect(Object.isFrozen(catalogue.byId('scale')?.quotas)).toBe(true);
+        expect(issues({ ...TEST_PLANS, plans: [{ ...starter, overLimit: 'stop' }] })).toEqual(['plans.0.overLimit']);
+        expect(
+            issues({ ...TEST_PLANS, plans: [{ ...starter, quotas: { ...starter.quotas, 'agents.max': -1 } }] }),
+        ).toEqual(['plans.0.quotas.agents.max']);
+        expect(
+            issues({ ...TEST_PLANS, plans: [{ ...starter, quotas: { ...starter.quotas, 'tokens.max': 1 } }] }),
+        ).toEqual(['plans.0.quotas']);
     });
 
     it('accepts a trial of 1 to 30 whole days', () => {
@@ -87,7 +112,7 @@ describe('plan catalogue', () => {
             'plans.0.features.0',
         ]);
         expect(
-            issues({ ...TEST_PLANS, plans: [{ ...starter, quotas: { ...starter.quotas, 'members.max': 3 } }] }),
+            issues({ ...TEST_PLANS, plans: [{ ...starter, quotas: { ...starter.quotas, 'seats.max': 3 } }] }),
         ).toEqual(['plans.0.quotas']);
         expect(issues({ ...TEST_PLANS, plans: [{ ...starter, quotas: { 'engines.max': 1 } }] })).toEqual([
             'plans.0.quotas.custom-domains.max',

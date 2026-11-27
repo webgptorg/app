@@ -28,6 +28,7 @@ import type { RelyingParty } from '../domain/ports/relying-party';
 import type { Timer } from '../domain/ports/timer';
 import type { DashboardMetrics } from '../domain/monitoring/dashboard-metrics';
 import type { UsageRecorder } from '../domain/usage/usage-recorder';
+import type { MeteringStore } from '../domain/metering/metering-store';
 import type { WebsiteLicenseApi } from '../domain/licensing/license-contract';
 import type { WebsiteIdentityExchange } from '../domain/licensing/website-access';
 import type { WebsiteLicensingStore } from '../domain/licensing/website-licensing-store';
@@ -79,6 +80,8 @@ export interface DashboardDeps {
     readonly relayPresence: RelayPresenceStore;
     /** Funnel events (ADR 0022), best effort: handlers pass `record` to `waitUntil`. */
     readonly usage: UsageRecorder;
+    /** What the meters count and their daily history (ADR 0025). */
+    readonly metering: MeteringStore;
     /**
      * With billing `website` only (ADR 0021): the link to a website account and the last licence read, and the two
      * website APIs the App calls server to server, each behind its port. Null otherwise, and then no licensing route is

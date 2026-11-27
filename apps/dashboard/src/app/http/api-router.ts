@@ -14,6 +14,7 @@ import { bindLicensingRoutes } from './licensing-routes';
 import type { RouteBinder } from './bind-route';
 import { crossSiteRequestGuard } from './csrf';
 import { bindTeamRoutes } from './team-routes';
+import { bindUsageRoutes } from './usage-routes';
 
 export const API_MOUNT = '/api';
 
@@ -49,6 +50,7 @@ export function createApiRouter(
     }
     bindEngineRoutes(router, API_MOUNT, deps);
     bindTeamRoutes(router, API_MOUNT, deps);
+    bindUsageRoutes(router, API_MOUNT, deps);
     bindAdminEngineRoutes(router, API_MOUNT, deps);
     bindAdminHostnameRoutes(router, API_MOUNT, deps);
     const { devOutbox } = deps;

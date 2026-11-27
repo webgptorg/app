@@ -521,7 +521,12 @@ export const usageDailyEngines = sqliteTable(
         updateState: text('update_state').notNull(),
         cpuLoad: text('cpu_load').notNull(),
     },
-    (t) => [primaryKey({ columns: [t.day, t.engineId] }), index('usage_daily_engines_org_id_idx').on(t.orgId)],
+    (t) => [
+        primaryKey({ columns: [t.day, t.engineId] }),
+        index('usage_daily_engines_org_id_idx').on(t.orgId),
+        // The metering read finds each engine's latest day (ADR 0025).
+        index('usage_daily_engines_engine_id_day_idx').on(t.engineId, t.day),
+    ],
 );
 
 /** One row per person, organization and UTC day they had a session in use, from `sessions.last_seen_at`. Kept 25 months. */
@@ -540,6 +545,33 @@ export const usageDailyPeople = sqliteTable(
         primaryKey({ columns: [t.day, t.orgId, t.userId] }),
         index('usage_daily_people_org_id_idx').on(t.orgId),
         index('usage_daily_people_user_id_idx').on(t.userId),
+    ],
+);
+
+/**
+ * Each meter's reading per UTC day and scope (ADR 0025): the organization, a team or a project. Counts only; `meter` is
+ * a closed list in `src/shared/metering.ts`, with no CHECK, so a new meter needs no table rebuild. Kept 25 months.
+ */
+export const usageDailyMeters = sqliteTable(
+    'usage_daily_meters',
+    {
+        day: text('day').notNull(),
+        orgId: text('org_id')
+            .notNull()
+            .references(() => organizations.id, { onDelete: 'cascade' }),
+        scope: text('scope', { enum: ['org', 'team', 'project'] }).notNull(),
+        // The organization's, team's or engine's ID.
+        scopeId: text('scope_id').notNull(),
+        meter: text('meter').notNull(),
+        // The latest reading of the day; a lower bound while `unreported` projects have not sent the count.
+        value: integer('value').notNull(),
+        unreported: integer('unreported').notNull(),
+        peak: integer('peak').notNull(),
+    },
+    (t) => [
+        primaryKey({ columns: [t.day, t.orgId, t.scope, t.scopeId, t.meter] }),
+        index('usage_daily_meters_org_id_day_idx').on(t.orgId, t.day),
+        check('usage_daily_meters_scope_check', sql`${t.scope} in ('org', 'team', 'project')`),
     ],
 );
 
