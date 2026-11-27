@@ -25,3 +25,4 @@ One file per decision. Copy [0000-template.md](0000-template.md), take the next 
 | [0019](0019-live-sessions-inside-the-tunnel.md)   | Live audio, video and the browser tab ride inside the engine's TLS    | Accepted |
 | [0022](0022-usage-data-in-d1.md)                  | Usage data in D1: closed events and daily rollups, no engine content  | Accepted |
 | [0023](0023-owner-setup-handoff.md)               | Owner setup handoff from the pairing browser                          | Accepted |
+| [0026](0026-teams-v2.md)                          | Teams v2: departments with team admins and several projects           | Proposed |
