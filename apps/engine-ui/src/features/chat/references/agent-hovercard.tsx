@@ -1,5 +1,6 @@
 import { AgentId } from '@ptbk/engine-api';
 import { Button, useHovercardHide } from '@ptbk/ui';
+import type { HovercardOptions } from '@ptbk/ui';
 import { AtSign } from 'lucide-react';
 
 import { m } from '../../../paraglide/messages';
@@ -107,7 +108,7 @@ export function threadAgentHovercard(
     agent: ReferenceAgent,
     references: ThreadReferences,
     onMention?: () => void,
-): ReturnType<typeof agentHovercard> | null {
+): HovercardOptions | null {
     const agentId = AgentId.safeParse(agent.key).data;
     if (agentId === undefined) return null;
     return agentHovercard(agentId, agent.name, threadAgentHere(agent, references, onMention));

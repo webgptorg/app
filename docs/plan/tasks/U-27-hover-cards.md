@@ -30,4 +30,4 @@ The chat had its own agent hovercard (thread activity and Mention), while the th
 - [x] Hover and keyboard focus open the card after the shared delay, Esc closes it and returns focus, its accessible name is the agent's name, on the author of a turn, the `@Agent` chips and the task card's agent (`thread-references.test.tsx`).
 - [x] Home's question and reply names link to the agent with the card (`home.test.tsx`).
 - [x] engine-ui tests and the bundle budget pass.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] **Status** line above set to `done (#<PR>)`.

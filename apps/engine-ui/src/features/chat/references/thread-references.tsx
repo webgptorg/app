@@ -83,7 +83,7 @@ export interface ThreadReferencesInput {
     /** The project's agents, when they have loaded; `[]` without `agents.read`. */
     readonly agents: readonly ReadAgent[];
     readonly canOpenTasks: boolean;
-    readonly canOpenAgents?: boolean | undefined;
+    readonly canOpenAgents: boolean;
     readonly onMention?: ((agent: ReferenceAgent) => void) | undefined;
 }
 
@@ -92,7 +92,7 @@ export function buildThreadReferences({
     chat,
     agents,
     canOpenTasks,
-    canOpenAgents = false,
+    canOpenAgents,
     onMention,
 }: ThreadReferencesInput): ThreadReferences {
     const profiles = new Map(agents.map((agent) => [agent.id as string, agent]));
