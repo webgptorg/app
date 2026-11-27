@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M5
 - **Depends on:** C-20, D-36
-- **Status:** todo
+- **Status:** in progress (feat/d-39-owner-handoff-dashboard)
 - **Spec:** Pairing and identity; ADR [0023](../../adr/0023-owner-setup-handoff.md); [onboarding.md](../../design/onboarding.md), step 4
 
 ## Goal
