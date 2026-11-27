@@ -2,7 +2,7 @@
 
 - **Lane:** C · **Module:** `packages/protocol`, `packages/engine-api`, `packages/conformance` · **Milestone:** M5
 - **Depends on:** C-13, C-20
-- **Status:** in progress (feat/c-21-notifications-contract)
+- **Status:** done (#394)
 - **Spec:** Interfaces (draft) 4, Metadata we still see; ADRs: [0027](../../adr/0027-notifications.md), [0010](../../adr/0010-protocol-design-principles.md), [0016](../../adr/0016-engine-capabilities.md), [0018](../../adr/0018-teams-and-member-access.md)
 
 ## Goal
@@ -31,8 +31,8 @@ The engine side of ADR 0027 as a contract: the engine keeps an inbox with conten
 
 ## Acceptance criteria
 
-- [ ] Strict in, tolerant out: refusal tests for 65 entries, unknown kinds, zero, fractional and oversized counts, recipients that are not IDs, duplicates, text in an entry, `attention` in v1.
-- [ ] The largest valid v2 body fits `HEARTBEAT_MAX_BODY_BYTES`.
-- [ ] `protocol`, `engine-api` and `conformance` coverage thresholds of 90% hold.
-- [ ] Every notifications check fails against a fake that breaks its rule and skips against an engine without the capability.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Strict in, tolerant out: refusal tests for 65 entries, unknown kinds, zero, fractional and oversized counts, recipients that are not IDs, duplicates, text in an entry, `attention` in v1.
+- [x] The largest valid v2 body fits `HEARTBEAT_MAX_BODY_BYTES`.
+- [x] `protocol`, `engine-api` and `conformance` coverage thresholds of 90% hold.
+- [x] Every notifications check fails against a fake that breaks its rule and skips against an engine without the capability.
+- [x] **Status** line above set to `done (#<PR>)`.
