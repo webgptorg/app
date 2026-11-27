@@ -1,3 +1,4 @@
+import { HEARTBEAT_MAX_BODY_BYTES } from '@ptbk/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { fakeEngineCommand } from '../testing/engines';
@@ -38,7 +39,7 @@ describe('the registration and heartbeat suites', () => {
         [['heartbeat-wrong-engine-id'], 'heartbeat.signature.verifies', 'path does not name the engine ID'],
         [['extra-heartbeat-field'], 'heartbeat.body.strict', 'not a strict Heartbeat'],
         [['unrounded-percent'], 'heartbeat.body.strict', 'diskPct'],
-        [['oversized-heartbeat'], 'heartbeat.body.strict', 'over 4096'],
+        [['oversized-heartbeat'], 'heartbeat.body.strict', `over ${String(HEARTBEAT_MAX_BODY_BYTES)}`],
         [['skewed-clock'], 'heartbeat.body.strict', 'ts is more than 120 s'],
         [['wrong-heartbeat-version'], 'heartbeat.body.strict', 'version is not the registered engineVersion'],
         [['garbage-heartbeat-body'], 'registration.identity.engine-id-derived', "body's engineId is not"],
