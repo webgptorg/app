@@ -241,6 +241,7 @@ Our platform has no command channel into the engine. The limited API from the or
 | Disk, RAM, CPU load | percent, bucketed | Health alerts |
 | Update available or pending | enum | Status page |
 | Agent count, member count | integer | Billing by agent count |
+| Things waiting, per person and kind | counts | Email when someone is away ([ADR 0027](../adr/0027-notifications.md)); the owner can switch it off |
 
 The heartbeat carries no names, prompts, free text or error messages. The engine enforces the schema in open-source code, and the engine UI shows the owner the exact last payload sent. The schema is public and versioned, and any new field ships in the release notes. Agent count and availability are decided; further aggregated statistics stay open and are added only for a real product need.
 
@@ -263,6 +264,7 @@ We see who pays, which engines exist, whether they are healthy, and how much tra
 | Account email, billing details | Signup, Stripe | Account, invoices | While the account exists, plus legal minimum |
 | Engine ID, hostname, engine public key | Registration | Routing | While the engine exists |
 | Heartbeat values | Engine | Status, alerts, billing | 30 days |
+| Open notification counts per person, project and kind | Engine heartbeat | Notifications | While open, then 30 days |
 | Engine IP, tunnel connect and disconnect times | Relay | Operations, abuse | 7 days |
 | Browser IPs, connection times and byte counts per engine | Relay | Abuse handling only | 24 h, not linked to accounts |
 | SNI hostname | Relay (and the network until ECH) | Routing | Not stored |
