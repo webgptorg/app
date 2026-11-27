@@ -1,14 +1,16 @@
 # 0028. Clean removal: one "Remove project", an engine that knows, and a signed unlink
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-27
-- **Decisions from:** Seb, roadmap interview of 2026-11-27
+- **Deciders:** Seb (roadmap interview and review of 2026-11-27)
 - **Builds on:** [ADR 0014](0014-cryptography.md), [ADR 0018](0018-teams-and-member-access.md), [spec, Devices, members and recovery](../spec/zero-trust-spec.md#pairing-and-identity)
 
-## Open questions for Seb
+## Decisions on the questions raised
 
-1. **No undo.** This ADR keeps removal permanent for the project's identity, as revocation is today, so a hijacked dashboard account can lock a project out until it is linked again under a new identity, with new passkeys. An undo would also let a thief with the engine key, or the hijacker, reverse a removal made because of them. Proposed: no undo; recovery is linking again.
-2. **The engine stops after a removal.** Proposed: once told it was removed, the engine stops opening tunnels and sending heartbeats until someone on the server links it again. The alternative is to keep trying quietly. Either way the platform never touches its data.
+Seb accepted the proposals on 2026-11-27:
+
+1. **No undo.** A removal is permanent for the project's identity, as revocation is today. An undo would let a thief with the engine key, or whoever hijacked the dashboard account, reverse a removal made because of them. Recovery from a mistaken or malicious removal is linking again under a new identity, with the data intact and new passkeys.
+2. **The engine stops after a removal.** Once told it was removed, the engine stops opening tunnels and sending heartbeats until someone on the server links it again. The platform never touches its data.
 
 ## Context
 
@@ -29,13 +31,14 @@ The engine key is the engine's identity: the engine ID is its hash and the hostn
 - The dialog explains, in plain words, why it is permanent: "If this server or its keys may have been copied, removing the project is what stops the copy: nobody can bring it back, not even you. To use the server again, link it as a new project; its data stays." It also shows the uninstall command for the server (d).
 - Policy: the placeholder `engine.remove` (`SENSITIVE`) becomes the action, with step-up, and replaces `engine.revoke`. Removing a team's last project no longer deletes the team; with [ADR 0026](0026-teams-v2.md), a team is deleted only when it holds no projects. Until 0026 lands, where a team holds exactly one project, the UI's Remove project also deletes that team.
 - Audit and notifications: the org audit log records who removed it; the org's owners and admins and the team's admins are told ([ADR 0027](0027-notifications.md)).
+- Billing: a removed project stops counting at once, like a revoked one, and so do its agents and members ([ADR 0025](0025-metering-and-subscriptions.md) counts active engines only). Its tombstone is never a project.
 
 ### b. The engine learns it was removed
 
 - `ProblemDetails` gets an optional member `reason`, sent only with `engine-suspended`: `removed` (by its organization, or by itself in c) or `suspended` (by the platform, for abuse or non-payment, and may be lifted). Old engines strip it and behave as today.
 - Heartbeats and re-registration of a removed engine get `403 engine-suspended` with `reason: removed`.
 - The engine then shows, in its terminal, `ptbk status` and the engine UI where it is still reachable locally: "Removed from app.ptbk.io on <date>. Your data is still on this server. Link again: `ptbk link` (a new identity and address). Uninstall: `ptbk uninstall`."
-- It stops opening tunnels and sending heartbeats (open question 2). `ptbk link` makes a new identity, so the old ID is never sent again.
+- It stops opening tunnels and sending heartbeats (decision 2). `ptbk link` makes a new identity, so the old ID is never sent again.
 - A platform suspension (`reason: suspended`) changes nothing: the engine keeps beating on its interval, as today, and shows "Suspended by Promptbook; contact support".
 
 ### c. Engine-initiated unlink: `ptbk unlink`
@@ -72,7 +75,7 @@ What changes in what the platform can do to an engine: telling it that it was re
 | Forged unlink                           | Needs the engine's private key: the signature is checked against the key registered for that ID, before the body is parsed. Without it, 401.                                                                                                                                                                                                                                                                                                          |
 | Replayed unlink                         | `ts` within 120 seconds and a nonce kept for 5 minutes stop a replay inside the window, and a removal is terminal and idempotent, so a replay after it changes nothing. The origin in the signed input stops a replay against another dashboard.                                                                                                                                                                                                      |
 | Unlink with a stolen engine key         | A lockout of the real owner, who would have to remove the project anyway once the key is stolen. The thief gains nothing: a removed ID is never routed again.                                                                                                                                                                                                                                                                                         |
-| Removal by a hijacked dashboard account | A lockout, not access. It needs a passkey assertion, `SENSITIVE` blocks it during the recovery cooldown, and every org owner and admin is told. The engine shows why it stopped. Recovery: `ptbk link` on the server, a new identity with its data intact; members register passkeys for the new address. This is open question 1.                                                                                                                    |
+| Removal by a hijacked dashboard account | A lockout, not access. It needs a passkey assertion, `SENSITIVE` blocks it during the recovery cooldown, and every org owner and admin is told. The engine shows why it stopped. Recovery: `ptbk link` on the server, a new identity with its data intact; members register passkeys for the new address. No undo, by decision 1.                                                                                                                     |
 | A malicious dashboard claims "removed"  | The engine stops connecting, which the platform could already cause by cutting transport. Its data, keys and passkeys stay; linking again works.                                                                                                                                                                                                                                                                                                      |
 | The removed ID comes back               | **Tombstones.** The engine row stays, removed, forever: ID, public key and hostname, nothing else. Registration of that ID is refused in every organization, the relay registry never returns it, and the hostname, derived from the key, is never routed again. Without the tombstone, a thief with the key could register the ID into their own organization and serve the old hostname to its users. Tombstones survive deleting the organization. |
 | Downgrade                               | An old engine ignores `reason` and keeps beating against the 403, as today. An old dashboard answers the unlink route with 404, and `ptbk unlink` reports that the project must be removed in the dashboard.                                                                                                                                                                                                                                          |
