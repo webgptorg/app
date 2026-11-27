@@ -105,8 +105,11 @@
 
 /*
  * Self-hosted variable fonts (OFL, from @fontsource-variable, kept byte-identical by a test). Each family has a local
- * fallback face with matching metrics, so swapping the web font in does not shift the layout. Exo 2 is `optional`: a
- * heading font that arrives after first paint waits for the next page instead of reflowing the title under the reader.
+ * fallback face with matching metrics, so swapping the web font in does not shift the layout. The fallbacks also name
+ * the metric twins of Arial and Courier New (Liberation, Arimo, Cousine): Linux has neither, and a fallback with no
+ * local face is skipped for the system font, whose metrics reflow the page when the web font arrives. Exo 2 is
+ * `optional`: a heading font that arrives after first paint waits for the next page instead of reflowing the title
+ * under the reader.
  */
 @font-face {
     font-family: 'Inter Variable';
@@ -180,7 +183,9 @@
 }
 @font-face {
     font-family: 'Inter Fallback';
-    src: local('Arial'), local('Helvetica Neue'), local('Helvetica');
+    src:
+        local('Arial'), local('ArialMT'), local('Liberation Sans'), local('LiberationSans-Regular'), local('Arimo'),
+        local('Helvetica Neue'), local('Helvetica');
     ascent-override: 90.49%;
     descent-override: 22.56%;
     line-gap-override: 0%;
@@ -188,7 +193,9 @@
 }
 @font-face {
     font-family: 'JetBrains Mono Fallback';
-    src: local('Courier New'), local('Courier');
+    src:
+        local('Courier New'), local('CourierNewPSMT'), local('Liberation Mono'), local('LiberationMono-Regular'),
+        local('Cousine'), local('Courier');
     ascent-override: 102%;
     descent-override: 30%;
     line-gap-override: 0%;

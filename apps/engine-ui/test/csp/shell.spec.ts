@@ -1,3 +1,4 @@
+import { ENGINE_API_PREFIX } from '@ptbk/engine-api';
 import type { Page } from '@playwright/test';
 
 import { FAKE_AGENT_ID, FAKE_CHAT_ID, FAKE_RUN_ID, FAKE_TASK_ID, FAKE_TRIGGER_ID } from './fake-engine-api.ts';
@@ -84,6 +85,46 @@ test.describe('foundations in a real browser', () => {
         expect(families).not.toContain('Outfit Variable');
         expect(fonts.length).toBeGreaterThan(0);
         for (const url of fonts) expect(new URL(url).origin).toBe(new URL(baseURL ?? '').origin);
+    });
+
+    test('text drawn before the web fonts arrive keeps its place when they do', async ({ page, visit }) => {
+        // Held until the page has drawn its title, as on a slow link: the first paint is in the fallback faces.
+        const fontsHeld = Promise.withResolvers<undefined>();
+        await page.route(/\.woff2$/, async (route) => {
+            await fontsHeld.promise;
+            await route.continue();
+        });
+        const visited = visit('/security');
+        await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+        const fallbacks = await page.evaluate(() =>
+            [...document.fonts]
+                .filter((face) => face.family.endsWith('Fallback'))
+                .map((face) => `${face.family.replaceAll('"', '')}: ${face.status}`),
+        );
+        fontsHeld.resolve(undefined);
+        // A fallback with no local face to match is skipped for the next family in the stack, metrics and all.
+        expect(fallbacks.toSorted()).toEqual([
+            'Exo 2 Fallback: loaded',
+            'Inter Fallback: loaded',
+            'JetBrains Mono Fallback: loaded',
+        ]);
+        expectCleanPage(await visited);
+    });
+
+    test('the web fonts are asked for while the app starts, before it asks the engine for anything', async ({
+        page,
+        visit,
+    }) => {
+        // Fetched only once text needed them, they came after the engine's answers and swapped in under drawn text.
+        const order: string[] = [];
+        page.on('request', (request) => {
+            const { pathname } = new URL(request.url());
+            if (pathname.endsWith('.woff2')) order.push('font');
+            else if (pathname.startsWith(ENGINE_API_PREFIX)) order.push('engine');
+        });
+        expectCleanPage(await visit('/security'));
+        expect(order[0]).toBe('font');
+        expect(order).toContain('engine');
     });
 
     test('motion tokens follow prefers-reduced-motion', async ({ page, visit }, testInfo) => {
