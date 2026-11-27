@@ -1,4 +1,4 @@
-# D-39. Metering and subscription core
+# D-40. Metering and subscription core
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M5
 - **Depends on:** D-07, D-30
