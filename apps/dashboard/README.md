@@ -209,6 +209,10 @@ Where billing is on (production), the Stripe webhook endpoint is `https://<dashb
 
 The compatibility date stays within what the workerd bundled with `@cloudflare/vitest-pool-workers` supports, so the Workers tests run the same date as production.
 
+## Feedback widget
+
+The signed-in shell loads [ucho](https://github.com/contember/ucho), Contember's feedback widget, when the build sets `VITE_UCHO_PROJECT` to a ucho project ID (public, baked in at build time; Promptbook's is `7f0d7f3c-2127-4b53-836e-0f7dcd43af1a`). Without it, or under browser automation (`navigator.webdriver`), there is no widget. A report goes from the browser to `https://clientcare.contember.com/ucho/project/<id>/task` and holds the message, an optional screenshot of the page, device and browser details, the page's origin and path (never its query or fragment), and the sender's email, user ID and active org ID. ucho's console buffer is dropped. Not enabled yet: ucho needs CSP relaxations (Trusted Types, inline styles, `data:` images) that wait for a decision. The engine UI never gets it: its screenshots would carry engine content.
+
 ## Migrations
 
 The schema is TypeScript in `src/adapters/db/schema.ts`. After changing it, run `bun run db:generate --name <what>` and commit the SQL and `migrations/meta/`. Nobody runs `drizzle-kit push` or `migrate`, and nobody writes schema SQL by hand; a data backfill is its own reviewed migration from `drizzle-kit generate --custom`. Migrations are applied with `wrangler d1 migrations apply DB` (`--local` here; staging and production through I-03).
