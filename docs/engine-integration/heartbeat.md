@@ -49,7 +49,7 @@ Once the engine handles access tickets and member revocations ([ADR 0018](../adr
 
 ## Things waiting: `attention` (notifications)
 
-An engine with `notifications@1` ([ADR 0027](../adr/0027-notifications.md), [engine-api.md](engine-api.md#notifications)) tells the dashboard how many things wait for whom, so it can email people who are away. Only counts: never what the items are, their titles or when each happened.
+An engine with `notifications@1` ([ADR 0027](../adr/0027-notifications.md), [engine-api.md](engine-api.md)) tells the dashboard how many things wait for whom, so it can email people who are away. Only counts: never what the items are, their titles or when each happened.
 
 - `attention` is an optional v2 field: at most `MAX_HEARTBEAT_ATTENTION` (64) `HeartbeatAttention` entries `{ to?, kind, count }`. `kind` is an `AttentionKind` (`agent-waiting`, `task-failed`, `tool-sign-in`); `count` is 1 to `MAX_HEARTBEAT_COUNT`; at most one entry per `to` and `kind`, and a project-wide entry has no `to`. A body that breaks any of this is `invalid-body`.
 - `count` is the number of open items of that kind the person has **not seen** in the engine UI (`GET /me/notifications/unseen`). Seeing or handling them lowers it; leave out an entry whose count is 0.
