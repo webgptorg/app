@@ -68,7 +68,7 @@ async function registered(
     const memberKey = (await deps.memberKey())?.publicKey ?? null;
     return {
         kind: 'registered',
-        response: { engineId, hostname, relays: [...deps.relays], memberKey },
+        response: { engineId, hostname, relays: [...deps.relays], memberKey, ownerSetupCommitment: null },
         orgId,
         relinked,
     };
