@@ -3,6 +3,7 @@ import type {
     EngineId,
     EngineVersion,
     HeartbeatAck,
+    OwnerHandoff,
     SetupState,
     Signer,
     Timestamp,
@@ -24,6 +25,8 @@ export interface HeartbeatFacts {
     readonly update: UpdateState;
     /** Left out of the body when `null`: the engine has no browser setup. */
     readonly setup: SetupState | null;
+    /** Left out of the body when `null`: no live handoff slot, or the address does not serve browsers yet. */
+    readonly ownerHandoff?: OwnerHandoff | null;
     /** Present once the engine pinned a member key: it then sends heartbeat v2 (ADR 0018). */
     readonly teams?: { readonly accessRequests: number; readonly acks: readonly HeartbeatAck[] };
 }
@@ -68,6 +71,7 @@ export async function buildSignedHeartbeat(
         agents: facts.counts.agents,
         members: facts.counts.members,
         ...(facts.setup === null ? {} : { setup: facts.setup }),
+        ...(facts.ownerHandoff == null ? {} : { ownerHandoff: facts.ownerHandoff }),
     };
     const rawBody =
         facts.teams === undefined ? buildHeartbeat(fields) : buildHeartbeatV2({ ...fields, ...facts.teams });

@@ -39,10 +39,22 @@ describe('the member-access suite', () => {
 });
 
 describe('the owner-handoff suite', () => {
-    it('skips against an engine that never signals, which never signals without a commitment either', async () => {
-        const results = await run(mockEngineCommand(), undefined, {}, createMockEngineTargetFactory(), [
-            OWNER_HANDOFF_SUITE,
-        ]);
+    // An owner makes an engine ignore the commitment, so these mocks start without one.
+    const ownerless = () => mockEngineCommand('MOCK_PASSKEYS=none');
+
+    it('passes against the mock engine', async () => {
+        const results = await run(ownerless(), undefined, {}, createMockEngineTargetFactory(), [OWNER_HANDOFF_SUITE]);
+        expect(notPassing(results)).toEqual({});
+    }, 300_000);
+
+    it('skips against a mock engine with the handoff off, which never signals without a commitment either', async () => {
+        const mock = createMockEngineTargetFactory();
+        const off: EngineTargetFactory = {
+            engineEnv: async () => ({ ...(await mock.engineEnv()), PTBK_OWNER_HANDOFF: 'off' }),
+            target: (engine, endpoint) => mock.target(engine, endpoint),
+            certificateAuthority: (engine) => mock.certificateAuthority?.(engine) ?? Promise.resolve(null),
+        };
+        const results = await run(ownerless(), undefined, {}, off, [OWNER_HANDOFF_SUITE]);
         const skipped = expect.stringMatching(/^skip: no heartbeat carried ownerHandoff/) as unknown;
         expect(notPassing(results)).toEqual({
             'owner-handoff.signal.prompt': skipped,

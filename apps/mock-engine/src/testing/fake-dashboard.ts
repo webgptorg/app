@@ -5,6 +5,7 @@ import type {
     Hostname,
     HeartbeatVerification,
     LinkCode,
+    OwnerSetupCommitment,
     RegisterEngineResponse,
     RegistrationErrorCode,
 } from '@ptbk/protocol';
@@ -37,7 +38,8 @@ export interface FakeDashboard {
     readonly api: DashboardApi;
     /** The same dashboard over HTTP semantics (status codes, problem+json), for the fetch adapter. */
     readonly fetch: typeof fetch;
-    issueLinkCode(org: string): LinkCode;
+    /** With a commitment, the registration that redeems the code hands it over, as a pairing tab's would (ADR 0023). */
+    issueLinkCode(org: string, ownerSetupCommitment?: OwnerSetupCommitment): LinkCode;
     suspend(engineId: EngineId): void;
     setEngineLimit(org: string, limit: number): void;
     /** Every registration request as received, after the strict schema. */
@@ -112,7 +114,10 @@ const HEARTBEAT_ANSWER: Readonly<Record<Exclude<HeartbeatVerification['kind'], '
 
 export function createFakeDashboard(options: FakeDashboardOptions): FakeDashboard {
     const random = createSeededRandom(7);
-    const linkCodes = new Map<string, { readonly org: string; used: boolean }>();
+    const linkCodes = new Map<
+        string,
+        { readonly org: string; used: boolean; readonly ownerSetupCommitment: OwnerSetupCommitment | null }
+    >();
     const engines = new Map<EngineId, StoredEngine>();
     const lastSeq = new Map<EngineId, number>();
     const limits = new Map<string, number>();
@@ -152,7 +157,7 @@ export function createFakeDashboard(options: FakeDashboardOptions): FakeDashboar
             hostname: defaultHostname(engineId, options.engineDomain),
             relays: [...options.relays],
             memberKey: options.memberKey ?? null,
-            ownerSetupCommitment: null,
+            ownerSetupCommitment: code.ownerSetupCommitment,
         };
         return { status: 200, body: response };
     }
@@ -247,9 +252,9 @@ export function createFakeDashboard(options: FakeDashboardOptions): FakeDashboar
     const fake: FakeDashboard = {
         api,
         fetch: httpFetch,
-        issueLinkCode(org) {
+        issueLinkCode(org, ownerSetupCommitment) {
             const code = generateLinkCode(random);
-            linkCodes.set(code, { org, used: false });
+            linkCodes.set(code, { org, used: false, ownerSetupCommitment: ownerSetupCommitment ?? null });
             return code;
         },
         suspend(engineId) {

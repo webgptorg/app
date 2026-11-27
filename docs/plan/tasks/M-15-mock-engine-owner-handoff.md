@@ -2,7 +2,7 @@
 
 - **Lane:** M · **Module:** `apps/mock-engine` · **Milestone:** M5
 - **Depends on:** C-20, M-10
-- **Status:** todo
+- **Status:** done (#387)
 - **Spec:** Pairing and identity; ADR [0023](../../adr/0023-owner-setup-handoff.md)
 
 ## Goal
@@ -18,6 +18,6 @@ The reference engine accepts the pairing tab's commitment as a second, one-time 
 
 ## Acceptance criteria
 
-- [ ] Unit tests: a wrong `S`, an expired slot, a slot on an engine that already has an owner, handoff off, both slots spent by one setup, `setup-link` and `owner --reset`.
-- [ ] The `owner-handoff` conformance suite passes against the mock engine.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Unit tests: a wrong `S`, an expired slot, a slot on an engine that already has an owner, handoff off, both slots spent by one setup, `setup-link` and `owner --reset`.
+- [x] The `owner-handoff` conformance suite passes against the mock engine.
+- [x] **Status** line above set to `done (#387)`.

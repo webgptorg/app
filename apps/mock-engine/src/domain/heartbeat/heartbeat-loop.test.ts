@@ -36,6 +36,7 @@ interface SetupOptions {
     readonly api?: (fake: FakeDashboard) => DashboardApi;
     readonly teams?: HeartbeatTeams;
     readonly setup?: () => SetupState | null;
+    readonly ownerHandoff?: () => boolean;
 }
 
 async function setup(options: SetupOptions = {}) {
@@ -79,6 +80,7 @@ async function setup(options: SetupOptions = {}) {
         startedAtMs: START_MS,
         onStatus: (status) => statuses.push(status),
         ...(options.teams === undefined ? {} : { teams: options.teams }),
+        ...(options.ownerHandoff === undefined ? {} : { ownerHandoff: options.ownerHandoff }),
     });
     return { clock, logger, identity, fake, loop, statuses, memorySeqs };
 }
@@ -462,6 +464,33 @@ describe('createHeartbeatLoop', () => {
         started.clock.advance(SETUP_CHECK_MS * 5);
         await flush(5);
         expect(started.fake.heartbeats).toHaveLength(2);
+        await started.loop.stop();
+    });
+
+    it('carries ownerHandoff only while ready, and beats within a second of it turning ready', async () => {
+        let ready = false;
+        const started = await setup({ ownerHandoff: () => ready });
+        const handoffOf = (index: number) => {
+            const beat = started.fake.heartbeats[index];
+            if (beat === undefined) throw new Error(`no beat ${String(index)}`);
+            return Heartbeat.parse(JSON.parse(new TextDecoder().decode(beat.rawBody))).ownerHandoff;
+        };
+        started.loop.start();
+        await received(started, 1);
+        expect(handoffOf(0)).toBeUndefined();
+
+        ready = true;
+        started.clock.advance(SETUP_CHECK_MS);
+        await received(started, 2);
+        expect(handoffOf(1)).toBe('ready');
+        started.clock.advance(SETUP_CHECK_MS * 5);
+        await flush(5);
+        expect(started.fake.heartbeats).toHaveLength(2);
+
+        ready = false;
+        started.clock.advance(DEFAULT_HEARTBEAT_INTERVAL_S * 1000);
+        await received(started, 3);
+        expect(handoffOf(2)).toBeUndefined();
         await started.loop.stop();
     });
 

@@ -15,6 +15,7 @@ export const DEFAULT_MOCK_SETTINGS: Pick<
     | 'capabilities'
     | 'simulation'
     | 'devLogin'
+    | 'ownerHandoff'
     | 'passkeys'
     | 'onboarding'
     | 'liveBrowser'
@@ -31,6 +32,7 @@ export const DEFAULT_MOCK_SETTINGS: Pick<
     capabilities: FULL_CAPABILITY_NAMES,
     simulation: { mode: 'paused' as const, speed: 1 },
     devLogin: false,
+    ownerHandoff: true,
     passkeys: 'seeded',
     onboarding: null,
     liveBrowser: false,
