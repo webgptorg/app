@@ -110,7 +110,7 @@ What changes is who in the organization can drive the dashboard side of access. 
 
 None. Tickets, revocations, acks and the heartbeat are per engine already. The engine sees more tickets with `proposedRole: admin` if open question 2 goes that way; the role is a proposal the approver changes.
 
-The real engine does not advertise members or access requests yet, so on it nobody but the owner gets in, with or without this ADR. That is engine-team work under ADR 0018, and teams v2 is only useful once it ships.
+The real engine advertises `members@1` and `access-requests@1` since 0.119.0-139, so dashboard tickets and approvals work on it today. Teams v2 needs no further engine change beyond what ADR 0018 already asked for.
 
 ## Alternatives considered
 
