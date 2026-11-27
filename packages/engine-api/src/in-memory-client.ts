@@ -49,6 +49,13 @@ import { EngineEvent } from './events';
 import { Folder } from './folders';
 import { hashAuditEntry } from './in-memory/audit-chain';
 import { requestAccess, revokeDashboardMember } from './in-memory/access-requests';
+import {
+    attentionEntries,
+    closeNotification,
+    defaultDashboardAttention,
+    raiseNotification,
+} from './in-memory/notifications';
+import type { AttentionEntry, NewNotification } from './in-memory/notifications';
 import { createOnboardingRecord, failHarnessCheck, onboardingState, settleHarnessLogin } from './in-memory/onboarding';
 import { createUpdatesRecord, runFakeUiCheck, uiUpdaterOf } from './in-memory/updates';
 import type { FakeUiRelease, UiUpdater } from './in-memory/updates';
@@ -150,6 +157,7 @@ import { matchMediaType } from './media-type';
 import type { EngineApiRouteId } from './routes';
 import { SecurityOverview } from './security';
 import type { UiUpdateCheck } from './security';
+import type { Notification } from './capabilities/notifications';
 import { Session } from './sessions';
 import { Settings } from './settings';
 
@@ -609,6 +617,12 @@ export interface InMemoryEngineController {
     setWalletState(state: WalletState, lockedRecords?: number): void;
     /** Applies a dashboard revocation whose signature checked out; the outcome is what the heartbeat acks. */
     revokeDashboardMember(dashboardUserId: string): DashboardRevocationOutcome;
+    /** `notifications@1`: something needs a member (`memberId`) or the project's managers (`null`). */
+    raiseNotification(input: Unbranded<NewNotification>): Notification;
+    /** The item was handled: it leaves the inbox and the counts. `false` when it was unknown or already closed. */
+    closeNotification(notificationId: string): boolean;
+    /** The heartbeat's `attention` now; `null` while the owner keeps it off or without the capability. */
+    attention(): readonly AttentionEntry[] | null;
     /** A sign-in; throws for an unknown member or a taken ID. `current` is decided per request. */
     addSession(session: Omit<Unbranded<z.input<typeof Session>>, 'current'>): Session;
     /** A sign-out or expiry; `false` if the session was not listed. */
@@ -1066,6 +1080,9 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             state.wallet.lockedRecords = lockedRecords;
         },
         revokeDashboardMember: (dashboardUserId) => revokeDashboardMember(system, dashboardUserId),
+        raiseNotification: (input) => raiseNotification(system, input as NewNotification),
+        closeNotification: (notificationId) => closeNotification(system, notificationId),
+        attention: () => attentionEntries(system),
         addMember: (input) => {
             const member = Member.parse(input);
             if (state.members.has(member.id)) throw new Error('member ID already taken');
@@ -1440,6 +1457,7 @@ const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
     approveAccessRequest: { action: 'access-request.approve', kind: 'member' },
     declineAccessRequest: { action: 'access-request.decline', kind: 'access-request', param: 'accessRequestId' },
     setDashboardRemovals: { action: 'settings.dashboard-removals', kind: null },
+    setDashboardAttention: { action: 'settings.dashboard-attention', kind: null },
     revokeInvite: { action: 'invite.revoke', kind: 'invite', param: 'inviteId' },
     createApiToken: { action: 'api-token.create', kind: 'api-token' },
     revokeApiToken: { action: 'api-token.revoke', kind: 'api-token', param: 'apiTokenId' },
@@ -1660,6 +1678,10 @@ function createState(
     if (settings.dashboardRemovals === null && supports({ capabilities }, KNOWN_CAPABILITIES.accessRequests)) {
         settings.dashboardRemovals = true;
     }
+    settings.dashboardAttention = defaultDashboardAttention(
+        supports({ capabilities }, KNOWN_CAPABILITIES.notifications),
+        settings.dashboardAttention,
+    );
     // A seed may carry scan results; an engine that does not scan reports none of them.
     const scanning = supports({ capabilities }, KNOWN_CAPABILITIES.fileScanning);
     const files = new Map((seed.files ?? []).map((record) => seedFile(record, scanning)));
@@ -1682,6 +1704,7 @@ function createState(
         onboarding: createOnboardingRecord(seed.onboarding ?? 'completed'),
         voice: createVoiceRecord(),
         updates: createUpdatesRecord(at),
+        notifications: new Map(),
         accessRequests: new Map(
             (seed.accessRequests ?? []).map(({ request, code, dashboardUserId }) => {
                 const parsed = AccessRequest.parse(request);
