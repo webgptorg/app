@@ -351,6 +351,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         ...(config.onboarding === null ? {} : { onboarding: config.onboarding }),
         liveBrowser: config.liveBrowser,
         voice: config.voice,
+        dashboardAttention: config.dashboardAttention,
         browserPermissions: (memberId, sessionId) => sessionStore?.permissionsOf(memberId, sessionId) ?? null,
         faults: () => faults.plan(),
         onSimulationError: (error) => {
@@ -453,6 +454,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   teams: joinGateway,
                   // Only once a browser can use the address, so the pairing tab never lands on a certificate error.
                   ownerHandoff: () => setupSecrets.handoffLive() && addressGapsNow().length === 0,
+                  attention: () => runtime.controller().attention(),
               });
     const rateLimiter = deps.rateLimiter ?? createWindowRateLimiter({ clock: deps.clock });
     runtime.onReset(() => {

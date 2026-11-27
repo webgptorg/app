@@ -22,6 +22,7 @@ const MOCK_CAPABILITIES = {
     wallet: KNOWN_CAPABILITIES.wallet,
     'ai-tools': KNOWN_CAPABILITIES.aiTools,
     updates: KNOWN_CAPABILITIES.updates,
+    notifications: KNOWN_CAPABILITIES.notifications,
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export const MockCapabilityName = z.enum(

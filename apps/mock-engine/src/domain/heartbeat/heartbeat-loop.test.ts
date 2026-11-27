@@ -1,4 +1,4 @@
-import type { SetupState, Timestamp } from '@ptbk/protocol';
+import type { HeartbeatAttention, SetupState, Timestamp } from '@ptbk/protocol';
 import {
     EngineVersion,
     HEARTBEAT_MAX_BODY_BYTES,
@@ -37,6 +37,7 @@ interface SetupOptions {
     readonly teams?: HeartbeatTeams;
     readonly setup?: () => SetupState | null;
     readonly ownerHandoff?: () => boolean;
+    readonly attention?: () => readonly HeartbeatAttention[] | null;
 }
 
 async function setup(options: SetupOptions = {}) {
@@ -81,6 +82,7 @@ async function setup(options: SetupOptions = {}) {
         onStatus: (status) => statuses.push(status),
         ...(options.teams === undefined ? {} : { teams: options.teams }),
         ...(options.ownerHandoff === undefined ? {} : { ownerHandoff: options.ownerHandoff }),
+        ...(options.attention === undefined ? {} : { attention: options.attention }),
     });
     return { clock, logger, identity, fake, loop, statuses, memorySeqs };
 }
@@ -141,6 +143,38 @@ describe('createHeartbeatLoop: teams', () => {
         expect(teams.settled()).toBe(1);
         expect(teams.acked).toEqual([['ticket-0000000000000001']]);
         expect(teams.applied).toEqual([['body.signature']]);
+    });
+
+    it('carries the attention counts in v2 while sharing is on, and no field at all while it is off', async () => {
+        let attention: readonly HeartbeatAttention[] | null = [
+            { to: 'dashboard-user-petr', kind: 'agent-waiting', count: 2 },
+            { kind: 'tool-sign-in', count: 1 },
+        ];
+        const started = await setup({ teams: fakeTeams(true).teams, attention: () => attention });
+        started.loop.start();
+        await received(started, 1);
+        expect(started.fake.heartbeats[0]?.verification).toMatchObject({ kind: 'accepted', heartbeat: { attention } });
+        attention = null;
+        started.loop.beatNow();
+        await received(started, 2);
+        const body = new TextDecoder().decode(started.fake.heartbeats[1]?.rawBody ?? new Uint8Array());
+        expect(JSON.parse(body)).not.toHaveProperty('attention');
+        await started.loop.stop();
+    });
+
+    it('never puts more than who, what kind and how many into the body, whatever the inbox holds', async () => {
+        const rich = [
+            { to: 'dashboard-user-petr', kind: 'agent-waiting', count: 1, title: 'Approve the March invoice' },
+        ] as unknown as readonly HeartbeatAttention[];
+        const started = await setup({ teams: fakeTeams(true).teams, attention: () => rich });
+        started.loop.start();
+        await received(started, 1);
+        const body = new TextDecoder().decode(started.fake.heartbeats[0]?.rawBody ?? new Uint8Array());
+        expect(body).not.toContain('invoice');
+        expect((JSON.parse(body) as { attention: unknown }).attention).toEqual([
+            { to: 'dashboard-user-petr', kind: 'agent-waiting', count: 1 },
+        ]);
+        await started.loop.stop();
     });
 
     it('stays on v1 until a member key is pinned', async () => {

@@ -37,7 +37,7 @@ function ok<T>(response: EngineApiResponse<T>): T {
     return response.data;
 }
 
-async function start(options: { readonly liveBrowser?: boolean } = {}) {
+async function start(options: { readonly liveBrowser?: boolean; readonly dashboardAttention?: boolean } = {}) {
     const clock = createFakeClock(Date.parse('2026-10-20T08:00:00Z'));
     const runtime = await createTestRuntime({
         seed: 42,
@@ -282,5 +282,31 @@ describe('engine runtime', () => {
         expect(clock.pendingTimers()).toBe(1);
         ok(await client().chats.cancelReply(chat.id, replyIdOf(sent), signal()));
         expect(clock.pendingTimers()).toBe(0);
+    });
+});
+
+describe('engine runtime: notifications', () => {
+    it('seeds each member an inbox with content and links, all unseen, and shares counts by default', async () => {
+        const { client, runtime } = await start();
+        const items = ok(await client().notifications.list({ limit: 100 }, signal())).items;
+        expect(items.map(({ kind }) => kind)).toEqual(expect.arrayContaining(['agent-waiting', 'task-failed']));
+        expect(items.every(({ seenAt }) => seenAt === null)).toBe(true);
+        expect(items.find(({ kind }) => kind === 'agent-waiting')?.target).toMatchObject({ kind: 'chat' });
+        expect(ok(await client().settings.get(signal())).dashboardAttention).toBe(true);
+        // Seeded members joined without a dashboard ticket, so only project-wide items could be counted.
+        expect(
+            runtime
+                .controller()
+                .attention()
+                ?.every(({ to }) => to === undefined),
+        ).toBe(true);
+    });
+
+    it('starts with counts switched off when told to, across a reset', async () => {
+        const { client, runtime } = await start({ dashboardAttention: false });
+        expect(ok(await client().settings.get(signal())).dashboardAttention).toBe(false);
+        expect(runtime.controller().attention()).toBeNull();
+        await runtime.reset({ seed: 1, scenario: 'empty' });
+        expect(ok(await client().settings.get(signal())).dashboardAttention).toBe(false);
     });
 });

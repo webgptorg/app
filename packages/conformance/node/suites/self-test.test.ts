@@ -39,15 +39,11 @@ describe('the member-access suite', () => {
 });
 
 describe('the notifications suite', () => {
-    // The mock serves notifications@1 from M-16 on; until then the suite must skip, not fail.
-    it('skips against a mock engine without notifications@1', async () => {
+    it('passes against the mock engine', async () => {
         const results = await run(mockEngineCommand(), undefined, {}, createMockEngineTargetFactory(), [
             NOTIFICATIONS_SUITE,
         ]);
-        expect(notPassing(results)).toEqual({
-            'notifications.attention.recipients': 'skip: capability-not-advertised',
-            'notifications.attention.switched-off': 'skip: capability-not-advertised',
-        });
+        expect(notPassing(results)).toEqual({});
     }, 300_000);
 });
 

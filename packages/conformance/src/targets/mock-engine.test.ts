@@ -48,6 +48,15 @@ describe('createMockEngineTarget', () => {
         await expect(targetAnswering(400, {}).target.walletRequest?.('x')).rejects.toThrow('answered 400');
     });
 
+    it('raises a notification through the control listener', async () => {
+        const { target, requests } = targetAnswering(201, { notification: { id: 'notification-1' } });
+        const input = { memberId: null, kind: 'tool-sign-in', title: 'Sign in again' } as const;
+        expect(await target.notifications?.raise(input)).toBe('notification-1');
+        expect(requests[0]?.url).toBe('http://127.0.0.1:4480/__mock/notifications');
+        expect(await requests[0]?.json()).toEqual(input);
+        await expect(targetAnswering(201, {}).target.notifications?.raise(input)).rejects.toThrow('without an ID');
+    });
+
     it('drives the live browser through the control listener only when it can open the channel', async () => {
         expect(targetAnswering(201, {}).target.liveBrowser).toBeUndefined();
         const tab = targetAnswering(201, { tab: { id: 'tab-1' } }, true);

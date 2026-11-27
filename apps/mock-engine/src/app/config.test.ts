@@ -61,6 +61,12 @@ describe('parseMockEngineConfig', () => {
         expect(Object.isFrozen(config.relays[0])).toBe(true);
     });
 
+    it('starts notification counts on, off with PTBK_DASHBOARD_ATTENTION=off, and refuses anything else', () => {
+        expect(parseMockEngineConfig(BASE).dashboardAttention).toBe(true);
+        expect(parseMockEngineConfig({ ...BASE, PTBK_DASHBOARD_ATTENTION: 'off' }).dashboardAttention).toBe(false);
+        expect(() => parseMockEngineConfig({ ...BASE, PTBK_DASHBOARD_ATTENTION: 'strict' })).toThrow(ConfigError);
+    });
+
     it('parses every setting', () => {
         const config = parseMockEngineConfig({
             ...BASE,
@@ -624,6 +630,7 @@ describe('parseIdentityConfig', () => {
                 'wallet',
                 'ai-tools',
                 'updates',
+                'notifications',
             ]);
             expect(
                 parseMockEngineConfig({ ...BASE, MOCK_PROFILE: 'full', MOCK_CAPABILITIES: 'runs' }).capabilities,

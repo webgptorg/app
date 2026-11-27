@@ -1,6 +1,7 @@
 import { KNOWN_CAPABILITIES, supports } from '@ptbk/engine-api';
 import type { CapabilityRef, MemberId, Permission, SecurityOverview, SessionId, UiUpdateCheck } from '@ptbk/engine-api';
 import { createInMemoryEngineCore } from '@ptbk/engine-api/in-memory';
+import { seedNotifications } from './notification-seed';
 import type {
     InMemoryEngineController,
     InMemoryEngineCore,
@@ -87,6 +88,8 @@ export interface EngineRuntimeOptions {
     readonly liveBrowser?: boolean;
     /** `MOCK_VOICE=enabled`: every core advertises `voice-input@1` and `voice-output@1` whatever the capability list says. */
     readonly voice?: boolean;
+    /** `PTBK_DASHBOARD_ATTENTION=off`: every core starts with the owner's notification counts switch off. */
+    readonly dashboardAttention?: boolean;
     /** What a gateway session holds now (the session store's answer), so a role change ends live browser sessions. */
     readonly browserPermissions?: (memberId: MemberId, sessionId: SessionId) => ReadonlySet<Permission> | null;
 }
@@ -226,9 +229,14 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
                 hostile: agent.name === HOSTILE_AGENT_NAME,
             }).chunks,
         });
+        const settings =
+            options.dashboardAttention === false && seed.settings !== undefined
+                ? { settings: { ...seed.settings, dashboardAttention: false } }
+                : {};
         const core = createInMemoryEngineCore({
             seed: {
                 ...seed,
+                ...settings,
                 engine: {
                     engineId: identity.engineId,
                     name: seed.settings?.name ?? 'Mock engine',
@@ -263,6 +271,11 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
             },
         });
         applySecurity(core, true);
+        const firstTask = seed.tasks?.[0]?.task;
+        seedNotifications(core.controller, capabilities, {
+            chatId: seed.chats?.[0]?.id,
+            task: firstTask === undefined ? undefined : { id: firstTask.id, name: firstTask.name },
+        });
         const liveBrowserTab =
             options.liveBrowser === true ? setUpLiveBrowser(core.controller, seed.chats?.[0]?.id).id : null;
         const simulation = createSimulation({
