@@ -26,6 +26,7 @@ import { TASK_CHECKS } from './tasks';
 import { TEST_CHAT_CHECKS } from './test-chat';
 import { TRIGGER_CHECKS } from './triggers';
 import { UPDATES_CHECKS } from './updates';
+import { NOTIFICATION_CHECKS } from './notifications';
 import { VOICE_CHECKS } from './voice';
 import { WALLET_CHECKS } from './wallet';
 
@@ -53,6 +54,7 @@ export const ENGINE_API_SUITE: ConformanceSuite = {
         ...VOICE_CHECKS,
         ...AI_TOOL_CHECKS,
         ...UPDATES_CHECKS,
+        ...NOTIFICATION_CHECKS,
         ...ACTIVITY_CHECKS,
         ...AUDIT_CHECKS,
         ...PERMISSION_CHECKS,

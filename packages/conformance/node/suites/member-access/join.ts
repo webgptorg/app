@@ -32,9 +32,9 @@ const STALE_REVOCATION_MS = 10 * 60_000;
 const RETRY_MS = 250;
 const BEATS_TO_ACK = 3;
 
-type Outcome = Awaited<ReturnType<PlatformCheck['run']>>;
+export type Outcome = Awaited<ReturnType<PlatformCheck['run']>>;
 
-interface Answer {
+export interface Answer {
     readonly status: number;
     readonly code: string | null;
     readonly body: Record<string, unknown> | null;
@@ -48,10 +48,10 @@ export interface JoinableEngine {
     readonly ctx: PlatformCheckContext;
 }
 
-type Opened =
+export type Opened =
     { readonly kind: 'ok'; readonly engine: JoinableEngine } | { readonly kind: 'done'; readonly outcome: Outcome };
 
-async function openJoinable(ctx: PlatformCheckContext): Promise<Opened> {
+export async function openJoinable(ctx: PlatformCheckContext): Promise<Opened> {
     const relay = ctx.use(await startTunnelRelay(ctx, { relays: 1 }));
     const registered = await startRegisteredEngine(ctx, { env: relay.env });
     const beat = await registered.nextAcceptedHeartbeat(0);
@@ -98,7 +98,11 @@ async function call(
     return { status: response.status, code, body: record };
 }
 
-function ticket(engine: JoinableEngine, overrides: Partial<AccessTicket> = {}, signer?: Signer): Promise<string> {
+export function ticket(
+    engine: JoinableEngine,
+    overrides: Partial<AccessTicket> = {},
+    signer?: Signer,
+): Promise<string> {
     const issuedAt = Date.now();
     const iso = (ms: number) => Timestamp.parse(new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z'));
     return signAccessTicket(signer ?? engine.registered.dashboard.memberSigner, {
@@ -115,12 +119,12 @@ function ticket(engine: JoinableEngine, overrides: Partial<AccessTicket> = {}, s
     });
 }
 
-type Joined =
+export type Joined =
     | { readonly kind: 'waiting'; readonly code: string; readonly request: string }
     | { readonly kind: 'refused'; readonly step: 'options' | 'verify'; readonly answer: Answer };
 
 /** The join page's whole flow without a browser: options, a new passkey from a software authenticator, verify. */
-async function join(engine: JoinableEngine, token: string): Promise<Joined> {
+export async function join(engine: JoinableEngine, token: string): Promise<Joined> {
     const options = await call(engine, 'POST', JOIN_OPTIONS_PATH, { ticket: token });
     if (options.status !== 200) return { kind: 'refused', step: 'options', answer: options };
     const response = await createPasskey(options.body?.['options'], engine.endpoint.baseUrl.origin);
@@ -256,13 +260,13 @@ export const spentTicketSurvivesRestart = check(
 );
 
 /** The owner's session, or why the check cannot go on without one. */
-async function ownerSession(engine: JoinableEngine): Promise<SessionCredential | Outcome> {
+export async function ownerSession(engine: JoinableEngine): Promise<SessionCredential | Outcome> {
     const target = engine.ctx.engineTarget(engine.registered.engine, engine.endpoint);
     const session = (await target?.session({ kind: 'owner' })) ?? null;
     return session ?? { kind: 'skip', reason: 'no owner session for this engine (ENG-99)' };
 }
 
-const isOutcome = (value: SessionCredential | Outcome): value is Outcome => 'kind' in value;
+export const isOutcome = (value: SessionCredential | Outcome): value is Outcome => 'kind' in value;
 
 async function pendingRequestId(engine: JoinableEngine, owner: SessionCredential): Promise<string | null> {
     const list = await call(engine, 'GET', `${ENGINE_API_PREFIX}/access-requests`, undefined, owner);
@@ -272,7 +276,7 @@ async function pendingRequestId(engine: JoinableEngine, owner: SessionCredential
     return typeof first?.id === 'string' ? first.id : null;
 }
 
-async function approve(engine: JoinableEngine, owner: SessionCredential, code: string, role: string) {
+export async function approve(engine: JoinableEngine, owner: SessionCredential, code: string, role: string) {
     const id = await pendingRequestId(engine, owner);
     if (id === null) return null;
     return call(engine, 'POST', `${ENGINE_API_PREFIX}/access-requests/${id}/approve`, { code, role }, owner);

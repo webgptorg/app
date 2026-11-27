@@ -4,6 +4,7 @@ import { KNOWN_CAPABILITIES } from '../capabilities/capability';
 import {
     MAX_NOTIFICATIONS_PER_SEEN,
     MarkNotificationsSeenBody,
+    NotificationId,
     NotificationPageReader,
     NotificationReader,
 } from '../capabilities/notifications';
@@ -53,7 +54,7 @@ function setup(options: Partial<InMemoryEngineCoreOptions> = {}) {
         createEngineApiClient(
             withClientReading(
                 core.transport(
-                    actorFromOptions({ member: { id, permissions }, stepUp: stepUp ? 'fresh' : 'required' }),
+                    actorFromOptions({ member: { id, permissions }, stepUp: stepUp ? 'satisfied' : 'required' }),
                 ),
             ),
         );
@@ -119,7 +120,9 @@ describe('notifications@1 in the in-memory engine', () => {
         const mine = core.controller.raiseNotification({ memberId: 'petr', kind: 'agent-waiting', title: 'Mine' });
         const theirs = core.controller.raiseNotification({ memberId: 'jana', kind: 'agent-waiting', title: 'Hers' });
         expect(codeOf(await petr.notifications.markSeen({ ids: [mine.id, theirs.id] }, signal()))).toBe('not-found');
-        expect(codeOf(await petr.notifications.markSeen({ ids: ['no-such-item'] }, signal()))).toBe('not-found');
+        expect(
+            codeOf(await petr.notifications.markSeen({ ids: [NotificationId.parse('no-such-item')] }, signal())),
+        ).toBe('not-found');
         expect(ok(await petr.notifications.counts(signal())).total).toBe(1);
         expect(ok(await jana.notifications.counts(signal())).total).toBe(1);
 

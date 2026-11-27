@@ -19,6 +19,8 @@ export type {
     LiveChannelEvent,
     LiveChannelOpen,
     MemberPrivateResources,
+    NewTargetNotification,
+    NotificationsTarget,
     SessionCredential,
     SessionSubject,
 } from './target';

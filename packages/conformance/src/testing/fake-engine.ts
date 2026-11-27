@@ -326,6 +326,9 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
                     return Promise.resolve();
                 },
             },
+            notifications: {
+                raise: (input) => Promise.resolve(core.controller.raiseNotification(input).id),
+            },
             walletRequest: (origin) =>
                 Promise.resolve(
                     core.controller.requestWalletLogin({
