@@ -2,7 +2,7 @@ import type { Duplex } from 'node:stream';
 
 import { KNOWN_CAPABILITIES, Timestamp, supports } from '@ptbk/engine-api';
 import type { InMemoryEngineCore, UiUpdater } from '@ptbk/engine-api/in-memory';
-import type { Hostname } from '@ptbk/protocol';
+import type { Hostname, OwnerSetupCommitment } from '@ptbk/protocol';
 import {
     CLOSE_CODE,
     TUNNEL_FEATURES,
@@ -95,7 +95,7 @@ import { WAITING } from './operator-lines';
 import { ENGINE_COMMAND, retrySentence } from './registration-messages';
 import { localClockTime, openSetupLink, setupLinkLines } from './setup-link-command';
 import type { StartupProgress } from './startup-progress';
-import { NO_OWNER_LINE, createStartupProgress } from './startup-progress';
+import { HANDOFF_SETUP_LINE, NO_OWNER_LINE, createStartupProgress } from './startup-progress';
 
 /** Everything `@ptbk/protocol` implements, so the mock always advertises exactly the current contract. */
 export const DEFAULT_TUNNEL_OFFER: TunnelOfferConfig = Object.freeze({
@@ -149,6 +149,8 @@ export interface MockEngineDeps {
 
 export interface OnboardingDeps {
     readonly setupSecrets: SetupSecretStore;
+    /** The pairing tab's handoff slot (ADR 0023); in memory without it. */
+    readonly ownerHandoff?: SetupSecretStore;
     readonly passkeys: PasskeyStore;
     /** Access tickets the join page spent; in memory without it. */
     readonly spentTickets?: SpentTicketStore;
@@ -275,6 +277,8 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
     const hostname = defaultHostname(identity.engineId, config.engineDomain);
     // Set by `connect` on a terminal when it links this engine: that command shows the first setup link instead.
     let connectShowsSetupLink = false;
+    // Assigned once the setup secrets exist; the first link is shown only after startup.
+    let mayOpenFirstLink = (): boolean => false;
     const progress = createStartupProgress({
         logger,
         say: deps.say ?? null,
@@ -286,7 +290,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                 const delivery = setupLinkDelivery({
                     terminal: (deps.say ?? null) !== null && deps.firstSetupLink !== undefined,
                     ownerSetUp: false,
-                    mayOpen: deps.firstSetupLink?.mayOpen ?? false,
+                    mayOpen: mayOpenFirstLink(),
                 });
                 return delivery === 'none' ? 'operator' : 'engine';
             },
@@ -301,6 +305,10 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
     });
     progress.identity();
     const dashboard = config.dashboard === null ? null : { config: config.dashboard, deps: dashboardDeps(deps) };
+    // Accepted once the owner is known: a commitment means nothing to an engine that already has one.
+    const handedOver: {
+        current: { readonly commitment: OwnerSetupCommitment; readonly registeredAtMs: number } | null;
+    } = { current: null };
     let registration =
         dashboard === null
             ? null
@@ -317,6 +325,9 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   signal: new AbortController().signal,
                   onRetry: (retry) => {
                       deps.say?.(`${WAITING} ${retrySentence(retry)}`);
+                  },
+                  onOwnerSetupCommitment: (commitment, registeredAtMs) => {
+                      handedOver.current = { commitment, registeredAtMs };
                   },
               });
     const linkedAtStart = dashboard === null || registration !== null;
@@ -369,6 +380,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         random: deps.random,
         clock: deps.clock,
         hasOwner: ownerSetUpNow,
+        ...(config.ownerHandoff ? { handoff: onboarding?.ownerHandoff ?? createInMemorySetupSecretStore() } : {}),
     });
     const passkeyStore = onboarding?.passkeys ?? createInMemoryPasskeyStore();
     const ceremonies = onboarding?.ceremonies ?? createSimpleWebAuthnCeremonies();
@@ -390,8 +402,17 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
             if (setUp && !ownerWasSetUp) heartbeat?.beatNow();
             ownerWasSetUp = setUp;
         },
+        onOwnerSetUp: (slot) => {
+            if (slot === 'owner-handoff') deps.say?.(HANDOFF_SETUP_LINE);
+        },
     });
     await passkeyGateway.restore();
+    await setupSecrets.loadHandoff();
+    if (handedOver.current !== null) {
+        const { commitment, registeredAtMs } = handedOver.current;
+        const accepted = await setupSecrets.acceptHandoff(commitment, registeredAtMs);
+        logger.info('owner-handoff.registration', { outcome: accepted });
+    }
     const joinGateway = createJoinGateway({
         engine: () => runtime.controller(),
         engineId: identity.engineId,
@@ -430,6 +451,8 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                       runtime.setHeartbeat(status);
                   },
                   teams: joinGateway,
+                  // Only once a browser can use the address, so the pairing tab never lands on a certificate error.
+                  ownerHandoff: () => setupSecrets.handoffLive() && addressGapsNow().length === 0,
               });
     const rateLimiter = deps.rateLimiter ?? createWindowRateLimiter({ clock: deps.clock });
     runtime.onReset(() => {
@@ -473,6 +496,8 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
               });
     let links: readonly RelayLink[] = [];
     let certificateNotAfter: string | null = null;
+    // The pairing tab opens the setup page itself; a second page racing it on the same desktop would only confuse.
+    mayOpenFirstLink = (): boolean => (deps.firstSetupLink?.mayOpen ?? false) && !setupSecrets.handoffLive();
     const addressGapsNow = (): AddressGap[] =>
         addressGaps({
             relaysReady: links.filter((link) => link.state().kind === 'ready').length,
@@ -592,6 +617,8 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         }
         if (stored === null) return { outcome: 'not-registered' };
         registration = stored;
+        // `connect` stored the pairing tab's slot next to the registration it just made.
+        await setupSecrets.loadHandoff();
         logger.info('registration.linked', { engineId: stored.engineId, relays: stored.relays.length });
         progress.linked(false);
         goOnline(stored);
@@ -646,7 +673,11 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         const say = deps.say ?? null;
         const first = deps.firstSetupLink;
         if (say === null || first === undefined) return;
-        const delivery = setupLinkDelivery({ terminal: true, ownerSetUp: ownerSetUpNow(), mayOpen: first.mayOpen });
+        const delivery = setupLinkDelivery({
+            terminal: true,
+            ownerSetUp: ownerSetUpNow(),
+            mayOpen: mayOpenFirstLink(),
+        });
         if (delivery === 'none') return;
         const answer = await operator.setupLink();
         if (answer.outcome === 'not-ready') {

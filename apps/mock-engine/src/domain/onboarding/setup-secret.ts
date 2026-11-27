@@ -1,4 +1,5 @@
-import { encodeBase64Url } from '@ptbk/protocol';
+import type { OwnerSetupCommitment } from '@ptbk/protocol';
+import { OWNER_HANDOFF_LIFETIME_MS, encodeBase64Url, ownerSetupCommitmentDigest } from '@ptbk/protocol';
 
 import type { Clock } from '../clock';
 import type { Random } from '../random';
@@ -53,15 +54,37 @@ export type IssuedSetupSecret =
  */
 export type SetupSecretCheck = 'valid' | 'invalid' | 'owner-exists';
 
+/** Which slot a setup secret matched: the engine's own link, or the pairing tab's handoff (ADR 0023). */
+export type SetupSlot = 'setup-link' | 'owner-handoff';
+
+export type SpentSetupSecret =
+    | { readonly kind: 'valid'; readonly slot: SetupSlot }
+    | { readonly kind: 'invalid' }
+    | { readonly kind: 'owner-exists' };
+
+export type HandoffAcceptance = 'accepted' | 'owner-exists' | 'off';
+
 export interface SetupSecrets {
     /** A fresh secret that replaces any earlier one, so an old copy of the link stops working. */
     issue(): Promise<IssuedSetupSecret>;
     /** Whether `candidate` would set up the owner now; spends nothing. */
     check(candidate: string): Promise<SetupSecretCheck>;
-    /** Checks and spends the secret in one step: of two setups racing with the same link, only one is `valid`. */
-    consume(candidate: string): Promise<SetupSecretCheck>;
-    /** Drops the stored secret, if any. */
+    /**
+     * Checks and spends the secret in one step: of two setups racing with the same link, only one is `valid`. A valid
+     * secret from either slot spends both, so the owner seat is claimed once.
+     */
+    consume(candidate: string): Promise<SpentSetupSecret>;
+    /** Drops both slots, for `owner --reset`: a reset must never revive the pairing tab's secret. */
     revoke(): Promise<void>;
+    /**
+     * Keeps the registration answer's commitment as the handoff slot for `OWNER_HANDOFF_LIFETIME_MS` from
+     * `registeredAtMs`; ignored with an owner or with handoff off.
+     */
+    acceptHandoff(commitment: OwnerSetupCommitment, registeredAtMs: number): Promise<HandoffAcceptance>;
+    /** Reads a slot another process (`connect`) stored; drops it if the engine already has an owner. */
+    loadHandoff(): Promise<void>;
+    /** Whether the handoff slot could set up the owner now; synchronous, for each heartbeat. */
+    handoffLive(): boolean;
 }
 
 export interface SetupSecretDeps {
@@ -70,6 +93,17 @@ export interface SetupSecretDeps {
     readonly clock: Clock;
     /** Read on every call: once the owner has a passkey, no secret works, stored or not. */
     readonly hasOwner: () => boolean;
+    /** The handoff slot's store; without it the handoff is off and every commitment is ignored. */
+    readonly handoff?: SetupSecretStore;
+}
+
+/** The slot a pairing tab's commitment becomes: the same hex SHA-256 the engine keeps of its own secret. */
+export function handoffSlot(commitment: OwnerSetupCommitment, registeredAtMs: number): StoredSetupSecret {
+    const digest = ownerSetupCommitmentDigest(commitment);
+    return {
+        sha256: Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join(''),
+        expiresAtMs: registeredAtMs + OWNER_HANDOFF_LIFETIME_MS,
+    };
 }
 
 async function sha256Hex(text: string): Promise<string> {
@@ -98,14 +132,26 @@ export function createSetupSecrets(deps: SetupSecretDeps): SetupSecrets {
         return result;
     };
 
-    async function verdict(candidate: string): Promise<SetupSecretCheck> {
-        if (deps.hasOwner()) return 'owner-exists';
-        const stored = await deps.store.load();
-        // Hashed even when nothing could match, so a malformed or absent secret takes the same work as a wrong one.
+    let handoff: StoredSetupSecret | null = null;
+    const live = (slot: StoredSetupSecret | null): slot is StoredSetupSecret =>
+        slot !== null && deps.clock.nowMs() < slot.expiresAtMs;
+
+    async function verdict(candidate: string): Promise<SpentSetupSecret> {
+        if (deps.hasOwner()) return { kind: 'owner-exists' };
+        const own = await deps.store.load();
+        // Hashed and compared with both slots even when nothing could match, so every miss takes the same work.
         const digest = await sha256Hex(candidate);
-        if (stored === null || !SETUP_SECRET_PATTERN.test(candidate)) return 'invalid';
-        if (deps.clock.nowMs() >= stored.expiresAtMs) return 'invalid';
-        return sameDigest(digest, stored.sha256) ? 'valid' : 'invalid';
+        const matchesOwn = live(own) && sameDigest(digest, own.sha256);
+        const matchesHandoff = live(handoff) && sameDigest(digest, handoff.sha256);
+        if (!SETUP_SECRET_PATTERN.test(candidate)) return { kind: 'invalid' };
+        if (matchesOwn) return { kind: 'valid', slot: 'setup-link' };
+        if (matchesHandoff) return { kind: 'valid', slot: 'owner-handoff' };
+        return { kind: 'invalid' };
+    }
+
+    async function dropHandoff(): Promise<void> {
+        handoff = null;
+        await deps.handoff?.clear();
     }
 
     return {
@@ -117,13 +163,38 @@ export function createSetupSecrets(deps: SetupSecretDeps): SetupSecrets {
                 await deps.store.save({ sha256: await sha256Hex(value), expiresAtMs });
                 return { kind: 'issued', secret: secret(value), expiresAtMs } as const;
             }),
-        check: (candidate) => serially(() => verdict(candidate)),
+        check: (candidate) => serially(async () => (await verdict(candidate)).kind),
         consume: (candidate) =>
             serially(async () => {
                 const result = await verdict(candidate);
-                if (result === 'valid') await deps.store.clear();
+                if (result.kind === 'valid') {
+                    await deps.store.clear();
+                    await dropHandoff();
+                }
                 return result;
             }),
-        revoke: () => serially(() => deps.store.clear()),
+        revoke: () =>
+            serially(async () => {
+                await deps.store.clear();
+                await dropHandoff();
+            }),
+        acceptHandoff: (commitment, registeredAtMs) =>
+            serially(async () => {
+                if (deps.handoff === undefined) return 'off';
+                if (deps.hasOwner()) return 'owner-exists';
+                handoff = handoffSlot(commitment, registeredAtMs);
+                await deps.handoff.save(handoff);
+                return 'accepted';
+            }),
+        loadHandoff: () =>
+            serially(async () => {
+                if (deps.handoff === undefined) return;
+                if (deps.hasOwner()) {
+                    await dropHandoff();
+                    return;
+                }
+                handoff = await deps.handoff.load();
+            }),
+        handoffLive: () => deps.handoff !== undefined && !deps.hasOwner() && live(handoff),
     };
 }

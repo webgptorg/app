@@ -1,4 +1,4 @@
-import type { EngineVersion, Hostname } from '@ptbk/protocol';
+import type { EngineVersion, Hostname, OwnerSetupCommitment } from '@ptbk/protocol';
 
 import type { Clock } from '../domain/clock';
 import type { DashboardApi } from '../domain/dashboard/dashboard-api';
@@ -43,6 +43,8 @@ export interface EstablishRegistrationDeps {
     readonly random: Random;
     readonly signal: AbortSignal;
     readonly onRetry?: (retry: RegistrationRetry) => void;
+    /** A fresh registration that carried the pairing tab's commitment (ADR 0023), with when it was registered. */
+    readonly onOwnerSetupCommitment?: (commitment: OwnerSetupCommitment, registeredAtMs: number) => void;
 }
 
 /** The registration, or why there is none, in words safe to print. */
@@ -103,5 +105,8 @@ export async function establishRegistration(deps: EstablishRegistrationDeps): Pr
         signal: deps.signal,
         ...(deps.onRetry === undefined ? {} : { onRetry: deps.onRetry }),
     });
+    if (outcome.kind === 'registered' && outcome.ownerSetupCommitment !== null) {
+        deps.onOwnerSetupCommitment?.(outcome.ownerSetupCommitment, deps.clock.nowMs());
+    }
     return registrationOf(outcome, deps.logger);
 }

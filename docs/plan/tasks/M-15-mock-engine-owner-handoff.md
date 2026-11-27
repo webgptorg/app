@@ -2,7 +2,7 @@
 
 - **Lane:** M · **Module:** `apps/mock-engine` · **Milestone:** M5
 - **Depends on:** C-20, M-10
-- **Status:** todo
+- **Status:** in progress (feat/m-15-mock-owner-handoff)
 - **Spec:** Pairing and identity; ADR [0023](../../adr/0023-owner-setup-handoff.md)
 
 ## Goal

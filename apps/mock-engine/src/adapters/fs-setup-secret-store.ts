@@ -7,6 +7,8 @@ import type { SetupSecretStore, StoredSetupSecret } from '../domain/onboarding/s
 import { currentUid, lstatOrNull, privacyProblem, replacePrivateFile, syncDirectory } from './private-files';
 
 export const SETUP_SECRET_FILE = 'setup-secret.json';
+/** The pairing tab's handoff slot (ADR 0023), kept apart so `setup-link` never touches it. */
+export const OWNER_HANDOFF_FILE = 'owner-handoff.json';
 
 const MAX_FILE_BYTES = 1024;
 
@@ -43,21 +45,20 @@ function parse(text: string): StoredSetupSecret | null {
  */
 export function createFsSetupSecretStore(
     dataDir: string,
-    options: { readonly uid?: number | null } = {},
+    options: { readonly uid?: number | null; readonly file?: string } = {},
 ): SetupSecretStore {
     const uid = options.uid === undefined ? currentUid() : options.uid;
-    const path = join(dataDir, SETUP_SECRET_FILE);
+    const file = options.file ?? SETUP_SECRET_FILE;
+    const path = join(dataDir, file);
     return {
         async load() {
             const stats = await lstatOrNull(path);
             if (stats === null) return null;
-            const problem = privacyProblem(stats, { label: SETUP_SECRET_FILE, path, kind: 'file' }, uid);
+            const problem = privacyProblem(stats, { label: file, path, kind: 'file' }, uid);
             if (problem !== null) throw new SetupSecretStoreError(problem);
-            if (stats.size > MAX_FILE_BYTES)
-                throw new SetupSecretStoreError(`${SETUP_SECRET_FILE} ${path} is too large`);
+            if (stats.size > MAX_FILE_BYTES) throw new SetupSecretStoreError(`${file} ${path} is too large`);
             const stored = parse(await readFile(path, 'utf8'));
-            if (stored === null)
-                throw new SetupSecretStoreError(`${SETUP_SECRET_FILE} ${path} is not a valid setup secret`);
+            if (stored === null) throw new SetupSecretStoreError(`${file} ${path} is not a valid setup secret`);
             return stored;
         },
         async save(secret) {

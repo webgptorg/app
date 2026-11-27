@@ -1,3 +1,5 @@
+import type { InMemoryAuditInput } from '@ptbk/engine-api/in-memory';
+import { newOwnerSetupSecret, ownerSetupCommitment } from '@ptbk/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { createFakeClock } from '../../testing/fake-clock';
@@ -6,18 +8,21 @@ import { createMemoryLogger } from '../../testing/memory-logger';
 import { createSeededRandom } from '../../testing/seeded-random';
 import { createTestRuntime } from '../../testing/test-runtime';
 import { hasOwner, membersWhoCanSignIn } from '../onboarding/owner';
+import type { SetupSlot } from '../onboarding/setup-secret';
 import { createInMemorySetupSecretStore, createSetupSecrets } from '../onboarding/setup-secret';
 import type { Challenges, RelyingParty } from './passkey-ceremonies';
 import { CHALLENGE_LIFETIME_MS, MAX_PENDING_CHALLENGES, createChallenges } from './passkey-ceremonies';
 import type { PasskeyStore } from './passkey-gateway';
-import { createInMemoryPasskeyStore, createPasskeyGateway } from './passkey-gateway';
+import { HANDOFF_AUDIT, createInMemoryPasskeyStore, createPasskeyGateway } from './passkey-gateway';
 import { createSessionStore } from './sessions';
 
 const HOSTNAME = 'abcdefghijklmnopqrstuvwxyz.engines.ptbk.test';
 const RP: RelyingParty = { id: HOSTNAME, origin: `https://${HOSTNAME}` };
 const CLIENT = { ip: '203.0.113.9', userAgent: 'test browser' };
 
-async function setup(options: { readonly passkeys?: PasskeyStore; readonly seeded?: boolean } = {}) {
+async function setup(
+    options: { readonly passkeys?: PasskeyStore; readonly seeded?: boolean; readonly handoff?: boolean } = {},
+) {
     const clock = createFakeClock(Date.parse('2026-10-26T10:00:00Z'));
     const runtime = await createTestRuntime({
         seed: 7,
@@ -36,12 +41,29 @@ async function setup(options: { readonly passkeys?: PasskeyStore; readonly seede
         random,
         clock,
         hasOwner: ownerSetUp,
+        ...(options.handoff === true ? { handoff: createInMemorySetupSecretStore() } : {}),
     });
+    const audits: InMemoryAuditInput[] = [];
+    const setUpVia: SetupSlot[] = [];
     const ceremonies = createFakeCeremonies();
     const passkeys = options.passkeys ?? createInMemoryPasskeyStore();
     let ownerChanges = 0;
     const gateway = createPasskeyGateway({
-        engine: () => runtime.controller(),
+        engine: () => {
+            const controller = runtime.controller();
+            return {
+                inspect: () => controller.inspect(),
+                addMember: (member) => controller.addMember(member),
+                addPasskey: (passkey) => controller.addPasskey(passkey),
+                removePasskey: (id) => controller.removePasskey(id),
+                removeSession: (id) => controller.removeSession(id),
+                recordPasskeyUse: (id, use) => controller.recordPasskeyUse(id, use),
+                recordAudit: (entry) => {
+                    audits.push(entry);
+                    controller.recordAudit(entry);
+                },
+            };
+        },
         sessions,
         secrets,
         passkeys,
@@ -53,6 +75,7 @@ async function setup(options: { readonly passkeys?: PasskeyStore; readonly seede
         onOwnerChanged: () => {
             ownerChanges++;
         },
+        onOwnerSetUp: (slot) => setUpVia.push(slot),
     });
     async function secret(): Promise<string> {
         const issued = await secrets.issue();
@@ -88,6 +111,8 @@ async function setup(options: { readonly passkeys?: PasskeyStore; readonly seede
         signIn,
         ownerSetUp,
         ownerChanges: () => ownerChanges,
+        audits,
+        setUpVia,
     };
 }
 
@@ -114,7 +139,38 @@ describe('setup', () => {
         expect(auth).toMatchObject({ kind: 'signed-in', actor: { memberId: owner?.id, stepUpFresh: true } });
         expect(snapshot.sessions.find(({ memberId }) => memberId === owner?.id)?.passkeyId).toBe(passkey?.id);
         expect(await world.passkeys.list()).toMatchObject([{ credentialId: 'credential-owner', memberId: owner?.id }]);
-        expect(world.logger.entries).toEqual([{ level: 'info', event: 'owner.passkey-registered', fields: {} }]);
+        expect(world.logger.entries).toEqual([
+            { level: 'info', event: 'owner.passkey-registered', fields: { via: 'setup-link' } },
+        ]);
+        expect(world.setUpVia).toEqual(['setup-link']);
+        expect(world.audits.find(({ action }) => action === 'passkey.register')).toMatchObject({
+            client: CLIENT,
+            details: null,
+        });
+    });
+
+    it('sets up the owner with the pairing tab’s secret, marks it in the audit log and spends both slots', async () => {
+        const world = await setup({ handoff: true });
+        const tab = newOwnerSetupSecret(createSeededRandom(5));
+        expect(await world.secrets.acceptHandoff(await ownerSetupCommitment(tab), world.clock.nowMs())).toBe(
+            'accepted',
+        );
+        const own = await world.secret();
+        expect((await world.becomeOwner(tab)).kind).toBe('owner');
+        expect(world.setUpVia).toEqual(['owner-handoff']);
+        expect(world.audits.find(({ action }) => action === 'passkey.register')).toMatchObject({
+            client: CLIENT,
+            details: HANDOFF_AUDIT,
+        });
+        expect(world.logger.entries).toContainEqual({
+            level: 'info',
+            event: 'owner.passkey-registered',
+            fields: { via: 'owner-handoff' },
+        });
+        expect((await world.gateway.setupOptions({ secret: tab, rp: RP })).kind).toBe('owner-exists');
+        await world.gateway.resetOwner();
+        expect((await world.gateway.setupOptions({ secret: own, rp: RP })).kind).toBe('invalid');
+        expect((await world.gateway.setupOptions({ secret: tab, rp: RP })).kind).toBe('invalid');
     });
 
     it('refuses a reused secret and a second owner, whatever the secret', async () => {
