@@ -67,11 +67,10 @@ describe('the notifications checks', () => {
     it.each([CHECKS.ownItems, CHECKS.seenLowers, CHECKS.projectWide])(
         'skip when the target cannot raise notifications: %s',
         async (id) => {
-            const withoutLever = (target: ConformanceTarget): ConformanceTarget => {
-                const rest: Partial<ConformanceTarget> = { ...target };
-                delete rest.notifications;
-                return rest as ConformanceTarget;
-            };
+            const withoutLever = (target: ConformanceTarget): ConformanceTarget =>
+                Object.fromEntries(
+                    Object.entries(target).filter(([key]) => key !== 'notifications'),
+                ) as unknown as ConformanceTarget;
             expect(await outcome(id, {}, withoutLever)).toMatchObject({ kind: 'skip' });
         },
     );
