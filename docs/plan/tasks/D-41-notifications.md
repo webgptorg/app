@@ -25,32 +25,53 @@ People hear about what needs them on app.ptbk.io and, when they are away, by ema
 
 One definition per kind, shared by the Worker (pipeline, email) and the SPA (bell, settings), so the two cannot disagree on ids, defaults or copy.
 
-- `id`, `source` (`platform` | `engine`), `scope` (`project` | `org`), `variants` (a closed enum per kind, may be empty).
+- `id`, `source` (`platform` | `engine`), `variants` (a closed enum per kind, may be empty). Whether a row is about a project or the organization is the producer's `engineId` (or `null`).
 - `defaults`: a channel per recipient role, `org-owner`, `org-admin`, `team-admin`, `member`. `team-admin` resolves to nobody until ADR 0026 lands.
-- `audience(event)`: who may hear it, as a closed descriptor the recipient directory resolves (`project-viewers`, `project-managers`, `org-managers`, `person`). Resolved when the event happens and **again at send time**.
+- `audience(event)`: who may hear it, as a closed descriptor the recipient directory resolves (`project-viewers`, `project-managers`, `org-managers`, `person`), and `reach` (`viewers`, `managers`, `managers-or-approved`), checked **again at send time**. The rules live once, in `domain/notifications/recipient-rules.ts`, for every adapter.
 - `reduce(openRow, event, now)`: how an event changes the person's one open row of this kind and project: keep, close, or put (count, variant, re-arm).
 - `timing`: email delay, whether the hourly cap applies, whether a seen row closes, how long an untouched row lives.
 - `copy`: the in-app line, the email subject and paragraph, the link (`dashboard` path, or the project's `/` or `/members`), the settings label. Every value it may read is dashboard-owned.
 
-Engine kinds have no `audience` or `reduce`: their rows are set from the heartbeat's counts (`syncEngineAttention`), with the mapping below.
+Engine kinds have no `audience` or `reduce`: their rows are set from the heartbeat's counts (`syncAttention`), with the mapping below. Their ids are typed against the protocol's `AttentionKind`, so a kind the protocol adds without a definition here fails to compile.
+
+The interface (`src/shared/notifications/notification-kind.ts`):
+
+```ts
+interface KindBase<K extends string, V extends string> {
+  readonly id: K;
+  readonly reach: Reach; // 'viewers' | 'managers' | 'managers-or-approved', checked at send time
+  readonly variants: readonly V[];
+  readonly defaults: Readonly<Record<RecipientRole, NotificationChannel>>; // 'off' | 'in-app' | 'email'
+  readonly timing: NotificationTiming<V>; // emailDelayMs, hourlyCap, closesWhenSeen(variant), lifetimeMs
+  readonly copy: NotificationCopy<V>; // label, line, subject, detail?, link
+}
+interface PlatformKind<K extends string, E, V extends string> extends KindBase<K, V> {
+  readonly source: 'platform';
+  audience(event: E): Audience;
+  reduce(row: OpenNotification<V> | null, event: E, now: number): NotificationChange<V>; // keep | close | put
+}
+interface EngineKind<K extends string> extends KindBase<K, never> {
+  readonly source: 'engine';
+}
+```
 
 **Adding a kind** = one definition file, its entry in `NOTIFICATION_KINDS`, its messages in `messages/{en,cs}.json`, a test; the producer calls `notifications.notify(kind, { orgId, engineId }, event)`. Nothing in the pipeline, store, email or UI changes.
 
-- **Project removed** (ADR 0028's lane): a `project-removed` definition with audience `project-viewers` captured before removal, defaults from ADR 0027's table, `closesWhenSeen`; the removal flow calls `notify` before it deletes the engine's team.
-- **Team admins** (ADR 0026's lane): the D1 recipient directory reports `team-admin` for people with that team role; every kind already declares its `team-admin` default.
-- **Plan limit reached** (D-40, PR #388): a `plan-limit` definition with the meter as its variant, audience `org-managers` plus the person whose link it blocked; `checkMeterLimit` calls `notify` when a meter reaches its quota.
+- **Project removed** (ADR 0028's lane): `kinds/project-removed.ts` with `reach: 'viewers'`, audience `project-viewers`, ADR 0027's defaults (owner, admin and team admin email; member in-app), `closesWhenSeen: () => true`, a `dashboard` `/` link (the project is gone, so never its hostname). The removal flow calls `notify('project-removed', { orgId, engineId }, { kind: 'removed' })` before it deletes the engine's team, since the audience is resolved from it. Then close the project's other rows: a `close` change from each kind is enough, or one `closeForEngine` store method if that lane prefers.
+- **Team admins** (ADR 0026's lane): `directoryPeople` in `recipient-rules.ts` maps a team-admin member to `role: 'team-admin'` and `manager` when their access is approved; every kind already declares its `team-admin` default, and nothing else changes.
+- **Plan limit reached** (D-40, PR #388): `kinds/plan-limit.ts` with the meter as its variant (`projects`, `agents`, `members`), audience `org-managers` (organization level, `engineId: null`; the person whose link it blocked as a second `notify` with `person`), defaults owner email, admin in-app, team admin in-app, `closesWhenSeen: () => false`, closed by an `under-limit` event; `checkMeterLimit` calls `notify` when a meter reaches its quota.
 
 ### Kinds in this task
 
-| Kind             | Source   | Variants                           | Producer                                                                   |
-| ---------------- | -------- | ---------------------------------- | -------------------------------------------------------------------------- |
-| `project-status` | platform | `online`, `offline`, `back-online` | The status Durable Object: first heartbeat, offline threshold, back online |
-| `update-waiting` | platform | (none)                             | The status Durable Object, when `update` turns `available` and back        |
-| `join-request`   | platform | (none)                             | Heartbeat v2: new tickets awaiting approval, and their acks                |
-| `people-change`  | platform | `joined`, `role`, `added`          | Accepting an invitation, changing a role, adding someone to a team         |
-| `agent-waiting`  | engine   | (none)                             | `attention` (C-21)                                                         |
-| `task-failed`    | engine   | (none)                             | `attention` (C-21)                                                         |
-| `tool-sign-in`   | engine   | (none)                             | `attention` (C-21)                                                         |
+| Kind             | Source   | Variants                           | Producer                                                                                    |
+| ---------------- | -------- | ---------------------------------- | ------------------------------------------------------------------------------------------- |
+| `project-status` | platform | `online`, `offline`, `back-online` | The status Durable Object: first heartbeat (setup reminder), offline threshold, back online |
+| `update-waiting` | platform | (none)                             | The status Durable Object, when `update` turns `available` and back                         |
+| `join-request`   | platform | (none)                             | Heartbeat v2: new tickets awaiting approval, and their acks                                 |
+| `people-change`  | platform | `joined`, `role`, `added`          | Accepting an invitation, changing a role, adding someone to a team                          |
+| `agent-waiting`  | engine   | (none)                             | `attention` (C-21)                                                                          |
+| `task-failed`    | engine   | (none)                             | `attention` (C-21)                                                                          |
+| `tool-sign-in`   | engine   | (none)                             | `attention` (C-21)                                                                          |
 
 - Today's status emails (offline, online, back online) move onto `project-status`: the offline threshold is the delay, so its email goes on the next delivery run; back online re-arms the row only for people the offline email reached, and closes it for everyone else.
 - The access-waiting email moves onto `join-request` and keeps naming the requesters, which the dashboard owns (its own tickets), read at send time. "You're in", invitations, sign-up and recovery stay outside and cannot be turned off.
@@ -60,9 +81,9 @@ Engine kinds have no `audience` or `reduce`: their rows are set from the heartbe
 
 - An entry with `to` reaches that user only if they are in the team holding the project with `access = approved` (which only an `approved` ticket ack sets). Otherwise it is dropped without a trace.
 - An entry without `to` reaches the project's managers: the person who linked it, and owners, admins and team admins in its team with approved access. Never members.
-- A person's rows are the sum per kind; a kind missing from the latest `attention` closes their row. The status object compares each heartbeat's `attention` with the last and calls the pipeline only on a change.
+- A person's rows are the sum per kind; a kind missing from the latest `attention` closes their row. The status object keeps a SHA-256 digest of the last `attention` the pipeline took (never the counts) and calls it only on a change. Absent (`attention` switched off, C-21) reads like `[]`: the engine's rows close and its notifications stay inside the engine.
 
-### Storage (migration `0019_notifications`)
+### Storage (migration `0019_notifications`, `0018` until #388 lands)
 
 - `notifications`: ADR 0027's columns plus `variant` (closed per kind) and `due_at` (when its email is due; null when nobody owes one). One open row per `(user_id, org_id, engine_id, kind)`; `engine_id` is null for organization-level kinds.
 - `notification_preferences (user_id, org_id, kind, channel)`: overrides only; choosing the role default deletes the override.
@@ -89,9 +110,21 @@ Both actions are org-scoped for every role and read and write only the session u
 
 ## Scope and PRs
 
-1. Registry, tables, store (D1 and memory, one contract suite), pipeline, delivery job, email template and unsubscribe, platform kinds wired.
-2. Bell, org-switcher dot, preferences in Account, unsubscribe page.
-3. Engine kinds: `attention` diffing in the status object and ingestion, after C-21 merges.
+1. Registry, tables, store (D1 and memory, one contract suite), pipeline, delivery job, email template and unsubscribe, platform kinds wired (#393).
+2. Bell, org-switcher dot, preferences in Account, unsubscribe page (stacked on 1).
+3. Engine kinds: `attention` diffing in the status object and ingestion (stacked on 1 and C-21, #392).
+
+## Where this differs from ADR 0027, and why
+
+- **Two more columns:** `variant` (a closed enum per kind, so `project-status` is one preference with three moments) and `due_at` (when an email is owed, so the 5-minute job reads only those rows and an in-app-only row is never re-read).
+- **One email template** (`notifications`), not `attention` and `notice`: emails merge per person and project, so one message can hold both platform and engine kinds.
+- **Back online** emails only people who got the offline email (as today), and is exempt from the hourly cap with the other status emails. A re-armed row that was already emailed starts a fresh row, so the cap still sees the earlier email.
+- **First online** ("finish setup") moved onto `project-status` too, with no delay, as today.
+- **Join requests** go to the project's managers (the ADR's "mapping" managers), and name the waiting people the dashboard sent there, read at send time from its own tickets. They now wait 15 minutes unseen, as the ADR's table says.
+- **Seen in the bell** holds back email for platform kinds only; for engine kinds the engine's count is already "unseen in the engine UI", so the email still goes unless the count drops.
+- **Unsubscribe key** is derived from `RATE_LIMIT_HMAC_KEY` (HKDF, own info string), so no secret is added; rotating that key ends old unsubscribe links.
+- **Delivery time** is the Cron Trigger's scheduled time, which lets e2e run it as of 16 minutes later through the dev server's trigger endpoint.
+- Not in this release, as decided: the daily summary, time zones, organization defaults.
 
 ## Out of scope
 
