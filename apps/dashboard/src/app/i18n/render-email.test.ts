@@ -21,40 +21,6 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
         signInLink: 'https://app.ptbk.test/continue',
     },
     {
-        template: 'engine-offline',
-        to: 'a@example.test',
-        label: 'Production',
-        engineId: 'abcdefghijklmnopqrstuvwxyz',
-        hostname: 'abcdefghijklmnopqrstuvwxyz.engines.ptbk.test',
-        lastSeenAt: RECOVERED_AT,
-        link: 'https://app.ptbk.test/engines/abcdefghijklmnopqrstuvwxyz',
-    },
-    {
-        template: 'engine-online',
-        to: 'a@example.test',
-        label: 'abcdefgh…',
-        engineId: 'abcdefghijklmnopqrstuvwxyz',
-        hostname: 'abcdefghijklmnopqrstuvwxyz.engines.ptbk.test',
-        link: 'https://app.ptbk.test/engines/abcdefghijklmnopqrstuvwxyz',
-    },
-    {
-        template: 'engine-back-online',
-        to: 'a@example.test',
-        label: 'Kancelář Brno',
-        engineId: 'abcdefghijklmnopqrstuvwxyz',
-        hostname: 'abcdefghijklmnopqrstuvwxyz.engines.ptbk.test',
-        lastSeenAt: RECOVERED_AT,
-        backOnlineAt: RECOVERED_AT + (2 * 24 + 3) * 3600_000 + 59 * 60_000,
-        link: 'https://app.ptbk.test/engines/abcdefghijklmnopqrstuvwxyz',
-    },
-    {
-        template: 'access-waiting',
-        to: 'a@example.test',
-        requesterEmail: 'jana@example.test',
-        teamName: 'Kancelář Brno',
-        link: 'https://abcdefghijklmnopqrstuvwxyz.engines.ptbk.test/members',
-    },
-    {
         template: 'access-granted',
         to: 'jana@example.test',
         teamName: 'Kancelář Brno',
@@ -68,10 +34,7 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
         link: 'https://app.ptbk.test/recover?via=invite#tok',
     },
 ] as EmailMessage[];
-const ONLINE = MESSAGES[5] as Extract<EmailMessage, { template: 'engine-online' }>;
-const BACK_ONLINE = MESSAGES[6] as Extract<EmailMessage, { template: 'engine-back-online' }>;
-const WAITING = MESSAGES[7] as Extract<EmailMessage, { template: 'access-waiting' }>;
-const GRANTED = MESSAGES[8] as Extract<EmailMessage, { template: 'access-granted' }>;
+const GRANTED = MESSAGES[4] as Extract<EmailMessage, { template: 'access-granted' }>;
 
 describe('renderEmail', () => {
     it.each(
@@ -167,83 +130,6 @@ describe('renderEmail', () => {
         expect(text).toContain(until);
         expect(text).not.toContain('(UTC)');
     });
-
-    it.each([
-        ['en', 'Your project Production is offline'],
-        ['cs', 'Váš projekt Production je offline'],
-    ] as const)(
-        'names the engine by its label, then its address and when it was last seen in %s',
-        (locale, subject) => {
-            const { subject: rendered, text } = renderEmail({ ...MESSAGES[4], locale } as EmailMessage);
-            expect(rendered).toBe(subject);
-            expect(text).toContain('Production\n');
-            expect(text).toContain('abcdefghijklmnopqrstuvwxyz.engines.ptbk.test');
-            expect(text).toContain('abcdefghijklmnopqrstuvwxyz\n');
-            expect(text.replace(/\s/g, ' ')).toContain(
-                locale === 'en' ? 'October 19, 2026 at 2:30 PM UTC' : '19. října 2026 v 14:30 UTC',
-            );
-        },
-    );
-
-    it.each([
-        ['en', 'Your project abcdefgh… is online', "setup link in the project's terminal"],
-        ['cs', 'Váš projekt abcdefgh… je online', 'v terminálu projektu'],
-    ] as const)(
-        'sends the first-online email in %s pointing to the terminal, never with a setup link',
-        (locale, subject, where) => {
-            const { subject: rendered, text } = renderEmail({ ...ONLINE, locale });
-            expect(rendered).toBe(subject);
-            expect(text).toContain(where);
-            expect(text).toContain('abcdefghijklmnopqrstuvwxyz\n');
-            expect(text.match(/https:\/\/\S+/g)).toEqual([ONLINE.link]);
-        },
-    );
-
-    it.each([
-        [
-            'en',
-            'is back online',
-            'October 19, 2026 at 2:30 PM UTC',
-            'October 21, 2026 at 6:29 PM UTC',
-            '2 days, 3 hours',
-        ],
-        ['cs', 'je zase online', '19. října 2026 v 14:30 UTC', '21. října 2026 v 18:29 UTC', '2 dny a 3 hodiny'],
-    ] as const)(
-        'says in %s since when the engine is back and how long it was offline',
-        (locale, subject, from, back, duration) => {
-            const { subject: rendered, text: raw } = renderEmail({ ...BACK_ONLINE, locale });
-            // ICU puts no-break spaces into some units and times.
-            const text = raw.replace(/\s/g, ' ');
-            expect(rendered).toContain(subject);
-            expect(rendered).toContain(BACK_ONLINE.label);
-            expect(text).toContain(BACK_ONLINE.hostname);
-            expect(text).toContain(from);
-            expect(text).toContain(back);
-            expect(text).toContain(duration);
-        },
-    );
-
-    it.each([
-        [3 * 60_000, '3 minutes'],
-        [30_000, '1 minute'],
-        [3600_000, '1 hour'],
-        [(5 * 60 + 7) * 60_000, '5 hours, 7 minutes'],
-        [2 * 24 * 3600_000 + 59 * 60_000, '2 days'],
-    ])('rounds an outage of %i ms down to "%s"', (offlineMs, duration) => {
-        const { text } = renderEmail({ ...BACK_ONLINE, locale: 'en', backOnlineAt: RECOVERED_AT + offlineMs });
-        expect(text.replace(/\s/g, ' ')).toContain(`offline for ${duration}.`);
-    });
-
-    it.each(['en', 'cs'] as const)(
-        'asks approvers in for the engine itself: who waits, where, and the code to ask for (%s)',
-        (locale) => {
-            const { subject, text } = renderEmail({ ...WAITING, locale });
-            expect(subject).toContain('jana@example.test');
-            expect(subject).toContain('Kancelář Brno');
-            expect(text).toContain('https://abcdefghijklmnopqrstuvwxyz.engines.ptbk.test/members');
-            expect(text).not.toContain('app.ptbk.test');
-        },
-    );
 
     it('tells the person they are in, with the engine’s own address', () => {
         expect(renderEmail({ ...GRANTED, locale: 'en' }).subject).toBe("You're in: open Kancelář Brno");

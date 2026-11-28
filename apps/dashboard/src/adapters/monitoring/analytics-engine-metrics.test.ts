@@ -9,7 +9,7 @@ const EVERY_METRIC: readonly DashboardMetric[] = [
     { name: 'ptbk_dashboard_heartbeats_total', outcome: 'stale-ts' },
     { name: 'ptbk_dashboard_registrations_total', outcome: 'registered' },
     { name: 'ptbk_dashboard_alarms_total', object: 'engine-status' },
-    { name: 'ptbk_dashboard_emails_total', template: 'engine-offline', outcome: 'failed' },
+    { name: 'ptbk_dashboard_emails_total', template: 'notifications', outcome: 'failed' },
     { name: 'ptbk_dashboard_cron_runs_total', job: 'relay-monitor', outcome: 'ok', durationMs: 120 },
     { name: 'ptbk_monitor_relay_checks_total', relay: 'relay-a', outcome: 'timeout' },
     { name: 'ptbk_monitor_relay_health', relay: 'relay-a', values: [1, 2, 3] },

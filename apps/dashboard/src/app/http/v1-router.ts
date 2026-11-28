@@ -15,8 +15,7 @@ import { z } from 'zod';
 import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
 import { registerEngine } from '../../domain/registration/register-engine';
 import { ingestHeartbeat } from '../../domain/status/ingest-heartbeat';
-import type { EmailMessage } from '../../domain/ports/email-sender';
-import { handleHeartbeatV2 } from '../../domain/teams/member-access';
+import { handleHeartbeatV2, type HeartbeatV2Result } from '../../domain/teams/member-access';
 import { memberAccessDeps } from './team-routes';
 import { defineRoute, NO_CONTENT, NO_INPUT, RAW_BODY } from '../../shared/api/contract';
 import { environmentSchema } from '../../shared/environment';
@@ -105,6 +104,7 @@ export function createV1Router(
         | 'heartbeatEngines'
         | 'engineStatus'
         | 'usage'
+        | 'notifications'
     > & {
         readonly policy: EngineCreationPolicy;
         readonly routes: RouteBinder;
@@ -197,12 +197,16 @@ export function createV1Router(
 const EMAIL_TIMEOUT_MS = 30_000;
 
 async function sendAccessEmails(
-    deps: Pick<DashboardDeps, 'email' | 'logger'>,
-    deliver: (send: (message: EmailMessage) => Promise<void>) => Promise<void>,
+    deps: Pick<DashboardDeps, 'email' | 'logger' | 'notifications'>,
+    deliver: HeartbeatV2Result['deliver'],
 ): Promise<void> {
     const signal = AbortSignal.timeout(EMAIL_TIMEOUT_MS);
     try {
-        await deliver((message) => deps.email.send(message, signal));
+        await deliver({
+            send: (message) => deps.email.send(message, signal),
+            notifications: deps.notifications,
+            signal,
+        });
     } catch (error) {
         deps.logger.error('heartbeat.access-email-failed', { error: error instanceof Error ? error.name : 'unknown' });
     }

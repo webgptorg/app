@@ -182,16 +182,8 @@
   "dev_mailbox_to": "To {to}",
   "email_access_granted_body": "Hi,\n\nGood news: you can now use {engine}. Someone on the project approved you.\n\nOpen it here and sign in with the passkey you created for it:\n\n{link}\n\nTip: bookmark it. The project has its own address, {hostname}, and you can always open it from the dashboard too.",
   "email_access_granted_subject": "You're in: open {engine}",
-  "email_access_waiting_body": "Hi,\n\nA colleague is waiting for access to {engine}: {requester}.\n\nTo let them in:\n\n1. Open the project's Members page:\n   {link}\n2. Ask {requester} for the 6-digit code on their screen.\n3. Find their request, type in the code and approve it.\n\nOnly someone already on the project can approve. If you don't recognise this request, decline it there.",
-  "email_access_waiting_subject": "{requester} is waiting for access to {engine}",
   "email_account_exists_body": "Hi,\n\nSomeone, probably you, wanted to sign in to Promptbook with this address. You already have an account.\n\nSign in with your passkey. If it is on another device, such as your phone, your browser can use it from there:\n\n{signInLink}\n\nLost your device? Recover access by email:\n\n{recoveryLink}\n\nIf this wasn't you, ignore this email. Nothing changes without your passkey.",
   "email_account_exists_subject": "Sign in to Promptbook",
-  "email_engine_back_online_body": "Hi,\n\nYour Promptbook project is back online. It was offline for {duration}.\n\nProject: {label}\nAddress: {hostname}\nProject ID: {engineId}\nLast heard from: {lastSeenAt}\nBack online: {backOnlineAt}\n\nIts status is on the project page:\n\n{link}",
-  "email_engine_back_online_subject": "Your project {label} is back online",
-  "email_engine_offline_body": "Hi,\n\nWe have not heard from your Promptbook project since {lastSeenAt}.\n\nProject: {label}\nAddress: {hostname}\nProject ID: {engineId}\n\nCheck that its server is running and connected to the internet. Its status is on the project page:\n\n{link}\n\nWe send this once per outage and let you know when the project is back online.",
-  "email_engine_offline_subject": "Your project {label} is offline",
-  "email_engine_online_body": "Hi,\n\nYour Promptbook project is online.\n\nProject: {label}\nAddress: {hostname}\nProject ID: {engineId}\n\nTo finish setup, open the setup link in the project's terminal. It makes you the project's owner.\n\nThe project page:\n\n{link}",
-  "email_engine_online_subject": "Your project {label} is online",
   "email_invalid": "Enter an email address like name@example.com.",
   "email_label": "Email",
   "email_invite_passkey_body": "Hi,\n\nOpen this link on the device you want to use, add a passkey, and you can join {org}. The link works once and expires in 15 minutes:\n\n{link}\n\nFor your safety, this signs out your other devices, and for 72 hours nobody can remove projects or change billing ownership on this account.\n\nIf you did not ask for this, you can ignore this email. Nothing changes.",
@@ -905,5 +897,110 @@
   "engines_new_license_missing_title": "No license covers a new project",
   "engines_new_license_limit_title": "Your license covers no more projects",
   "engines_new_license_body": "Add one on ptbk.io. The projects you have keep running.",
-  "invite_license_limit": "Your license doesn’t cover more people. Everyone already here keeps access."
+  "invite_license_limit": "Your license doesn’t cover more people. Everyone already here keeps access.",
+  "notification_org_unnamed": "your organization",
+  "notification_project_status_label": "Project offline and back online",
+  "notification_project_offline_line": "{project} is offline since {since}",
+  "notification_project_offline_subject": "Your project {project} is offline",
+  "notification_project_offline_detail": "We have not heard from it since {since}. Check that its server is running and connected to the internet. We let you know when it is back online.",
+  "notification_project_back_online_line": "{project} is back online",
+  "notification_project_back_online_subject": "Your project {project} is back online",
+  "notification_project_back_online_detail": "It was offline for {duration}, from {since} to {back}.",
+  "notification_project_online_line": "{project} is online: finish setup on its terminal",
+  "notification_project_online_subject": "Your project {project} is online",
+  "notification_project_online_detail": "To finish setup, open the setup link in the project's terminal. It makes you the project's owner. We cannot send that link: only the project can make you its owner.",
+  "notification_update_waiting_label": "Update waiting",
+  "notification_update_waiting_line": "An update is waiting in {project}",
+  "notification_update_waiting_subject": "An update is waiting for {project}",
+  "notification_join_request_label": "Someone waits to join a project",
+  "notification_join_request_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Someone is waiting to join {project}",
+        "countPlural=other": "{count} people are waiting to join {project}"
+      }
+    }
+  ],
+  "notification_join_request_subject": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Someone is waiting for access to {project}",
+        "countPlural=other": "{count} people are waiting for access to {project}"
+      }
+    }
+  ],
+  "notification_join_request_detail": "Waiting: {requesters}.\n\nTo let them in, open the project's Members page, ask them for the 6-digit code on their screen, type it in and approve. Only someone already on the project can approve. If you don't recognise a request, decline it there.",
+  "notification_join_request_detail_unnamed": "To let them in, open the project's Members page, ask them for the 6-digit code on their screen, type it in and approve. If you don't recognise a request, decline it there.",
+  "notification_people_change_label": "People and roles",
+  "notification_people_joined_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Someone new joined {org}",
+        "countPlural=other": "{count} people joined {org}"
+      }
+    }
+  ],
+  "notification_people_role_line": "Your role in {org} changed",
+  "notification_people_added_line": "You can now open {project}",
+  "notification_people_changes_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "A change to people in {org}",
+        "countPlural=other": "{count} changes to people in {org}"
+      }
+    }
+  ],
+  "notification_agent_waiting_label": "An agent is waiting for you",
+  "notification_agent_waiting_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "An agent is waiting for you in {project}",
+        "countPlural=other": "{count} agents are waiting for you in {project}"
+      }
+    }
+  ],
+  "notification_task_failed_label": "A task you started failed",
+  "notification_task_failed_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "A task failed in {project}",
+        "countPlural=other": "{count} tasks failed in {project}"
+      }
+    }
+  ],
+  "notification_tool_sign_in_label": "An AI tool needs signing in again",
+  "notification_tool_sign_in_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "An AI tool needs signing in again in {project}",
+        "countPlural=other": "{count} AI tools need signing in again in {project}"
+      }
+    }
+  ],
+  "notification_things_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "1 thing needs you in {place}",
+        "countPlural=other": "{count} things need you in {place}"
+      }
+    }
+  ],
+  "notification_email_open": "Open it here: {link}",
+  "notification_email_footer": "This mailbox isn't read. Manage your notifications: {settings}\n\nTurn these emails off: {unsubscribe}"
 }

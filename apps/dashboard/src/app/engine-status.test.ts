@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../testing/billing-fixtures';
+import { TEST_PLANS } from '../testing/billing-fixtures';
 import { TEST_INSTALL_VARS } from '../testing/install-fixtures';
 import { createMemoryEngineStatusStorage } from '../testing/memory-engine-status';
 import { ConfigError, DEV_RATE_LIMIT_HMAC_KEY } from './config';
@@ -44,17 +44,8 @@ describe('createEngineStatus', () => {
         ]);
     });
 
-    it('refuses a configuration the Worker would refuse, and a missing email binding', () => {
+    it('refuses a configuration the Worker would refuse', () => {
         const storage = createMemoryEngineStatusStorage();
         expect(() => createEngineStatus(env({ ENVIRONMENT: 'qa' }), storage, createDevAdapters())).toThrow(ConfigError);
-        const noEmail = env({
-            ENVIRONMENT: 'staging',
-            DASHBOARD_ORIGIN: 'https://app.staging.ptbk.test',
-            ADAPTERS: { email: 'cloudflare', billing: 'stripe', rateLimit: 'workers' },
-            RATE_LIMIT_HMAC_KEY: 'c3RhZ2luZy1zZWNyZXQta2V5LWZvci1yYXRlLWxpbWl0cy0zMmI',
-            STRIPE_SECRET_KEY: syntheticStripeKey(),
-            STRIPE_WEBHOOK_SECRET: syntheticWebhookSecret(),
-        });
-        expect(() => createEngineStatus(noEmail, storage, createDevAdapters())).toThrow(/email binding/);
     });
 });

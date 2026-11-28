@@ -338,6 +338,7 @@ export function createMemoryTeamStore(deps: {
             ) {
                 return Promise.resolve(null);
             }
+            const noticed = ticket.outcome === null && ticket.noticedAt !== null;
             ticket.outcome = outcome;
             const index = state.members.findIndex((m) => m.teamId === ticket.teamId && m.userId === ticket.userId);
             const member = state.members[index];
@@ -355,6 +356,7 @@ export function createMemoryTeamStore(deps: {
                 teamId: team.id,
                 teamName: team.name,
                 userId: ticket.userId,
+                noticed,
                 email: user.email,
                 locale: user.locale,
             });

@@ -1,22 +1,15 @@
-import {
-    ed25519PublicKeyToBytes,
-    Timestamp,
-    verifyHeartbeat,
-    type EngineId,
-    type HeartbeatVerification,
-} from '@ptbk/protocol';
+import { ed25519PublicKeyToBytes, Timestamp, verifyHeartbeat, type HeartbeatVerification } from '@ptbk/protocol';
 
-import { engineLabel } from '../../shared/engine-label';
+import type { ProjectStatusEvent } from '../../shared/notifications/kinds/project-status';
+import type { Notifications } from '../notifications/notifications';
 import type { Clock } from '../ports/clock';
-import type { EmailMessage, EmailSender } from '../ports/email-sender';
 import type { Logger } from '../ports/logger';
 import type { EngineActivity } from '../usage/engine-activity';
 import { heartbeatMilestones } from '../usage/engine-milestones';
 import type { UsageRecorder } from '../usage/usage-recorder';
-import type { AlertRecipients } from './alert-recipients';
 import type { RecordHeartbeatInput } from './engine-status-directory';
 import type { EngineStatusStorage } from './engine-status-storage';
-import type { HeartbeatEngine, HeartbeatEngineReader } from './heartbeat-engine-reader';
+import type { HeartbeatEngineReader } from './heartbeat-engine-reader';
 import {
     acceptHeartbeat,
     afterAlertAttempt,
@@ -26,10 +19,10 @@ import {
     onAlarm,
     snapshotOf,
     type AlertAttempt,
-    type AlertRecipient,
     type EngineStatusSnapshot,
     type HeartbeatTiming,
     type OwedNotice,
+    type StoredEngineStatus,
     type TrackedEngineStatus,
     withHeartbeatsSince,
 } from './engine-status';
@@ -44,11 +37,8 @@ export interface EngineStatusServiceDeps {
     readonly timing: HeartbeatTiming;
     /** Read before every send, so an engine revoked or suspended since its last heartbeat is told about to nobody. */
     readonly heartbeatEngines: HeartbeatEngineReader;
-    readonly recipients: AlertRecipients;
-    readonly email: EmailSender;
-    readonly engineHostname: (engineId: EngineId) => string;
-    /** The engine's page in the dashboard. */
-    readonly engineLink: (engineId: EngineId) => string;
+    /** Offline, online, back online and update waiting go to people through the notification pipeline (D-41). */
+    readonly notifications: Pick<Notifications, 'notify'>;
     /** The first heartbeat and setup completion; written only on those, never per heartbeat. */
     readonly usage: UsageRecorder;
 }
@@ -68,69 +58,60 @@ export interface EngineStatusService {
 
 export function createEngineStatusService(deps: EngineStatusServiceDeps): EngineStatusService {
     /**
-     * One email to each recipient, the ones owed from a failed attempt or else everyone the organization alerts; none
-     * once the engine is no longer active.
+     * Hands the status change to the notification pipeline, which merges, delays and emails it (ADR 0027); nothing once
+     * the engine is no longer active. A failure is retried on the outage's own schedule.
      */
-    async function deliver(
-        status: TrackedEngineStatus,
-        owed: readonly AlertRecipient[] | null,
-        compose: (recipient: AlertRecipient, engine: HeartbeatEngine) => EmailMessage,
-    ): Promise<AlertAttempt> {
-        let recipients: readonly AlertRecipient[];
-        let engine: HeartbeatEngine | null;
+    async function deliver(status: TrackedEngineStatus, event: ProjectStatusEvent): Promise<AlertAttempt> {
         try {
-            engine = await deps.heartbeatEngines.findEngine(status.engineId);
+            const engine = await deps.heartbeatEngines.findEngine(status.engineId);
             if (engine?.status !== 'active') {
                 return { kind: 'engine-inactive' };
             }
-            recipients =
-                owed ??
-                (await deps.recipients.forEngineStatus(
-                    status.orgId,
-                    status.engineId,
-                    AbortSignal.timeout(SEND_TIMEOUT_MS),
-                ));
+            await deps.notifications.notify(
+                'project-status',
+                { orgId: status.orgId, engineId: status.engineId },
+                event,
+                AbortSignal.timeout(SEND_TIMEOUT_MS),
+            );
+            return { kind: 'delivered' };
         } catch {
             return { kind: 'unresolved' };
         }
-        const failed: AlertRecipient[] = [];
-        for (const recipient of recipients) {
-            try {
-                await deps.email.send(compose(recipient, engine), AbortSignal.timeout(SEND_TIMEOUT_MS));
-            } catch {
-                failed.push(recipient);
-            }
-        }
-        return failed.length === 0 ? { kind: 'delivered' } : { kind: 'partly-failed', failed };
     }
 
-    function engineFields(status: TrackedEngineStatus, recipient: AlertRecipient, engine: HeartbeatEngine) {
-        return {
-            to: recipient.email,
-            locale: recipient.locale,
-            label: engineLabel({ engineId: status.engineId, label: engine.label }),
-            engineId: status.engineId,
-            hostname: deps.engineHostname(status.engineId),
-            link: deps.engineLink(status.engineId),
-        };
-    }
-
-    function noticeMessage(
-        status: TrackedEngineStatus & { readonly notice: OwedNotice },
-        recipient: AlertRecipient,
-        engine: HeartbeatEngine,
-    ): EmailMessage {
-        const { notice } = status;
+    function noticeEvent(notice: OwedNotice): ProjectStatusEvent {
         switch (notice.kind) {
             case 'online':
-                return { template: 'engine-online', ...engineFields(status, recipient, engine) };
+                return { kind: 'online', at: notice.dueAt };
             case 'back-online':
-                return {
-                    template: 'engine-back-online',
-                    ...engineFields(status, recipient, engine),
-                    lastSeenAt: notice.lastSeenAt,
-                    backOnlineAt: notice.backOnlineAt,
-                };
+                return { kind: 'back-online' };
+        }
+    }
+
+    /**
+     * Whether an update waits for someone now, told to the pipeline only when that changes. A failed call keeps the old
+     * value, so the next heartbeat tries again; nothing is written to D1 while it stays the same (ADR 0022).
+     */
+    async function updateNotice(
+        stored: StoredEngineStatus | null,
+        status: TrackedEngineStatus,
+    ): Promise<TrackedEngineStatus> {
+        const waiting = status.payload.update === 'available';
+        const told = stored?.kind === 'tracked' ? (stored.updateWaiting ?? false) : false;
+        if (waiting === told) {
+            return { ...status, updateWaiting: told };
+        }
+        try {
+            await deps.notifications.notify(
+                'update-waiting',
+                { orgId: status.orgId, engineId: status.engineId },
+                { kind: waiting ? 'waiting' : 'done' },
+                AbortSignal.timeout(SEND_TIMEOUT_MS),
+            );
+            return { ...status, updateWaiting: waiting };
+        } catch {
+            deps.logger.warn('engine-status.update-notice-failed', { engineId: status.engineId });
+            return { ...status, updateWaiting: told };
         }
     }
 
@@ -153,12 +134,15 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                 now: Timestamp.parse(new Date(input.receivedAt).toISOString()),
             });
             if (verification.kind === 'accepted') {
-                const status = acceptHeartbeat({
+                const status = await updateNotice(
                     stored,
-                    orgId: input.orgId,
-                    heartbeat: verification.heartbeat,
-                    receivedAt: input.receivedAt,
-                });
+                    acceptHeartbeat({
+                        stored,
+                        orgId: input.orgId,
+                        heartbeat: verification.heartbeat,
+                        receivedAt: input.receivedAt,
+                    }),
+                );
                 await deps.storage.save(status);
                 // A notice now owed fires the alarm at once, so the heartbeat's answer never waits on email.
                 await deps.storage.setAlarm(nextAlarmAt(status, deps.timing));
@@ -202,14 +186,10 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                     // Stored first: if sending crashes the object, the retried alarm finds the outage already marked.
                     await deps.storage.save(step.status);
                     const { status } = step;
-                    const attempt = await deliver(status, status.alert.recipients, (recipient, engine) => ({
-                        template: 'engine-offline',
-                        ...engineFields(status, recipient, engine),
-                        lastSeenAt: status.lastSeenAt,
-                    }));
+                    const attempt = await deliver(status, { kind: 'offline', lastSeenAt: status.lastSeenAt });
                     const next = afterAlertAttempt(step.status, attempt, now);
                     await settle(next);
-                    if (attempt.kind === 'partly-failed' || attempt.kind === 'unresolved') {
+                    if (attempt.kind === 'unresolved') {
                         deps.logger.warn('engine-status.alert-failed', {
                             engineId,
                             outcome: attempt.kind,
@@ -222,12 +202,10 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                 case 'notice': {
                     const { notice } = step.status;
                     const { status } = step;
-                    const attempt = await deliver(status, notice.recipients, (recipient, engine) =>
-                        noticeMessage(status, recipient, engine),
-                    );
+                    const attempt = await deliver(status, noticeEvent(notice));
                     const next = afterNoticeAttempt(step.status, attempt, now, deps.timing);
                     await settle(next);
-                    if (attempt.kind === 'partly-failed' || attempt.kind === 'unresolved') {
+                    if (attempt.kind === 'unresolved') {
                         deps.logger.warn('engine-status.notice-failed', {
                             engineId: step.status.engineId,
                             notice: notice.kind,

@@ -33,6 +33,8 @@ export const RATE_LIMITS = {
     'registry-relay': { limit: 600, windowMs: MINUTE_MS },
     // Presence reports (R-07): one a minute plus at most one per 5-second change window, so about 13 at worst.
     'presence-relay': { limit: 30, windowMs: MINUTE_MS },
+    // One-click unsubscribe (D-41): mail providers post it from few addresses, a person rarely more than once.
+    'unsubscribe-ip': { limit: 120, windowMs: HOUR_MS },
     // Heartbeats (D-05): many engines can share one address behind NAT or at a host.
     'heartbeat-ip': { limit: 600, windowMs: MINUTE_MS },
     // Keyed by the engine ID in the path; the limit is `config.heartbeat.perEngineLimit` (see `rateLimitRules`).

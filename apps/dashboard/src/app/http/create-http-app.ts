@@ -12,6 +12,8 @@ import { API_MOUNT, createApiRouter } from './api-router';
 import { createRouteBinder } from './bind-route';
 import { bindInstallScriptRoutes } from './install-script-routes';
 import { createInternalRouter, INTERNAL_MOUNT } from './internal-router';
+import { createEmailRouter } from './notification-routes';
+import { UNSUBSCRIBE_MOUNT } from '../../shared/api/notification-routes';
 import { problemResponse } from './problem';
 import { securityHeaders, withHeaders } from './security-headers';
 import { createV1Router, V1_MOUNT } from './v1-router';
@@ -31,6 +33,7 @@ const MACHINE_AND_API_MOUNTS = [
     INTERNAL_MOUNT,
     WEBHOOKS_MOUNT,
     WELL_KNOWN_MOUNT,
+    UNSUBSCRIBE_MOUNT,
     // Exact paths: a missing install script must be a problem, never the SPA shell, and never cached.
     ...Object.values(INSTALL_SCRIPT_PATHS),
 ] as const;
@@ -107,6 +110,7 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         [INTERNAL_MOUNT, createInternalRouter({ ...deps, routes })],
         [WEBHOOKS_MOUNT, createWebhooksRouter({ billing: deps.billing, routes })],
         [WELL_KNOWN_MOUNT, createWellKnownRouter({ ...deps, routes })],
+        [UNSUBSCRIBE_MOUNT, createEmailRouter({ ...deps, routes })],
     ] as const;
     for (const [mount, router] of routers) {
         // An unknown path under an API prefix is a problem, never the SPA shell.

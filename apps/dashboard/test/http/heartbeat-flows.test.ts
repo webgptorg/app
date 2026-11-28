@@ -2,7 +2,6 @@ import { createAuthHarness } from '../../src/testing/auth-harness';
 import { describeHeartbeatFlows, FLOW_HEARTBEAT } from '../../src/testing/heartbeat-flow-suite';
 import { createMemoryAuthStore } from '../../src/testing/memory-auth-store';
 import { createMemoryBillingStore } from '../../src/testing/memory-billing-store';
-import { createMemoryAlertRecipients } from '../../src/testing/memory-engine-status';
 import { createMemoryRegistrationStores } from '../../src/testing/memory-registration-store';
 
 describeHeartbeatFlows('heartbeats on the in-memory stores', () => {
@@ -13,7 +12,6 @@ describeHeartbeatFlows('heartbeats on the in-memory stores', () => {
             store,
             billingStore: createMemoryBillingStore({ org: (orgId) => store.state.orgs.get(orgId) }),
             registration,
-            alertRecipients: createMemoryAlertRecipients(store.state),
             heartbeat: FLOW_HEARTBEAT,
         }),
         suspend(engineId) {

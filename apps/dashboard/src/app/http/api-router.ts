@@ -13,6 +13,7 @@ import { bindEngineRoutes } from './engine-routes';
 import { bindLicensingRoutes } from './licensing-routes';
 import type { RouteBinder } from './bind-route';
 import { crossSiteRequestGuard } from './csrf';
+import { bindNotificationRoutes } from './notification-routes';
 import { bindTeamRoutes } from './team-routes';
 import { bindUsageRoutes } from './usage-routes';
 
@@ -51,6 +52,7 @@ export function createApiRouter(
     bindEngineRoutes(router, API_MOUNT, deps);
     bindTeamRoutes(router, API_MOUNT, deps);
     bindUsageRoutes(router, API_MOUNT, deps);
+    bindNotificationRoutes(router, API_MOUNT, deps);
     bindAdminEngineRoutes(router, API_MOUNT, deps);
     bindAdminHostnameRoutes(router, API_MOUNT, deps);
     const { devOutbox } = deps;
@@ -62,12 +64,10 @@ export function createApiRouter(
             return Promise.resolve({
                 kind: 'ok',
                 body: {
-                    emails: messages.map((message) => ({
-                        template: message.template,
-                        to: message.to,
-                        locale: message.locale,
-                        ...renderEmail(message),
-                    })),
+                    emails: messages.map((message) => {
+                        const { subject, text } = renderEmail(message);
+                        return { template: message.template, to: message.to, locale: message.locale, subject, text };
+                    }),
                 },
             });
         });

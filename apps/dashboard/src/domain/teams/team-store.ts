@@ -61,6 +61,8 @@ export interface TicketAckEffect {
     readonly userId: UserId;
     readonly email: string;
     readonly locale: Locale;
+    /** It was still waiting and the waiting-for-approval notice had gone out: a join request this ack answers. */
+    readonly noticed: boolean;
 }
 
 /** A ticket whose request the engine may now be holding, and who should hear of it. */

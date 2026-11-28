@@ -8,7 +8,10 @@ import { createDatabase } from '../adapters/db/client';
 import { createD1LinkCodeStore } from '../adapters/db/d1-registration-store';
 import { createD1CtStore } from '../adapters/db/d1-ct-store';
 import { createD1MeteringStore } from '../adapters/db/d1-metering-store';
+import { createD1NotificationStore } from '../adapters/db/d1-notification-store';
+import { createD1RecipientDirectory } from '../adapters/db/d1-recipient-directory';
 import { createD1UsageStore } from '../adapters/db/d1-usage-store';
+import { createHmacUnsubscribeTokens } from '../adapters/notifications/hmac-unsubscribe-tokens';
 import { createDurableObjectEngineStatus } from '../adapters/status/durable-object-engine-status';
 import { createD1ActiveEngineDirectory, createD1PublicFaceStore } from '../adapters/db/d1-public-face-store';
 import { createFetchRelayProber } from '../adapters/monitoring/fetch-relay-prober';
@@ -204,6 +207,15 @@ export async function runScheduled(
         },
         linkCodes: createD1LinkCodeStore(createDatabase(env.DB)),
         meterHistory: { store: createD1MeteringStore(createDatabase(env.DB)), logger },
+        notifications: {
+            store: createD1NotificationStore(createDatabase(env.DB)),
+            directory: createD1RecipientDirectory(createDatabase(env.DB)),
+            // Without the binding outside dev the run was refused above; in dev the fake outbox stands in.
+            email: email?.email ?? dev.outbox,
+            tokens: createHmacUnsubscribeTokens(config.rateLimitHmacKey),
+            logger,
+            dashboardOrigin: config.dashboardOrigin,
+        },
     });
     const dispatcher = createScheduledDispatcher({
         jobs,

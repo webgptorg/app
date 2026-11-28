@@ -416,6 +416,7 @@ export function createD1TeamStore(db: Database): TeamStore {
                     teamId: accessTickets.teamId,
                     userId: accessTickets.userId,
                     current: accessTickets.outcome,
+                    noticedAt: accessTickets.noticedAt,
                     orgId: teams.orgId,
                     teamName: teams.name,
                     email: users.email,
@@ -447,6 +448,7 @@ export function createD1TeamStore(db: Database): TeamStore {
                 userId: userIdSchema.parse(row.userId),
                 email: row.email,
                 locale: localeSchema.parse(row.locale),
+                noticed: row.current === null && row.noticedAt !== null,
             };
         },
 

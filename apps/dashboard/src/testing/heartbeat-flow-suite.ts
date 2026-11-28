@@ -233,39 +233,53 @@ export function describeHeartbeatFlows(name: string, makeFixture: () => Heartbea
             expect((await send(engine.engineId, await beat(engine, 100))).status).toBe(204);
         });
 
-        it('emails one engine-offline alert to the owner, in their locale, after 3 missed heartbeats', async () => {
+        it('emails the owner once, in their locale, after 3 missed heartbeats, through the notifications', async () => {
             const czech = await owner('cs');
             const bystander = await owner('en');
             const engine = await registered(czech.browser);
             await registered(bystander.browser);
             const lastSeenAt = harness.clock.nowMs();
             expect((await send(engine.engineId, await beat(engine, 1))).status).toBe(204);
+            const offlineEmails = (to: string) =>
+                harness.outbox.sentTo(to).filter((message) => message.template === 'notifications');
 
             harness.clock.set(lastSeenAt + OFFLINE_AFTER_MS - 1);
             expect(await harness.engineStatuses.runAlarm(engine.engineId)).toBe(true);
-            expect(harness.outbox.sent.filter((message) => message.template === 'engine-offline')).toEqual([]);
+            await harness.deliverNotifications();
+            expect(offlineEmails(czech.email)).toEqual([]);
 
             harness.clock.set(lastSeenAt + OFFLINE_AFTER_MS);
             expect(await harness.engineStatuses.runAlarm(engine.engineId)).toBe(true);
-            const alerts = harness.outbox.sent.filter((message) => message.template === 'engine-offline');
-            expect(alerts).toEqual([
-                {
-                    template: 'engine-offline',
-                    to: czech.email,
+            // The threshold already waited: the next delivery run sends it.
+            expect(await harness.deliverNotifications()).toEqual({ emails: 1, failed: 0 });
+            expect(offlineEmails(czech.email)).toEqual([
+                expect.objectContaining({
                     locale: 'cs',
-                    label: `${engine.engineId.slice(0, 8)}…`,
-                    engineId: engine.engineId,
-                    hostname: `${engine.engineId}.engines.ptbk.test`,
-                    lastSeenAt,
-                    link: `https://app.ptbk.test/engines/${engine.engineId}`,
-                },
+                    place: {
+                        orgName: null,
+                        project: {
+                            label: `${engine.engineId.slice(0, 8)}…`,
+                            hostname: `${engine.engineId}.engines.ptbk.test`,
+                        },
+                    },
+                    items: [
+                        expect.objectContaining({
+                            kind: 'project-status',
+                            variant: 'offline',
+                            count: 1,
+                            openedAt: lastSeenAt,
+                            link: `https://app.ptbk.test/engines/${engine.engineId}`,
+                        }),
+                    ],
+                }),
             ]);
             expect(await harness.engineStatuses.getStatus(engine.engineId)).toMatchObject({ state: 'offline' });
 
             harness.clock.advance(60 * 60_000);
             await harness.engineStatuses.runAlarm(engine.engineId);
-            expect(harness.outbox.sentTo(czech.email).filter((m) => m.template === 'engine-offline')).toHaveLength(1);
-            expect(harness.outbox.sentTo(bystander.email).filter((m) => m.template === 'engine-offline')).toEqual([]);
+            await harness.deliverNotifications();
+            expect(offlineEmails(czech.email)).toHaveLength(1);
+            expect(offlineEmails(bystander.email)).toEqual([]);
         });
 
         it('emails nothing about an engine its owner revoked, and keeps refusing its heartbeats', async () => {
@@ -296,7 +310,8 @@ export function describeHeartbeatFlows(name: string, makeFixture: () => Heartbea
                 });
                 expect(await harness.engineStatuses.runAlarm(engineId)).toBe(false);
             }
-            expect(harness.outbox.sent.filter((message) => message.template.startsWith('engine-'))).toEqual([]);
+            await harness.deliverNotifications();
+            expect(harness.outbox.sent.filter((message) => message.template === 'notifications')).toEqual([]);
         });
     });
 }

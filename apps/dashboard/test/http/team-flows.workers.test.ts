@@ -12,6 +12,8 @@ import { createD1RegistryReader } from '../../src/adapters/db/d1-registry-store'
 import { createD1HeartbeatEngineReader } from '../../src/adapters/db/d1-status-store';
 import { createD1TeamStore } from '../../src/adapters/db/d1-team-store';
 import { createD1MeteringStore } from '../../src/adapters/db/d1-metering-store';
+import { createD1NotificationStore } from '../../src/adapters/db/d1-notification-store';
+import { createD1RecipientDirectory } from '../../src/adapters/db/d1-recipient-directory';
 import { createAuthHarness } from '../../src/testing/auth-harness';
 import { describeTeamFlows } from '../../src/testing/team-flow-suite';
 
@@ -30,6 +32,7 @@ describeTeamFlows('teams on D1', () => {
             heartbeatEngines: createD1HeartbeatEngineReader(db),
             teams: createD1TeamStore(db),
             metering: createD1MeteringStore(db),
+            notifications: { store: createD1NotificationStore(db), directory: createD1RecipientDirectory(db) },
         }),
         async revokedOn(userId) {
             const rows = await env.DB.prepare(

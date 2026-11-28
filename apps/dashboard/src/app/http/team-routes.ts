@@ -38,6 +38,7 @@ import { clearInviteCookie, INVITE_COOKIE_TTL_MS, inviteCookie, inviteToken } fr
 import type { DashboardDeps } from '../deps';
 import { resolveLinkCodeView } from './link-code-view';
 import type { RequestContext, RouteBinder } from './bind-route';
+import { notifyQuietly } from './notify-quietly';
 
 const NO_CONTENT = { kind: 'ok', body: undefined, status: 204 } as const;
 /** The engine's join gateway page (teams spec, "Adding a person"), under its reserved `/auth/` prefix. */
@@ -247,15 +248,26 @@ export function bindTeamRoutes(
         }
     });
 
-    bind(router, mount, apiRoutes.addTeamMember, async ({ input, session }) => {
-        const outcome = await addTeamMember(
-            deps,
-            session.actor,
-            teamIdSchema.parse(input.params.teamId),
-            userIdSchema.parse(input.body.userId),
-        );
+    bind(router, mount, apiRoutes.addTeamMember, async ({ input, request, session }) => {
+        const teamId = teamIdSchema.parse(input.params.teamId);
+        const userId = userIdSchema.parse(input.body.userId);
+        const outcome = await addTeamMember(deps, session.actor, teamId, userId);
         switch (outcome) {
-            case 'added':
+            case 'added': {
+                const engineId = (await deps.teams.find(session.actor.orgId, teamId))?.engineId ?? null;
+                // A team without its project yet gives them nothing to open; adding oneself tells nobody anything.
+                if (engineId !== null && userId !== session.user.id) {
+                    request.waitUntil(
+                        notifyQuietly(
+                            deps,
+                            'people-change',
+                            { orgId: session.actor.orgId, engineId },
+                            { kind: 'added', userId },
+                        ),
+                    );
+                }
+                return NO_CONTENT;
+            }
             case 'already':
                 return NO_CONTENT;
             case 'not-member':
@@ -306,15 +318,22 @@ export function bindTeamRoutes(
         };
     });
 
-    bind(router, mount, apiRoutes.changeOrgRole, async ({ input, session }) => {
-        const outcome = await changeOrgRole(
-            deps,
-            session.actor,
-            userIdSchema.parse(input.params.userId),
-            input.body.role,
-        );
+    bind(router, mount, apiRoutes.changeOrgRole, async ({ input, request, session }) => {
+        const userId = userIdSchema.parse(input.params.userId);
+        const outcome = await changeOrgRole(deps, session.actor, userId, input.body.role);
         switch (outcome) {
             case 'changed':
+                if (userId !== session.user.id) {
+                    request.waitUntil(
+                        notifyQuietly(
+                            deps,
+                            'people-change',
+                            { orgId: session.actor.orgId, engineId: null },
+                            { kind: 'role', userId },
+                        ),
+                    );
+                }
+                return NO_CONTENT;
             case 'unchanged':
                 return NO_CONTENT;
             case 'last-owner':
@@ -456,6 +475,7 @@ export function bindTeamRoutes(
         switch (outcome.kind) {
             case 'accepted':
                 request.waitUntil(deps.usage.record([inviteAccepted(outcome.orgId, session)]));
+                request.waitUntil(notifyJoined(deps, outcome.orgId));
                 return {
                     kind: 'ok',
                     body: { orgId: outcome.orgId, teamIds: [...outcome.teamIds] },
@@ -490,8 +510,14 @@ export function bindTeamRoutes(
             return { kind: 'problem', status: 404, code: 'invite-invalid' };
         }
         request.waitUntil(deps.usage.record([inviteAccepted(outcome.orgId, session)]));
+        request.waitUntil(notifyJoined(deps, outcome.orgId));
         return { kind: 'ok', body: { orgId: outcome.orgId, teamIds: [...outcome.teamIds] } };
     });
+}
+
+/** Someone accepted an invitation: the organization's managers hear that someone joined, never who. */
+export function notifyJoined(deps: Pick<DashboardDeps, 'notifications' | 'logger'>, orgId: OrgId): Promise<void> {
+    return notifyQuietly(deps, 'people-change', { orgId, engineId: null }, { kind: 'joined' });
 }
 
 function inviteAccepted(orgId: OrgId, session: ActiveSession): UsageEvent {

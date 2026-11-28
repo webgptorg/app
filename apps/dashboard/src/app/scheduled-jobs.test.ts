@@ -11,8 +11,11 @@ import { createMemoryPublicFaceStore } from '../testing/memory-public-face-store
 import { createMemoryUsageStore } from '../testing/memory-usage-store';
 import { createMemoryMonitor } from '../testing/test-monitoring';
 import { readWranglerConfig } from '../testing/wrangler-config';
+import { createFakeEmailSender } from '../adapters/email/fake-email-sender';
+import { createFakeRecipientDirectory } from '../testing/fake-recipient-directory';
 import { createMemoryMeteringStore } from '../testing/memory-metering-store';
-import { EVERY_15_MINUTES, EVERY_MINUTE, scheduledJobs, type AbuseJobDeps } from './scheduled-jobs';
+import { createMemoryNotificationStore } from '../testing/memory-notification-store';
+import { EVERY_15_MINUTES, EVERY_5_MINUTES, EVERY_MINUTE, scheduledJobs, type AbuseJobDeps } from './scheduled-jobs';
 
 const clock = { nowMs: () => 0 };
 const logger = { info: () => undefined, warn: () => undefined, error: () => undefined };
@@ -60,6 +63,14 @@ const linkCodes = {
         return Promise.resolve(0);
     },
 };
+const notifications = {
+    store: createMemoryNotificationStore(),
+    directory: createFakeRecipientDirectory(),
+    email: createFakeEmailSender(),
+    tokens: { sign: () => Promise.resolve('t'), verify: () => Promise.resolve(null) },
+    logger,
+    dashboardOrigin: 'https://app.ptbk.test',
+};
 const usage = {
     store: createMemoryUsageStore(),
     engineStatus: { getActivity: () => Promise.resolve(null) },
@@ -105,6 +116,7 @@ describe('Cron Triggers and scheduled jobs (I-04, I-05)', () => {
             usage,
             linkCodes,
             meterHistory,
+            notifications,
         });
         expect(jobs.map((job) => `${job.name} ${job.cron}`)).toEqual([
             `relay-monitor ${EVERY_MINUTE}`,
@@ -112,21 +124,30 @@ describe('Cron Triggers and scheduled jobs (I-04, I-05)', () => {
             `public-face ${EVERY_15_MINUTES}`,
             `abuse-feeds ${EVERY_15_MINUTES}`,
             `usage-rollup ${EVERY_15_MINUTES}`,
+            `notification-delivery ${EVERY_5_MINUTES}`,
             `link-code-commitments ${EVERY_15_MINUTES}`,
             `meter-history ${EVERY_15_MINUTES}`,
         ]);
         const crons = [...new Set(jobs.map((job) => job.cron))].sort();
-        expect(crons).toEqual([EVERY_MINUTE, EVERY_15_MINUTES]);
-        // The usage rollup, commitment cleanup and meter history need no monitoring, so they run wherever cron runs.
-        expect(
-            scheduledJobs({ monitoring: null, abuse: null, usage, linkCodes, meterHistory }).map((job) => job.name),
-        ).toEqual(['usage-rollup', 'link-code-commitments', 'meter-history']);
+        expect(crons).toEqual([EVERY_MINUTE, EVERY_5_MINUTES, EVERY_15_MINUTES].sort());
+        // The usage rollup, notifications, commitment cleanup and meter history need no monitoring, so they run
+        // wherever cron runs.
+        const always = { usage, linkCodes, meterHistory, notifications };
+        expect(scheduledJobs({ monitoring: null, abuse: null, ...always }).map((job) => job.name)).toEqual([
+            'usage-rollup',
+            'notification-delivery',
+            'link-code-commitments',
+            'meter-history',
+        ]);
         // Without a feed provider the 15-minute cron still has its jobs, so a run never finds none registered.
-        expect(
-            scheduledJobs({ monitoring: null, abuse: abuse(false), usage, linkCodes, meterHistory }).map(
-                (job) => job.name,
-            ),
-        ).toEqual(['ct-watch', 'public-face', 'usage-rollup', 'link-code-commitments', 'meter-history']);
+        expect(scheduledJobs({ monitoring: null, abuse: abuse(false), ...always }).map((job) => job.name)).toEqual([
+            'ct-watch',
+            'public-face',
+            'usage-rollup',
+            'notification-delivery',
+            'link-code-commitments',
+            'meter-history',
+        ]);
         for (const job of jobs.slice(1)) await job.run({ scheduledTime: 0, signal: new AbortController().signal });
         expect(clearedAt).toEqual([0]);
         for (const [name, config] of [['dev', wrangler] as const, ...Object.entries(wrangler.env)]) {

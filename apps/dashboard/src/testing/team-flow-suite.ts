@@ -1076,7 +1076,7 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
             expect(await members(boss.browser, team.teamId)).toMatchObject({ removing: [], invites: [] });
         });
 
-        it('hears the engine: emails a waiting request once, grants access on approval, and resends removals until acked', async () => {
+        it('hears the engine: notifies of a waiting request once, grants access on approval, and resends removals until acked', async () => {
             const boss = await owner();
             const team = await createTeam(boss.browser);
             const engine = await linkTestEngine(boss.browser, team.teamId);
@@ -1093,18 +1093,32 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
 
             const ticket = await openTicket(member.browser, team.teamId, engine.engineId);
             expect(await beatV2(engine)).toEqual({ v: 1, revocations: [] });
-            expect(harness.outbox.sentTo(boss.email).some((m) => m.template === 'access-waiting')).toBe(false);
+            const notificationEmails = () =>
+                harness.outbox.sentTo(boss.email).filter((m) => m.template === 'notifications');
             await beatV2(engine, { accessRequests: 1 });
-            const waiting = harness.outbox.sentTo(boss.email).filter((m) => m.template === 'access-waiting');
-            expect(waiting).toHaveLength(1);
+            // In-app at once, by email only if still unseen 15 minutes later.
+            await harness.deliverNotifications();
+            expect(notificationEmails()).toEqual([]);
+            harness.clock.advance(16 * 60_000);
+            await harness.deliverNotifications();
             const hostname = `${engine.engineId}.engines.ptbk.test`;
-            expect(waiting[0]).toMatchObject({
-                requesterEmail: member.email,
-                teamName: 'Client A',
-                link: `https://${hostname}/members`,
-            });
+            expect(notificationEmails()).toEqual([
+                expect.objectContaining({
+                    place: { orgName: null, project: { label: 'Client A', hostname } },
+                    requesters: [member.email],
+                    items: [
+                        expect.objectContaining({
+                            kind: 'join-request',
+                            count: 1,
+                            link: `https://${hostname}/members`,
+                        }),
+                    ],
+                }),
+            ]);
             await beatV2(engine, { accessRequests: 1 });
-            expect(harness.outbox.sentTo(boss.email).filter((m) => m.template === 'access-waiting')).toHaveLength(1);
+            harness.clock.advance(16 * 60_000);
+            await harness.deliverNotifications();
+            expect(notificationEmails()).toHaveLength(1);
 
             await beatV2(engine, { acks: [{ id: ticket.ticketId, outcome: 'approved' }] });
             expect(lastEmail(harness, member.email)).toMatchObject({

@@ -103,7 +103,7 @@
     ],
     // The relay monitor every minute (I-04), the abuse jobs every 15 minutes (I-05); src/app/scheduled-jobs.ts lists the
     // jobs, and a test keeps the two in step. Locally nothing fires on its own: the e2e monitoring overlay triggers it.
-    "triggers": { "crons": ["* * * * *", "*/15 * * * *"] },
+    "triggers": { "crons": ["* * * * *", "*/5 * * * *", "*/15 * * * *"] },
     // Monitoring data (I-04, ADR 0012): aggregates only, no engine, hostname, address or account.
     "analytics_engine_datasets": [{ "binding": "OPS_METRICS", "dataset": "ptbk_ops_dev" }],
     // Per-minute rate limits; limit and period must match RATE_LIMITS in src/domain/ports/rate-limiter.ts.
@@ -121,7 +121,7 @@
             // app.ptbk.io's zone is in another account, so the Worker serves it as a Cloudflare for SaaS custom hostname
             // of ptbk.link (infra/cloudflare README, Dashboard on another account's zone), not as a custom domain.
             "routes": [{ "pattern": "app.ptbk.io/*", "zone_name": "ptbk.link" }],
-            "triggers": { "crons": ["* * * * *", "*/15 * * * *"] },
+            "triggers": { "crons": ["* * * * *", "*/5 * * * *", "*/15 * * * *"] },
             "analytics_engine_datasets": [{ "binding": "OPS_METRICS", "dataset": "ptbk_ops_staging" }],
             "d1_databases": [
                 {
@@ -220,7 +220,7 @@
         },
         "production": {
             "routes": [{ "pattern": "app.ptbk.io", "custom_domain": true }],
-            "triggers": { "crons": ["* * * * *", "*/15 * * * *"] },
+            "triggers": { "crons": ["* * * * *", "*/5 * * * *", "*/15 * * * *"] },
             "analytics_engine_datasets": [{ "binding": "OPS_METRICS", "dataset": "ptbk_ops_production" }],
             "d1_databases": [
                 {

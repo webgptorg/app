@@ -2,6 +2,7 @@ import type { RenderedEmail } from '../../adapters/email/cloudflare-email-sender
 import { ALERT_RUNBOOKS, alertRoute } from '../../domain/monitoring/alert-routes';
 import type { EmailMessage } from '../../domain/ports/email-sender';
 import { m } from '../../paraglide/messages';
+import { anyKind } from '../../shared/notifications/registry';
 
 /**
  * "October 19, 2026 at 2:30 PM UTC": the dashboard knows no recipient's time zone, so every time is UTC and says so in
@@ -91,49 +92,8 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
                     options,
                 ),
             };
-        case 'engine-offline':
-            return {
-                subject: m.email_engine_offline_subject({ label: message.label }, options),
-                text: m.email_engine_offline_body(
-                    {
-                        label: message.label,
-                        engineId: message.engineId,
-                        hostname: message.hostname,
-                        lastSeenAt: formatUtc(message.lastSeenAt, message.locale),
-                        link: message.link,
-                    },
-                    options,
-                ),
-            };
-        case 'engine-online':
-            return {
-                subject: m.email_engine_online_subject({ label: message.label }, options),
-                text: m.email_engine_online_body(
-                    {
-                        label: message.label,
-                        engineId: message.engineId,
-                        hostname: message.hostname,
-                        link: message.link,
-                    },
-                    options,
-                ),
-            };
-        case 'engine-back-online':
-            return {
-                subject: m.email_engine_back_online_subject({ label: message.label }, options),
-                text: m.email_engine_back_online_body(
-                    {
-                        label: message.label,
-                        engineId: message.engineId,
-                        hostname: message.hostname,
-                        lastSeenAt: formatUtc(message.lastSeenAt, message.locale),
-                        backOnlineAt: formatUtc(message.backOnlineAt, message.locale),
-                        duration: formatDuration(message.backOnlineAt - message.lastSeenAt, message.locale),
-                        link: message.link,
-                    },
-                    options,
-                ),
-            };
+        case 'notifications':
+            return renderNotifications(message);
         case 'team-invite': {
             const body = {
                 inviter: message.inviterEmail,
@@ -155,17 +115,6 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
                       text: m.email_team_invite_body({ ...body, org }, options),
                   };
         }
-        case 'access-waiting':
-            return {
-                subject: m.email_access_waiting_subject(
-                    { requester: message.requesterEmail, engine: message.teamName },
-                    options,
-                ),
-                text: m.email_access_waiting_body(
-                    { requester: message.requesterEmail, engine: message.teamName, link: message.link },
-                    options,
-                ),
-            };
         case 'access-granted':
             return {
                 subject: m.email_access_granted_subject({ engine: message.teamName }, options),
@@ -177,6 +126,55 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
         case 'ops-alert':
             return renderOpsAlert(message);
     }
+}
+
+/**
+ * Each kind's own copy, in the order the rows came due; one item takes its kind's subject, several are counted. Every
+ * value comes from the dashboard: nothing an engine sent is rendered, only the counts it reported.
+ */
+function renderNotifications(message: Extract<EmailMessage, { readonly template: 'notifications' }>): RenderedEmail {
+    const { locale, place } = message;
+    const context = {
+        locale,
+        time: (ms: number) => formatUtc(ms, locale),
+        duration: (ms: number) => formatDuration(ms, locale),
+    };
+    const extras = { requesters: message.requesters };
+    const sections = message.items.map((item) => {
+        const { copy } = anyKind(item.kind);
+        const detail = copy.detail?.(item, place, context, extras) ?? null;
+        return [
+            copy.line(item, place, context),
+            ...(detail === null ? [] : [detail]),
+            m.notification_email_open({ link: item.link }, { locale }),
+        ].join('\n\n');
+    });
+    const [only] = message.items;
+    const subject =
+        only !== undefined && message.items.length === 1
+            ? anyKind(only.kind).copy.subject(only, place, context)
+            : m.notification_things_line(
+                  {
+                      count: message.items.reduce((sum, item) => sum + item.count, 0),
+                      place: place.project?.label ?? place.orgName ?? m.notification_org_unnamed({}, { locale }),
+                  },
+                  { locale },
+              );
+    return {
+        subject,
+        text: [
+            ...sections,
+            m.notification_email_footer(
+                { settings: message.settingsLink, unsubscribe: message.unsubscribe.page },
+                { locale },
+            ),
+        ].join('\n\n'),
+        // RFC 8058: providers post `List-Unsubscribe=One-Click` to the HTTPS URL, which turns these kinds' email off.
+        headers: {
+            'List-Unsubscribe': `<${message.unsubscribe.oneClick}>`,
+            'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+        },
+    };
 }
 
 /** Ops alerts go to the team only, in English, so they are not part of the translated catalogue. */
