@@ -328,6 +328,8 @@ describe('every response of that run', () => {
             KNOWN_CAPABILITIES.aiTools.id,
             KNOWN_CAPABILITIES.voiceInput.id,
             KNOWN_CAPABILITIES.voiceOutput.id,
+            // Served from M-16 on.
+            KNOWN_CAPABILITIES.notifications.id,
         ]);
         const missing = ENGINE_API_ROUTE_LIST.filter(
             (route) =>
