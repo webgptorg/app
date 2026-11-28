@@ -70,10 +70,16 @@ function Get-Command { param($Name, $CommandType, $ErrorAction)
         default { throw "unexpected executable: $Name" }
     }
 }
-function Invoke-WebRequest { param([switch]$UseBasicParsing, $Uri, $OutFile)
-    if ($env:PTBK_LINK) { throw 'link leaked to download' }
-    [IO.File]::AppendAllText($env:DOWNLOADS, $Uri + [Environment]::NewLine)
-    [IO.File]::WriteAllText($OutFile, 'corrupt archive')
+function New-Object { param($TypeName)
+    if ($TypeName -ne 'System.Net.WebClient') { throw "unexpected client: $TypeName" }
+    $client = [pscustomobject]@{}
+    $client | Add-Member ScriptMethod DownloadFile { param($Uri, $OutFile)
+        if ($env:PTBK_LINK) { throw 'link leaked to download' }
+        [IO.File]::AppendAllText($env:DOWNLOADS, $Uri + [Environment]::NewLine)
+        [IO.File]::WriteAllText($OutFile, 'corrupt archive')
+    }
+    $client | Add-Member ScriptMethod Dispose {}
+    $client
 }
 function Start-Process { throw 'unexpected installer process' }
 `;

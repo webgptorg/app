@@ -60,10 +60,13 @@
         if ([IO.Directory]::Exists($target) -and (& $ready $target)) { return }
         Write-Host "Downloading $name..."
         $zip = Join-Path $work "$name.zip"
-        Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
+        # Windows PowerShell 5.1 expands wildcards in Invoke-WebRequest -OutFile even in real user profile names.
+        $download = New-Object System.Net.WebClient
+        try { $download.DownloadFile($url, $zip) } finally { $download.Dispose() }
         if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $hash) { throw "Checksum mismatch for $name." }
         Add-Type -AssemblyName System.IO.Compression.FileSystem
-        $unpacked = Join-Path $work $name
+        # Keep the extraction path short for .NET Framework's handling of long npm package paths.
+        $unpacked = Join-Path $work 'x'
         [IO.Compression.ZipFile]::ExtractToDirectory($zip, $unpacked)
         if ($inner) { $unpacked = Join-Path $unpacked $inner }
         if (-not (& $ready $unpacked)) { throw "The verified $name archive did not provide working tools." }
@@ -95,7 +98,7 @@
             Start-Sleep -Milliseconds 500
         }
     }
-    $work = Join-Path $root ('.install-' + [guid]::NewGuid().ToString('N'))
+    $work = Join-Path $root ('.' + [IO.Path]::GetRandomFileName())
     $originalPath = $env:PATH
     try {
         [IO.Directory]::CreateDirectory($work) | Out-Null
