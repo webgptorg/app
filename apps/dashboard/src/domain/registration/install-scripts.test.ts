@@ -25,9 +25,14 @@ describe('install scripts', () => {
         }
     });
 
-    it('pins the verified artifacts of the selected release', () => {
+    it('keeps the native setup wizard out of the copied PowerShell command', () => {
+        const windows = renderInstallScript('windows', TEST_ENGINE_INSTALLATION, ORIGIN);
+        expect(windows).not.toMatch(/Promptbook-Setup|Start-Process|winget/i);
+        expect(windows).toContain('ptbk@$version');
+    });
+
+    it('pins the verified Ubuntu bootstrap of the selected release', () => {
         const release = TEST_ENGINE_INSTALLATION;
-        expect(renderInstallScript('windows', release, ORIGIN)).toContain(`-ne '${release.windowsSha256}'`);
         const server = renderInstallScript('server', release, ORIGIN);
         expect(server).toContain(`/webgptorg/promptbook/${release.bootstrapRevision}/deploy/ubuntu/install.sh`);
         expect(server).toContain(`'${release.bootstrapSha256}'`);

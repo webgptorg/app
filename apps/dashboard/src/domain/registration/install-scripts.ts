@@ -12,7 +12,7 @@ import type { InstallScript } from './installation-options';
  * the SPA fallback page reaching a shell. That is kept instead by serving these only from Worker routes (never static
  * assets, so never the SPA fallback) as `text/plain` with `no-store`, and by each script running nothing before its
  * last line. Everything version-specific lives in the script, which still verifies the downloaded Promptbook
- * bootstrap or EXE by SHA-256 before running it.
+ * bootstrap and prerequisite archives by SHA-256 before using them.
  */
 const TEMPLATES: Readonly<Record<InstallScript, string>> = { desktop, server, windows };
 
@@ -23,7 +23,6 @@ export function renderInstallScript(script: InstallScript, release: EngineInstal
     const values = {
         __PTBK_ORIGIN__: origin,
         __PTBK_VERSION__: release.version,
-        __PTBK_WINDOWS_SHA256__: release.windowsSha256,
         __PTBK_BOOTSTRAP_REVISION__: release.bootstrapRevision,
         __PTBK_BOOTSTRAP_SHA256__: release.bootstrapSha256,
     };

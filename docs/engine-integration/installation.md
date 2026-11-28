@@ -44,7 +44,7 @@ The link URL, `https://<dashboard host>/link#<link code>`, names the dashboard a
 
 ## Requirements
 
-- **Host:** on macOS and Linux, use Bash or zsh and curl. The local installer supplies compatible Git, Node.js and npm as needed. Its Node.js downloads support x64 and arm64. The Windows PowerShell option uses the official x64 EXE. The dedicated VPS installer supports Ubuntu 24.04 x86-64 with systemd and root/sudo access. Existing Docker deployments keep their own prerequisites.
+- **Host:** on macOS and Linux, use Bash or zsh and curl. The local installer supplies compatible Git, Node.js and npm as needed. Its Node.js downloads support x64 and arm64. Windows PowerShell supports x64 and ARM64 and supplies missing prerequisites under the current Windows account. The dedicated VPS installer supports Ubuntu 24.04 x86-64 with systemd and root/sudo access. Existing Docker deployments keep their own prerequisites.
 - **Resources:** the engine team sets the minimum and the installer checks it. Agents running coding CLIs and a headless browser need memory; state the number in the installer's preflight, not only in docs.
 - **Network:** outbound HTTPS (TCP 443) only. Nothing inbound, no public IP, no open port. See [Networking](#networking).
 - **Clock:** synchronised (NTP). Heartbeats are refused more than 2 minutes off, and certificates need the right time.
@@ -68,7 +68,7 @@ App serves each script with the exact published release it selects at that momen
 
 ### Engine-first setup
 
-On macOS or Linux, copy the Bash command from **macOS / Linux**. The script prepares prerequisites under the local user account. It asks before installing Git or Alpine packages as administrator, and on Linux with systemd before enabling linger, so the project starts again after a reboot without you logging in. Approve the macOS developer tools dialog if it opens. On Windows, copy the PowerShell command and complete the official setup wizard. PowerShell checks the installer checksum, waits for it to finish, and pairs the installed engine. If you downloaded the EXE manually, use the shorter pairing command in the **Windows EXE** tab.
+On macOS or Linux, copy the Bash command from **macOS / Linux**. The script prepares prerequisites under the local user account. It asks before installing Git or Alpine packages as administrator, and on Linux with systemd before enabling linger, so the project starts again after a reboot without you logging in. Approve the macOS developer tools dialog if it opens. On Windows, paste the command from **Windows PowerShell**. It prepares Git, Node.js and npm under your account, installs the exact CLI and pairs the project in that console. For the native setup wizard, use the download and pairing command in **Windows EXE**.
 
 The commands work outside a project and stop after installation/version failure. The engine chooses its standard projects home, reserves an identity and private draft, starts and pairs before requesting an agenda. Repeating the same pairing resumes that draft or reports the completed project; another pairing gets another engine. No `mkdir`, `cd`, fixed agenda, local/global question or second `connect` is part of new-engine setup.
 
