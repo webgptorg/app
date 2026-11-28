@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M5
 - **Depends on:** D-37
-- **Status:** done (pushed to main)
+- **Status:** in progress (fix/dashboard-terminal-powershell-install)
 - **Spec:** [Engine-first installation](../../design/engine-first-installation.md)
 
 ## Goal
@@ -24,3 +24,4 @@ The copied "install and pair" command is one short line per platform that points
 - [x] Invalid codes, truncated downloads, wrong checksums and failed installs run nothing further; the CLI and the bootstrap never see `PTBK_LINK`.
 - [x] A matching `ptbk` elsewhere on PATH is never used; linger is enabled only after an explicit y, never for root, unattended runs or hosts without systemd.
 - [x] The copied-command tests have explicit timeouts and run the served scripts in Bash 3.2 and 5, zsh and PowerShell.
+- [ ] The PowerShell command prepares Git, Node.js, npm and the selected CLI under the current account and pairs in the same terminal. The native wizard is available through Windows EXE.
