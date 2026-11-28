@@ -10,6 +10,7 @@ import type { TeamName } from '../../../shared/team-name';
 import { LicenseNotice } from '../licensing/license-notice';
 import { useApiClient } from '../../api/api-client-context';
 import { dataOrThrow, enginesQuery } from '../../api/queries';
+import { useBrowser } from '../../core/browser';
 import { Link } from '../../core/link';
 import { useAppMutation } from '../../core/mutations';
 import { engineDisplayName, EngineIdentity } from '../engines/engine-identity';
@@ -62,13 +63,14 @@ function TeamRow(props: { readonly team: TeamView; readonly engine: EngineView |
 function NewTeamButton(props: { readonly primary: boolean }) {
     const api = useApiClient();
     const navigate = useNavigate();
-    const [open, setOpen] = useState(false);
+    const { now } = useBrowser();
+    const [placeholder, setPlaceholder] = useState<string>();
     const create = useAppMutation({
         mutationFn: async (name: TeamName) =>
             dataOrThrow(await api.call(apiRoutes.createTeam, { body: { name } })).team,
         invalidates: [teamKeys.all],
         onSuccess: async (team) => {
-            setOpen(false);
+            setPlaceholder(undefined);
             await navigate({ to: '/engines/new', search: { team: team.teamId } });
         },
     });
@@ -77,14 +79,18 @@ function NewTeamButton(props: { readonly primary: boolean }) {
             <Button
                 variant={props.primary ? 'primary' : 'secondary'}
                 onClick={() => {
-                    setOpen(true);
+                    const date = new Date(now());
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    setPlaceholder(`project-${String(date.getFullYear())}-${month}-${day}`);
                 }}
             >
                 <Plus aria-hidden className="size-4" />
                 {m.teams_new()}
             </Button>
             <TeamNameDialog
-                open={open}
+                open={placeholder !== undefined}
+                placeholder={placeholder}
                 title={m.teams_new_title()}
                 submitLabel={m.teams_new_submit()}
                 pending={create.isPending}
@@ -92,7 +98,7 @@ function NewTeamButton(props: { readonly primary: boolean }) {
                     create.mutate(name);
                 }}
                 onClose={() => {
-                    setOpen(false);
+                    setPlaceholder(undefined);
                 }}
             />
         </>
