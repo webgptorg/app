@@ -52,13 +52,6 @@ export interface PendingLinkCode {
 /** `conflict`: the code or the engine changed since it was read; nothing was written. */
 export type Redemption = 'redeemed' | 'conflict';
 
-/**
- * Link codes in D1, looked up by hash for redemption and by ID, within the organization, for their state. A code is
- * redeemable while it is unused and `now < expiresAt`. Redemption marks the code used and writes the engine in one
- * transaction, so a database error never burns a code and two registrations racing for one code cannot both win.
- * Redemption and cancellation null the owner setup commitment in the same write. An expired code is never redeemable,
- * so it never hands the commitment out, and `clearExpiredCommitments` nulls its column too.
- */
 export interface VpsReservation {
     readonly orgId: OrgId;
     readonly userId: UserId;
@@ -68,8 +61,15 @@ export interface VpsReservation {
     readonly now: number;
 }
 
+/**
+ * Link codes in D1, looked up by hash for redemption and by ID, within the organization, for their state. A code is
+ * redeemable while it is unused and `now < expiresAt`. Redemption marks the code used and writes the engine in one
+ * transaction, so a database error never burns a code and two registrations racing for one code cannot both win.
+ * Redemption and cancellation null the owner setup commitment in the same write. An expired code is never redeemable,
+ * so it never hands the commitment out, and `clearExpiredCommitments` nulls its column too.
+ */
 export interface LinkCodeStore {
-    /** Rotates the pairing code and reserves this launch atomically. Team assignment stays on the row. */
+    /** Rotates the code and clears the pairing tab's setup commitment atomically. The VPS verifies its cloud owner. */
     reserveVps(input: VpsReservation): Promise<boolean>;
     /** Null releases a definitely rejected create. Ambiguous writes keep their reservation. */
     finishVps(input: VpsReservation, resourceId: string | null): Promise<void>;

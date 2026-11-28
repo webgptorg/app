@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { m } from '../../../paraglide/messages';
 import { apiRoutes, type EngineView } from '../../../shared/api/routes';
-import { VPS_PROVIDERS, type CloudOffer, type VpsProviderId } from '../../../shared/vps';
+import type { CloudOffer, VpsProviderId } from '../../../shared/vps';
+import { VPS_PROVIDERS } from '../../../shared/vps-catalog';
 import { useApiClient } from '../../api/api-client-context';
 import { dataOrThrow, engineQuery } from '../../api/queries';
 import { useBrowser } from '../../core/browser';
@@ -11,8 +12,7 @@ import { Link } from '../../core/link';
 import { useSession } from '../session/use-session';
 import { Page } from '../shell/page';
 import { EngineOpenLink } from './engine-open-link';
-import { LINK_POLL_MS } from './link-progress';
-import { linkCodeQuery } from './link-queries';
+import { LINK_POLL_MS, linkCodeQuery } from './link-queries';
 import { beginVps, clearVps, resumeVps, type VpsTransaction } from './vps-authorization';
 
 export function VpsButtons(props: { readonly offers: readonly CloudOffer[]; readonly link: string }) {

@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { cloudInit } from '../../domain/registration/cloud-init';
 import { sha256Hex } from '../../domain/auth/secrets';
 import type { VpsProvider } from '../../domain/registration/vps-provider';
-import { DIGITALOCEAN, VPS_CALLBACK } from '../../shared/vps';
+import { DIGITALOCEAN } from '../../shared/vps-catalog';
+import { VPS_CALLBACK } from '../../shared/vps';
 import { readCapped } from '../read-capped';
 
 const oauth = 'https://cloud.digitalocean.com/v1/oauth';

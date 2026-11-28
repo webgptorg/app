@@ -28,3 +28,4 @@ One file per decision. Copy [0000-template.md](0000-template.md), take the next 
 | [0026](0026-teams-v2.md)                          | Teams v2: departments with team admins and several projects           | Accepted |
 | [0027](0027-notifications.md)                     | Notifications: one system, in-app and email, counts only from engines | Accepted |
 | [0028](0028-clean-removal.md)                     | One "Remove project", an engine that knows, and a signed unlink       | Accepted |
+| [0029](0029-digitalocean-provisioning.md)         | Who can provision a customer's DigitalOcean Droplet?                  | Proposed |

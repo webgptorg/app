@@ -96,6 +96,7 @@ export function createMemoryRegistrationStores(deps: {
             state.linkCodes.set(input.codeHash, {
                 ...code,
                 codeHash: input.codeHash,
+                ownerSetupCommitment: null,
                 launch: { provider: input.provider, resourceId: null },
             });
             return Promise.resolve(true);

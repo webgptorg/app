@@ -91,7 +91,7 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
         }
 
         it('reserves a paid launch once and rotates only its issuer’s pending pairing code', async () => {
-            const code = codeRecord(orgA);
+            const code = codeRecord(orgA, { ownerSetupCommitment: commitment() });
             await fixture.linkCodes.insert(code);
             const claim = {
                 orgId: orgA,
@@ -104,11 +104,15 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
             expect(await fixture.linkCodes.reserveVps({ ...claim, orgId: orgB })).toBe(false);
             expect(await fixture.linkCodes.reserveVps({ ...claim, userId: newUserId(cryptoRandom) })).toBe(false);
             expect(await fixture.linkCodes.reserveVps({ ...claim, now: NOW + TTL })).toBe(false);
+            expect(await fixture.storedCommitment(code.codeHash)).toBe(code.ownerSetupCommitment);
             expect(
                 (await Promise.all([fixture.linkCodes.reserveVps(claim), fixture.linkCodes.reserveVps(claim)])).sort(),
             ).toEqual([false, true]);
             expect(await fixture.linkCodes.findRedeemable(code.codeHash, NOW)).toBeNull();
-            expect(await fixture.linkCodes.findRedeemable(claim.codeHash, NOW)).toBe(orgA);
+            expect(await fixture.linkCodes.findRedeemable(claim.codeHash, NOW)).toEqual({
+                orgId: orgA,
+                ownerSetupCommitment: null,
+            });
             expect(await fixture.linkCodes.vpsStatus(orgB, code.id)).toBeNull();
             await fixture.linkCodes.finishVps(claim, null);
             const retry = { ...claim, codeHash: 'b'.repeat(64) };

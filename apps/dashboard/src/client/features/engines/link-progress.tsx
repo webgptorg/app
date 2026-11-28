@@ -25,12 +25,10 @@ import { EngineOpenLink } from './engine-open-link';
 import { engineLabel, shortEngineId } from '../../../shared/engine-label';
 import { useSession } from '../session/use-session';
 import { canRename, EngineNameField } from './engine-name';
-import { linkCodeQuery } from './link-queries';
+import { LINK_POLL_MS, linkCodeQuery } from './link-queries';
 import { handOffOwnerSetup, holdsOwnerSetupSecret, ownerHandoffHostname } from './owner-handoff';
 import { useEngineTeam } from './use-engine-name';
 
-/** onboarding.md, step 4: the page asks every 3 seconds while it is visible, and stops at ready or expiry. */
-export const LINK_POLL_MS = 3000;
 /** How long row 1 waits before it points to the troubleshooting guide. */
 export const WAITING_HINT_MS = 2 * 60_000;
 /** How long a linked engine may go without a first heartbeat before the page says so. */

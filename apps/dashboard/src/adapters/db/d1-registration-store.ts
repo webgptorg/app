@@ -113,7 +113,7 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
         async reserveVps(input) {
             const rows = await db
                 .update(linkCodes)
-                .set({ codeHash: input.codeHash, vpsProvider: input.provider })
+                .set({ codeHash: input.codeHash, vpsProvider: input.provider, ownerSetupCommitment: null })
                 .where(
                     and(
                         eq(linkCodes.id, input.id),

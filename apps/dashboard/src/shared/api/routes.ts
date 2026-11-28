@@ -26,7 +26,7 @@ import {
     problemStatusSchema,
     quotaSchema,
 } from '../billing';
-import { cloudOffer, providerId, DIGITALOCEAN } from '../vps';
+import { cloudOffer, providerId, DIGITALOCEAN_MONTHLY_USD } from '../vps';
 import { engineLabelSchema } from '../engine-label';
 import { LINK_CODE_LIMITS } from '../link-code-limits';
 import { teamNameSchema } from '../team-name';
@@ -976,7 +976,7 @@ export const apiRoutes = {
             maxBodyBytes: 2048,
             body: z.strictObject({
                 provider: providerId,
-                monthlyUsd: z.literal(DIGITALOCEAN.monthlyUsd),
+                monthlyUsd: z.literal(DIGITALOCEAN_MONTHLY_USD),
                 code: z.string().min(1).max(512),
                 verifier: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
             }),

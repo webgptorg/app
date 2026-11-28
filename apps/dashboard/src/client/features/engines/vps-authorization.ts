@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { VPS_PROVIDERS, VPS_CALLBACK, providerId, type CloudOffer } from '../../../shared/vps';
+import { VPS_CALLBACK, providerId, type CloudOffer } from '../../../shared/vps';
+import { VPS_PROVIDERS } from '../../../shared/vps-catalog';
 
 const key = 'ptbk.vps.authorization';
 const transaction = z.object({

@@ -5,7 +5,7 @@ import { createAuthHarness } from '../../src/testing/auth-harness';
 import { createMemoryAuthStore } from '../../src/testing/memory-auth-store';
 import { TEST_ENGINE_INSTALLATION } from '../../src/testing/install-fixtures';
 import type { LinkCodeView } from '../../src/shared/api/routes';
-import { DIGITALOCEAN } from '../../src/shared/vps';
+import { DIGITALOCEAN } from '../../src/shared/vps-catalog';
 
 async function fixture(scenario: 'ok' | 'price' | 'rejected' | 'unknown' | 'old') {
     const token = crypto.randomUUID(),
