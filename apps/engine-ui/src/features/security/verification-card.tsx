@@ -1,8 +1,9 @@
 import type { ReadSecurityOverview } from '@ptbk/engine-api';
 import { ErrorState, RelativeTime, Section, Skeleton, useLocale } from '@ptbk/ui';
 import type { UseQueryResult } from '@tanstack/react-query';
+import { useLocation } from '@tanstack/react-router';
 import { ChevronRight, CircleAlert, CircleCheck, Info, TriangleAlert } from 'lucide-react';
-import { useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import type { ReactNode } from 'react';
 
 import { cx } from '../../app/cx';
@@ -160,10 +161,18 @@ export function securityChecks(overview: Overview, formatDate: (date: Date) => s
 function CheckRow({ check }: { readonly check: Check }) {
     const titleId = useId();
     const needsLook = check.tone === 'attention' || check.tone === 'problem';
+    const rowId = `security-${check.id}`;
+    // A link elsewhere (Settings' attention switch) names a row by its hash: it opens, and is scrolled to once the
+    // checklist has loaded, which is after the router's own hash scroll.
+    const linked = useLocation({ select: (location) => location.hash === rowId });
+    const row = useRef<HTMLLIElement>(null);
+    useEffect(() => {
+        if (linked) row.current?.scrollIntoView({ block: 'start' });
+    }, [linked]);
     return (
-        <li id={`security-${check.id}`}>
+        <li id={rowId} ref={row}>
             <section aria-labelledby={titleId}>
-                <details className="group" open={needsLook}>
+                <details className="group" open={needsLook || linked}>
                     <summary
                         className={cx(
                             '-mx-2 flex cursor-pointer list-none items-start gap-3 rounded-control px-2 py-2.5 hover:bg-hover',

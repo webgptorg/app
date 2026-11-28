@@ -1,6 +1,13 @@
 import type { Page } from '@playwright/test';
 
-import { FAKE_AGENT_ID, FAKE_CHAT_ID, FAKE_RUN_ID, FAKE_TASK_ID, FAKE_TRIGGER_ID } from './fake-engine-api.ts';
+import {
+    FAKE_AGENT_ID,
+    FAKE_CHAT_ID,
+    FAKE_RUN_ID,
+    FAKE_TASK_ID,
+    FAKE_TRIGGER_ID,
+    HOSTILE_TARGET_NAME,
+} from './fake-engine-api.ts';
 import { expect, expectCleanPage, test } from './fixtures.ts';
 
 /** Every route the shell registers, an agent page with its Settings, Chat, Runs and Triggers tabs, a chat, a run, a trigger, the gallery, and a path that does not exist. */
@@ -26,6 +33,7 @@ const ROUTES = [
     '/wallet',
     '/audit',
     '/settings',
+    '/inbox',
     '/onboarding',
     '/security/passkeys',
     '/security/sessions',
@@ -315,5 +323,34 @@ test.describe('overlays in a real browser', () => {
         await page.keyboard.press('Escape');
         await expect(drawer).toHaveCount(0);
         await expect(open).toBeFocused();
+    });
+});
+
+test.describe('the inbox in a real browser', () => {
+    // Seb's rule (ADR 0027): nothing engine-local reaches app.ptbk.io. The inbox holds agent-written text with a URL
+    // and markup in it; the page must render it as text and ask no other origin for anything, not even an image.
+    test('shows agent text as text and asks no other origin for anything', async ({ page, visit }) => {
+        const report = await visit('/inbox');
+        expectCleanPage(report);
+        expect(report.foreignRequests).toEqual([]);
+        const list = page.getByRole('list', { name: 'Notifications' });
+        await expect(list.getByRole('link', { name: `Ada asks: ${HOSTILE_TARGET_NAME}` })).toBeVisible();
+        await expect(list.getByText(`${HOSTILE_TARGET_NAME} https://evil.example/pixel.png`)).toBeVisible();
+        expect(await page.locator('main img').count()).toBe(0);
+        // Seen on view: the badge in the navigation goes once the inbox marked what it shows.
+        await expect(
+            page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Inbox', exact: true }),
+        ).toBeVisible();
+    });
+
+    test('a narrow screen reaches the inbox from the menu', async ({ page, visit }) => {
+        await page.setViewportSize({ width: 360, height: 740 });
+        expectCleanPage(await visit('/settings'));
+        await page.getByRole('button', { name: 'Open navigation' }).click();
+        const drawer = page.getByRole('dialog', { name: 'Menu' });
+        await expect(drawer.getByRole('link', { name: /^Inbox/ })).toBeVisible();
+        await expect(drawer.getByText('4 waiting')).toBeAttached();
+        await drawer.getByRole('link', { name: /^Inbox/ }).click();
+        await expect(page.getByRole('heading', { level: 1, name: 'Inbox' })).toBeVisible();
     });
 });

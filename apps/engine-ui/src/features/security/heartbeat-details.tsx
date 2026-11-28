@@ -21,6 +21,7 @@ const FIELDS: readonly (readonly [string, () => string])[] = [
     ['update', m.security_heartbeat_field_update],
     ['agents', m.security_heartbeat_field_agents],
     ['members', m.security_heartbeat_field_members],
+    ['attention', m.security_heartbeat_field_attention],
 ];
 
 function ClockSkew({ skew }: { readonly skew: NonNullable<ReadSecurityOverview['clockSkew']> }) {
