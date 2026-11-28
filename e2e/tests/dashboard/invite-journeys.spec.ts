@@ -127,7 +127,7 @@ test('a new colleague joins from the invite in one step and is let in from the a
         );
         expect(stepUp).toBe('asked');
         // Refused for step-up, then sent again with the code held in memory: pasted once, no second click.
-        expect(approvals).toEqual([401, 201]);
+        await expect.poll(() => approvals).toEqual([401, 201]);
     });
 
     await test.step('her waiting page signs her in, and she sees the engine', async () => {
@@ -206,7 +206,7 @@ test('an existing account signs in and joins; a member cannot approve, and the f
             () => expect(owner.getByText(APPROVED).first()).toBeVisible({ timeout: 15_000 }),
         );
         expect(stepUp).toBe('asked');
-        expect(approvals).toEqual([401, 201]);
+        await expect.poll(() => approvals).toEqual([401, 201]);
         await expectSignedInToEngine(petrs.page, engine.origin);
     });
 
