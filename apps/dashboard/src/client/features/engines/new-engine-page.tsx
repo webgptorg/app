@@ -271,6 +271,7 @@ function InstallCommand(props: {
         >
             <div className="flex flex-col gap-3">
                 <Tabs
+                    wrap
                     label={m.engines_new_tabs_label()}
                     selectedId={selectedId}
                     onSelect={setSelectedId}
