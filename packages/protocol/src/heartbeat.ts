@@ -12,12 +12,16 @@ import {
     ed25519SignatureFromBytes,
     ed25519SignatureToBytes,
 } from './ids';
-import { DashboardIssuedId, SIGNED_MEMBER_MESSAGE_MAX_LENGTH } from './member-access';
+import { DashboardIssuedId, DashboardUserId, SIGNED_MEMBER_MESSAGE_MAX_LENGTH } from './member-access';
 import { OwnerHandoff } from './owner-handoff';
 import { SIGNING_CONTEXT, signingInput } from './signing-input';
 
 export const HEARTBEAT_SIGNATURE_HEADER = 'Ptbk-Signature';
-export const HEARTBEAT_MAX_BODY_BYTES = 4096;
+/**
+ * 12 KiB since ADR 0027 (C-21), so `MAX_HEARTBEAT_ATTENTION` entries fit beside `MAX_HEARTBEAT_ACKS` acks even with
+ * every ID at its longest; the ADR's 8 KiB fits only the dashboard's own, shorter IDs.
+ */
+export const HEARTBEAT_MAX_BODY_BYTES = 12 * 1024;
 export const HEARTBEAT_MAX_SKEW_MS = 120_000;
 export const MAX_HEARTBEAT_COUNT = 1_000_000;
 
@@ -83,6 +87,36 @@ export const HEARTBEAT_ACK_OUTCOMES = [
 export const HeartbeatAck = z.strictObject({ id: DashboardIssuedId, outcome: z.enum(HEARTBEAT_ACK_OUTCOMES) });
 export type HeartbeatAck = z.infer<typeof HeartbeatAck>;
 
+export const MAX_HEARTBEAT_ATTENTION = 64;
+/**
+ * What an engine's inbox (`notifications@1`) holds that someone has not seen yet (ADR 0027). Closed: a new kind is an
+ * addition in the same version, accepted by the dashboard before any engine sends it.
+ */
+export const ATTENTION_KINDS = ['agent-waiting', 'task-failed', 'tool-sign-in'] as const;
+export const AttentionKind = z.enum(ATTENTION_KINDS);
+export type AttentionKind = z.infer<typeof AttentionKind>;
+
+/**
+ * `count` open items of `kind` that the person has not seen in the engine UI yet. `to` is the dashboard user they are
+ * for, from the access ticket they joined with; absent, the items are project-wide, for the project's managers.
+ */
+export const HeartbeatAttention = z.strictObject({
+    to: DashboardUserId.optional(),
+    kind: AttentionKind,
+    count: z.int().min(1).max(MAX_HEARTBEAT_COUNT),
+});
+export type HeartbeatAttention = z.infer<typeof HeartbeatAttention>;
+
+const attentionKey = ({ to, kind }: HeartbeatAttention): string => `${to ?? ''}\u0000${kind}`;
+
+/** At most one entry per person and kind, so a count is never ambiguous. */
+const Attention = z
+    .array(HeartbeatAttention)
+    .max(MAX_HEARTBEAT_ATTENTION)
+    .refine((entries) => new Set(entries.map(attentionKey)).size === entries.length, {
+        message: 'one entry per person and kind',
+    });
+
 /**
  * v1 plus what teams need (ADR 0018): the number of pending access requests, and acks keyed by IDs the dashboard
  * issued, so the dashboard still learns no names or free text. An engine sends v2 only once it handles access tickets
@@ -93,6 +127,11 @@ export const HeartbeatV2 = z.strictObject({
     ...heartbeatShape,
     accessRequests: Count,
     acks: z.array(HeartbeatAck).max(MAX_HEARTBEAT_ACKS),
+    /**
+     * Present, possibly empty, while the owner lets the engine share unseen counts (ADR 0027); absent while they do
+     * not, which strict mode starts with. Only v2 has it: only an engine that handles tickets knows dashboard users.
+     */
+    attention: Attention.optional(),
 });
 export type HeartbeatV2 = z.infer<typeof HeartbeatV2>;
 
@@ -141,6 +180,8 @@ export function buildHeartbeat(input: HeartbeatInput): Bytes {
 export interface HeartbeatV2Input extends HeartbeatInput {
     readonly accessRequests: number;
     readonly acks: readonly HeartbeatAck[];
+    /** Leave out while the owner has sharing switched off; an empty list says it is on and nothing waits. */
+    readonly attention?: readonly HeartbeatAttention[];
 }
 
 /** As `buildHeartbeat`, for an engine that handles access tickets and revocations. */
@@ -150,8 +191,13 @@ export function buildHeartbeatV2(input: HeartbeatV2Input): Bytes {
         ...heartbeatFields(input),
         accessRequests: input.accessRequests,
         acks: input.acks,
+        ...(input.attention === undefined ? {} : { attention: input.attention.map(attentionFields) }),
     });
     return utf8Encode(JSON.stringify(heartbeat));
+}
+
+function attentionFields({ to, kind, count }: HeartbeatAttention): HeartbeatAttention {
+    return { ...(to === undefined ? {} : { to }), kind, count };
 }
 
 /** Only the fields the schema knows, in its order, so extra properties on the input never reach the wire. */
@@ -220,7 +266,7 @@ const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 /**
  * The dashboard's check on every heartbeat, in this order: size cap, header, signature over the raw bytes, then
  * (never before) UTF-8, JSON and the strict schema, then path engine ID equals body engine ID, `seq > lastSeq`, and
- * `|now − ts| ≤ 120 s`. A body over 4 KiB is `invalid-body` without being hashed.
+ * `|now − ts| ≤ 120 s`. A body over `HEARTBEAT_MAX_BODY_BYTES` is `invalid-body` without being hashed.
  */
 export async function verifyHeartbeat(input: VerifyHeartbeatInput): Promise<HeartbeatVerification> {
     if (input.rawBody.length > HEARTBEAT_MAX_BODY_BYTES) return { kind: 'invalid-body' };
