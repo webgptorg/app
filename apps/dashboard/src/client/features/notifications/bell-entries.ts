@@ -2,14 +2,18 @@ import { createFormatters } from '@ptbk/ui';
 
 import { m } from '../../../paraglide/messages';
 import type { NotificationView } from '../../../shared/api/notification-routes';
-import type { NotificationPlace, RenderContext } from '../../../shared/notifications/notification-kind';
-import { anyKind, isEngineKind } from '../../../shared/notifications/registry';
+import type {
+    NotificationItem,
+    NotificationPlace,
+    RenderContext,
+} from '../../../shared/notifications/notification-kind';
+import { anyKind, isEngineKind, parseVariant } from '../../../shared/notifications/registry';
 
 /** Where a line's Open goes: the dashboard's own pages, or the project's registered hostname, never an item in it. */
 export type BellTarget =
     | { readonly to: 'engine-page'; readonly engineId: string }
     | { readonly to: 'dashboard'; readonly path: '/' | '/people' }
-    | { readonly to: 'project'; readonly href: string; readonly label: string };
+    | { readonly to: 'project'; readonly href: string };
 
 export interface BellEntry {
     readonly key: string;
@@ -21,7 +25,7 @@ export interface BellEntry {
 type Project = NonNullable<NotificationView['project']>;
 
 function targetOf(row: NotificationView): BellTarget {
-    const link = anyKind(row.kind).copy.link(row);
+    const link = anyKind(row.kind).copy.link(itemOf(row));
     const { project } = row;
     switch (link.to) {
         case 'dashboard':
@@ -36,7 +40,17 @@ function targetOf(row: NotificationView): BellTarget {
 }
 
 function projectTarget(project: Project, path: '/' | '/members'): BellTarget {
-    return { to: 'project', href: `https://${project.hostname}${path}`, label: project.label };
+    return { to: 'project', href: `https://${project.hostname}${path}` };
+}
+
+/** Only what a kind's copy may read, and a variant of the row's own kind or none: rows are parsed, never trusted. */
+function itemOf(row: NotificationView): NotificationItem {
+    return {
+        count: row.count,
+        variant: parseVariant(row.kind, row.variant),
+        openedAt: row.openedAt,
+        updatedAt: row.updatedAt,
+    };
 }
 
 function placeOf(row: NotificationView, orgName: string | null): NotificationPlace {
@@ -74,7 +88,7 @@ export function bellEntries(
     return slots.flatMap((slot): BellEntry[] => {
         if ('row' in slot) {
             const { row } = slot;
-            const line = anyKind(row.kind).copy.line(row, placeOf(row, orgName), context);
+            const line = anyKind(row.kind).copy.line(itemOf(row), placeOf(row, orgName), context);
             return [{ key: row.id, line, unseen: !row.seen, target: targetOf(row) }];
         }
         const group = projects.get(slot.engineId);
@@ -84,7 +98,7 @@ export function bellEntries(
         }
         const line =
             more.length === 0
-                ? anyKind(only.kind).copy.line(only, placeOf(only, orgName), context)
+                ? anyKind(only.kind).copy.line(itemOf(only), placeOf(only, orgName), context)
                 : m.notification_things_line(
                       { count: group.rows.reduce((sum, row) => sum + row.count, 0), place: group.project.label },
                       { locale: context.locale },
