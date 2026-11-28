@@ -274,7 +274,8 @@ describe('startMockEngine', () => {
                 hostname: started.engine.hostname,
                 mode: 'tunnel',
                 dashboardUrl: null,
-                capabilities: DEFAULT_CAPABILITIES,
+                // The mock serves notifications@1 from M-16 on.
+                capabilities: DEFAULT_CAPABILITIES.filter(({ id }) => id !== 'notifications'),
             });
             interface Security {
                 relays: { hostname: string; status: string }[];
