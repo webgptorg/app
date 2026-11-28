@@ -824,6 +824,7 @@
   "audit_action_settings_update": "Settings changed",
   "audit_action_settings_update_policy": "Update policy changed",
   "audit_action_settings_dashboard_removals": "Removals from the dashboard changed",
+  "audit_action_settings_dashboard_attention": "Notification counts for the dashboard changed",
   "audit_action_updates_ui_check": "App update check run early",
   "audit_action_wallet_record_save": "Wallet login saved",
   "audit_action_wallet_record_update": "Wallet login updated",

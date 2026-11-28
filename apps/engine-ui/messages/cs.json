@@ -850,6 +850,7 @@
   "audit_action_settings_update": "Změna nastavení",
   "audit_action_settings_update_policy": "Změna zásad aktualizací",
   "audit_action_settings_dashboard_removals": "Změna odebírání z dashboardu",
+  "audit_action_settings_dashboard_attention": "Změna počtů upozornění pro dashboard",
   "audit_action_updates_ui_check": "Kontrola aktualizace aplikace spuštěna dřív",
   "audit_action_wallet_record_save": "Přihlášení v peněžence uloženo",
   "audit_action_wallet_record_update": "Přihlášení v peněžence aktualizováno",
