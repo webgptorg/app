@@ -80,7 +80,10 @@ function validBody(route: RouteDefinition): unknown {
         case 'approveAccessRequest':
             return { code: '123456', role: 'member' };
         case 'setDashboardRemovals':
+        case 'setDashboardAttention':
             return { enabled: true };
+        case 'markMyNotificationsSeen':
+            return { ids: ['matrix-notification'] };
         case 'answerOnboarding':
             return { promptId: 'matrix-prompt', action: 'back' };
         case 'openBrowserSignIn':
