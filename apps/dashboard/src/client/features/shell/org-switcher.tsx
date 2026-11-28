@@ -1,14 +1,16 @@
 import { Menu } from '@ptbk/ui';
 import type { MenuEntry } from '@ptbk/ui';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { ChevronsUpDown } from 'lucide-react';
+import { useId } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import { apiRoutes, type SessionView } from '../../../shared/api/routes';
 import { useApiClient } from '../../api/api-client-context';
 import { dataOrThrow, queryKeys } from '../../api/queries';
 import { useAppMutation } from '../../core/mutations';
+import { notificationsQuery } from '../notifications/notification-queries';
 import { useSession } from '../session/use-session';
 
 /** Everyone's own organization has no name, so one you were invited to must not read "Personal" beside yours. */
@@ -41,6 +43,12 @@ function OrgMenu({ name }: { readonly name: string }) {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const active = session.activeOrg;
+    // The bell's own query, so the dot costs no request of its own.
+    const { data: withUnseen = [] } = useQuery({
+        ...notificationsQuery(api),
+        select: (list) => list.otherOrgsWithUnseen,
+        enabled: active.permissions.includes('notification.read'),
+    });
     const switchOrg = useAppMutation({
         mutationFn: async (orgId: string) => dataOrThrow(await api.call(apiRoutes.setActiveOrg, { body: { orgId } })),
         errorMessage: () => m.org_switch_failed(),
@@ -50,10 +58,22 @@ function OrgMenu({ name }: { readonly name: string }) {
             await navigate({ to: '/engines' });
         },
     });
+    const unseenId = useId();
+    const othersUnseen = withUnseen.some((orgId) => orgId !== active.id);
     const items: MenuEntry[] = session.memberships.map((membership) => ({
         kind: 'item',
         id: membership.orgId,
-        label: orgName(membership),
+        ...(withUnseen.includes(membership.orgId) && membership.orgId !== active.id
+            ? {
+                  label: m.org_switcher_unseen({ name: orgName(membership) }),
+                  content: (
+                      <span className="flex min-w-0 items-center gap-2">
+                          <span className="truncate">{orgName(membership)}</span>
+                          <UnseenDot />
+                      </span>
+                  ),
+              }
+            : { label: orgName(membership) }),
         checkable: 'radio',
         checked: membership.orgId === active.id,
         onSelect: () => {
@@ -71,12 +91,25 @@ function OrgMenu({ name }: { readonly name: string }) {
                     {...props}
                     type="button"
                     aria-label={m.org_switcher_for({ name })}
+                    aria-describedby={othersUnseen ? unseenId : undefined}
                     className="flex h-8 min-w-0 cursor-pointer items-center gap-1 rounded-control px-2 text-sm font-medium hover:bg-hover motion-safe:transition-colors motion-safe:duration-(--motion-state)"
                 >
                     <span className="truncate">{name}</span>
+                    {othersUnseen ? (
+                        <>
+                            <UnseenDot />
+                            <span id={unseenId} className="sr-only">
+                                {m.org_switcher_others_unseen()}
+                            </span>
+                        </>
+                    ) : null}
                     <ChevronsUpDown aria-hidden className="size-3.5 shrink-0 text-text-subtle" />
                 </button>
             )}
         />
     );
+}
+
+function UnseenDot() {
+    return <span aria-hidden="true" className="size-1.5 shrink-0 rounded-pill bg-(--status-info)" />;
 }

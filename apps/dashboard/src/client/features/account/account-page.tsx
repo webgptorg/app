@@ -1,4 +1,5 @@
 import { Section } from '@ptbk/ui';
+import { lazy, Suspense } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import { useBrowser } from '../../core/browser';
@@ -8,7 +9,12 @@ import { CooldownBanner } from './cooldown-banner';
 import { PasskeysCard } from './passkeys-card';
 import { SessionsCard } from './sessions-card';
 
-/** `/account`: the email, passkeys and sessions of the signed-in person. */
+/** Its own chunk: every kind's copy and the Combobox would push the account route past its budget. */
+const NotificationSettings = lazy(async () => ({
+    default: (await import('../notifications/notification-settings')).NotificationSettings,
+}));
+
+/** `/account`: the email, passkeys, sessions and notification settings of the signed-in person. */
 export function AccountPage() {
     const session = useSession();
     const { now } = useBrowser();
@@ -20,6 +26,9 @@ export function AccountPage() {
             </Section>
             <PasskeysCard />
             <SessionsCard />
+            <Suspense fallback={null}>
+                <NotificationSettings />
+            </Suspense>
         </Page>
     );
 }

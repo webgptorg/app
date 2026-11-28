@@ -1042,5 +1042,42 @@
       }
     }
   ],
-  "notification_plan_limit_detail": "Nic, co běží, se nezastaví. Pro další přidání navyšte tarif na stránce Fakturace."
+  "notification_plan_limit_detail": "Nic, co běží, se nezastaví. Pro další přidání navyšte tarif na stránce Fakturace.",
+  "notification_bell": "Upozornění",
+  "notification_bell_unseen": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Upozornění, 1 nové",
+        "countPlural=few": "Upozornění, {count} nová",
+        "countPlural=many": "Upozornění, {count} nových",
+        "countPlural=other": "Upozornění, {count} nových"
+      }
+    }
+  ],
+  "notification_bell_empty": "Teď na vás nic nečeká.",
+  "notification_bell_failed": "Upozornění se nepodařilo načíst. Za chvíli se objeví sama.",
+  "notification_open": "Otevřít",
+  "notification_settings_link": "Nastavení upozornění",
+  "org_switcher_unseen": "{name}, nová upozornění",
+  "org_switcher_others_unseen": "Jiná organizace má nová upozornění",
+  "notification_settings_title": "Nastavení upozornění",
+  "notification_settings_description": "Jak se dozvídáte o dění v této organizaci. Každá organizace má vlastní nastavení.",
+  "notification_settings_always": "E-maily o přihlášení, obnovení účtu a pozvánkách chodí vždy a vypnout nejdou.",
+  "notification_settings_failed": "Nastavení upozornění se nepodařilo načíst.",
+  "notification_channel_off": "Vypnuto",
+  "notification_channel_in_app": "V aplikaci",
+  "notification_channel_email": "V aplikaci a e-mailem",
+  "notification_channel_default": "{channel} (výchozí)",
+  "notification_settings_saved": "„{kind}“ uloženo.",
+  "notification_settings_save_failed": "„{kind}“ se nepodařilo uložit.",
+  "unsubscribe_title": "Přestat posílat tyto e-maily?",
+  "unsubscribe_body": "Přestanou vám chodit e-maily jako ten, který vás sem přivedl. V aplikaci tato upozornění uvidíte dál.",
+  "unsubscribe_confirm": "Přestat posílat",
+  "unsubscribe_done_title": "E-maily vypnuty",
+  "unsubscribe_done_body": "Tyto e-maily už vám chodit nebudou. V aplikaci je uvidíte dál.",
+  "unsubscribe_settings": "Otevřít nastavení upozornění",
+  "unsubscribe_invalid_title": "Tento odkaz nefunguje",
+  "unsubscribe_invalid_body": "Možná je neúplný nebo zastaralý. Přihlaste se a v nastavení upozornění si vyberte, jaké e-maily chcete dostávat."
 }

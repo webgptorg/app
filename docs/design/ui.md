@@ -78,6 +78,8 @@ It carries an **engine fingerprint**: a visual pattern and a short code derived 
 
 Same design system, simpler: sign-up and sign-in with passkeys, engines list with live status and fingerprints, add engine (link code and install command), billing (Stripe), account. It links into engines; it never shows engine content.
 
+- **Notifications** (ADR 0027): a bell in the header with a dot while something is unseen. Its panel (a sheet on the bottom edge on phones) lists the active organization's open notifications, one line each from the kind's own copy, with Open; a project's engine counts are one line ("2 things need you in Marketing site") that opens the project. Opening it marks them seen. The org switcher dots other organizations with something unseen. Account settings has one row per kind (off, in the app, in the app and by email, the role's default marked), per organization. An email's unsubscribe link asks before it stops anything.
+
 ## Visual identity
 
 Visual identity v1 ([U-17](../plan/tasks/U-17-visual-identity.md), decided with Seb on 2026-11-13) is **calm precision**: Linear-style, readable for technical and non-technical people alike. The tokens live in `packages/ui/src/theme/` and the gallery's "Visual identity" entry shows them at a glance.

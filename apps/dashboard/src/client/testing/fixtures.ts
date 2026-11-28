@@ -8,6 +8,7 @@ import type {
     SessionSummary,
     SessionView,
 } from '../../shared/api/routes';
+import type { NotificationPreferenceView, NotificationView } from '../../shared/api/notification-routes';
 import type {
     AuthenticationOptions,
     AuthenticationResponse,
@@ -258,3 +259,33 @@ export const AUTHENTICATION_RESPONSE: AuthenticationResponse = {
     response: { clientDataJSON: 'Y2xpZW50', authenticatorData: 'YXV0aA', signature: 'c2ln', userHandle: 'dXNlcg' },
     clientExtensionResults: {},
 };
+
+/** Every role holds both; the default session leaves them out so screens without the bell stay as they were. */
+export const NOTIFICATION_PERMISSIONS = ['notification.read', 'notification.manage'] as const;
+
+/** An unseen, open notification of `kind` about the default engine, opened 78 minutes before `NOW` (10:42 UTC). */
+export function notificationView(overrides: Partial<NotificationView> = {}): NotificationView {
+    return {
+        id: 'nnnnnnnnnnnnnnnnnnnnnnnnnn',
+        kind: 'project-status',
+        variant: 'offline',
+        count: 1,
+        openedAt: NOW - 78 * 60_000,
+        updatedAt: NOW - 78 * 60_000,
+        seen: false,
+        project: {
+            engineId: ENGINE_ID as NonNullable<NotificationView['project']>['engineId'],
+            label: 'Sales bot',
+            hostname: `${ENGINE_ID}.${ENGINE_DOMAIN}` as NonNullable<NotificationView['project']>['hostname'],
+        },
+        ...overrides,
+    };
+}
+
+export function notificationPreference(
+    kind: NotificationPreferenceView['kind'],
+    channel: NotificationPreferenceView['channel'],
+    defaultChannel: NotificationPreferenceView['defaultChannel'] = channel,
+): NotificationPreferenceView {
+    return { kind, channel, defaultChannel };
+}

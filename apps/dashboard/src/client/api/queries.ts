@@ -68,6 +68,8 @@ export const queryKeys = {
     abuseContact: ['abuse-contact'] as const,
     installGuide: ['install-guide'] as const,
     adminEngine: (engineId: string) => ['admin', 'engines', engineId] as const,
+    notifications: ['notifications'] as const,
+    notificationPreferences: ['notification-preferences'] as const,
 };
 
 /** A 401 on any signed-in call means the session ended elsewhere (expired, revoked, signed out everywhere). */
