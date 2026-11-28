@@ -6,6 +6,7 @@ import { attentionRecipients, attentionSwitchedOff } from './attention';
 type Defect =
     | 'names-owner'
     | 'leaks-title'
+    | 'refused-leak'
     | 'extra-kind'
     | 'duplicate'
     | 'huge-count'
@@ -67,7 +68,7 @@ function scripted(defects: readonly Defect[] = []): AttentionEngine {
             const key = `${to ?? ''} ${item.kind}`;
             const entry = counts.get(key) ?? { ...(to === undefined ? {} : { to }), kind: item.kind, count: 0 };
             entry['count'] = (entry['count'] as number) + 1;
-            if (broken.has('leaks-title')) entry['title'] = item.title;
+            if (broken.has('leaks-title') || broken.has('refused-leak')) entry['title'] = item.title;
             if (broken.has('huge-count')) entry['count'] = 2_000_000;
             counts.set(key, entry);
         }
@@ -101,10 +102,12 @@ function scripted(defects: readonly Defect[] = []): AttentionEngine {
                 return Promise.resolve(id);
             },
         },
-        accepted: (since) => beats.filter((candidate) => candidate.at >= since),
+        sent: (since) => beats.filter((candidate) => candidate.at >= since),
         awaitBeat(since, count) {
             if (broken.has('silent')) return Promise.resolve('no heartbeat came');
             while (beats.filter((candidate) => candidate.at >= since).length < count) beat();
+            // As the dashboard's strict parse would: the leaking beats arrive, but none is accepted.
+            if (broken.has('refused-leak')) return Promise.resolve('the engine did not send 2 heartbeats');
             const found = beats.filter((candidate) => candidate.at >= since)[count - 1];
             return Promise.resolve(found ?? 'no heartbeat came');
         },
@@ -162,6 +165,7 @@ describe('the attention checks', () => {
     it.each<[Defect, RegExp]>([
         ['names-owner', /no approved ticket/],
         ['leaks-title', /engine content|carries title/],
+        ['refused-leak', /carries title.*did not send/],
         ['extra-kind', /unknown kind/],
         ['duplicate', /two entries/],
         ['huge-count', /outside/],

@@ -22,7 +22,7 @@ const BEATS_TO_SETTLE = 2;
 const ENTRY_KEYS: ReadonlySet<string> = new Set(['to', 'kind', 'count']);
 const KINDS: ReadonlySet<string> = new Set(ATTENTION_KINDS);
 
-/** One accepted heartbeat v2, as the bytes arrived. */
+/** One heartbeat, as the bytes arrived. */
 export interface Beat {
     readonly at: number;
     readonly text: string;
@@ -48,8 +48,11 @@ export interface Admitted {
 export interface AttentionEngine {
     readonly owner: SessionCredential;
     readonly notifications: NotificationsTarget;
-    /** Accepted v2 heartbeats received at or after `since`, oldest first. */
-    accepted(since: number): readonly Beat[];
+    /**
+     * Every heartbeat received at or after `since`, oldest first, whether the dashboard accepted it or not: a body that
+     * leaks content breaks the strict schema and is refused, and must still be judged.
+     */
+    sent(since: number): readonly Beat[];
     /** Waits for the `count`th accepted heartbeat at or after `since`; a string says why it never came. */
     awaitBeat(since: number, count: number): Promise<Beat | string>;
     api(method: string, path: string, body?: unknown, session?: SessionCredential): Promise<Answer>;
@@ -61,6 +64,12 @@ export interface AttentionEngine {
 
 type Opened =
     { readonly kind: 'ok'; readonly engine: AttentionEngine } | { readonly kind: 'done'; readonly outcome: Outcome };
+
+function sentSince(joinable: JoinableEngine, since: number): readonly Beat[] {
+    return joinable.registered.dashboard.heartbeats
+        .filter((beat) => beat.at >= since)
+        .map((beat) => ({ at: beat.at, text: beat.rawBody.toString('utf8') }));
+}
 
 function acceptedSince(joinable: JoinableEngine, since: number): readonly Beat[] {
     return joinable.registered.dashboard.heartbeats
@@ -121,7 +130,7 @@ export function attentionEngine(
     return {
         owner,
         notifications,
-        accepted: (since) => acceptedSince(joinable, since),
+        sent: (since) => sentSince(joinable, since),
         async awaitBeat(since, count) {
             const beat = await attemptWait(
                 ctx,
@@ -182,8 +191,13 @@ interface Entry {
 
 /** The body's `attention` as sent: `undefined` when absent, anything else as found. */
 function attentionOf(beat: Beat): unknown {
-    const body = JSON.parse(beat.text) as Record<string, unknown>;
-    return 'attention' in body ? body['attention'] : undefined;
+    let body: unknown;
+    try {
+        body = JSON.parse(beat.text);
+    } catch {
+        return undefined;
+    }
+    return typeof body === 'object' && body !== null && 'attention' in body ? body.attention : undefined;
 }
 
 /**
@@ -224,6 +238,10 @@ function countFor(beat: Beat, to: string | undefined, kind: NotificationKind): n
     if (!Array.isArray(attention)) return 0;
     const entry = (attention as Entry[]).find((candidate) => candidate.to === to && candidate.kind === kind);
     return typeof entry?.count === 'number' ? entry.count : 0;
+}
+
+function failing(problems: readonly string[]): Outcome {
+    return { kind: 'fail', detail: [...new Set(problems)].join('; ') };
 }
 
 async function setSharing(engine: AttentionEngine, enabled: boolean): Promise<Outcome | null> {
@@ -297,10 +315,11 @@ export const attentionRecipients = check(
             (value) => value.length >= 8,
         );
         const allowed = new Set([person.dashboardUserId, leaver.dashboardUserId]);
+        const judged = () => engine.sent(since).flatMap((beat) => judgeBeat(beat, allowed, secrets));
         const raisedAt = Date.now();
 
         const shared = await engine.awaitBeat(raisedAt, BEATS_TO_SETTLE);
-        if (typeof shared === 'string') return { kind: 'fail', detail: shared };
+        if (typeof shared === 'string') return failing([...judged(), shared]);
         const problems: string[] = [];
         if (!Array.isArray(attentionOf(shared))) problems.push('switched on, the heartbeat carries no attention');
         if (countFor(shared, person.dashboardUserId, 'agent-waiting') !== 1) {
@@ -321,15 +340,15 @@ export const attentionRecipients = check(
         const changedAt = Date.now();
         // The revocation leaves in one beat's reply and takes effect before a later one.
         const settled = await engine.awaitBeat(changedAt, BEATS_TO_SETTLE + 1);
-        if (typeof settled === 'string') return { kind: 'fail', detail: settled };
+        if (typeof settled === 'string') return failing([...problems, ...judged(), settled]);
         if (countFor(settled, person.dashboardUserId, 'agent-waiting') !== 0) {
             problems.push('attention still counts an item its person saw');
         }
         if (countFor(settled, leaver.dashboardUserId, 'task-failed') !== 0) {
             problems.push('attention still names a person the dashboard revoked');
         }
-        for (const beat of engine.accepted(since)) problems.push(...judgeBeat(beat, allowed, secrets));
-        return problems.length === 0 ? { kind: 'pass' } : { kind: 'fail', detail: [...new Set(problems)].join('; ') };
+        problems.push(...judged());
+        return problems.length === 0 ? { kind: 'pass' } : failing(problems);
     },
 );
 

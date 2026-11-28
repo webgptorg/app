@@ -83,12 +83,12 @@ const JOINS: Readonly<Record<string, Route>> = {
 };
 
 describe('the attention checks’ engine wiring', () => {
-    it('reads only accepted v2 heartbeats since a time, and waits for the nth or says why it never came', async () => {
+    it('reads every heartbeat since a time, and waits for the nth accepted v2 one or says why it never came', async () => {
         const beats = [beat(1, 2), beat(2, 1), beat(3, 2, 503), beat(4, 2, 204, 'invalid-body'), beat(5, 2)];
         const { joinable } = await fakeJoinable({}, beats);
         const engine = attentionEngine(joinable, { cookie: 'owner=1' }, { raise: () => Promise.resolve('n') });
-        expect(engine.accepted(0).map(({ at }) => at)).toEqual([1, 5]);
-        expect(engine.accepted(2).map(({ text }) => JSON.parse(text) as unknown)).toEqual([{ v: 2, seq: 5 }]);
+        expect(engine.sent(0).map(({ at }) => at)).toEqual([1, 2, 3, 4, 5]);
+        expect(engine.sent(5).map(({ text }) => JSON.parse(text) as unknown)).toEqual([{ v: 2, seq: 5 }]);
         expect(await engine.awaitBeat(0, 2)).toMatchObject({ at: 5 });
         expect(await engine.awaitBeat(0, 3)).toMatch(/did not send 3 heartbeats/);
     });
