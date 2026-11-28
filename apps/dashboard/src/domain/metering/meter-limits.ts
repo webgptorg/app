@@ -9,7 +9,7 @@ import type { MeteringStore } from './metering-store';
 export interface MeterShortfall {
     readonly meter: MeterId;
     readonly scope: 'org' | 'project';
-    /** The known count before the action. */
+    /** The known count before the action, with what is pending. */
     readonly used: number;
     readonly limit: number;
 }
@@ -23,6 +23,8 @@ export interface MeterLimitRequest {
     readonly adding: number;
     /** The project it adds to, for a per-project quota; absent for something new to the organization. */
     readonly engineId?: EngineId;
+    /** Promised to the organization but not in its facts yet, such as pending invitations: counted as used. */
+    readonly pending?: number;
 }
 
 export interface MeterLimitDeps {
@@ -45,7 +47,7 @@ export async function checkMeterLimit(
     const project =
         request.engineId === undefined ? undefined : reading.projects.find((p) => p.engineId === request.engineId);
     const candidates = [
-        { scope: 'org' as const, quota: meter.quotas.org, used: reading.org.value },
+        { scope: 'org' as const, quota: meter.quotas.org, used: reading.org.value + (request.pending ?? 0) },
         ...(project === undefined
             ? []
             : [{ scope: 'project' as const, quota: meter.quotas.project, used: project.value }]),

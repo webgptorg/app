@@ -1,9 +1,10 @@
 import { LinkCode, REGISTER_PATH } from '@ptbk/protocol';
 import { describe, expect, it } from 'vitest';
 
-import type { LinkCodeView, LinkEligibilityView } from '../../src/shared/api/routes';
+import { INVITE_TTL_MS } from '../../src/domain/teams/invites';
+import type { InviteView, LinkCodeView, LinkEligibilityView } from '../../src/shared/api/routes';
 import { createAuthHarness, type AuthHarness, type TestBrowser } from '../../src/testing/auth-harness';
-import { problemCode, signUp, uniqueEmail } from '../../src/testing/auth-flows';
+import { lastEmail, problemCode, signUp, uniqueEmail } from '../../src/testing/auth-flows';
 import { createMemoryAuthStore } from '../../src/testing/memory-auth-store';
 import { createTestEngine } from '../../src/testing/test-engine';
 
@@ -50,13 +51,63 @@ describe('meter limits on what the dashboard creates', () => {
             offPlan: offPlan({ engines: 1, people: 3 }),
         });
         const { browser, email } = await ownerOn(harness);
-        expect((await invite(browser, [uniqueEmail(), uniqueEmail()])).status).toBe(200);
-        // Pending invitations are not people yet, so only the owner counts against the limit of three.
-        const refused = await invite(browser, [uniqueEmail(), uniqueEmail(), uniqueEmail()]);
+        const invited = uniqueEmail();
+        expect((await invite(browser, [invited, uniqueEmail()])).status).toBe(200);
+        // The owner and the two pending invitations fill the limit of three.
+        const refused = await invite(browser, [uniqueEmail()]);
         expect([refused.status, problemCode(refused)]).toEqual([403, 'people-limit']);
         expect(await pendingInvites(browser)).toBe(2);
-        // Someone already in the organization is no new person.
+        // Someone already in the organization, or already invited, is no new person.
         expect((await invite(browser, [email])).body).toEqual({ results: [{ email, outcome: 'added' }] });
+        expect((await invite(browser, [invited])).status).toBe(200);
+    });
+
+    it('counts only live invitations: an expired or revoked one frees its place', async () => {
+        const harness = createAuthHarness({
+            store: createMemoryAuthStore(),
+            billing: 'off',
+            offPlan: offPlan({ engines: 1, people: 2 }),
+        });
+        const { browser } = await ownerOn(harness);
+        expect((await invite(browser, [uniqueEmail()])).status).toBe(200);
+        expect(problemCode(await invite(browser, [uniqueEmail()]))).toBe('people-limit');
+
+        // In two steps, with a request between, so the session outlives its idle timeout of the same seven days.
+        harness.clock.advance(INVITE_TTL_MS / 2);
+        expect(await pendingInvites(browser)).toBe(1);
+        harness.clock.advance(INVITE_TTL_MS / 2 + 1);
+        expect((await invite(browser, [uniqueEmail()])).status).toBe(200);
+        expect(problemCode(await invite(browser, [uniqueEmail()]))).toBe('people-limit');
+
+        const [pending] = ((await browser.request('GET', '/api/org/members')).body as { invites: InviteView[] })
+            .invites;
+        const revoked = await browser.request('POST', `/api/invites/${pending?.inviteId ?? ''}/revoke`);
+        expect(revoked.status).toBe(204);
+        expect((await invite(browser, [uniqueEmail()])).status).toBe(200);
+    });
+
+    it('does not count a spare invitation to someone who joined through another', async () => {
+        const harness = createAuthHarness({
+            store: createMemoryAuthStore(),
+            billing: 'off',
+            offPlan: offPlan({ engines: 1, people: 3 }),
+        });
+        const { browser } = await ownerOn(harness);
+        const colleague = uniqueEmail();
+        expect((await invite(browser, [colleague])).status).toBe(200);
+        expect((await invite(browser, [colleague])).status).toBe(200);
+        const message = lastEmail(harness, colleague);
+        if (message.template !== 'team-invite') {
+            throw new Error(`expected an invitation, got ${message.template}`);
+        }
+        const token = new URL(message.link).hash.slice(1);
+        const joiner = harness.browser();
+        await signUp(harness, joiner, colleague);
+        expect((await joiner.request('POST', '/api/invites/accept', { token })).status).toBe(200);
+        expect(await pendingInvites(browser)).toBe(1);
+        // The owner, the colleague and one newcomer fill the limit of three.
+        expect((await invite(browser, [uniqueEmail()])).status).toBe(200);
+        expect(problemCode(await invite(browser, [uniqueEmail()]))).toBe('people-limit');
     });
 
     it('still adds its own people to teams once an organization is over the people limit', async () => {
@@ -92,6 +143,8 @@ describe('meter limits on what the dashboard creates', () => {
         });
         const { browser } = await ownerOn(harness);
         expect((await invite(browser, [uniqueEmail()])).status).toBe(200);
+        expect((await invite(browser, [uniqueEmail(), uniqueEmail()])).status).toBe(200);
+        expect(await pendingInvites(browser)).toBe(3);
         for (let engine = 0; engine < 3; engine++) {
             expect(await eligibilityOf(browser)).toBe('allowed');
             await linkEngine(harness, browser);

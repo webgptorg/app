@@ -72,6 +72,20 @@ async function inviteEmail(
     };
 }
 
+/** Addresses with a live invitation that are not in the organization yet; one joined through another invitation is. */
+async function pendingNewcomers(deps: InviteDeps, orgId: OrgId): Promise<ReadonlySet<string>> {
+    const addresses = new Set(
+        (await deps.teams.listPendingInvites(orgId, deps.clock.nowMs())).map((invite) => invite.email),
+    );
+    for (const email of addresses) {
+        const user = await deps.accounts.findUserByEmail(email);
+        if (user !== null && (await deps.accounts.findMembership(orgId, user.id)) !== null) {
+            addresses.delete(email);
+        }
+    }
+    return addresses;
+}
+
 /**
  * Invites people to the organization and some of its teams. Someone already in the organization is added to the teams
  * at once, without an email: they need no invitation to an organization they are in. Only an owner may invite owners.
@@ -96,15 +110,17 @@ export async function createInvites(
             user !== null && (await deps.accounts.findMembership(actor.orgId, user.id)) !== null ? user.id : null;
         recipients.push({ email, memberId });
     }
-    // Pending invitations don't count, so accepting several can pass the limit: an acceptance is never refused. Only
-    // newcomers are checked, so an organization already over its limit can still add its own people to teams.
-    const newcomers = recipients.filter((recipient) => recipient.memberId === null).length;
-    if (
-        newcomers > 0 &&
-        (await checkMeterLimit(deps.meterLimits, actor.orgId, { meter: 'people', adding: newcomers }, signal))
-            .outcome === 'block'
-    ) {
-        return { kind: 'people-limit' };
+    // Pending invitations count as people, so invitations cannot overshoot the limit and an acceptance is never refused.
+    // Only newcomers are checked, so an organization already over its limit can still add its own people to teams.
+    if (recipients.some((recipient) => recipient.memberId === null)) {
+        const invited = await pendingNewcomers(deps, actor.orgId);
+        const adding = recipients.filter(
+            (recipient) => recipient.memberId === null && !invited.has(recipient.email),
+        ).length;
+        const people = { meter: 'people', adding, pending: invited.size } as const;
+        if (adding > 0 && (await checkMeterLimit(deps.meterLimits, actor.orgId, people, signal)).outcome === 'block') {
+            return { kind: 'people-limit' };
+        }
     }
     const results: InviteResult[] = [];
     const emails: { readonly invite: InviteRecord; readonly token: string }[] = [];
