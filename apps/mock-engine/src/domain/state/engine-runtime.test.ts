@@ -113,7 +113,8 @@ describe('engine runtime', () => {
             hostname: IDENTITY.hostname,
             mode: 'tunnel',
             dashboardUrl: null,
-            capabilities: DEFAULT_CAPABILITIES,
+            // The mock serves notifications@1 from M-16 on.
+            capabilities: DEFAULT_CAPABILITIES.filter(({ id }) => id !== 'notifications'),
         });
         expect(ok(await client().security.get(signal()))).toMatchObject({
             engine: { version: '0.4.2' },
