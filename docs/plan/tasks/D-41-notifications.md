@@ -59,7 +59,7 @@ interface EngineKind<K extends string> extends KindBase<K, never> {
 
 - **Project removed** (ADR 0028's lane): `kinds/project-removed.ts` with `reach: 'viewers'`, audience `project-viewers`, ADR 0027's defaults (owner, admin and team admin email; member in-app), `closesWhenSeen: () => true`, a `dashboard` `/` link (the project is gone, so never its hostname). The removal flow calls `notify('project-removed', { orgId, engineId }, { kind: 'removed' })` before it deletes the engine's team, since the audience is resolved from it. Then close the project's other rows: a `close` change from each kind is enough, or one `closeForEngine` store method if that lane prefers.
 - **Team admins** (ADR 0026's lane): `directoryPeople` in `recipient-rules.ts` maps a team-admin member to `role: 'team-admin'` and `manager` when their access is approved; every kind already declares its `team-admin` default, and nothing else changes.
-- **Plan limit reached** (D-40, PR #388): `kinds/plan-limit.ts` with the meter as its variant (`projects`, `agents`, `members`), audience `org-managers` (organization level, `engineId: null`; the person whose link it blocked as a second `notify` with `person`), defaults owner email, admin in-app, team admin in-app, `closesWhenSeen: () => false`, closed by an `under-limit` event; `checkMeterLimit` calls `notify` when a meter reaches its quota.
+- **Plan limit reached** (D-40, #388) is wired here as the worked example: `kinds/plan-limit.ts` (variant = the meter, audience `org-managers`, ADR 0027's defaults, link `/billing`), and `checkMeterLimit` calls `MeterLimitDeps.onLimit` on every warn or block, which the composition root points at `notify`. Telling the person whose link it blocked waits for ADR 0026's team admins.
 
 ### Kinds in this task
 
@@ -68,6 +68,7 @@ interface EngineKind<K extends string> extends KindBase<K, never> {
 | `project-status` | platform | `online`, `offline`, `back-online` | The status Durable Object: first heartbeat (setup reminder), offline threshold, back online |
 | `update-waiting` | platform | (none)                             | The status Durable Object, when `update` turns `available` and back                         |
 | `join-request`   | platform | (none)                             | Heartbeat v2: new tickets awaiting approval, and their acks                                 |
+| `plan-limit`     | platform | ADR 0025's meters                  | `checkMeterLimit` (D-40), on every warn or block, through its `onLimit` hook                |
 | `people-change`  | platform | `joined`, `role`, `added`          | Accepting an invitation, changing a role, adding someone to a team                          |
 | `agent-waiting`  | engine   | (none)                             | `attention` (C-21)                                                                          |
 | `task-failed`    | engine   | (none)                             | `attention` (C-21)                                                                          |
@@ -128,7 +129,7 @@ Both actions are org-scoped for every role and read and write only the session u
 
 ## Out of scope
 
-- Daily summary and time zones; organization defaults; push; a notifications page; `plan-limit`, `project-removed` and team-admin recipients (their own lanes, see above).
+- Daily summary and time zones; organization defaults; push; a notifications page; `project-removed` and team-admin recipients (their own lanes, see above).
 
 ## Acceptance criteria
 

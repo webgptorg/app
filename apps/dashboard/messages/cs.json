@@ -1027,5 +1027,20 @@
   ],
   "notification_email_open": "Otevřete ho zde: {link}",
   "notification_email_footer": "Tato schránka se nečte. Upozornění nastavíte zde: {settings}\n\nTyto e-maily vypnete zde: {unsubscribe}",
-  "notification_email_project": "Projekt: {project}, na adrese {hostname}"
+  "notification_email_project": "Projekt: {project}, na adrese {hostname}",
+  "notification_plan_limit_label": "Dosažený limit tarifu",
+  "notification_plan_limit_line": [
+    {
+      "declarations": ["input org", "input meter"],
+      "selectors": ["meter"],
+      "match": {
+        "meter=projects": "V {org} je dosažen limit tarifu pro projekty",
+        "meter=agents": "V {org} je dosažen limit tarifu pro agenty",
+        "meter=members": "V {org} je dosažen limit tarifu pro členy projektů",
+        "meter=people": "V {org} je dosažen limit tarifu pro lidi",
+        "meter=*": "V {org} jsou dosaženy limity tarifu"
+      }
+    }
+  ],
+  "notification_plan_limit_detail": "Nic, co běží, se nezastaví. Pro další přidání navyšte tarif na stránce Fakturace."
 }

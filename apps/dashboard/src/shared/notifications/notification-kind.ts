@@ -98,7 +98,7 @@ export interface RenderContext {
 export type NotificationLink =
     | { readonly to: 'project-page' }
     | { readonly to: 'project'; readonly path: '/' | '/members' }
-    | { readonly to: 'dashboard'; readonly path: '/' | '/people' };
+    | { readonly to: 'dashboard'; readonly path: '/' | '/people' | '/billing' };
 
 /** What an email adds that the dashboard owns but a row does not hold, read at send time. */
 export interface EmailExtras {

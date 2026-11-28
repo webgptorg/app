@@ -13,6 +13,7 @@ import { createRouteBinder } from './bind-route';
 import { bindInstallScriptRoutes } from './install-script-routes';
 import { createInternalRouter, INTERNAL_MOUNT } from './internal-router';
 import { createEmailRouter } from './notification-routes';
+import { planLimitNotifier } from './notify-quietly';
 import { UNSUBSCRIBE_MOUNT } from '../../shared/api/notification-routes';
 import { problemResponse } from './problem';
 import { securityHeaders, withHeaders } from './security-headers';
@@ -103,7 +104,7 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
                   clock: deps.clock,
               });
     const licenseGate = licenses?.gate ?? OPEN_LICENSE_GATE;
-    const policy = createEngineCreationPolicy({ ...deps, licenseGate });
+    const policy = createEngineCreationPolicy({ ...deps, licenseGate, onLimit: planLimitNotifier(deps) });
     const routers = [
         [API_MOUNT, createApiRouter({ ...deps, policy, routes, licenses, licenseGate })],
         [V1_MOUNT, createV1Router({ ...deps, policy, routes })],

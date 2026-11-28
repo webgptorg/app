@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { agentWaitingKind, taskFailedKind, toolSignInKind } from './kinds/engine-attention';
 import { joinRequestKind } from './kinds/join-request';
 import { peopleChangeKind } from './kinds/people-change';
+import { planLimitKind } from './kinds/plan-limit';
 import { projectStatusKind } from './kinds/project-status';
 import { updateWaitingKind } from './kinds/update-waiting';
 import type {
@@ -19,6 +20,7 @@ export const NOTIFICATION_KINDS = {
     'update-waiting': updateWaitingKind,
     'join-request': joinRequestKind,
     'people-change': peopleChangeKind,
+    'plan-limit': planLimitKind,
     'agent-waiting': agentWaitingKind,
     'task-failed': taskFailedKind,
     'tool-sign-in': toolSignInKind,

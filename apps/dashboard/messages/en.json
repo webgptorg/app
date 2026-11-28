@@ -1003,5 +1003,20 @@
   ],
   "notification_email_open": "Open it here: {link}",
   "notification_email_footer": "This mailbox isn't read. Manage your notifications: {settings}\n\nTurn these emails off: {unsubscribe}",
-  "notification_email_project": "Project: {project}, at {hostname}"
+  "notification_email_project": "Project: {project}, at {hostname}",
+  "notification_plan_limit_label": "Plan limit reached",
+  "notification_plan_limit_line": [
+    {
+      "declarations": ["input org", "input meter"],
+      "selectors": ["meter"],
+      "match": {
+        "meter=projects": "{org} reached its plan's limit for projects",
+        "meter=agents": "{org} reached its plan's limit for agents",
+        "meter=members": "{org} reached its plan's limit for project members",
+        "meter=people": "{org} reached its plan's limit for people",
+        "meter=*": "{org} reached its plan's limits"
+      }
+    }
+  ],
+  "notification_plan_limit_detail": "Nothing that runs stops. To add more, upgrade the plan on the Billing page."
 }

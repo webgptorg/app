@@ -28,6 +28,7 @@ describe('the notification kind registry', () => {
             'update-waiting': ['in-app', 'in-app', 'in-app', 'off'],
             'join-request': ['email', 'email', 'email', 'off'],
             'people-change': ['in-app', 'in-app', 'in-app', 'email'],
+            'plan-limit': ['email', 'in-app', 'in-app', 'off'],
             'agent-waiting': ['email', 'email', 'email', 'email'],
             'task-failed': ['email', 'email', 'email', 'email'],
             'tool-sign-in': ['email', 'email', 'email', 'off'],

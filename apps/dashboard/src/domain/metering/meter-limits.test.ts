@@ -94,4 +94,21 @@ describe('checkMeterLimit', () => {
             ),
         ).toEqual({ outcome: 'ok' });
     });
+
+    it('tells whoever listens of every shortfall, and of nothing else', async () => {
+        const told: unknown[] = [];
+        const entitlements = createFakeEntitlements();
+        entitlements.grant(facts.orgId, { enginesMax: 3, overLimit: 'warn' });
+        const deps = {
+            entitlements,
+            store: { readOrgFacts: () => Promise.resolve(facts) },
+            onLimit: (orgId: string, shortfall: unknown) => {
+                told.push([orgId, shortfall]);
+                return Promise.resolve();
+            },
+        };
+        await checkMeterLimit(deps, facts.orgId, { meter: 'projects', adding: 1 }, signal);
+        await checkMeterLimit(deps, facts.orgId, { meter: 'agents', adding: 1 }, signal);
+        expect(told).toEqual([[facts.orgId, { outcome: 'warn', meter: 'projects', scope: 'org', used: 3, limit: 3 }]]);
+    });
 });

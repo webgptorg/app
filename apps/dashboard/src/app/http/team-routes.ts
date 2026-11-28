@@ -38,7 +38,7 @@ import { clearInviteCookie, INVITE_COOKIE_TTL_MS, inviteCookie, inviteToken } fr
 import type { DashboardDeps } from '../deps';
 import { resolveLinkCodeView } from './link-code-view';
 import type { RequestContext, RouteBinder } from './bind-route';
-import { notifyQuietly } from './notify-quietly';
+import { notifyQuietly, planLimitNotifier } from './notify-quietly';
 
 const NO_CONTENT = { kind: 'ok', body: undefined, status: 204 } as const;
 /** The engine's join gateway page (teams spec, "Adding a person"), under its reserved `/auth/` prefix. */
@@ -100,7 +100,7 @@ export function bindTeamRoutes(
         ...deps,
         accounts: deps.store.accounts,
         inviteLink: (token) => deps.links.invite(token),
-        meterLimits: { entitlements: deps.entitlements, store: deps.metering },
+        meterLimits: { entitlements: deps.entitlements, store: deps.metering, onLimit: planLimitNotifier(deps) },
     };
 
     bind(router, mount, apiRoutes.listTeams, async ({ session }) => {

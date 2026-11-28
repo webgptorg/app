@@ -1,4 +1,5 @@
 import type { NotificationEvent, PlatformNotificationKind } from '../../shared/notifications/registry';
+import type { MeterLimitDeps } from '../../domain/metering/meter-limits';
 import type { NotificationTarget } from '../../domain/notifications/notifications';
 import type { DashboardDeps } from '../deps';
 
@@ -22,4 +23,12 @@ export async function notifyQuietly<K extends PlatformNotificationKind>(
             error: error instanceof Error ? error.name : 'unknown',
         });
     }
+}
+
+/** D-41's `plan-limit` for ADR 0025's meter checks: the organization's managers hear that a meter reached its quota. */
+export function planLimitNotifier(
+    deps: Pick<DashboardDeps, 'notifications' | 'logger'>,
+): NonNullable<MeterLimitDeps['onLimit']> {
+    return (orgId, shortfall) =>
+        notifyQuietly(deps, 'plan-limit', { orgId, engineId: null }, { kind: 'reached', meter: shortfall.meter });
 }
