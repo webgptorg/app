@@ -12,7 +12,11 @@ export function EnvironmentBadge() {
     // The org name gives way first: the badge is short, and a hidden environment is the costlier mistake.
     return (
         <StatusPill tone="warning" className="shrink-0">
-            {m.environment_label({ environment: environment.data.environment })}
+            {/* A phone shows the environment's name alone, so the org name keeps room to be read. */}
+            <span aria-hidden="true" className="sm:hidden">
+                {environment.data.environment}
+            </span>
+            <span className="max-sm:sr-only">{m.environment_label({ environment: environment.data.environment })}</span>
         </StatusPill>
     );
 }

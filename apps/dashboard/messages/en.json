@@ -429,6 +429,7 @@
   "invite_title": "Invite people",
   "invite_title_engine": "Invite people to {engine}",
   "invite_to_engine": "Invite to this project",
+  "invite_to_engine_short": "Invite",
   "link_codes_actions": "Actions for the link code created {created}",
   "link_codes_body": "Each works once, until it expires. Revoke any you no longer need.",
   "link_codes_revoke": "Revoke code",

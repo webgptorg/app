@@ -43,7 +43,10 @@ function StopControl({ agent, size }: { readonly agent: Agent; readonly size: 's
                         onClick={control.stop}
                     >
                         {control.state === 'stopping' ? null : <Square aria-hidden className="size-4" />}
-                        {control.state === 'stopping' ? m.agent_stopping() : m.agent_action_stop()}
+                        {/* The stop square says it on a phone, where the agent's name and status need the room. */}
+                        <span className="max-sm:sr-only">
+                            {control.state === 'stopping' ? m.agent_stopping() : m.agent_action_stop()}
+                        </span>
                     </Button>
                 )
             }

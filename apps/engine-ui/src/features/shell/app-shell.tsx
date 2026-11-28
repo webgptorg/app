@@ -62,7 +62,8 @@ function SetupShell() {
                         }}
                     >
                         <LogOut aria-hidden className="size-4" />
-                        {m.sign_out()}
+                        {/* The icon alone on a phone, so the engine's name stays readable beside it. */}
+                        <span className="max-sm:sr-only">{m.sign_out()}</span>
                     </Button>
                 </div>
             </header>

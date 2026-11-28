@@ -197,13 +197,16 @@ function EngineDetail(props: {
                         <Button
                             variant="secondary"
                             size="md"
+                            // One name at every width; a phone shows only its first word, so the actions keep one row.
+                            aria-label={m.invite_to_engine()}
                             onClick={() => {
                                 setInviting(true);
                                 setInvitedOnce(true);
                             }}
                         >
                             <UserPlus aria-hidden className="size-4" />
-                            {m.invite_to_engine()}
+                            <span className="sm:hidden">{m.invite_to_engine_short()}</span>
+                            <span className="max-sm:hidden">{m.invite_to_engine()}</span>
                         </Button>
                     )}
                     {engine.status === 'suspended' ? null : team?.isMember === true ? (

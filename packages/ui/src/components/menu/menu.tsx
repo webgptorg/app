@@ -350,7 +350,7 @@ export function Menu({ label, trigger, items, align = 'start', matchTriggerWidth
                 setActiveIndex(itemIndex);
             },
             className: cx(
-                'flex min-h-8 w-full items-center gap-2 rounded-(--menu-item-radius) px-2.5 py-1.5 text-start text-xs outline-none',
+                'flex min-h-8 w-full items-center gap-2 rounded-(--menu-item-radius) px-2.5 py-1.5 text-start text-xs outline-none pointer-coarse:min-h-11',
                 'hover:bg-(--menu-item-hover) focus-visible:bg-(--menu-item-active)',
                 'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
             ),

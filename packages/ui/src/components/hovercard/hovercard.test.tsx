@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderUi } from '../../testing/render';
-import { Hovercard, HOVERCARD_OPEN_DELAY_MS } from './hovercard';
+import { Hovercard, HOVERCARD_LONG_PRESS_MS, HOVERCARD_OPEN_DELAY_MS } from './hovercard';
 
 const isOpen = (element: HTMLElement | null) => element?.dataset['fakePopoverOpen'] === 'true';
 
@@ -88,6 +88,93 @@ describe('Hovercard', () => {
             vi.advanceTimersByTime(1000);
         });
         expect(isOpen(card())).toBe(false);
+    });
+
+    it('opens on a long press on a touch screen, swallowing the click that ends it, and a tap elsewhere closes it', () => {
+        const onClick = vi.fn();
+        renderUi(
+            <div>
+                <Hovercard label="Copywriter" content={<span>{'Writes copy.'}</span>}>
+                    {(props) => (
+                        <button type="button" {...props} onClick={onClick}>
+                            {'@Copywriter'}
+                        </button>
+                    )}
+                </Hovercard>
+                <button type="button">{'Elsewhere'}</button>
+            </div>,
+        );
+        fireEvent.pointerDown(trigger(), { pointerType: 'touch' });
+        act(() => {
+            vi.advanceTimersByTime(HOVERCARD_LONG_PRESS_MS);
+        });
+        expect(isOpen(card())).toBe(true);
+        fireEvent.pointerUp(trigger(), { pointerType: 'touch' });
+        fireEvent.pointerLeave(trigger(), { pointerType: 'touch' });
+        fireEvent.click(trigger(), { detail: 1 });
+        act(() => {
+            vi.advanceTimersByTime(500);
+        });
+        expect(onClick).not.toHaveBeenCalled();
+        expect(isOpen(card())).toBe(true);
+
+        fireEvent.pointerDown(screen.getByRole('button', { name: 'Elsewhere' }), { pointerType: 'touch' });
+        expect(isOpen(card())).toBe(false);
+
+        fireEvent.pointerDown(trigger(), { pointerType: 'touch' });
+        fireEvent.pointerUp(trigger(), { pointerType: 'touch' });
+        fireEvent.click(trigger(), { detail: 1 });
+        act(() => {
+            vi.advanceTimersByTime(1000);
+        });
+        expect(onClick).toHaveBeenCalledOnce();
+        expect(isOpen(card())).toBe(false);
+    });
+
+    it('lets Enter activate the trigger after a long press that ended without a click', () => {
+        const onClick = vi.fn();
+        renderUi(
+            <Hovercard label="Copywriter" content={<span>{'Writes copy.'}</span>}>
+                {(props) => (
+                    <button type="button" {...props} onClick={onClick}>
+                        {'@Copywriter'}
+                    </button>
+                )}
+            </Hovercard>,
+        );
+        fireEvent.pointerDown(trigger(), { pointerType: 'touch' });
+        act(() => {
+            vi.advanceTimersByTime(HOVERCARD_LONG_PRESS_MS);
+        });
+        fireEvent.pointerUp(trigger(), { pointerType: 'touch' });
+        fireEvent.click(trigger(), { detail: 0 });
+        expect(onClick).toHaveBeenCalledOnce();
+    });
+
+    it('lets a scroll cancel the press, and opens at once when the phone raises its own menu', () => {
+        renderUi(<Sample />);
+        fireEvent.pointerDown(trigger(), { pointerType: 'mouse', button: 2 });
+        const rightClick = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+        act(() => {
+            trigger().dispatchEvent(rightClick);
+        });
+        expect(rightClick.defaultPrevented).toBe(false);
+        expect(isOpen(card())).toBe(false);
+
+        fireEvent.pointerDown(trigger(), { pointerType: 'touch' });
+        fireEvent.pointerCancel(trigger(), { pointerType: 'touch' });
+        act(() => {
+            vi.advanceTimersByTime(1000);
+        });
+        expect(isOpen(card())).toBe(false);
+
+        fireEvent.pointerDown(trigger(), { pointerType: 'touch' });
+        const menu = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+        act(() => {
+            trigger().dispatchEvent(menu);
+        });
+        expect(menu.defaultPrevented).toBe(true);
+        expect(isOpen(card())).toBe(true);
     });
 
     it('opens on keyboard focus, lets Tab into its actions, and Esc returns focus to the trigger', async () => {

@@ -54,14 +54,16 @@ export function Dialog({
             aria-labelledby={titleId}
             aria-describedby={description === undefined ? undefined : descriptionId}
             className={cx(
-                'm-auto max-h-[calc(100dvh-var(--spacing)*8)] w-[calc(100%-var(--spacing)*8)] overflow-auto p-0',
+                'm-auto max-h-[calc(100dvh-var(--spacing)*8)] w-[calc(100%-var(--spacing)*8)] overflow-auto p-0 text-start',
                 'rounded-(--dialog-radius) border border-(--dialog-border) bg-(--dialog-bg) text-(--dialog-text) shadow-(--dialog-shadow)',
                 'motion-safe:animate-[ptbk-dialog-enter_var(--motion-enter)_var(--ease-enter)]',
                 SIZE_CLASSES[size],
+                // A sheet from the bottom edge on a phone: the whole width, and its actions where the thumb is.
+                'max-sm:mb-0 max-sm:max-h-[calc(100dvh-var(--spacing)*4)] max-sm:w-full max-sm:max-w-none max-sm:rounded-b-none max-sm:border-x-0 max-sm:border-b-0 max-sm:pb-[env(safe-area-inset-bottom)]',
             )}
         >
             {open ? (
-                <div className="flex flex-col gap-4 p-6">
+                <div className="flex flex-col gap-4 p-6 max-sm:p-4">
                     <div className="flex items-start justify-between gap-4">
                         <div className="flex min-w-0 flex-col gap-1">
                             <h2 id={titleId} className="text-base font-semibold">

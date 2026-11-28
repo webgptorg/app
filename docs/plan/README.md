@@ -148,6 +148,7 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [C-20](tasks/C-20-owner-handoff-contract.md)             | Owner setup handoff: contract and conformance                                                | C    | M5        |
 | [M-15](tasks/M-15-mock-engine-owner-handoff.md)          | Mock engine: the owner setup handoff slot                                                    | M    | M5        |
 | [D-39](tasks/D-39-owner-handoff-dashboard.md)            | Dashboard: finish owner setup from the pairing tab                                           | D    | M5        |
+| [U-28](tasks/U-28-phone-use.md)                          | Phone use: dashboard and engine UI at 360–414 px                                             | U    | M5        |
 
 ## Parallel waves
 

@@ -6,10 +6,15 @@ import { cx } from './cx';
  */
 export const CONTROL_HEIGHT = { sm: 'min-h-8', md: 'min-h-9' } as const;
 
+/** On a touch screen the same controls grow to a fingertip, 44px and 40px compact, so a phone needs no precise taps. */
+export const TOUCH_HEIGHT = { sm: 'pointer-coarse:min-h-10', md: 'pointer-coarse:min-h-11' } as const;
+
 /** The look `Input`, `Textarea` and `Select` share, from Input's tokens (`--input-*`). */
 export function controlClassName(className?: string): string {
     return cx(
         'block w-full min-w-0 rounded-(--input-radius) border border-(--input-border) bg-(--input-bg) px-3 text-sm text-(--input-text)',
+        // Safari on a phone zooms the page into any field under 16px when it gets focus.
+        'pointer-coarse:text-base',
         'shadow-(--input-shadow) placeholder:text-(--input-placeholder)',
         'motion-safe:transition-[color,background-color,border-color] motion-safe:duration-(--motion-state) motion-safe:ease-standard',
         'hover:border-(--input-border-hover)',

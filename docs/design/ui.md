@@ -160,6 +160,11 @@ Visual identity v1 ([U-17](../plan/tasks/U-17-visual-identity.md), decided with 
 
 Works from 360 px. Mobile-first for chat, agent status, runs and their actions, and notifications; desktop-optimised but usable for the Book editor and wide tables (which become cards).
 
+- **Nothing scrolls sideways.** Only a code block, a run's output or a tab strip may scroll inside itself; each app's `test:csp` suite walks the main screens at 375 and 360 px (`phone.spec.ts`).
+- **Touch:** on a coarse pointer, buttons, inputs, menu items and navigation grow to 40–44 px, and fields use 16 px text so Safari does not zoom into them. Nothing needs a hover: a tap does the trigger's own thing (opens the agent), and a long press opens its hovercard.
+- **Dialogs are sheets** on the bottom edge below 640 px: the full width, with their actions where the thumb is.
+- **Headers keep one row:** where actions crowd a title on a phone, a well-known icon (stop, sign out) or the first word of a label stands in, and the accessible name stays whole.
+
 ## Motion
 
 Short, meaningful, interruptible: new activity slides in, completed runs settle, live items breathe subtly, route changes use View Transitions, the trust mark seals. Duration and easing come from tokens. `prefers-reduced-motion` turns motion into simple fades or none.
