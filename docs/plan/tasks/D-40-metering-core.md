@@ -16,7 +16,7 @@ Billing counts what an organization uses: projects, agents and members (Seb, 202
 - Readings per organization, team and project; unknown counts stay unknown, never zero.
 - A daily history in D1 (`usage_daily_meters`), written every 15 minutes beside ADR 0022's rollup, with its retention.
 - Plan configuration for meter quotas and `overLimit` (`block` or `warn`); the entitlements port answers them for every billing adapter.
-- A limit check that answers `ok`, `warn` or `block` for "one more" of a meter: the hook the upgrade flow calls. Linking asks it for `projects` (`block` keeps D-07's `engine-limit`), invitations for `people` (`block` answers `people-limit`, which the invitation dialog explains); `warn` lets both through.
+- A limit check that answers `ok`, `warn` or `block` for "one more" of a meter: the hook the upgrade flow calls. Linking asks it for `projects` (`block` keeps D-07's `engine-limit`), invitations for `people`, with pending invitations to new addresses counted as people (`block` answers `people-limit`, which the invitation dialog explains); `warn` lets both through.
 - `GET /api/usage`, read-only: current readings with their limits.
 
 Out of scope: payments, Stripe changes, the admin console, and any UI beyond the invitation dialog's limit message.
@@ -30,4 +30,5 @@ Out of scope: payments, Stripe changes, the admin console, and any UI beyond the
 - [x] Every billing adapter answers the new quotas and `overLimit`; existing plan configuration parses unchanged.
 - [x] The limit check: under, at and over the limit, unlimited, unreported counts, `warn` versus `block`.
 - [x] Linking and invitations refuse under `block`, proceed under `warn` and under a plan without the quota.
+- [x] Pending invitations count against `people` at invite time; expired, revoked and spare ones (the address joined) don't.
 - [x] `GET /api/usage` is declared through the route helper with a permission; members cannot read it.
