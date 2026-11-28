@@ -4,15 +4,19 @@ import { m } from '../../../paraglide/messages';
 import type { NotificationView } from '../../../shared/api/notification-routes';
 import type {
     NotificationItem,
+    NotificationLink,
     NotificationPlace,
     RenderContext,
 } from '../../../shared/notifications/notification-kind';
 import { anyKind, isEngineKind, parseVariant } from '../../../shared/notifications/registry';
 
 /** Where a line's Open goes: the dashboard's own pages, or the project's registered hostname, never an item in it. */
+/** The dashboard pages a kind may link to, as its copy declares them. */
+type NotificationDashboardPath = Extract<NotificationLink, { readonly to: 'dashboard' }>['path'];
+
 export type BellTarget =
     | { readonly to: 'engine-page'; readonly engineId: string }
-    | { readonly to: 'dashboard'; readonly path: '/' | '/people' }
+    | { readonly to: 'dashboard'; readonly path: NotificationDashboardPath }
     | { readonly to: 'project'; readonly href: string };
 
 export interface BellEntry {
