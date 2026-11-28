@@ -42,10 +42,8 @@ async function attentionDigest(entries: readonly HeartbeatAttention[]): Promise<
     if (entries.length === 0) {
         return undefined;
     }
-    const canonical = entries
-        .map((entry) => [entry.to ?? '', entry.kind, entry.count] as const)
-        .sort(([a, b], [c, d]) => (a === c ? (b < d ? -1 : 1) : a < c ? -1 : 1));
-    const bytes = new TextEncoder().encode(JSON.stringify(canonical));
+    const canonical = entries.map((entry) => JSON.stringify([entry.to ?? '', entry.kind, entry.count])).sort();
+    const bytes = new TextEncoder().encode(canonical.join('\n'));
     return toBase64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)));
 }
 
