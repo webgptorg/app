@@ -182,16 +182,8 @@
   "dev_mailbox_to": "Komu: {to}",
   "email_access_granted_body": "Dobrý den,\n\nmáme dobrou zprávu: projekt {engine} teď můžete používat. Někdo z projektu Vám přístup schválil.\n\nOtevřete ho zde a přihlaste se svým přístupovým klíčem pro tento projekt:\n\n{link}\n\nTip: uložte si ho do záložek. Projekt má vlastní adresu {hostname}, otevřít ho ale můžete vždy i z dashboardu.",
   "email_access_granted_subject": "Máte přístup: otevřete {engine}",
-  "email_access_waiting_body": "Dobrý den,\n\nna přístup k projektu {engine} čeká {requester}.\n\nJak přístup povolit:\n\n1. Otevřete v projektu stránku Členové:\n   {link}\n2. Požádejte {requester} o šestimístný kód, který vidí na obrazovce.\n3. Najděte žádost, zadejte kód a schvalte ji.\n\nSchválit může jen někdo, kdo už v projektu je. Pokud žádost nepoznáváte, odmítněte ji tam.",
-  "email_access_waiting_subject": "{requester} čeká na přístup k projektu {engine}",
   "email_account_exists_body": "Dobrý den,\n\nněkdo, nejspíš Vy, se chtěl s touto adresou přihlásit do Promptbooku. Účet už máte.\n\nPřihlaste se přístupovým klíčem. Pokud ho máte v jiném zařízení, například v telefonu, prohlížeč ho umí použít odtud:\n\n{signInLink}\n\nZtratili jste zařízení? Obnovte si přístup e-mailem:\n\n{recoveryLink}\n\nPokud jste to nebyli Vy, e-mail ignorujte. Bez Vašeho přístupového klíče se nic nezmění.",
   "email_account_exists_subject": "Přihlášení do Promptbooku",
-  "email_engine_back_online_body": "Dobrý den,\n\nváš projekt Promptbook je zase online. Offline byl {duration}.\n\nProjekt: {label}\nAdresa: {hostname}\nID projektu: {engineId}\nNaposledy se ozval: {lastSeenAt}\nZase online: {backOnlineAt}\n\nStav projektu najdete na jeho stránce:\n\n{link}",
-  "email_engine_back_online_subject": "Váš projekt {label} je zase online",
-  "email_engine_offline_body": "Dobrý den,\n\nod {lastSeenAt} se nám Váš projekt Promptbook neozval.\n\nProjekt: {label}\nAdresa: {hostname}\nID projektu: {engineId}\n\nZkontrolujte, že jeho server běží a je připojený k internetu. Stav projektu najdete na jeho stránce:\n\n{link}\n\nTento e-mail posíláme jednou za výpadek. Až bude projekt zase online, dáme Vám vědět.",
-  "email_engine_offline_subject": "Váš projekt {label} je offline",
-  "email_engine_online_body": "Dobrý den,\n\nváš projekt Promptbook je online.\n\nProjekt: {label}\nAdresa: {hostname}\nID projektu: {engineId}\n\nNastavení dokončíte v terminálu projektu: otevřete odkaz pro nastavení, který tam najdete. Tím se stanete vlastníkem projektu.\n\nStránka projektu:\n\n{link}",
-  "email_engine_online_subject": "Váš projekt {label} je online",
   "email_invalid": "Zadejte e-mailovou adresu ve tvaru jmeno@example.com.",
   "email_label": "E-mail",
   "email_invite_passkey_body": "Dobrý den,\n\notevřete tento odkaz na zařízení, které chcete používat, přidejte si přístupový klíč a pak se můžete připojit k {org}. Odkaz lze použít jen jednou a platí 15 minut:\n\n{link}\n\nZ bezpečnostních důvodů se tím odhlásí Vaše ostatní zařízení a 72 hodin pak nikdo nebude moct na tomto účtu odebírat projekty ani měnit vlastníka fakturace.\n\nPokud jste o odkaz nežádali, e-mail klidně ignorujte. Nic se nezmění.",
@@ -913,5 +905,142 @@
   "engines_new_license_missing_title": "Nový projekt nepokrývá žádná licence",
   "engines_new_license_limit_title": "Vaše licence další projekt nepokrývá",
   "engines_new_license_body": "Doplňte ji na ptbk.io. Stávající projekty běží dál.",
-  "invite_license_limit": "Vaše licence další lidi nepokrývá. Kdo už tu je, přístup neztrácí."
+  "invite_license_limit": "Vaše licence další lidi nepokrývá. Kdo už tu je, přístup neztrácí.",
+  "notification_org_unnamed": "vaší organizaci",
+  "notification_project_status_label": "Projekt offline a znovu online",
+  "notification_project_offline_line": "{project} je offline od {since}",
+  "notification_project_offline_subject": "Váš projekt {project} je offline",
+  "notification_project_offline_detail": "Neozval se nám od {since}. Zkontrolujte, že jeho server běží a je připojený k internetu. Až bude zase online, dáme vám vědět.",
+  "notification_project_back_online_line": "{project} je znovu online",
+  "notification_project_back_online_subject": "Váš projekt {project} je znovu online",
+  "notification_project_back_online_detail": "Byl offline {duration}, od {since} do {back}.",
+  "notification_project_online_line": "{project} je online: dokončete nastavení v jeho terminálu",
+  "notification_project_online_subject": "Váš projekt {project} je online",
+  "notification_project_online_detail": "Nastavení dokončíte otevřením odkazu z terminálu projektu. Ten z vás udělá vlastníka projektu. Odkaz vám poslat nemůžeme: vlastníkem vás může udělat jen projekt sám.",
+  "notification_update_waiting_label": "Čekající aktualizace",
+  "notification_update_waiting_line": "V projektu {project} čeká aktualizace",
+  "notification_update_waiting_subject": "Projekt {project} čeká na aktualizaci",
+  "notification_join_request_label": "Někdo čeká na přístup do projektu",
+  "notification_join_request_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Někdo čeká na přístup do projektu {project}",
+        "countPlural=few": "{count} lidé čekají na přístup do projektu {project}",
+        "countPlural=many": "{count} lidí čeká na přístup do projektu {project}",
+        "countPlural=other": "{count} lidí čeká na přístup do projektu {project}"
+      }
+    }
+  ],
+  "notification_join_request_subject": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Někdo čeká na přístup do projektu {project}",
+        "countPlural=few": "{count} lidé čekají na přístup do projektu {project}",
+        "countPlural=many": "{count} lidí čeká na přístup do projektu {project}",
+        "countPlural=other": "{count} lidí čeká na přístup do projektu {project}"
+      }
+    }
+  ],
+  "notification_join_request_detail": "Čekají: {requesters}.\n\nPustíte je dovnitř na stránce Členové v projektu: zeptejte se jich na 6místný kód z jejich obrazovky, zadejte ho a schvalte. Schválit může jen někdo, kdo už v projektu je. Pokud žádost nepoznáváte, odmítněte ji tam.",
+  "notification_join_request_detail_unnamed": "Pustíte je dovnitř na stránce Členové v projektu: zeptejte se jich na 6místný kód z jejich obrazovky, zadejte ho a schvalte. Pokud žádost nepoznáváte, odmítněte ji tam.",
+  "notification_people_change_label": "Lidé a role",
+  "notification_people_joined_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Do {org} se přidal někdo nový",
+        "countPlural=few": "Do {org} se přidali {count} lidé",
+        "countPlural=many": "Do {org} se přidalo {count} lidí",
+        "countPlural=other": "Do {org} se přidalo {count} lidí"
+      }
+    }
+  ],
+  "notification_people_role_line": "Vaše role v {org} se změnila",
+  "notification_people_added_line": "Teď můžete otevřít {project}",
+  "notification_people_changes_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Změna lidí v {org}",
+        "countPlural=few": "{count} změny lidí v {org}",
+        "countPlural=many": "{count} změn lidí v {org}",
+        "countPlural=other": "{count} změn lidí v {org}"
+      }
+    }
+  ],
+  "notification_agent_waiting_label": "Agent na vás čeká",
+  "notification_agent_waiting_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "V projektu {project} na vás čeká agent",
+        "countPlural=few": "V projektu {project} na vás čekají {count} agenti",
+        "countPlural=many": "V projektu {project} na vás čeká {count} agentů",
+        "countPlural=other": "V projektu {project} na vás čeká {count} agentů"
+      }
+    }
+  ],
+  "notification_task_failed_label": "Úkol, který jste spustili, selhal",
+  "notification_task_failed_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "V projektu {project} selhal úkol",
+        "countPlural=few": "V projektu {project} selhaly {count} úkoly",
+        "countPlural=many": "V projektu {project} selhalo {count} úkolů",
+        "countPlural=other": "V projektu {project} selhalo {count} úkolů"
+      }
+    }
+  ],
+  "notification_tool_sign_in_label": "AI nástroj potřebuje znovu přihlásit",
+  "notification_tool_sign_in_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "V projektu {project} je potřeba znovu přihlásit AI nástroj",
+        "countPlural=few": "V projektu {project} je potřeba znovu přihlásit {count} AI nástroje",
+        "countPlural=many": "V projektu {project} je potřeba znovu přihlásit {count} AI nástrojů",
+        "countPlural=other": "V projektu {project} je potřeba znovu přihlásit {count} AI nástrojů"
+      }
+    }
+  ],
+  "notification_things_line": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "V {place} na vás čeká 1 věc",
+        "countPlural=few": "V {place} na vás čekají {count} věci",
+        "countPlural=many": "V {place} na vás čeká {count} věcí",
+        "countPlural=other": "V {place} na vás čeká {count} věcí"
+      }
+    }
+  ],
+  "notification_email_open": "Otevřete ho zde: {link}",
+  "notification_email_footer": "Tato schránka se nečte. Upozornění nastavíte zde: {settings}\n\nTyto e-maily vypnete zde: {unsubscribe}",
+  "notification_email_project": "Projekt: {project}, na adrese {hostname}",
+  "notification_plan_limit_label": "Dosažený limit tarifu",
+  "notification_plan_limit_line": [
+    {
+      "declarations": ["input org", "input meter"],
+      "selectors": ["meter"],
+      "match": {
+        "meter=projects": "V {org} je dosažen limit tarifu pro projekty",
+        "meter=agents": "V {org} je dosažen limit tarifu pro agenty",
+        "meter=members": "V {org} je dosažen limit tarifu pro členy projektů",
+        "meter=people": "V {org} je dosažen limit tarifu pro lidi",
+        "meter=*": "V {org} jsou dosaženy limity tarifu"
+      }
+    }
+  ],
+  "notification_plan_limit_detail": "Nic, co běží, se nezastaví. Pro další přidání navyšte tarif na stránce Fakturace."
 }

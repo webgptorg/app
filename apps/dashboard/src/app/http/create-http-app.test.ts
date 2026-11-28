@@ -15,6 +15,7 @@ import { TEST_INSTALL_VARS } from '../../testing/install-fixtures';
 import { createFakeDnsResolver } from '../../testing/fake-dns-resolver';
 import { createMemoryAuthStore } from '../../testing/memory-auth-store';
 import { createMemoryCustomHostnameStore } from '../../testing/memory-custom-hostname-store';
+import { createMemoryNotificationStore } from '../../testing/memory-notification-store';
 import { createMemoryTeamStore } from '../../testing/memory-team-store';
 import { createMemoryRegistrationStores } from '../../testing/memory-registration-store';
 import { createMemoryEngineHostnameStore, createMemoryRelayTokenStore } from '../../testing/memory-registry-stores';
@@ -104,6 +105,9 @@ function app(options: {
             memberships: () => [],
             engineDays: () => [],
         }),
+        notifications: { notify: () => Promise.resolve(), syncAttention: () => Promise.resolve() },
+        notificationStore: createMemoryNotificationStore(),
+        unsubscribeTokens: { sign: () => Promise.resolve('t'), verify: () => Promise.resolve(null) },
         licensing: null,
         assets: { fetch: assets } as unknown as Fetcher,
         viteDevServer: options.viteDevServer,

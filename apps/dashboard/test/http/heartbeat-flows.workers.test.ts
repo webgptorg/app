@@ -9,7 +9,9 @@ import {
     createD1LinkCodeStore,
     createD1PlatformEngineStore,
 } from '../../src/adapters/db/d1-registration-store';
-import { createD1AlertRecipients, createD1HeartbeatEngineReader } from '../../src/adapters/db/d1-status-store';
+import { createD1NotificationStore } from '../../src/adapters/db/d1-notification-store';
+import { createD1RecipientDirectory } from '../../src/adapters/db/d1-recipient-directory';
+import { createD1HeartbeatEngineReader } from '../../src/adapters/db/d1-status-store';
 import { createAuthHarness } from '../../src/testing/auth-harness';
 import { describeHeartbeatFlows, FLOW_HEARTBEAT } from '../../src/testing/heartbeat-flow-suite';
 
@@ -26,7 +28,7 @@ describeHeartbeatFlows('heartbeats on D1', () => {
             },
             metering: createD1MeteringStore(db),
             heartbeatEngines: createD1HeartbeatEngineReader(db),
-            alertRecipients: createD1AlertRecipients(db),
+            notifications: { store: createD1NotificationStore(db), directory: createD1RecipientDirectory(db) },
             heartbeat: FLOW_HEARTBEAT,
         }),
         async suspend(engineId) {

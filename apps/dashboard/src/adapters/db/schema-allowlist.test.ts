@@ -181,6 +181,25 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     // Each meter's count per day and organization, team or project (ADR 0025): counts the dashboard holds or the
     // heartbeat reports, nothing from inside an engine. Kept 25 months.
     usage_daily_meters: ['day', 'org_id', 'scope', 'scope_id', 'meter', 'value', 'unreported', 'peak'],
+    // Notifications (D-41, ADR 0027): who, which project and organization, a closed kind and variant, a count, and the
+    // dashboard's own times. Never a name, title, text or ID from an engine; closed rows go after 30 days.
+    notifications: [
+        'id',
+        'org_id',
+        'user_id',
+        'engine_id',
+        'kind',
+        'variant',
+        'count',
+        'opened_at',
+        'updated_at',
+        'seen_at',
+        'emailed_at',
+        'due_at',
+        'closed_at',
+    ],
+    // A person's own choice of channel per organization and kind; overrides only.
+    notification_preferences: ['user_id', 'org_id', 'kind', 'channel'],
     // Live WebAuthn ceremonies, at most 5 minutes each.
     webauthn_challenges: ['id', 'challenge', 'purpose', 'user_id', 'token_hash', 'webauthn_user_id', 'expires_at'],
     // Website licensing (D-30): which website account (its subject UUID) licenses the organization, who linked it, when.

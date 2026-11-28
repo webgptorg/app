@@ -1,5 +1,5 @@
 import { EngineId } from '@ptbk/protocol';
-import { and, asc, count, desc, eq, gt, inArray, is, isNotNull, isNull, ne, SQL, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, is, isNull, ne, SQL, sql } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 import { z } from 'zod';
 
@@ -416,6 +416,7 @@ export function createD1TeamStore(db: Database): TeamStore {
                     teamId: accessTickets.teamId,
                     userId: accessTickets.userId,
                     current: accessTickets.outcome,
+                    noticedAt: accessTickets.noticedAt,
                     orgId: teams.orgId,
                     teamName: teams.name,
                     email: users.email,
@@ -447,22 +448,15 @@ export function createD1TeamStore(db: Database): TeamStore {
                 userId: userIdSchema.parse(row.userId),
                 email: row.email,
                 locale: localeSchema.parse(row.locale),
+                noticed: row.current === null && row.noticedAt !== null,
             };
         },
 
         async ticketsAwaitingNotice(engineId, since) {
             const tickets = await db
-                .select({
-                    ticketId: accessTickets.id,
-                    teamId: accessTickets.teamId,
-                    userId: accessTickets.userId,
-                    orgId: teams.orgId,
-                    teamName: teams.name,
-                    email: users.email,
-                })
+                .select({ ticketId: accessTickets.id, orgId: teams.orgId })
                 .from(accessTickets)
                 .innerJoin(teams, eq(teams.id, accessTickets.teamId))
-                .innerJoin(users, eq(users.id, accessTickets.userId))
                 .where(
                     and(
                         eq(accessTickets.engineId, engineId),
@@ -473,41 +467,10 @@ export function createD1TeamStore(db: Database): TeamStore {
                 )
                 .orderBy(asc(accessTickets.issuedAt))
                 .all();
-            return Promise.all(
-                tickets.map(async (ticket): Promise<TicketNotice> => {
-                    const orgId = orgIdSchema.parse(ticket.orgId);
-                    const recipients = await db
-                        .selectDistinct({ email: users.email, locale: users.locale })
-                        .from(users)
-                        .innerJoin(memberships, and(eq(memberships.userId, users.id), eq(memberships.orgId, orgId)))
-                        .where(
-                            and(
-                                isNotNull(users.emailVerifiedAt),
-                                ne(users.id, ticket.userId),
-                                sql`(
-                                    (${memberships.role} IN ('owner', 'admin') AND EXISTS (
-                                        SELECT 1 FROM ${teamMembers} WHERE ${teamMembers.teamId} = ${ticket.teamId}
-                                            AND ${teamMembers.userId} = ${users.id}))
-                                    OR ${users.id} IN (
-                                        SELECT ${invites.invitedByUserId} FROM ${invites} WHERE ${invites.orgId} = ${orgId}
-                                            AND ${invites.email} = ${ticket.email} AND ${invites.acceptedAt} IS NOT NULL))`,
-                            ),
-                        )
-                        .orderBy(asc(users.email))
-                        .all();
-                    return {
-                        ticketId: ticket.ticketId,
-                        orgId,
-                        teamId: teamIdSchema.parse(ticket.teamId),
-                        teamName: teamNameSchema.parse(ticket.teamName),
-                        requesterEmail: ticket.email,
-                        recipients: recipients.map((row) => ({
-                            email: row.email,
-                            locale: localeSchema.parse(row.locale),
-                        })),
-                    };
-                }),
-            );
+            return tickets.map((ticket): TicketNotice => ({
+                ticketId: ticket.ticketId,
+                orgId: orgIdSchema.parse(ticket.orgId),
+            }));
         },
 
         async markNoticed(ticketIds, at) {

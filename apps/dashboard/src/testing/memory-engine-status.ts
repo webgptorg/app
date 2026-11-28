@@ -1,8 +1,6 @@
 import type { EngineId } from '@ptbk/protocol';
 
 import type { EngineStore } from '../domain/registration/engine-store';
-import type { AlertRecipients } from '../domain/status/alert-recipients';
-import type { MemoryTeamState } from './memory-team-store';
 import { storedEngineStatusSchema, type StoredEngineStatus } from '../domain/status/engine-status';
 import type { EngineStatusDirectory } from '../domain/status/engine-status-directory';
 import {
@@ -12,7 +10,6 @@ import {
 } from '../domain/status/engine-status-service';
 import type { EngineStatusStorage } from '../domain/status/engine-status-storage';
 import type { HeartbeatEngineReader } from '../domain/status/heartbeat-engine-reader';
-import type { MemoryAuthState } from './memory-auth-store';
 
 /** One engine's storage in memory, round-tripped through the schema as the Durable Object's is. */
 export interface MemoryEngineStatusStorage extends EngineStatusStorage {
@@ -82,34 +79,6 @@ export function createMemoryEngineStatuses(deps: Omit<EngineStatusServiceDeps, '
             }
             await service.alarm();
             return true;
-        },
-    };
-}
-
-/** The D1 adapter's rule over the in-memory accounts and, when given, teams. */
-export function createMemoryAlertRecipients(
-    state: MemoryAuthState,
-    teams?: Pick<MemoryTeamState, 'members' | 'engineTeams'>,
-): AlertRecipients {
-    const recipients = (orgId: string, roles: ReadonlySet<string>, include: (userId: string) => boolean) =>
-        state.memberships
-            .filter(
-                (membership) => membership.orgId === orgId && roles.has(membership.role) && include(membership.userId),
-            )
-            .flatMap((membership) => {
-                const user = state.users.get(membership.userId);
-                return user === undefined || user.emailVerifiedAt === null
-                    ? []
-                    : [{ email: user.email, locale: user.locale }];
-            })
-            .sort((a, b) => (a.email < b.email ? -1 : 1));
-    return {
-        forEngineStatus(orgId, engineId) {
-            const teamId = teams?.engineTeams.get(engineId);
-            const inTeam = (userId: string) =>
-                teams?.members.some((member) => member.teamId === teamId && member.userId === userId) ?? false;
-            const team = recipients(orgId, new Set(['owner', 'admin']), inTeam);
-            return Promise.resolve(team.length > 0 ? team : recipients(orgId, new Set(['owner']), () => true));
         },
     };
 }

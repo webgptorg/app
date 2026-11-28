@@ -6,6 +6,7 @@ import type { PublicFaceJobDeps } from '../domain/abuse/public-face-job';
 import { runPublicFaceCheck } from '../domain/abuse/public-face-job';
 import type { MonitoringJobDeps } from '../domain/monitoring/monitoring-job';
 import { runMonitoring } from '../domain/monitoring/monitoring-job';
+import { runNotificationDelivery, type NotificationDeliveryDeps } from '../domain/notifications/deliver-notifications';
 import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import type { ScheduledJob } from '../domain/scheduled/scheduled-dispatcher';
 import { runMeterHistory, type MeterHistoryDeps } from '../domain/metering/meter-history';
@@ -13,6 +14,8 @@ import { runUsageRollup, type UsageRollupDeps } from '../domain/usage/usage-roll
 
 /** Every minute: the relay monitor. */
 export const EVERY_MINUTE = '* * * * *';
+/** Every 5 minutes: notification emails that came due (ADR 0027). */
+export const EVERY_5_MINUTES = '*/5 * * * *';
 /** Every 15 minutes: I-05's abuse jobs and the usage rollup, in their own invocation with its own subrequest budget. */
 export const EVERY_15_MINUTES = '*/15 * * * *';
 /** Cron Triggers may run 15 minutes; a job that needs more than this has failed, and the next minute's run starts. */
@@ -36,6 +39,8 @@ export interface ScheduledJobDeps {
     readonly linkCodes: Pick<LinkCodeStore, 'clearExpiredCommitments'>;
     /** ADR 0025's daily meter readings; D1 only. */
     readonly meterHistory: MeterHistoryDeps;
+    /** D-41: due notification emails, merged and capped, and the rows' cleanup. */
+    readonly notifications: NotificationDeliveryDeps;
 }
 
 /**
@@ -43,7 +48,7 @@ export interface ScheduledJobDeps {
  * which scheduled-jobs.test.ts checks.
  */
 export function scheduledJobs(deps: ScheduledJobDeps): readonly ScheduledJob[] {
-    const { monitoring, abuse, usage, linkCodes, meterHistory } = deps;
+    const { monitoring, abuse, usage, linkCodes, meterHistory, notifications } = deps;
     const jobs: ScheduledJob[] = [];
     if (monitoring !== null) {
         jobs.push({
@@ -74,6 +79,14 @@ export function scheduledJobs(deps: ScheduledJobDeps): readonly ScheduledJob[] {
         name: 'usage-rollup',
         cron: EVERY_15_MINUTES,
         run: ({ scheduledTime, signal }) => runUsageRollup(usage, scheduledTime, signal),
+    });
+    jobs.push({
+        name: 'notification-delivery',
+        cron: EVERY_5_MINUTES,
+        // The trigger's scheduled time is "now", so a test can run it as of a later moment.
+        run: async ({ scheduledTime, signal }) => {
+            await runNotificationDelivery(notifications, scheduledTime, signal);
+        },
     });
     jobs.push({
         name: 'link-code-commitments',

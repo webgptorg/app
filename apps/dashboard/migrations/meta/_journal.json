@@ -134,6 +134,13 @@
       "when": 1795785334577,
       "tag": "0018_usage_meters",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1795878127179,
+      "tag": "0019_notifications",
+      "breakpoints": true
     }
   ]
 }

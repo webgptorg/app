@@ -74,6 +74,11 @@ export interface DashboardSteps {
     emails(email: string): Promise<readonly OutboxEmail[]>;
     /** The link the dev outbox holds for `email` from `template`, once it arrives. */
     emailedLink(email: string, template: string): Promise<string>;
+    /**
+     * One run of the notification delivery Cron Trigger (D-41), as of `afterMs` from now: the 15-minute unseen delay
+     * passes without waiting for it. Resolves once the run is over.
+     */
+    deliverNotifications(afterMs?: number): Promise<void>;
 }
 
 interface DashboardFixtures {
@@ -206,6 +211,14 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
             return outboxEmails(await fetchOutbox(email));
         },
         emailedLink: outboxLink,
+        async deliverNotifications(afterMs = 0) {
+            const cron = encodeURIComponent('*/5 * * * *');
+            await fetchText(
+                `${DASHBOARD_ORIGIN}/cdn-cgi/local/scheduled?cron=${cron}&time=${String(Date.now() + afterMs)}`,
+                caCertificatePem,
+                OUTBOX_TIMEOUT_MS,
+            );
+        },
         async reloadEngineRows() {
             await page.goto(`${DASHBOARD_ORIGIN}/engines/all`);
             const rows = page.getByRole('row').filter({ hasText: `.${ENGINE_DOMAIN}` });

@@ -61,17 +61,14 @@ export interface TicketAckEffect {
     readonly userId: UserId;
     readonly email: string;
     readonly locale: Locale;
+    /** It was still waiting and the waiting-for-approval notice had gone out: a join request this ack answers. */
+    readonly noticed: boolean;
 }
 
-/** A ticket whose request the engine may now be holding, and who should hear of it. */
+/** A ticket whose request the engine may now be holding: one more join request for its organization's managers. */
 export interface TicketNotice {
     readonly ticketId: string;
     readonly orgId: OrgId;
-    readonly teamId: TeamId;
-    readonly teamName: TeamName;
-    readonly requesterEmail: string;
-    /** The person who invited the requester, and the org owners and admins in the team; never the requester. */
-    readonly recipients: readonly { readonly email: string; readonly locale: Locale }[];
 }
 
 export const REFUSED_REMOVAL_OUTCOMES = ['refused-disabled', 'refused-owner'] as const;

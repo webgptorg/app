@@ -1,14 +1,15 @@
 import { env } from 'cloudflare:workers';
 
-import { describeStatusStoreContract } from '../../testing/status-store-contract';
+import { describeRecipientDirectoryContract } from '../../testing/recipient-directory-contract';
 import { createDatabase } from './client';
 import { createD1AuthStore } from './d1-auth-store';
-import { createD1AlertRecipients, createD1HeartbeatEngineReader } from './d1-status-store';
+import { createD1RecipientDirectory } from './d1-recipient-directory';
+import { createD1HeartbeatEngineReader } from './d1-status-store';
 
-describeStatusStoreContract('D1', () => {
+describeRecipientDirectoryContract('D1', () => {
     const db = createDatabase(env.DB);
     return {
-        recipients: createD1AlertRecipients(db),
+        directory: createD1RecipientDirectory(db),
         engines: createD1HeartbeatEngineReader(db),
         async addAccount(account) {
             await createD1AuthStore(db).accounts.createAccount(account);
@@ -45,22 +46,43 @@ describeStatusStoreContract('D1', () => {
                 )
                 .run();
         },
-        async addTeam(orgId, engineId, userIds) {
+        async addTeam(orgId, engineId, name, people) {
             const teamId = engineId;
             await env.DB.batch([
                 env.DB.prepare('INSERT INTO teams (id, org_id, name, created_at) VALUES (?, ?, ?, 0)').bind(
                     teamId,
                     orgId,
-                    'Team',
+                    name,
                 ),
                 env.DB.prepare('UPDATE engines SET team_id = ? WHERE engine_id = ?').bind(teamId, engineId),
-                ...userIds.map((userId) =>
-                    env.DB.prepare('INSERT INTO team_members (team_id, user_id, created_at) VALUES (?, ?, 0)').bind(
-                        teamId,
-                        userId,
-                    ),
+                ...people.map(([userId, access]) =>
+                    env.DB.prepare(
+                        'INSERT INTO team_members (team_id, user_id, created_at, access) VALUES (?, ?, 0, ?)',
+                    ).bind(teamId, userId, access),
                 ),
             ]);
+        },
+        async addLinker(orgId, engineId, userId) {
+            await env.DB.prepare(
+                'INSERT INTO link_codes (code_hash, id, org_id, created_by_user_id, created_at, expires_at, used_at, engine_id) VALUES (?, ?, ?, ?, 0, 1, 1, ?)',
+            )
+                .bind(crypto.randomUUID(), crypto.randomUUID(), orgId, userId, engineId)
+                .run();
+        },
+        async addTicket(engineId, userId, ticket) {
+            await env.DB.prepare(
+                'INSERT INTO access_tickets (id, team_id, engine_id, user_id, issued_at, expires_at, noticed_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            )
+                .bind(
+                    crypto.randomUUID(),
+                    engineId,
+                    engineId,
+                    userId,
+                    ticket.issuedAt,
+                    ticket.issuedAt + 1,
+                    ticket.noticed ? ticket.issuedAt : null,
+                )
+                .run();
         },
     };
 });

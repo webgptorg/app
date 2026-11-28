@@ -338,6 +338,7 @@ export function createMemoryTeamStore(deps: {
             ) {
                 return Promise.resolve(null);
             }
+            const noticed = ticket.outcome === null && ticket.noticedAt !== null;
             ticket.outcome = outcome;
             const index = state.members.findIndex((m) => m.teamId === ticket.teamId && m.userId === ticket.userId);
             const member = state.members[index];
@@ -355,6 +356,7 @@ export function createMemoryTeamStore(deps: {
                 teamId: team.id,
                 teamName: team.name,
                 userId: ticket.userId,
+                noticed,
                 email: user.email,
                 locale: user.locale,
             });
@@ -371,46 +373,7 @@ export function createMemoryTeamStore(deps: {
                 .sort((a, b) => a.issuedAt - b.issuedAt)
                 .flatMap((ticket) => {
                     const team = state.teams.get(ticket.teamId);
-                    const requester = deps.auth.users.get(ticket.userId);
-                    if (team === undefined || requester === undefined) {
-                        return [];
-                    }
-                    const inviters = new Set(
-                        state.invites
-                            .filter(
-                                (invite) =>
-                                    invite.orgId === team.orgId &&
-                                    invite.email === requester.email &&
-                                    invite.acceptedAt !== null,
-                            )
-                            .map((invite) => invite.invitedByUserId),
-                    );
-                    const recipients = deps.auth.memberships
-                        .filter(
-                            (candidate) =>
-                                candidate.orgId === team.orgId &&
-                                candidate.userId !== ticket.userId &&
-                                (inviters.has(candidate.userId) ||
-                                    ((candidate.role === 'owner' || candidate.role === 'admin') &&
-                                        inTeam(team.id, candidate.userId))),
-                        )
-                        .flatMap((candidate) => {
-                            const user = deps.auth.users.get(candidate.userId);
-                            return user === undefined || user.emailVerifiedAt === null
-                                ? []
-                                : [{ email: user.email, locale: user.locale }];
-                        })
-                        .sort((a, b) => (a.email < b.email ? -1 : 1));
-                    return [
-                        {
-                            ticketId: ticket.id,
-                            orgId: team.orgId,
-                            teamId: team.id,
-                            teamName: team.name,
-                            requesterEmail: requester.email,
-                            recipients,
-                        },
-                    ];
+                    return team === undefined ? [] : [{ ticketId: ticket.id, orgId: team.orgId }];
                 });
             return Promise.resolve(notices);
         },

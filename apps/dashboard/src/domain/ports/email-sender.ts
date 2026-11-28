@@ -1,4 +1,12 @@
+import type { NotificationItem, NotificationPlace } from '../../shared/notifications/notification-kind';
+import type { NotificationKind } from '../../shared/notifications/registry';
 import type { Locale } from '../locale';
+
+/** One kind's line in a notification email, with where its link goes. */
+export interface NotificationEmailItem extends NotificationItem {
+    readonly kind: NotificationKind;
+    readonly link: string;
+}
 
 interface Envelope {
     readonly to: string;
@@ -25,33 +33,22 @@ export type EmailMessage =
           readonly signInLink: string;
       })
     | (Envelope & {
-          readonly template: 'engine-offline';
-          /** `engineLabel()`: the owner's label, or the short engine ID. */
-          readonly label: string;
-          readonly engineId: string;
-          readonly hostname: string;
-          readonly lastSeenAt: number;
-          /** The engine's page in the dashboard. Nothing else is known about the engine, so nothing else is sent. */
-          readonly link: string;
-      })
-    | (Envelope & {
-          /** Never the setup link: only the engine can make someone its owner, so only its terminal shows that link. */
-          readonly template: 'engine-online';
-          readonly label: string;
-          readonly engineId: string;
-          readonly hostname: string;
-          readonly link: string;
-      })
-    | (Envelope & {
-          readonly template: 'engine-back-online';
-          readonly label: string;
-          readonly engineId: string;
-          readonly hostname: string;
-          /** The last heartbeat before the outage. */
-          readonly lastSeenAt: number;
-          /** The first heartbeat after it. */
-          readonly backOnlineAt: number;
-          readonly link: string;
+          /**
+           * D-41: everything due for one person about one project (or organization), merged (ADR 0027). Only what the
+           * dashboard owns: the organization's name, the project's label and hostname, kinds, counts and times.
+           */
+          readonly template: 'notifications';
+          readonly place: NotificationPlace;
+          readonly items: readonly NotificationEmailItem[];
+          /** `join-request` only: addresses of the people the dashboard sent to the project who still wait. */
+          readonly requesters: readonly string[];
+          readonly settingsLink: string;
+          readonly unsubscribe: {
+              /** The SPA page that asks before it turns anything off, for the link in the body. */
+              readonly page: string;
+              /** RFC 8058's one-click POST target, for `List-Unsubscribe`. */
+              readonly oneClick: string;
+          };
       })
     | (Envelope & {
           /** An invitation to an organization and its teams (ADR 0018); names typed by the inviting organization. */
@@ -61,18 +58,6 @@ export type EmailMessage =
           readonly orgName: string | null;
           readonly teamNames: readonly string[];
           readonly expiresAt: number;
-          readonly link: string;
-      })
-    | (Envelope & {
-          /**
-           * Someone opened an engine of the organization and waits for approval there. Names, the engine's hostname and
-           * a link to it only: never a secret, never anything from inside the engine.
-           */
-          readonly template: 'access-waiting';
-          readonly requesterEmail: string;
-          /** The team's name, which the screens call the engine's. */
-          readonly teamName: string;
-          /** `https://<engine hostname>/members`, where the engine lists its access requests. */
           readonly link: string;
       })
     | (Envelope & {

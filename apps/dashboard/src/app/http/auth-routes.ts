@@ -16,8 +16,10 @@ import { orgIdSchema } from '../../domain/ids';
 import { createInviteJoinFlow, type InviteJoinDeps, type InviteJoinOutcome } from '../../domain/teams/join-invite';
 import { apiRoutes, type SessionView } from '../../shared/api/routes';
 import { resolveRequestLocale } from '../i18n/resolve-request-locale';
+import type { Notifications } from '../../domain/notifications/notifications';
 import type { UsageRecorder } from '../../domain/usage/usage-recorder';
 import type { RequestContext, RouteBinder } from './bind-route';
+import { notifyJoined } from './team-routes';
 import {
     CHALLENGE_COOKIE,
     challengeCookie,
@@ -87,6 +89,7 @@ export function bindAuthRoutes(
         readonly licensing: boolean;
         readonly teams: InviteJoinDeps['teams'] & RecoveryDeps['teams'];
         readonly usage: UsageRecorder;
+        readonly notifications: Notifications;
     },
 ): void {
     const signup = createSignupFlow(deps);
@@ -245,6 +248,7 @@ export function bindAuthRoutes(
                 { event: 'invite.accepted', ...subject, props: { as: 'new-account' } },
             ]),
         );
+        request.waitUntil(notifyJoined(deps, outcome.joined.orgId));
         return joined(outcome);
     });
 
@@ -273,6 +277,7 @@ export function bindAuthRoutes(
                 },
             ]),
         );
+        request.waitUntil(notifyJoined(deps, outcome.joined.orgId));
         return joined(outcome);
     });
 

@@ -21,7 +21,10 @@ import {
     createD1PlatformEngineStore,
 } from '../adapters/db/d1-registration-store';
 import { createD1MeteringStore } from '../adapters/db/d1-metering-store';
+import { createD1NotificationStore } from '../adapters/db/d1-notification-store';
+import { createD1RecipientDirectory } from '../adapters/db/d1-recipient-directory';
 import { createD1UsageStore } from '../adapters/db/d1-usage-store';
+import { createHmacUnsubscribeTokens } from '../adapters/notifications/hmac-unsubscribe-tokens';
 import { createD1RelayPresenceStore } from '../adapters/db/d1-relay-presence-store';
 import { createD1TeamStore } from '../adapters/db/d1-team-store';
 import { createD1WebsiteLicensingStore } from '../adapters/db/d1-website-licensing-store';
@@ -44,6 +47,7 @@ import {
     type Entitlements,
 } from '../domain/billing/entitlements';
 import { DASHBOARD_POLICY } from '../domain/authz/policy';
+import { createNotifications } from '../domain/notifications/notifications';
 import { createAdvisoryEntitlements } from '../domain/licensing/advisory-entitlements';
 import type { Logger } from '../domain/ports/logger';
 import type { DashboardMetrics } from '../domain/monitoring/dashboard-metrics';
@@ -223,6 +227,7 @@ export function createDashboard(
                   identities: createWebsiteIdentityExchange(websiteApi(config.billing)),
               }
             : null;
+    const notificationStore = createD1NotificationStore(db);
     const deps: DashboardDeps = {
         config,
         clock: systemClock,
@@ -246,6 +251,14 @@ export function createDashboard(
                   }),
         engines: createD1EngineStore(db),
         teams: createD1TeamStore(db),
+        notifications: createNotifications({
+            store: notificationStore,
+            directory: createD1RecipientDirectory(db),
+            clock: systemClock,
+            random: cryptoRandom,
+        }),
+        notificationStore,
+        unsubscribeTokens: createHmacUnsubscribeTokens(config.rateLimitHmacKey),
         memberKey: memberKeySource(config.memberKeySeed),
         platformEngines: createD1PlatformEngineStore(db),
         relayTokens: createD1RelayTokenStore(db),

@@ -35,3 +35,18 @@ export function shortEngineId(engineId: string): string {
 export function engineLabel(engine: { readonly engineId: string; readonly label: string | null }): string {
     return engine.label ?? `${shortEngineId(engine.engineId)}…`;
 }
+
+/**
+ * What the screens and emails call a project: its label, else the name someone gave its team (ADR 0018), else its short
+ * ID. A team made for an unnamed engine carries its hostname or ID, which is no name.
+ */
+export function projectName(project: {
+    readonly engineId: string;
+    readonly hostname: string;
+    readonly label: string | null;
+    readonly teamName: string | null;
+}): string {
+    const { teamName } = project;
+    const given = teamName !== null && teamName !== project.hostname && teamName !== project.engineId;
+    return project.label ?? (given ? teamName : engineLabel({ engineId: project.engineId, label: null }));
+}

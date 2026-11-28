@@ -255,9 +255,16 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     });
 
     const onlineEmails = async () =>
-        (await dashboard.emails(email)).filter((sent) => sent.template === 'engine-online');
+        (await dashboard.emails(email)).filter(
+            (sent) => sent.template === 'notifications' && sent.subject.endsWith(' is online'),
+        );
     await test.step('the outbox holds exactly one "online" email', async () => {
-        await expect.poll(async () => (await onlineEmails()).length).toBeGreaterThan(0);
+        await expect
+            .poll(async () => {
+                await dashboard.deliverNotifications();
+                return (await onlineEmails()).length;
+            })
+            .toBeGreaterThan(0);
         const [online, ...more] = await onlineEmails();
         expect(more).toEqual([]);
         // Unnamed when its first heartbeat arrives, so the email names it by its short ID and gives the address below.
@@ -286,8 +293,13 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     });
 
     // Later heartbeats send nothing more: "online" is once per engine.
+    await dashboard.deliverNotifications();
     expect(await onlineEmails()).toHaveLength(1);
-    expect((await dashboard.emails(email)).filter((sent) => sent.template === 'engine-back-online')).toEqual([]);
+    expect(
+        (await dashboard.emails(email)).filter(
+            (sent) => sent.template === 'notifications' && sent.subject.includes('back online'),
+        ),
+    ).toEqual([]);
 
     await test.step("the engine's log stream carries no link code, link URL or setup secret", async () => {
         const logs = await engine.logs();

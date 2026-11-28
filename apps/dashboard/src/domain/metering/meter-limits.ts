@@ -30,6 +30,8 @@ export interface MeterLimitRequest {
 export interface MeterLimitDeps {
     readonly entitlements: Entitlements;
     readonly store: Pick<MeteringStore, 'readOrgFacts'>;
+    /** Told of every shortfall before it is answered (D-41's `plan-limit`); it must not throw. */
+    readonly onLimit?: (orgId: OrgId, shortfall: MeterLimitCheck & MeterShortfall) => Promise<void>;
 }
 
 /**
@@ -60,7 +62,9 @@ export async function checkMeterLimit(
         if (limit !== null && used + request.adding > limit) {
             const blocks =
                 meter.createdBy === 'dashboard' && (await deps.entitlements.overLimit(orgId, signal)) === 'block';
-            return { outcome: blocks ? 'block' : 'warn', meter: request.meter, scope, used, limit };
+            const shortfall = { outcome: blocks ? 'block' : 'warn', meter: request.meter, scope, used, limit } as const;
+            await deps.onLimit?.(orgId, shortfall);
+            return shortfall;
         }
     }
     return { outcome: 'ok' };

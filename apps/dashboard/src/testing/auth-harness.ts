@@ -1,4 +1,3 @@
-import { defaultHostname } from '@ptbk/protocol';
 import type { Hono } from 'hono';
 
 import type { FakeBillingState } from '../adapters/billing/fake-billing-provider';
@@ -28,7 +27,14 @@ import type { RegistryReader } from '../domain/registry/registry-reader';
 import type { RelayTokenStore } from '../domain/registry/relay-token-store';
 import { DASHBOARD_POLICY, type DashboardAction } from '../domain/authz/policy';
 import type { RateLimiter } from '../domain/ports/rate-limiter';
-import type { AlertRecipients } from '../domain/status/alert-recipients';
+import type { NotificationStore } from '../domain/notifications/notification-store';
+import type { RecipientDirectory } from '../domain/notifications/recipient-directory';
+import { createNotifications } from '../domain/notifications/notifications';
+import { runNotificationDelivery, type DeliveryReport } from '../domain/notifications/deliver-notifications';
+import { createHmacUnsubscribeTokens } from '../adapters/notifications/hmac-unsubscribe-tokens';
+import { createFakeRecipientDirectory } from './fake-recipient-directory';
+import { createMemoryNotificationStore } from './memory-notification-store';
+import { createMemoryRecipientDirectory } from './memory-recipient-directory';
 import type { HeartbeatTiming } from '../domain/status/engine-status';
 import type { EngineStatusDirectory } from '../domain/status/engine-status-directory';
 import type { HeartbeatEngineReader } from '../domain/status/heartbeat-engine-reader';
@@ -123,6 +129,9 @@ export interface AuthHarness {
     /** The fake website the App talks to with billing `website`, and the store it links accounts in. */
     readonly website: FakeWebsite;
     readonly websiteLicensing: WebsiteLicensingStore;
+    readonly notificationStore: NotificationStore;
+    /** One run of the notification delivery job at the harness clock's time, into `outbox`. */
+    deliverNotifications(): Promise<DeliveryReport>;
     /** Sends `body` exactly as given, for routes whose signature covers the raw bytes. */
     post(
         path: string,
@@ -193,8 +202,11 @@ export function createAuthHarness(options: {
     readonly customHostnames?: CustomHostnameStore & EngineHostnameStore;
     /** Defaults to a reader over the registration stores' engines. */
     readonly heartbeatEngines?: HeartbeatEngineReader;
-    /** Defaults to nobody, for suites that never take an engine offline. */
-    readonly alertRecipients?: AlertRecipients;
+    /**
+     * Notification rows and who hears of what; default to memory over the in-memory accounts, teams and engines, or to
+     * nobody when those are D1 (pass the D1 adapters then).
+     */
+    readonly notifications?: { readonly store: NotificationStore; readonly directory: RecipientDirectory };
     /** The `HEARTBEAT` var; the config's defaults otherwise. */
     readonly heartbeat?: Partial<HeartbeatTiming>;
     /** What the routes see of the status objects, e.g. to stall one; `engineStatuses` itself is unchanged. */
@@ -290,16 +302,25 @@ export function createAuthHarness(options: {
         random: cryptoRandom,
         logger,
     });
+    const authState = 'state' in options.store ? (options.store as { readonly state: MemoryAuthState }).state : null;
+    const teamState = 'state' in teams ? (teams as { readonly state: MemoryTeamState }).state : null;
+    const registrationState =
+        'state' in registration ? (registration as { readonly state: MemoryRegistrationState }).state : null;
+    const notificationStore = options.notifications?.store ?? createMemoryNotificationStore();
+    const directory =
+        options.notifications?.directory ??
+        (authState !== null && teamState !== null && registrationState !== null
+            ? createMemoryRecipientDirectory({ auth: authState, teams: teamState, registration: registrationState })
+            : createFakeRecipientDirectory());
+    const notifications = createNotifications({ store: notificationStore, directory, clock, random: cryptoRandom });
+    const unsubscribeTokens = createHmacUnsubscribeTokens(config.rateLimitHmacKey);
     const engineStatuses = createMemoryEngineStatuses({
         clock,
         logger,
         usage: usageRecorder,
         timing: config.heartbeat,
         heartbeatEngines,
-        recipients: options.alertRecipients ?? { forEngineStatus: () => Promise.resolve([]) },
-        email: outbox,
-        engineHostname: (engineId) => defaultHostname(engineId, config.engineDomain),
-        engineLink: (engineId) => `${ORIGIN}/engines/${engineId}`,
+        notifications,
     });
     const metering = options.metering ?? harnessMeteringStore(options.store, registration, teams, usage);
     const metrics = createMemoryDashboardMetrics(clock);
@@ -347,6 +368,9 @@ export function createAuthHarness(options: {
         relayPresence,
         usage: usageRecorder,
         metering,
+        notifications,
+        notificationStore,
+        unsubscribeTokens,
     };
     const { app: http, routes } = createHttpApp({
         ...deps,
@@ -388,6 +412,20 @@ export function createAuthHarness(options: {
         usage,
         website,
         websiteLicensing,
+        notificationStore,
+        deliverNotifications: () =>
+            runNotificationDelivery(
+                {
+                    store: notificationStore,
+                    directory,
+                    email: outbox,
+                    tokens: unsubscribeTokens,
+                    logger,
+                    dashboardOrigin: ORIGIN,
+                },
+                clock.nowMs(),
+                new AbortController().signal,
+            ),
         settle,
         async post(path, body, headers = {}, postOptions = {}) {
             const response = await http.request(

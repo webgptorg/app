@@ -27,6 +27,9 @@ import type { RateLimiter } from '../domain/ports/rate-limiter';
 import type { RelyingParty } from '../domain/ports/relying-party';
 import type { Timer } from '../domain/ports/timer';
 import type { DashboardMetrics } from '../domain/monitoring/dashboard-metrics';
+import type { NotificationStore } from '../domain/notifications/notification-store';
+import type { Notifications } from '../domain/notifications/notifications';
+import type { UnsubscribeTokens } from '../domain/notifications/unsubscribe-tokens';
 import type { UsageRecorder } from '../domain/usage/usage-recorder';
 import type { MeteringStore } from '../domain/metering/metering-store';
 import type { WebsiteLicenseApi } from '../domain/licensing/license-contract';
@@ -78,6 +81,11 @@ export interface DashboardDeps {
     readonly engineStatus: EngineStatusDirectory;
     /** Which relays hold a ready tunnel for which engines, as the relays report it (R-07). */
     readonly relayPresence: RelayPresenceStore;
+    /** What producers tell people through (D-41): `notify` for platform kinds, `syncAttention` for engine counts. */
+    readonly notifications: Notifications;
+    /** The bell's and the preferences' rows. */
+    readonly notificationStore: NotificationStore;
+    readonly unsubscribeTokens: UnsubscribeTokens;
     /** Funnel events (ADR 0022), best effort: handlers pass `record` to `waitUntil`. */
     readonly usage: UsageRecorder;
     /** What the meters count and their daily history (ADR 0025). */

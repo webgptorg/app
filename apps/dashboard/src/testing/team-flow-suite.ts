@@ -1076,7 +1076,7 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
             expect(await members(boss.browser, team.teamId)).toMatchObject({ removing: [], invites: [] });
         });
 
-        it('hears the engine: emails a waiting request once, grants access on approval, and resends removals until acked', async () => {
+        it('hears the engine: notifies of a waiting request once, grants access on approval, and resends removals until acked', async () => {
             const boss = await owner();
             const team = await createTeam(boss.browser);
             const engine = await linkTestEngine(boss.browser, team.teamId);
@@ -1093,18 +1093,32 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
 
             const ticket = await openTicket(member.browser, team.teamId, engine.engineId);
             expect(await beatV2(engine)).toEqual({ v: 1, revocations: [] });
-            expect(harness.outbox.sentTo(boss.email).some((m) => m.template === 'access-waiting')).toBe(false);
+            const notificationEmails = () =>
+                harness.outbox.sentTo(boss.email).filter((m) => m.template === 'notifications');
             await beatV2(engine, { accessRequests: 1 });
-            const waiting = harness.outbox.sentTo(boss.email).filter((m) => m.template === 'access-waiting');
-            expect(waiting).toHaveLength(1);
+            // In-app at once, by email only if still unseen 15 minutes later.
+            await harness.deliverNotifications();
+            expect(notificationEmails()).toEqual([]);
+            harness.clock.advance(16 * 60_000);
+            await harness.deliverNotifications();
             const hostname = `${engine.engineId}.engines.ptbk.test`;
-            expect(waiting[0]).toMatchObject({
-                requesterEmail: member.email,
-                teamName: 'Client A',
-                link: `https://${hostname}/members`,
-            });
+            expect(notificationEmails()).toEqual([
+                expect.objectContaining({
+                    place: { orgName: null, project: { label: 'Client A', hostname } },
+                    requesters: [member.email],
+                    items: [
+                        expect.objectContaining({
+                            kind: 'join-request',
+                            count: 1,
+                            link: `https://${hostname}/members`,
+                        }),
+                    ],
+                }),
+            ]);
             await beatV2(engine, { accessRequests: 1 });
-            expect(harness.outbox.sentTo(boss.email).filter((m) => m.template === 'access-waiting')).toHaveLength(1);
+            harness.clock.advance(16 * 60_000);
+            await harness.deliverNotifications();
+            expect(notificationEmails()).toHaveLength(1);
 
             await beatV2(engine, { acks: [{ id: ticket.ticketId, outcome: 'approved' }] });
             expect(lastEmail(harness, member.email)).toMatchObject({
@@ -1318,6 +1332,108 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
             for (const secret of secrets) {
                 expect(logged).not.toContain(secret);
             }
+        });
+
+        it('tells people about people in the bell and by email, and lets them choose or unsubscribe in one click', async () => {
+            const boss = await owner();
+            const team = await createTeam(boss.browser);
+            const engine = await linkTestEngine(boss.browser, team.teamId);
+            const member = await joined(boss, []);
+            interface Bell {
+                readonly notifications: readonly {
+                    readonly id: string;
+                    readonly kind: string;
+                    readonly variant: string | null;
+                    readonly seen: boolean;
+                    readonly project: { readonly label: string } | null;
+                }[];
+            }
+            const bell = async (who: Person) => (await who.browser.request('GET', '/api/notifications')).body as Bell;
+            // Someone joined: the organization's managers hear it in-app, never who it was.
+            expect((await bell(boss)).notifications).toEqual([
+                expect.objectContaining({ kind: 'people-change', variant: 'joined', seen: false, project: null }),
+            ]);
+
+            expect(
+                (await boss.browser.request('POST', `/api/teams/${team.teamId}/members`, { userId: member.userId }))
+                    .status,
+            ).toBe(204);
+            const [added] = (await bell(member)).notifications;
+            expect(added).toMatchObject({ kind: 'people-change', variant: 'added', project: { label: 'Client A' } });
+            expect(added?.id).toBeDefined();
+
+            // Preferences: role defaults, overrides only.
+            interface Prefs {
+                readonly preferences: readonly {
+                    readonly kind: string;
+                    readonly channel: string;
+                    readonly defaultChannel: string;
+                }[];
+            }
+            const prefs = async () =>
+                ((await member.browser.request('GET', '/api/notification-preferences')).body as Prefs).preferences;
+            expect((await prefs()).find((p) => p.kind === 'people-change')).toEqual({
+                kind: 'people-change',
+                channel: 'email',
+                defaultChannel: 'email',
+            });
+            const set = (channel: string) =>
+                member.browser.request('PUT', '/api/notification-preferences/people-change', { channel });
+            expect(
+                ((await set('in-app')).body as Prefs).preferences.find((p) => p.kind === 'people-change')?.channel,
+            ).toBe('in-app');
+            expect((await set('email')).status).toBe(200);
+            expectProblem(await set('sms'), 400, 'invalid-request');
+            expectProblem(
+                await member.browser.request('PUT', '/api/notification-preferences/no-such-kind', { channel: 'off' }),
+                400,
+                'invalid-request',
+            );
+
+            // Unseen after 15 minutes: one email, content-free, with a one-click unsubscribe.
+            harness.clock.advance(16 * 60_000);
+            await harness.deliverNotifications();
+            const email = lastEmail(harness, member.email);
+            if (email.template !== 'notifications') {
+                throw new Error(`expected a notification email, got ${email.template}`);
+            }
+            expect(email.items.map((item) => [item.kind, item.variant])).toEqual([['people-change', 'added']]);
+            expect(email.place.project).toEqual({
+                label: 'Client A',
+                hostname: `${engine.engineId}.engines.ptbk.test`,
+            });
+            const oneClick = new URL(email.unsubscribe.oneClick);
+            const form = new TextEncoder().encode('List-Unsubscribe=One-Click');
+            const formHeaders = { 'Content-Type': 'application/x-www-form-urlencoded' };
+            // A mail provider posts from its own servers: no Fetch Metadata, no Origin, and it must still work.
+            const bad = await harness.post(`/email/unsubscribe?token=${'x'.repeat(20)}`, form, formHeaders);
+            expect(bad.status).toBe(400);
+            const ok = await harness.post(`${oneClick.pathname}${oneClick.search}`, form, formHeaders);
+            expect(ok.status).toBe(204);
+            expect((await prefs()).find((p) => p.kind === 'people-change')?.channel).toBe('in-app');
+
+            // Seeing the bell marks only one's own rows; another person's IDs change nothing.
+            const bossRow = (await bell(boss)).notifications[0]?.id ?? '';
+            expect((await member.browser.request('POST', '/api/notifications/seen', { ids: [bossRow] })).status).toBe(
+                204,
+            );
+            expect((await bell(boss)).notifications[0]?.seen).toBe(false);
+            expect((await boss.browser.request('POST', '/api/notifications/seen', { ids: [bossRow] })).status).toBe(
+                204,
+            );
+            expect((await bell(boss)).notifications[0]?.seen).toBe(true);
+            expectProblem(
+                await boss.browser.request('POST', '/api/notifications/seen', { ids: [] }),
+                400,
+                'invalid-request',
+            );
+
+            // A role change tells the person themselves; one's own change tells nobody.
+            expect(
+                (await boss.browser.request('POST', `/api/org/members/${member.userId}/role`, { role: 'admin' }))
+                    .status,
+            ).toBe(204);
+            expect((await bell(member)).notifications.map((n) => n.variant)).toContain('role');
         });
     });
 }

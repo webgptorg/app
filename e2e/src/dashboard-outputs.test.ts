@@ -64,10 +64,10 @@ describe('uniqueEmail', () => {
 
 describe('outboxEmails', () => {
     it('lists every email with the fields the tests read, oldest first', () => {
-        const email = { template: 'engine-online', to: 'a@example.test', locale: 'en', subject: 'S', text: 'T' };
+        const email = { template: 'notifications', to: 'a@example.test', locale: 'en', subject: 'S', text: 'T' };
         expect(outboxEmails(JSON.stringify({ emails: [email, { ...email, subject: 'S2' }] }))).toEqual([
-            { template: 'engine-online', to: 'a@example.test', subject: 'S', text: 'T' },
-            { template: 'engine-online', to: 'a@example.test', subject: 'S2', text: 'T' },
+            { template: 'notifications', to: 'a@example.test', subject: 'S', text: 'T' },
+            { template: 'notifications', to: 'a@example.test', subject: 'S2', text: 'T' },
         ]);
     });
 

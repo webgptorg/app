@@ -27,9 +27,11 @@ const PUBLIC_ROUTES = [
     'POST /api/invites/join/verify',
     'POST /api/invites/preview',
     'POST /api/invites/signin/verify',
+    // D-41: RFC 8058's one-click unsubscribe; its signed token can only ever turn email off.
+    'POST /email/unsubscribe',
 ];
 
-const MOUNTS = ['/api', '/v1', '/internal', '/webhooks', '/.well-known'];
+const MOUNTS = ['/api', '/v1', '/internal', '/webhooks', '/.well-known', '/email'];
 /** Prefixes whose unknown paths answer a 404 problem instead of the SPA shell. */
 const PROBLEM_PREFIXES = [...MOUNTS, '/install.sh', '/install-server.sh', '/install.ps1'];
 
@@ -60,6 +62,7 @@ const ANONYMOUS_LIMITS = {
     'POST /api/invites/join/verify': ['verify-ip', null],
     'POST /api/invites/preview': ['verify-ip', null],
     'POST /api/invites/signin/verify': ['verify-ip', null],
+    'POST /email/unsubscribe': ['unsubscribe-ip', null],
     'POST /v1/engines/:engineId/heartbeat': ['heartbeat-ip', 'heartbeat-engine'],
     'POST /v1/engines/register': ['registration-ip', null],
     'POST /webhooks/stripe': ['webhook-ip', null],

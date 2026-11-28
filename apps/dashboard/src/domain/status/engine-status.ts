@@ -59,12 +59,12 @@ export const heartbeatPayloadSchema = z.strictObject({
 });
 export type HeartbeatPayload = z.infer<typeof heartbeatPayloadSchema>;
 
-export const alertRecipientSchema = z.strictObject({ email: z.string().max(254), locale: localeSchema });
-export type AlertRecipient = z.infer<typeof alertRecipientSchema>;
+/** Who a failed email was still owed to, in statuses stored before D-41; read, never written any more. */
+const alertRecipientSchema = z.strictObject({ email: z.string().max(254), locale: localeSchema });
 
 /**
- * The offline alert of the current outage. `pending` keeps whom a failed attempt still owes the email (`null`: the
- * recipients could not be resolved), so a retry never mails anyone twice. `none` arms the next outage.
+ * The offline alert of the current outage: `pending` until the notification pipeline took it (D-41), `none` arms the
+ * next outage. `recipients` is null since D-41, when the pipeline started choosing who hears of it.
  */
 const delivery = {
     attempt: z.int().min(0).max(ALERT_RETRY_DELAYS_MS.length),
@@ -112,6 +112,8 @@ const trackedSchema = z.strictObject({
     notice: noticeSchema.default({ kind: 'none' }),
     // Statuses stored before ADR 0022 start counting at their next heartbeat.
     activity: engineActivitySchema.optional(),
+    // Whether the pipeline was last told an update waits (D-41); it is told again only when that changes.
+    updateWaiting: z.boolean().optional(),
 });
 
 /** After the retention purge: nothing about the engine but that it is offline and when it was last seen. */
@@ -289,10 +291,9 @@ export function onAlarm(stored: StoredEngineStatus | null, now: number, timing: 
 }
 
 export type AlertAttempt =
+    /** The notification pipeline took it. */
     | { readonly kind: 'delivered' }
-    /** Some sends failed; these recipients are still owed the email. */
-    | { readonly kind: 'partly-failed'; readonly failed: readonly AlertRecipient[] }
-    /** The recipients could not be resolved; nobody was sent anything. */
+    /** The pipeline could not take it now; tried again later. */
     | { readonly kind: 'unresolved' }
     /** The engine was revoked, suspended or removed since: nobody is owed anything about it any more. */
     | { readonly kind: 'engine-inactive' };
@@ -312,7 +313,7 @@ export function afterNoticeAttempt(
                   ...status.notice,
                   dueAt: now + delay,
                   attempt: status.notice.attempt + 1,
-                  recipients: attempt.kind === 'unresolved' ? null : [...attempt.failed],
+                  recipients: null,
               };
     const settled = { ...status, notice };
     return { status: settled, alarmAt: nextAlarmAt(settled, timing) };
@@ -344,7 +345,7 @@ export function afterAlertAttempt(
             alert: {
                 kind: 'pending',
                 attempt: status.alert.attempt + 1,
-                recipients: attempt.kind === 'unresolved' ? null : [...attempt.failed],
+                recipients: null,
             },
         },
         alarmAt: now + delay,

@@ -1,7 +1,7 @@
 import type { Entitlements } from '../billing/entitlements';
 import type { OrgId } from '../ids';
 import { OPEN_LICENSE_GATE, type LicenseGate } from '../licensing/license-service';
-import { checkMeterLimit } from '../metering/meter-limits';
+import { checkMeterLimit, type MeterLimitDeps } from '../metering/meter-limits';
 import type { MeteringStore } from '../metering/metering-store';
 
 export type EntitlementDenial = 'not-entitled' | 'engine-limit';
@@ -30,6 +30,7 @@ export function createEngineCreationPolicy(deps: {
     readonly metering: Pick<MeteringStore, 'readOrgFacts'>;
     /** The `engine.link` check point; it denies only with `LICENSE_ENFORCEMENT` `enforce`. */
     readonly licenseGate?: LicenseGate;
+    readonly onLimit?: MeterLimitDeps['onLimit'];
 }): EngineCreationPolicy {
     const licenseGate = deps.licenseGate ?? OPEN_LICENSE_GATE;
 
@@ -38,7 +39,11 @@ export function createEngineCreationPolicy(deps: {
             return { kind: 'denied', reason: 'not-entitled' };
         }
         const projects = await checkMeterLimit(
-            { entitlements: deps.entitlements, store: deps.metering },
+            {
+                entitlements: deps.entitlements,
+                store: deps.metering,
+                ...(deps.onLimit === undefined ? {} : { onLimit: deps.onLimit }),
+            },
             orgId,
             { meter: 'projects', adding: 1 },
             signal,

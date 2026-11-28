@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { blob, check, index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { blob, check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 // Timestamps are integers in milliseconds since the Unix epoch. Every column is an explicit review point for
 // "the dashboard stores no engine content" (schema-allowlist.test.ts).
@@ -620,4 +620,65 @@ export const websitePendingLinks = sqliteTable(
         expiresAt: integer('expires_at').notNull(),
     },
     (t) => [index('website_pending_links_expires_at_idx').on(t.expiresAt)],
+);
+
+// Notifications (D-41, ADR 0027): who should hear what about which project. A kind and a closed variant, a count from
+// the dashboard or the engine's heartbeat, and the dashboard's own times; never a name, title or text from an engine.
+
+export const notifications = sqliteTable(
+    'notifications',
+    {
+        id: text('id').primaryKey(),
+        orgId: text('org_id')
+            .notNull()
+            .references(() => organizations.id),
+        userId: text('user_id')
+            .notNull()
+            .references(() => users.id),
+        // Null for organization-level kinds; no foreign key, so a row may outlive a revoked engine until it closes.
+        engineId: text('engine_id'),
+        kind: text('kind').notNull(),
+        variant: text('variant'),
+        count: integer('count').notNull(),
+        openedAt: integer('opened_at').notNull(),
+        updatedAt: integer('updated_at').notNull(),
+        seenAt: integer('seen_at'),
+        emailedAt: integer('emailed_at'),
+        // When an email is owed, so the delivery job reads only those rows; null when none is.
+        dueAt: integer('due_at'),
+        closedAt: integer('closed_at'),
+    },
+    (t) => [
+        // One open row per person, organization, project and kind (ADR 0027); two indexes, since NULLs never collide.
+        uniqueIndex('notifications_open_project_idx')
+            .on(t.userId, t.orgId, t.engineId, t.kind)
+            .where(sql`${t.closedAt} is null and ${t.engineId} is not null`),
+        uniqueIndex('notifications_open_org_idx')
+            .on(t.userId, t.orgId, t.kind)
+            .where(sql`${t.closedAt} is null and ${t.engineId} is null`),
+        index('notifications_target_idx').on(t.orgId, t.engineId, t.kind),
+        index('notifications_due_idx')
+            .on(t.dueAt)
+            .where(sql`${t.closedAt} is null and ${t.dueAt} is not null`),
+        index('notifications_closed_idx').on(t.closedAt),
+    ],
+);
+
+/** A person's own choices per organization and kind (ADR 0027): overrides only, a role's defaults are not stored. */
+export const notificationPreferences = sqliteTable(
+    'notification_preferences',
+    {
+        userId: text('user_id')
+            .notNull()
+            .references(() => users.id),
+        orgId: text('org_id')
+            .notNull()
+            .references(() => organizations.id),
+        kind: text('kind').notNull(),
+        channel: text('channel', { enum: ['off', 'in-app', 'email'] }).notNull(),
+    },
+    (t) => [
+        primaryKey({ columns: [t.userId, t.orgId, t.kind] }),
+        check('notification_preferences_channel_check', sql`${t.channel} in ('off', 'in-app', 'email')`),
+    ],
 );

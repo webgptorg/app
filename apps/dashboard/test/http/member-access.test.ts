@@ -81,9 +81,13 @@ describe('member access without a member key', () => {
         expect(result.reply).toEqual({ v: 1, revocations: [] });
         expect(teams.state.revocations[0]?.ackedAt).toBeUndefined();
         const sent: unknown[] = [];
-        await result.deliver((message) => {
-            sent.push(message);
-            return Promise.resolve();
+        await result.deliver({
+            send: (message) => {
+                sent.push(message);
+                return Promise.resolve();
+            },
+            notifications: { notify: () => Promise.reject(new Error('not reached')) },
+            signal: new AbortController().signal,
         });
         expect(sent).toEqual([]);
     });
@@ -101,7 +105,7 @@ describe('issueAccessTicket', () => {
 });
 
 describe('access emails', () => {
-    it('sends none for an engine the dashboard no longer finds in the organization', async () => {
+    it('sends no “you’re in” email for an engine the dashboard no longer finds in the organization', async () => {
         const { deps, actor, teamId, engine, teams, registration } = await setup(
             memberKeySource(new Uint8Array(32).fill(7)),
         );
@@ -117,9 +121,13 @@ describe('access emails', () => {
         registration.state.engines.delete(engine.engineId);
         type Heartbeat = Parameters<typeof handleHeartbeatV2>[2];
         const sent: unknown[] = [];
-        const send = (message: unknown) => {
-            sent.push(message);
-            return Promise.resolve();
+        const send = {
+            send: (message: unknown) => {
+                sent.push(message);
+                return Promise.resolve();
+            },
+            notifications: { notify: () => Promise.resolve() },
+            signal: new AbortController().signal,
         };
         const waiting = { accessRequests: 1, acks: [] } as unknown as Heartbeat;
         await (await handleHeartbeatV2(deps, engine.engineId, waiting)).deliver(send);

@@ -19,6 +19,7 @@ import type { Logger } from '../ports/logger';
 import type { Random } from '../ports/random';
 import type { EngineStore } from '../registration/engine-store';
 import type { UsageEvent } from '../usage/usage-event';
+import type { Notifications } from '../notifications/notifications';
 import type { MemberKeySource } from './member-key';
 import type { TeamStore, TicketOutcome } from './team-store';
 import type { TeamActor } from './teams';
@@ -109,12 +110,19 @@ function isTicketAck(ack: HeartbeatAck): ack is HeartbeatAck & { readonly outcom
     return TICKET_OUTCOMES.has(ack.outcome);
 }
 
+/** Where a heartbeat's effects go after the response: "you're in" emails, and join requests as notifications. */
+export interface HeartbeatV2Outlets {
+    readonly send: (message: EmailMessage) => Promise<void>;
+    readonly notifications: Pick<Notifications, 'notify'>;
+    readonly signal: AbortSignal;
+}
+
 export interface HeartbeatV2Result {
     readonly reply: HeartbeatReply;
     /** The engine's answers to access requests, for the usage record (ADR 0022). */
     readonly usage: readonly UsageEvent[];
-    /** The emails the acks and pending requests call for; run after the response. */
-    readonly deliver: (send: (message: EmailMessage) => Promise<void>) => Promise<void>;
+    /** The emails and notifications the acks and pending requests call for; run after the response. */
+    readonly deliver: (outlets: HeartbeatV2Outlets) => Promise<void>;
 }
 
 /** How far back a ticket still counts for the waiting-for-approval email: the engine keeps a request 7 days. */
@@ -132,6 +140,13 @@ export async function handleHeartbeatV2(
     const now = deps.clock.nowMs();
     const emails: EmailMessage[] = [];
     const usage: UsageEvent[] = [];
+    // Per organization: requests now waiting, and waiting ones the engine answered.
+    const requests = new Map<OrgId, { waiting: number; answered: number }>();
+    const count = (orgId: OrgId, change: 'waiting' | 'answered', by: number) => {
+        const entry = requests.get(orgId) ?? { waiting: 0, answered: 0 };
+        entry[change] += by;
+        requests.set(orgId, entry);
+    };
     // Every effect and notice of this heartbeat is about this one engine; heartbeats come only from active ones.
     const engineHostname = async (orgId: OrgId) => (await deps.engines.findInOrg(orgId, engineId))?.hostname ?? null;
     for (const ack of heartbeat.acks) {
@@ -140,6 +155,9 @@ export async function handleHeartbeatV2(
             continue;
         }
         const effect = await deps.teams.applyTicketAck(engineId, ack.id, ack.outcome, now);
+        if (effect?.noticed === true) {
+            count(effect.orgId, 'answered', 1);
+        }
         if (effect !== null && ack.outcome !== 'removed') {
             usage.push({
                 event: ack.outcome === 'approved' ? 'access.approved' : 'access.declined',
@@ -168,22 +186,7 @@ export async function handleHeartbeatV2(
             now,
         );
         for (const notice of notices) {
-            const hostname = await engineHostname(notice.orgId);
-            if (hostname === null) {
-                continue;
-            }
-            for (const recipient of notice.recipients) {
-                emails.push({
-                    template: 'access-waiting',
-                    to: recipient.email,
-                    locale: recipient.locale,
-                    requesterEmail: notice.requesterEmail,
-                    teamName: notice.teamName,
-                    // The engine's Members page, not the request itself: the heartbeat carries only a count and the
-                    // engine makes up its request IDs, so the dashboard never knows which one this is.
-                    link: `https://${hostname}/members`,
-                });
-            }
+            count(notice.orgId, 'waiting', 1);
         }
     }
     const key = await deps.memberKey();
@@ -204,7 +207,21 @@ export async function handleHeartbeatV2(
     return {
         reply: { v: 1, revocations },
         usage,
-        deliver: async (send) => {
+        deliver: async ({ send, notifications, signal }) => {
+            for (const [orgId, { waiting, answered }] of requests) {
+                const target = { orgId, engineId };
+                if (answered > 0) {
+                    await notifications.notify(
+                        'join-request',
+                        target,
+                        { kind: 'answered', requests: answered },
+                        signal,
+                    );
+                }
+                if (waiting > 0) {
+                    await notifications.notify('join-request', target, { kind: 'waiting', requests: waiting }, signal);
+                }
+            }
             for (const message of emails) {
                 await send(message);
             }

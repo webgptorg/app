@@ -41,13 +41,14 @@ async function expectProblem(response: Response, status: number, code: string) {
     return problem;
 }
 
-async function emailsTo(address: string): Promise<{ template: string; locale: string; text: string }[]> {
-    const response = await exports.default.fetch(
-        new Request(`${ORIGIN}/api/__dev/emails?to=${encodeURIComponent(address)}`, {
-            headers: { 'CF-Connecting-IP': '198.19.0.1' },
-        }),
-    );
-    return (await response.json<{ emails: { template: string; locale: string; text: string }[] }>()).emails;
+/** The notification rows the status object had the pipeline write about the engine, oldest first. */
+async function rowsAbout(engineId: EngineId) {
+    const rows = await env.DB.prepare(
+        'SELECT kind, variant, count, opened_at, due_at FROM notifications WHERE engine_id = ? ORDER BY user_id',
+    )
+        .bind(engineId)
+        .all<{ kind: string; variant: string | null; count: number; opened_at: number; due_at: number | null }>();
+    return rows.results;
 }
 
 /** An organization with a verified Czech owner, an unverified owner, and an engine registered to it, in D1. */
@@ -209,7 +210,7 @@ describe('EngineStatus Durable Object behind POST /v1/engines/:engineId/heartbea
         expect(await stub(engine.engineId).getStatus()).toMatchObject({ lastSeq: PER_ENGINE_LIMIT });
     });
 
-    it('emails one engine-offline alert to the verified owner in their locale after 3 missed heartbeats', async () => {
+    it('notifies the owners in D1 after 3 missed heartbeats, the verified one due by email at once', async () => {
         const seeded = await registeredEngine();
         const bystander = await registeredEngine();
         expect((await post(seeded.engine.engineId, await signedHeartbeat(seeded.engine, 1, NOW))).status).toBe(204);
@@ -219,60 +220,41 @@ describe('EngineStatus Durable Object behind POST /v1/engines/:engineId/heartbea
 
         vi.setSystemTime(NOW + OFFLINE_AFTER_MS);
         expect(await runDurableObjectAlarm(stub(seeded.engine.engineId))).toBe(true);
-        const alerts = await emailsTo(seeded.owner);
-        expect(alerts).toHaveLength(1);
-        expect(alerts[0]).toMatchObject({ template: 'engine-offline', locale: 'cs' });
-        expect(alerts[0]?.text).toContain(seeded.engine.engineId);
-        expect(await emailsTo(seeded.unverified)).toEqual([]);
-        expect(await emailsTo(bystander.owner)).toEqual([]);
+        expect(await rowsAbout(seeded.engine.engineId)).toEqual([
+            { kind: 'project-status', variant: 'offline', count: 1, opened_at: NOW, due_at: NOW + OFFLINE_AFTER_MS },
+            { kind: 'project-status', variant: 'offline', count: 1, opened_at: NOW, due_at: NOW + OFFLINE_AFTER_MS },
+        ]);
+        expect(await rowsAbout(bystander.engine.engineId)).toEqual([]);
         expect(await stub(seeded.engine.engineId).getStatus()).toMatchObject({
             state: 'offline',
             offlineSince: NOW + OFFLINE_AFTER_MS,
         });
 
-        // The alarm now waits for the retention purge; running it early sends nothing more.
+        // The alarm now waits for the retention purge; running it early tells nobody anything more.
         expect(await runDurableObjectAlarm(stub(seeded.engine.engineId))).toBe(true);
-        expect(await emailsTo(seeded.owner)).toHaveLength(1);
+        expect(await rowsAbout(seeded.engine.engineId)).toHaveLength(2);
         await runInDurableObject(stub(seeded.engine.engineId), async (_, state) => {
             expect(await state.storage.getAlarm()).toBe(NOW + 30 * 24 * 3600_000);
         });
     });
 
-    it('emails the owner that a new engine is online from the alarm the first heartbeat sets', async () => {
+    it('notifies that a new engine is online from the alarm the first heartbeat sets', async () => {
         const seeded = await registeredEngine();
         const first = await signedHeartbeat(seeded.engine, 1, NOW, { members: 0 });
         expect((await post(seeded.engine.engineId, first)).status).toBe(204);
-        expect(await emailsTo(seeded.owner)).toEqual([]);
+        expect(await rowsAbout(seeded.engine.engineId)).toEqual([]);
         await runInDurableObject(stub(seeded.engine.engineId), async (_, state) => {
             expect(await state.storage.getAlarm()).toBe(NOW);
         });
 
         expect(await runDurableObjectAlarm(stub(seeded.engine.engineId))).toBe(true);
-        const emails = await emailsTo(seeded.owner);
-        expect(emails).toMatchObject([{ template: 'engine-online', locale: 'cs' }]);
-        expect(emails[0]?.text.endsWith(`/engines/${seeded.engine.engineId}`)).toBe(true);
-        expect(await emailsTo(seeded.unverified)).toEqual([]);
+        expect((await rowsAbout(seeded.engine.engineId)).map((row) => row.variant)).toEqual(['online', 'online']);
         await runInDurableObject(stub(seeded.engine.engineId), async (_, state) => {
             expect(await state.storage.getAlarm()).toBe(NOW + OFFLINE_AFTER_MS);
         });
     });
 
-    it('emails the owner that an engine is back after the outage its offline email reported', async () => {
-        const seeded = await registeredEngine();
-        expect((await post(seeded.engine.engineId, await signedHeartbeat(seeded.engine, 1, NOW))).status).toBe(204);
-        vi.setSystemTime(NOW + OFFLINE_AFTER_MS);
-        await runDurableObjectAlarm(stub(seeded.engine.engineId));
-        const backAt = NOW + 3600_000;
-        vi.setSystemTime(backAt);
-        expect((await post(seeded.engine.engineId, await signedHeartbeat(seeded.engine, 2, backAt))).status).toBe(204);
-        expect(await runDurableObjectAlarm(stub(seeded.engine.engineId))).toBe(true);
-        expect((await emailsTo(seeded.owner)).map((email) => email.template)).toEqual([
-            'engine-offline',
-            'engine-back-online',
-        ]);
-    });
-
-    it('emails nothing once the engine is revoked, reading its row in D1', async () => {
+    it('tells nobody once the engine is revoked, reading its row in D1', async () => {
         const seeded = await registeredEngine();
         expect((await post(seeded.engine.engineId, await signedHeartbeat(seeded.engine, 1, NOW))).status).toBe(204);
         await env.DB.prepare(
@@ -282,7 +264,7 @@ describe('EngineStatus Durable Object behind POST /v1/engines/:engineId/heartbea
             .run();
         vi.setSystemTime(NOW + OFFLINE_AFTER_MS);
         expect(await runDurableObjectAlarm(stub(seeded.engine.engineId))).toBe(true);
-        expect(await emailsTo(seeded.owner)).toEqual([]);
+        expect(await rowsAbout(seeded.engine.engineId)).toEqual([]);
         await runInDurableObject(stub(seeded.engine.engineId), async (_, state) => {
             expect(await state.storage.getAlarm()).toBe(NOW + 30 * 24 * 3600_000);
         });

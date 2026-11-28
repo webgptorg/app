@@ -86,3 +86,11 @@ export function newInviteId(random: Random): InviteId {
 export function newUsageEventId(random: Random): string {
     return randomId(random);
 }
+
+/** A `notifications` row: what the bell marks seen by. It names nothing but the row. */
+export const notificationIdSchema = z.string().regex(ID_PATTERN).brand<'NotificationId'>();
+export type NotificationId = z.infer<typeof notificationIdSchema>;
+
+export function newNotificationId(random: Random): NotificationId {
+    return notificationIdSchema.parse(randomId(random));
+}
