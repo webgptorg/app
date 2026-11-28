@@ -222,8 +222,8 @@ async function composeEmail(
         requesters,
         settingsLink: `${deps.dashboardOrigin}/account#notifications`,
         unsubscribe: {
-            page: `${deps.dashboardOrigin}/unsubscribe#${token}`,
-            oneClick: `${deps.dashboardOrigin}/email/unsubscribe?token=${token}`,
+            page: `${deps.dashboardOrigin}/unsubscribe#${encodeURIComponent(token)}`,
+            oneClick: `${deps.dashboardOrigin}/email/unsubscribe?token=${encodeURIComponent(token)}`,
         },
     };
 }

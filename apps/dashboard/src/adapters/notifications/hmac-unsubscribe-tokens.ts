@@ -8,10 +8,11 @@ const HKDF_INFO = 'ptbk-notification-unsubscribe-v1';
 const MAC_CONTEXT = 'ptbk-unsubscribe-v1|';
 const VERSION = 'u1';
 
-// u1.<userId>.<orgId>.<kind>+<kind>.<HMAC-SHA-256, base64url>: IDs are base32 and kinds lowercase words, so the parts
-// never contain a separator, and the whole token fits a URL comfortably.
+// u1.<userId>.<orgId>.<kind>~<kind>.<HMAC-SHA-256, base64url>: IDs are base32 and kinds lowercase words, so the parts
+// never contain a separator, and every character is URL-unreserved: a query string carries the token unchanged (a `+`
+// would read as a space there).
 const TOKEN_PATTERN =
-    /^u1\.([a-z2-7]{26})\.([a-z2-7]{26})\.([a-z-]{1,40}(?:\+[a-z-]{1,40}){0,15})\.([A-Za-z0-9_-]{43})$/;
+    /^u1\.([a-z2-7]{26})\.([a-z2-7]{26})\.([a-z-]{1,40}(?:~[a-z-]{1,40}){0,15})\.([A-Za-z0-9_-]{43})$/;
 
 /**
  * The HMAC key for unsubscribe tokens, derived with HKDF from the rate-limit key every environment already holds, so
@@ -33,7 +34,7 @@ export function createHmacUnsubscribeTokens(secret: Uint8Array): UnsubscribeToke
     let derived: Promise<CryptoKey> | undefined;
     const key = () => (derived ??= deriveUnsubscribeKey(new Uint8Array(secret)));
     const payloadOf = (claims: UnsubscribeClaims) =>
-        `${VERSION}.${claims.userId}.${claims.orgId}.${[...new Set(claims.kinds)].sort().join('+')}`;
+        `${VERSION}.${claims.userId}.${claims.orgId}.${[...new Set(claims.kinds)].sort().join('~')}`;
     const bytes = (payload: string) => new TextEncoder().encode(MAC_CONTEXT + payload);
     return {
         async sign(claims) {
@@ -56,7 +57,7 @@ export function createHmacUnsubscribeTokens(secret: Uint8Array): UnsubscribeToke
             ) {
                 return null;
             }
-            const kinds = kindList.split('+').map((kind) => notificationKindSchema.safeParse(kind));
+            const kinds = kindList.split('~').map((kind) => notificationKindSchema.safeParse(kind));
             if (!kinds.every((kind) => kind.success)) {
                 return null;
             }
