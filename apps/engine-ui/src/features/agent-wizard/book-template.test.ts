@@ -6,12 +6,12 @@ import { bookTemplate } from './book-template';
 describe('bookTemplate', () => {
     it('names the agent on the first line and makes the description its persona, on one line each', () => {
         expect(bookTemplate({ name: '  Iris\nBot ', description: 'Writes\n\nthe report ' })).toBe(
-            'Iris Bot\n\nPERSONA Writes the report\n',
+            'AGENT Iris Bot\nPERSONA Writes the report\n',
         );
     });
 
     it('leaves the persona out when there is no description', () => {
-        expect(bookTemplate({ name: 'Iris', description: '  ' })).toBe('Iris\n');
+        expect(bookTemplate({ name: 'Iris', description: '  ' })).toBe('AGENT Iris\n');
     });
 });
 

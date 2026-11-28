@@ -1,12 +1,9 @@
-import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
-
 import { defineFeature } from '../../app/registry/feature';
 import type { FeatureRequirement } from '../../app/registry/feature';
 import { m } from '../../paraglide/messages';
 
-/** Creating an agent from a form; an engine without `agent-management@1` creates agents through chat instead. */
+/** Creating an agent is a core operation. Visibility, placement and restore need agent-management@1. */
 export const AGENT_WIZARD_REQUIREMENT: FeatureRequirement = {
-    capability: KNOWN_CAPABILITIES.agentManagement,
     permission: 'agents.write',
 };
 

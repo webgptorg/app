@@ -58,9 +58,9 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
         expect(screen.getByRole('tab', { name: 'Runs' }).getAttribute('href')).toBe('/agents/agent-001/runs');
     });
 
-    it('shows only Overview and Chat on an engine that advertises no capability', async () => {
+    it('shows the core Book and Settings tabs on an engine that advertises no capability', async () => {
         await renderAgent('/agents/agent-001', { features: FEATURES, capabilities: [] });
-        expect(tabNames()).toEqual(['Overview', 'Chat']);
+        expect(tabNames()).toEqual(['Overview', 'Chat', 'Book', 'Settings']);
     });
 
     it('adds Book and Settings for an engine that edits Books and manages agents', async () => {

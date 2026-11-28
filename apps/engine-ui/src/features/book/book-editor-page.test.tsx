@@ -2,6 +2,7 @@ import { AgentId, createProblem } from '@ptbk/engine-api';
 import type { Diagnostic, EngineApiClient, Permission } from '@ptbk/engine-api';
 import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
 import { act, screen, waitFor, within } from '@testing-library/react';
+import { Book, book } from 'ptbk';
 import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
@@ -30,13 +31,15 @@ type Agents = EngineApiClient['agents'];
 
 interface Setup {
     readonly permissions?: readonly Permission[];
+    readonly coreOnly?: boolean;
     /** Replaces client methods, e.g. to hold an answer back. */
     readonly agents?: Partial<Agents>;
 }
 
-function setup({ permissions, agents = {} }: Setup = {}) {
+function setup({ permissions, agents = {}, coreOnly = false }: Setup = {}) {
     const engine = createInMemoryEngine({
         clock: { now: () => TEST_NOW },
+        ...(coreOnly ? { capabilities: [] } : {}),
         seed: {
             engine: { name: 'Test engine', hostname: 'engine.localhost', dashboardUrl: null, mode: 'local' },
             agents: [{ id: AGENT, source: SOURCE }],
@@ -431,5 +434,66 @@ describe('the book editor page', { timeout: TIMEOUT_MS }, () => {
         expect(editorView().contentDOM.getAttribute('aria-label')).toBe('Book source');
         expect(editorView().contentDOM.getAttribute('contenteditable')).toBe('true');
         await expectNoAxeViolations(document.body);
+    });
+});
+
+describe('agent Book and model settings', { timeout: TIMEOUT_MS }, () => {
+    it('edits the same unsaved source in both tabs and saves it against the original revision', async () => {
+        const app = await openEditor();
+        const initial = await app.real.getSource(AGENT, AbortSignal.timeout(1000));
+        if (initial.kind !== 'ok') throw new Error('Missing test Book');
+        const text = book`
+            AGENT Ada
+            PERSONA Research
+            MODEL harness=OPENAI_CODEX model=original thinking=high provider=OpenAI
+            NOTE Keep the exact text.
+        `.toString();
+        replaceBook(text);
+        await app.user.click(screen.getByRole('tab', { name: 'Settings' }));
+        const group = await screen.findByRole('region', { name: 'Model' }, WAIT);
+        expect(await within(group).findByText('OpenAI Codex · original · high · OpenAI')).toBeDefined();
+        await app.user.click(within(group).getByRole('button', { name: 'Edit' }));
+        let dialog = await screen.findByRole('dialog');
+        const model = within(dialog).getByLabelText('Model ID');
+        await app.user.clear(model);
+        await app.user.type(model, 'custom-v2');
+        await app.user.click(within(dialog).getByRole('button', { name: 'Apply' }));
+        await app.user.click(within(group).getByRole('button', { name: 'Add combination' }));
+        dialog = await screen.findByRole('dialog');
+        await app.user.selectOptions(within(dialog).getByLabelText('Harness'), 'CLAUDE_CODE');
+        await app.user.selectOptions(within(dialog).getByLabelText('Thinking level'), 'max');
+        await app.user.click(within(dialog).getByRole('button', { name: 'Apply' }));
+        expect(app.spies.updateSource).not.toHaveBeenCalled();
+        await app.user.click(screen.getByRole('tab', { name: 'Book' }));
+        await screen.findByTestId('book-editor', {}, WAIT);
+        const updated = bookText();
+        expect(Book.parse(updated).model.constraint.rows).toEqual([
+            { harness: 'OPENAI_CODEX', model: 'custom-v2', thinking: 'high', provider: 'OpenAI' },
+            { harness: 'CLAUDE_CODE', thinking: 'max' },
+        ]);
+        expect(updated).toContain('PERSONA Research');
+        expect(updated).toContain('NOTE Keep the exact text.');
+        await app.user.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() => {
+            expect(app.spies.updateSource).toHaveBeenCalledWith(
+                AGENT,
+                {
+                    source: updated,
+                    baseRevisionId: initial.data.revisionId,
+                },
+                expect.anything(),
+            );
+        });
+    });
+
+    it('reads legacy source on a core-only engine without requesting editing routes', async () => {
+        const app = await openEditor({ coreOnly: true });
+        expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+        await app.user.click(screen.getByRole('tab', { name: 'Settings' }));
+        const group = await screen.findByRole('region', { name: 'Model' }, WAIT);
+        expect(await within(group).findByText('Any model')).toBeDefined();
+        expect(within(group).queryByRole('button')).toBeNull();
+        expect(app.spies.validate).not.toHaveBeenCalled();
+        expect(app.spies.listRevisions).not.toHaveBeenCalled();
     });
 });

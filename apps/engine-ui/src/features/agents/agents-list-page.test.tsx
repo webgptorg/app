@@ -347,9 +347,9 @@ describe('agents list permissions', { timeout: TIMEOUT_MS }, () => {
             .map((cell) => cell.textContent);
         expect(groups.some((text) => text.startsWith('Built-in'))).toBe(true);
         expect(within(table()).getByText('Knows Promptbook and this engine, and sets up new projects.')).toBeDefined();
-        // Without agent-management@1 nothing can be shared or created from a form.
+        // Creation is core; visibility still requires agent-management@1.
         expect(screen.queryByRole('columnheader', { name: 'Visibility' })).toBeNull();
-        expect(screen.queryByRole('link', { name: 'New agent' })).toBeNull();
+        expect(screen.getByRole('link', { name: 'New agent' })).toBeDefined();
         await expectNoAxeViolations(container);
     });
 
