@@ -196,12 +196,19 @@ describe('runNotificationDelivery', () => {
         await t.store.write([
             {
                 op: 'insert',
-                row: { ...base, id: 'aaaaaaaaaaaaaaaaaaaaaaaaaa' as never, kind: 'update-waiting', variant: null },
+                row: {
+                    ...base,
+                    closedAt: null,
+                    id: 'aaaaaaaaaaaaaaaaaaaaaaaaaa' as never,
+                    kind: 'update-waiting',
+                    variant: null,
+                },
             },
             {
                 op: 'insert',
                 row: {
                     ...base,
+                    closedAt: null,
                     id: 'bbbbbbbbbbbbbbbbbbbbbbbbbb' as never,
                     kind: 'project-status',
                     variant: 'online',
