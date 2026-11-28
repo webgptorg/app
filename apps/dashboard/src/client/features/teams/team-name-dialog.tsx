@@ -10,6 +10,7 @@ export function TeamNameDialog(props: {
     readonly title: string;
     readonly submitLabel: string;
     readonly initial?: string;
+    readonly placeholder?: string | undefined;
     readonly pending: boolean;
     readonly onSubmit: (name: TeamName) => void;
     readonly onClose: () => void;
@@ -50,6 +51,7 @@ function NameForm(props: Parameters<typeof TeamNameDialog>[0]) {
                         {...control}
                         ref={input}
                         value={typed}
+                        placeholder={props.placeholder}
                         autoComplete="off"
                         onChange={(event) => {
                             setTyped(event.target.value);

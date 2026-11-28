@@ -227,9 +227,13 @@ describe('teams list', () => {
         });
         expect(await screen.findByRole('heading', { name: 'No projects yet' })).toBeTruthy();
         await app.user.click(screen.getByRole('button', { name: 'New project' }));
+        const name = screen.getByLabelText<HTMLInputElement>('Project name');
+        expect(name.placeholder).toMatch(/^project-2026-10-(19|20|21)$/);
+        expect(name.value).toBe('');
         await app.user.click(screen.getByRole('button', { name: 'Create and link a project' }));
         expect(await screen.findByText(/Use letters, digits/)).toBeTruthy();
-        await app.user.type(screen.getByLabelText('Project name'), 'Northwind');
+        expect(app.api.callsTo(apiRoutes.createTeam)).toEqual([]);
+        await app.user.type(name, 'Northwind');
         await app.user.click(screen.getByRole('button', { name: 'Create and link a project' }));
         await waitFor(() => {
             expect(app.history.location.pathname).toBe('/engines/new');
