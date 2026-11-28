@@ -96,6 +96,7 @@ describe('POST /v1/engines/register on the built Worker', () => {
             hostname: `${engineId}.engines.ptbk.test`,
             relays: ['relay.ptbk.test'],
             memberKey,
+            ownerSetupCommitment: null,
         });
         const row = await env.DB.prepare('SELECT org_id, public_key FROM engines WHERE engine_id = ?')
             .bind(engineId)
@@ -123,9 +124,9 @@ describe('POST /v1/engines/register on the built Worker', () => {
         await expectProblem(await post(body, nextIp()), 413, 'too-large');
     });
 
-    it('allows 20 registration attempts per hour and IP', async () => {
+    it('allows 100 registration attempts per hour and IP', async () => {
         const ip = nextIp();
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 100; i++) {
             expect((await post('{}', ip)).status).toBe(400);
         }
         await expectProblem(await post('{}', ip), 429, 'rate-limited');

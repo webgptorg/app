@@ -602,7 +602,7 @@ export function createD1TeamStore(db: Database): TeamStore {
             }
             await db
                 .update(linkCodes)
-                .set({ expiresAt: now })
+                .set({ expiresAt: now, ownerSetupCommitment: null })
                 .where(
                     and(
                         eq(linkCodes.orgId, orgId),

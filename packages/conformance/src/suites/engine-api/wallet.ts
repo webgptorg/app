@@ -46,6 +46,33 @@ const NO_REQUEST_LEVER = 'the target cannot raise a Wallet request (ConformanceT
 
 export const WALLET_CHECKS: readonly ConformanceCheck[] = [
     {
+        id: 'engine-api.wallet-sign-in.target',
+        suite: SUITE,
+        title: 'Wallet sign-in opens the selected record on its own site and a cancelled session ends',
+        async run(ctx) {
+            const world = await createWorld(ctx);
+            await requireCapability(world, KNOWN_CAPABILITIES.walletSignIn);
+            const record = await world.createWalletLogin('sign-in', randomToken(ctx.random, CANARY_LENGTH));
+            if (!record) skip(NOT_READY);
+            const { owner } = world;
+            const body = { origin: record.origin, browser: null, wallet: { kind: 'record' as const, id: record.id } };
+            await owner.problem(
+                R.openBrowserSignIn,
+                { body: { ...body, origin: 'https://other.conformance.invalid' } },
+                'browser-origin-refused',
+            );
+            const opened = await owner.ok(R.openBrowserSignIn, { body });
+            const params = { sessionId: opened.id };
+            ctx.resources.defer((signal) => owner.withSignal(signal).send(R.endBrowserSession, { params }));
+            if (opened.kind !== 'sign-in' || opened.mode !== 'controlling')
+                fail('Wallet did not open a private sign-in session');
+            await owner.problem(R.openBrowserSignIn, { body }, 'browser-busy');
+            if ((await owner.ok(R.endBrowserSession, { params })).status !== 'ended')
+                fail('Cancelling left the Wallet session open');
+            return new Findings().outcome();
+        },
+    },
+    {
         id: 'engine-api.secrets.never-returned',
         suite: SUITE,
         title: 'A Wallet password or field value never comes back: not from any GET route, not on the event stream, in no encoding',

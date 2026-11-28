@@ -1,0 +1,1 @@
+ALTER TABLE `link_codes` ADD `owner_setup_commitment` text;

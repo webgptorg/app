@@ -47,7 +47,7 @@ Staging links only mock engines and throwaway `ptbk` projects that hold test dat
 
 - An up-to-date checkout of `main` with `bun install` done; Node 24 (`nvm use`), [OpenTofu](https://opentofu.org/docs/intro/install/) 1.10 or later, `dig` (BIND tools), `jq`, `ssh`, and `nmap` for one check.
 - Two hardware security keys, and a password manager vault for staging (one entry per secret below).
-- `ADAPTERS.billing` is `"off"` in `env.staging` of [apps/dashboard/wrangler.jsonc](../apps/dashboard/wrangler.jsonc). Every organization then holds `BILLING_OFF_PLAN` (engines, up to 10 per organization; a plain `wrangler.jsonc` value, so changing it needs no code) with no Stripe secrets or IDs; the Stripe catalogue stays commented out next to it. Stripe is needed only when billing is switched on ([apply.md](plan/apply.md) step 2).
+- `ADAPTERS.billing` is `"off"` in `env.staging` of [apps/dashboard/wrangler.jsonc](../apps/dashboard/wrangler.jsonc). Every organization then holds `BILLING_OFF_PLAN` (engines, up to 20 per organization; a plain `wrangler.jsonc` value, so changing it needs no code) with no Stripe secrets or IDs; the Stripe catalogue stays commented out next to it. Stripe is needed only when billing is switched on ([apply.md](plan/apply.md) step 2).
 - Secrets never go into the repo, a PR, a chat, a log or this page. Values in `staging.env` are not secrets (IDs, domains, addresses) and end up committed.
 
 ## 1. Account and domain
@@ -383,7 +383,7 @@ openssl s_client -connect <relay ipv4>:443 -servername <engineId>.engines.ptbk.l
 
 The certificate comes from Let's Encrypt production, which is what staging runs on (`ptbk.link`'s CAA allows only `letsencrypt.org`): the engine holds the key and the relay only routes the validation connection by SNI ([spike/acme-tls-alpn-01.md](spike/acme-tls-alpn-01.md)). Mind Let's Encrypt's rate limits (50 certificates per registered domain a week, 5 duplicates a week): keep `PTBK_DATA_DIR` between runs, so a restart reuses the stored certificate instead of ordering a new one. Without `MOCK_CERT_SOURCE=acme` the mock falls back to its dev CA, whose certificate browsers refuse, and passkeys with it.
 
-**If it fails:** for `ptbk`, the message names the refusal and the next step. For the mock, exit 3 means the code was refused (used, cancelled, or older than 30 days): make a new one. Exit 5 (`engine-limit`, `not-entitled`) means the organization already has `BILLING_OFF_PLAN`'s 10 engines (revoke one), or billing is not off. Exit 6 means the dashboard was unreachable.
+**If it fails:** for `ptbk`, the message names the refusal and the next step. For the mock, exit 3 means the code was refused (used, cancelled, or older than 30 days): make a new one. Exit 5 (`engine-limit`, `not-entitled`) means the organization already has `BILLING_OFF_PLAN`'s 20 engines (revoke one), or billing is not off. Exit 6 means the dashboard was unreachable.
 
 ## 13. e2e against staging
 

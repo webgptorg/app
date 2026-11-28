@@ -45,7 +45,7 @@ export function TaskCard({ view }: { readonly view: TaskView }) {
             <p className="min-w-0 font-medium break-words">{view.name}</p>
             {agent === null && detail === '' ? null : (
                 <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                    {agent === null ? null : <AgentChip agentKey={agent.key} name={agent.name} interactive={false} />}
+                    {agent === null ? null : <AgentChip agentKey={agent.key} name={agent.name} />}
                     {detail === '' ? null : (
                         <span className="min-w-0 truncate text-text-muted" title={detail}>
                             {detail}

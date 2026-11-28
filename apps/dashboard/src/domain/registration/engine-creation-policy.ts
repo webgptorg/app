@@ -1,59 +1,37 @@
 import type { Entitlements } from '../billing/entitlements';
 import type { OrgId } from '../ids';
 import { OPEN_LICENSE_GATE, type LicenseGate } from '../licensing/license-service';
-import type { Clock } from '../ports/clock';
 import type { EngineStore } from './engine-store';
-import type { LinkCodeStore } from './link-code-store';
-
-const HOUR_MS = 60 * 60 * 1000;
-
-export const LINK_CODE_LIMITS = { active: 5, perHour: 10 } as const;
 
 export type EntitlementDenial = 'not-entitled' | 'engine-limit';
 
-export type LinkCodeDenial = EntitlementDenial | 'link-code-limit' | 'rate-limited';
-
-export type EngineCreationDecision<Reason extends string> =
-    { readonly kind: 'allowed' } | { readonly kind: 'denied'; readonly reason: Reason };
+type EngineCreationDecision =
+    | { readonly kind: 'allowed'; readonly maxActiveEngines: number | null }
+    | { readonly kind: 'denied'; readonly reason: EntitlementDenial };
 
 /**
  * Whether an organization may add an engine. Plans, cards and the billing provider stay behind `Entitlements`
- * (ADR 0017); this enforces only the link-code rate limits itself.
+ * (ADR 0017). The link-code store enforces issuance quotas when it writes each code.
  */
 export interface EngineCreationPolicy {
     /**
      * Whether the link page should offer a code at all, or the plan step or the limit banner first (D-10). The
      * link-code limits are left to issuance, which answers them on its own.
      */
-    checkEligibility(orgId: OrgId, signal: AbortSignal): Promise<EngineCreationDecision<EntitlementDenial>>;
-    /**
-     * Before a link code is issued, so the SPA shows the upgrade path before an install command. `link-code-limit`: the
-     * organization holds as many unused codes as it may, which only cancelling one (or its expiry) frees.
-     */
-    checkLinkCode(orgId: OrgId, signal: AbortSignal): Promise<EngineCreationDecision<LinkCodeDenial>>;
-    /**
-     * Before a redeemed code creates an engine. The link-code limits do not apply again: the code being redeemed was
-     * counted when it was issued, and counting it now would refuse the organization's own fifth code.
-     */
-    checkRegistration(orgId: OrgId, signal: AbortSignal): Promise<EngineCreationDecision<EntitlementDenial>>;
+    checkEligibility(orgId: OrgId, signal: AbortSignal): Promise<EngineCreationDecision>;
+    /** Entitlements for a new engine. Issuance already counted the code being redeemed. */
+    checkRegistration(orgId: OrgId, signal: AbortSignal): Promise<EngineCreationDecision>;
 }
-
-const ALLOWED = { kind: 'allowed' } as const;
 
 export function createEngineCreationPolicy(deps: {
     readonly entitlements: Entitlements;
-    readonly linkCodes: Pick<LinkCodeStore, 'countActive' | 'countIssuedSince'>;
     readonly engines: Pick<EngineStore, 'countActive'>;
-    readonly clock: Clock;
     /** The `engine.link` check point; it denies only with `LICENSE_ENFORCEMENT` `enforce`. */
     readonly licenseGate?: LicenseGate;
 }): EngineCreationPolicy {
     const licenseGate = deps.licenseGate ?? OPEN_LICENSE_GATE;
 
-    async function checkEntitlements(
-        orgId: OrgId,
-        signal: AbortSignal,
-    ): Promise<EngineCreationDecision<EntitlementDenial>> {
+    async function checkEntitlements(orgId: OrgId, signal: AbortSignal): Promise<EngineCreationDecision> {
         if (!(await deps.entitlements.allows(orgId, 'engines.create', signal))) {
             return { kind: 'denied', reason: 'not-entitled' };
         }
@@ -61,37 +39,23 @@ export function createEngineCreationPolicy(deps: {
         if (max !== null && (await deps.engines.countActive(orgId)) >= max) {
             return { kind: 'denied', reason: 'engine-limit' };
         }
-        return ALLOWED;
+        return { kind: 'allowed', maxActiveEngines: max };
     }
 
     // Asked when someone links, never when an engine redeems a code it already holds: an install under way finishes.
-    async function checkLinking(orgId: OrgId, signal: AbortSignal): Promise<EngineCreationDecision<EntitlementDenial>> {
+    async function checkLinking(orgId: OrgId, signal: AbortSignal): Promise<EngineCreationDecision> {
         const entitled = await checkEntitlements(orgId, signal);
         if (entitled.kind === 'denied') {
             return entitled;
         }
         const license = await licenseGate.check('engine.link', orgId, signal);
         if (license.outcome !== 'deny') {
-            return ALLOWED;
+            return entitled;
         }
         return { kind: 'denied', reason: license.reason === 'over-limit' ? 'engine-limit' : 'not-entitled' };
     }
 
     return {
-        async checkLinkCode(orgId, signal) {
-            const entitled = await checkLinking(orgId, signal);
-            if (entitled.kind === 'denied') {
-                return entitled;
-            }
-            const now = deps.clock.nowMs();
-            if ((await deps.linkCodes.countActive(orgId, now)) >= LINK_CODE_LIMITS.active) {
-                return { kind: 'denied', reason: 'link-code-limit' };
-            }
-            if ((await deps.linkCodes.countIssuedSince(orgId, now - HOUR_MS)) >= LINK_CODE_LIMITS.perHour) {
-                return { kind: 'denied', reason: 'rate-limited' };
-            }
-            return ALLOWED;
-        },
         checkEligibility: checkLinking,
         checkRegistration: checkEntitlements,
     };

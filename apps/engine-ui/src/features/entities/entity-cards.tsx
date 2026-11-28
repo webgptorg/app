@@ -97,7 +97,23 @@ function AgentStatusPill({ agentId }: { readonly agentId: AgentId }) {
     );
 }
 
-export function AgentCard({ agentId, name }: { readonly agentId: AgentId; readonly name: string }) {
+/** What a thread adds to an agent's card: what the agent does there, and Mention. */
+export interface AgentCardHere {
+    /** The agent replies in this thread now; the thread knows it before the engine's status does. */
+    readonly working: boolean;
+    readonly detail: ReactNode;
+    readonly secondary?: ReactNode | undefined;
+}
+
+export function AgentCard({
+    agentId,
+    name,
+    here,
+}: {
+    readonly agentId: AgentId;
+    readonly name: string;
+    readonly here?: AgentCardHere | undefined;
+}) {
     const query = useQuery(agentDetailQueryOptions(useEngineApi(), agentId));
     const agent = query.data;
     const profile = agent?.profile ?? NO_AGENT_PROFILE;
@@ -119,15 +135,27 @@ export function AgentCard({ agentId, name }: { readonly agentId: AgentId; readon
                 agent === undefined || agent.profile.description === '' ? undefined : agent.profile.description
             }
             facts={facts(
-                { label: m.entity_fact_status(), value: <AgentStatusPill agentId={agentId} /> },
+                {
+                    label: m.entity_fact_status(),
+                    value:
+                        here?.working === true ? (
+                            <StatusPill tone="live" variant="quiet">
+                                {stateLabel('working')}
+                            </StatusPill>
+                        ) : (
+                            <AgentStatusPill agentId={agentId} />
+                        ),
+                },
                 agent === undefined ? null : { label: m.entity_fact_updated(), value: <Time at={agent.updatedAt} /> },
             )}
             action={{
                 label: m.entity_open_agent(),
                 render: (props) => <Link {...props} to="/agents/$agentId" params={{ agentId }} />,
             }}
+            secondary={here?.secondary}
         >
             {agent === undefined ? <Pending query={query} /> : null}
+            {here?.detail}
         </PeekCard>
     );
 }

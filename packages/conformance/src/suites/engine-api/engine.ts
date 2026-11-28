@@ -1,10 +1,4 @@
-import {
-    ENGINE_API_ROUTE_LIST,
-    ENGINE_API_ROUTES,
-    KNOWN_CAPABILITIES,
-    capabilityLabel,
-    supports,
-} from '@ptbk/engine-api';
+import { ENGINE_API_ROUTE_LIST, ENGINE_API_ROUTES, isReservedCapability, supportsRoute } from '@ptbk/engine-api';
 import { AnyHeartbeat, Ed25519PublicKey, deriveEngineId, ed25519PublicKeyToBytes } from '@ptbk/protocol';
 
 import type { ConformanceCheck } from '../../check';
@@ -60,12 +54,12 @@ export const ENGINE_CHECKS: readonly ConformanceCheck[] = [
         async run(ctx) {
             const world = await createWorld(ctx);
             const engine = await world.engine();
-            const missing = Object.values(KNOWN_CAPABILITIES).filter((capability) => !supports(engine, capability));
-            if (missing.length === 0) skip('the engine advertises every capability this contract defines');
+            const missing = ENGINE_API_ROUTE_LIST.filter(
+                (route) => route.capability && !isReservedCapability(route.capability) && !supportsRoute(engine, route),
+            );
+            if (missing.length === 0) skip('the engine advertises every optional route this contract defines');
             const findings = new Findings();
-            const unadvertised = new Set(missing.map(capabilityLabel));
-            for (const route of ENGINE_API_ROUTE_LIST) {
-                if (route.capability === undefined || !unadvertised.has(capabilityLabel(route.capability))) continue;
+            for (const route of missing) {
                 await attempt(findings, async () => {
                     await world.owner.problem(
                         route,

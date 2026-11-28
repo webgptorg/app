@@ -1,4 +1,4 @@
-import { ENGINE_API_ROUTES, KNOWN_CAPABILITIES, supports } from '@ptbk/engine-api';
+import { ENGINE_API_ROUTES, KNOWN_CAPABILITIES, supports, supportsRoute } from '@ptbk/engine-api';
 import type {
     Agent,
     ApiToken,
@@ -186,7 +186,7 @@ export async function createWorld(ctx: CheckContext, api?: EngineApi): Promise<W
         return token;
     });
     const advertises = async (route: RouteDefinition): Promise<boolean> =>
-        route.capability === undefined || supports(await engine(), route.capability);
+        route.capability === undefined || supportsRoute(await engine(), route);
 
     const firstItem = async (route: RouteDefinition, query: Readonly<Record<string, string>> = {}) => {
         if (!(await advertises(route))) return null;

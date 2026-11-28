@@ -179,6 +179,7 @@ export function bindTeamRoutes(
         const outcome = await issueLinkCode(
             { ...deps, linkCodeTtlMs: deps.config.linkCodeTtlMs },
             { orgId: session.actor.orgId, userId: session.actor.userId },
+            input.body?.ownerSetupCommitment ?? null,
             request.signal,
         );
         if (outcome.kind === 'denied') {

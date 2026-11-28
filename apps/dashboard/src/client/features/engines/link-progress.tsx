@@ -26,6 +26,7 @@ import { engineLabel, shortEngineId } from '../../../shared/engine-label';
 import { useSession } from '../session/use-session';
 import { canRename, EngineNameField } from './engine-name';
 import { linkCodeQuery } from './link-queries';
+import { handOffOwnerSetup, holdsOwnerSetupSecret, ownerHandoffHostname } from './owner-handoff';
 import { useEngineTeam } from './use-engine-name';
 
 /** onboarding.md, step 4: the page asks every 3 seconds while it is visible, and stops at ready or expiry. */
@@ -256,7 +257,8 @@ function ownerSetupCommand(engine: EngineView | undefined, engineId: string): st
 }
 
 /** The one sentence the live region speaks, so a screen reader hears each change once and nothing else. */
-function announcement(state: LinkState, engine: EngineView | undefined, engineId: string): string {
+function announcement(state: LinkState, engine: EngineView | undefined, engineId: string, handingOff: boolean): string {
+    if (handingOff) return m.link_progress_owner_handoff();
     switch (state) {
         case 'waiting':
             return m.link_progress_waiting();
@@ -279,6 +281,8 @@ function Checklist(props: {
     readonly commandShown: boolean;
     readonly onRenew: () => void;
     readonly renewing: boolean;
+    /** This tab is about to open the engine's setup page itself (ADR 0023). */
+    readonly handingOff: boolean;
 }) {
     const { code, engine, state } = props;
     const waitingSince = useFirstSeen(state, 'waiting');
@@ -341,6 +345,8 @@ function Checklist(props: {
                     >
                         {state === 'ready' ? (
                             <p>{m.link_progress_owner_done()}</p>
+                        ) : props.handingOff ? (
+                            <p>{m.link_progress_owner_handoff()}</p>
                         ) : (
                             <p>{m.link_progress_owner({ command: ownerSetupCommand(engine, linked.engineId) })}</p>
                         )}
@@ -349,6 +355,25 @@ function Checklist(props: {
             )}
         </ol>
     );
+}
+
+/**
+ * ADR 0023: once the engine is ready for it, a tab that holds the owner setup secret for this code opens the setup page
+ * itself; true from then on, so row 5 says so instead of pointing to the terminal. The component is keyed by the code
+ * and mounts after issuance stored the secret, so whether it holds one is read once. The redirect deletes the secret
+ * before it navigates, which is what keeps it to one.
+ */
+function useOwnerHandoff(
+    linkCodeId: string,
+    code: LinkCodeStatusView | undefined,
+    engine: EngineView | undefined,
+): boolean {
+    const { sessionStorage, navigate } = useBrowser();
+    const [holdsSecret] = useState(() => holdsOwnerSetupSecret(sessionStorage, linkCodeId));
+    useEffect(() => {
+        handOffOwnerSetup({ storage: sessionStorage, navigate }, linkCodeId, code, engine);
+    }, [sessionStorage, navigate, linkCodeId, code, engine]);
+    return holdsSecret && ownerHandoffHostname(code, engine) !== null;
 }
 
 /**
@@ -378,6 +403,7 @@ export function LinkProgress(props: {
             (query.state.data?.heartbeat?.members ?? 0) > 0 && !setupPending(query.state.data) ? false : LINK_POLL_MS,
         refetchIntervalInBackground: false,
     });
+    const handingOff = useOwnerHandoff(props.linkCodeId, code.data, engine.data);
     if (code.data === undefined) {
         if (problemCode(code.error) === 'not-found') {
             return (
@@ -410,6 +436,7 @@ export function LinkProgress(props: {
             commandShown={props.commandShown}
             onRenew={props.onRenew}
             renewing={props.renewing}
+            handingOff={handingOff}
         />
     );
     const ready = state === 'ready' ? linked : null;
@@ -420,7 +447,7 @@ export function LinkProgress(props: {
             className="flex flex-col gap-4 border-t border-hairline pt-5"
         >
             <p className="sr-only" aria-live="polite">
-                {announcement(state, engine.data, linked?.engineId ?? '')}
+                {announcement(state, engine.data, linked?.engineId ?? '', handingOff)}
             </p>
             {ready === null ? (
                 <>

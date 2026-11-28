@@ -5,6 +5,7 @@ import {
     verifyRegistration,
     type EngineId,
     type Hostname,
+    type OwnerSetupCommitment,
     type RegisterEngineRequest,
     type RegisterEngineResponse,
 } from '@ptbk/protocol';
@@ -62,13 +63,14 @@ const ATTEMPTS = 2;
 async function registered(
     deps: RegisterEngineDeps,
     engine: { readonly engineId: EngineId; readonly hostname: Hostname; readonly orgId: OrgId },
+    ownerSetupCommitment: OwnerSetupCommitment | null,
     relinked: boolean,
 ): Promise<RegisterOutcome> {
     const { engineId, hostname, orgId } = engine;
     const memberKey = (await deps.memberKey())?.publicKey ?? null;
     return {
         kind: 'registered',
-        response: { engineId, hostname, relays: [...deps.relays], memberKey },
+        response: { engineId, hostname, relays: [...deps.relays], memberKey, ownerSetupCommitment },
         orgId,
         relinked,
     };
@@ -82,10 +84,12 @@ async function attempt(
     signal: AbortSignal,
 ): Promise<RegisterOutcome | 'conflict'> {
     const now = deps.clock.nowMs();
-    const orgId = await deps.linkCodes.findRedeemable(codeHash, now);
-    if (orgId === null) {
+    // The commitment read here is answered only if this attempt's redemption wins, and that write nulls it: once.
+    const redeemable = await deps.linkCodes.findRedeemable(codeHash, now);
+    if (redeemable === null) {
         return { kind: 'invalid-link-code' };
     }
+    const { orgId, ownerSetupCommitment } = redeemable;
     const existing = await deps.engines.findForRegistration(engineId);
     if (existing !== null) {
         if (existing.status === 'suspended') {
@@ -108,31 +112,35 @@ async function attempt(
         }
         // An engine registered before teams, or whose binding was cut short, gets its team now.
         await bindTeam(deps, engineId, existing.hostname, now);
-        return registered(deps, { engineId, hostname: existing.hostname, orgId }, true);
+        return registered(deps, { engineId, hostname: existing.hostname, orgId }, ownerSetupCommitment, true);
     }
     const decision = await deps.policy.checkRegistration(orgId, signal);
     if (decision.kind === 'denied') {
         return { kind: decision.reason };
     }
     const hostname = defaultHostname(engineId, deps.engineDomain);
-    const created = await deps.linkCodes.redeemForNewEngine(codeHash, {
-        engineId,
-        orgId,
-        publicKey: request.enginePublicKey,
-        hostname,
-        mode: request.mode,
-        engineVersion: request.engineVersion,
-        status: 'active',
-        statusReason: null,
-        createdAt: now,
-        updatedAt: now,
-        label: null,
-    });
+    const created = await deps.linkCodes.redeemForNewEngine(
+        codeHash,
+        {
+            engineId,
+            orgId,
+            publicKey: request.enginePublicKey,
+            hostname,
+            mode: request.mode,
+            engineVersion: request.engineVersion,
+            status: 'active',
+            statusReason: null,
+            createdAt: now,
+            updatedAt: now,
+            label: null,
+        },
+        decision.maxActiveEngines,
+    );
     if (created === 'conflict') {
         return 'conflict';
     }
     await bindTeam(deps, engineId, hostname, now);
-    return registered(deps, { engineId, hostname, orgId }, false);
+    return registered(deps, { engineId, hostname, orgId }, ownerSetupCommitment, false);
 }
 
 /** A team named after the engine's hostname, for an engine whose link code named none. */

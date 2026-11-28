@@ -158,6 +158,42 @@ async function control(world: World, tabId: string, who = world.owner): Promise<
 const click = { kind: 'pointer', action: 'down', x: 100, y: 100, button: 'left', clicks: 1 } as const;
 
 describe('sign-in sessions', () => {
+    it('binds a Wallet-only session to the current request, origin and owner', async () => {
+        const world = setup({ capabilities: [...DEFAULT_CAPABILITIES, KNOWN_CAPABILITIES.walletSignIn] });
+        const request = world.core.controller.requestWalletLogin({
+            origin: SITE,
+            account: 'ada@example.test',
+            problem: 'rejected',
+            fields: [],
+            recordId: null,
+            reason: 'Sign in to publish.',
+            tasks: ['Publish'],
+            agents: ['Ada'],
+        });
+        const target = { kind: 'request', id: request.id, step: request.step };
+        const open = (wallet?: object, origin = SITE, member = world.owner) =>
+            world.call(member, R.openBrowserSignIn, { body: { browser: null, origin, wallet } });
+        expect(code(await open())).toBe('browser-origin-refused');
+        expect(code(await open({ kind: 'record', id: 'missing' }))).toBe('not-found');
+        expect(code(await open({ ...target, step: request.step + 1 }))).toBe('wallet-request-moved');
+        expect(code(await open(target, 'https://other.example'))).toBe('browser-origin-refused');
+        expect(code(await open(target, SITE, world.watcher))).toBe('forbidden');
+        const session = BrowserSession.parse(ok(await open(target)));
+        expect(
+            code(await world.call(world.ownerLaptop, R.getBrowserSession, { params: { sessionId: session.id } })),
+        ).toBe('not-found');
+        expect(code(await world.call(world.owner, R.listBrowserTabs))).toBe('capability-not-supported');
+        world.core.controller.navigateBrowserTab(session.tabId, { kind: 'web', origin: 'https://other.example' });
+        expect(code(await world.call(world.owner, R.handBackBrowserTab, { params: { sessionId: session.id } }))).toBe(
+            'wallet-sign-in-incomplete',
+        );
+        expect(
+            BrowserSession.parse(
+                ok(await world.call(world.owner, R.getBrowserSession, { params: { sessionId: session.id } })),
+            ).status,
+        ).toBe('open');
+    });
+
     it('open only at an allowlisted origin, never the engine’s own, one at a time', async () => {
         const world = setup();
         const open = (origin: string, browser: string | null = null) =>

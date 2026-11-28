@@ -207,14 +207,19 @@ describe('ENGINE_API_ROUTES', () => {
 
 describe('capability routes', () => {
     it('covers every capability', () => {
-        const covered = new Set(capabilityRoutes.map((route) => route.capability?.id));
+        const covered = new Set(
+            capabilityRoutes.flatMap((route) =>
+                route.alternateCapability
+                    ? [route.capability?.id, route.alternateCapability.id]
+                    : [route.capability?.id],
+            ),
+        );
         // `file-scanning` adds no route: it changes what `files@1` reports; `live-video` will extend live audio.
         expect([...covered].sort()).toEqual(
             [...Object.values(KNOWN_CAPABILITIES), ...Object.values(RESERVED_CAPABILITIES)]
                 .filter(
                     (ref) =>
                         ref !== KNOWN_CAPABILITIES.fileScanning &&
-                        ref !== KNOWN_CAPABILITIES.walletSignIn &&
                         ref !== KNOWN_CAPABILITIES.computerControl &&
                         ref !== RESERVED_CAPABILITIES.liveVideo,
                 )

@@ -9,6 +9,9 @@ describe('withLiveBrowser', () => {
         const { tasks, browserTab } = KNOWN_CAPABILITIES;
         expect(withLiveBrowser([tasks])).toEqual([tasks, browserTab]);
         expect(withLiveBrowser([tasks, browserTab])).toEqual([tasks, browserTab]);
+        const { wallet, walletSignIn } = KNOWN_CAPABILITIES;
+        expect(withLiveBrowser([wallet])).toEqual([wallet, browserTab, walletSignIn]);
+        expect(withLiveBrowser([wallet, browserTab, walletSignIn])).toEqual([wallet, browserTab, walletSignIn]);
     });
 });
 

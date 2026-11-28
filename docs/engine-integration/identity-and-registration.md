@@ -62,6 +62,7 @@ The engine must:
 - Store the registration (engine ID, hostname, relay list) in `PTBK_DATA_DIR` and use `relays` (1 to `MAX_RELAYS`) as its relay list.
 - Never write the link code to disk or a log, and drop it from memory after the request.
 - Pin `memberKey` from the response with the registration (since teams, [ADR 0018](../adr/0018-teams-and-member-access.md)). It is the only key that may sign access tickets and member revocations for this engine. `null` means a dashboard without teams: refuse every ticket and revocation, and keep heartbeat v1.
+- Keep `ownerSetupCommitment`, when it is not `null`, as a second setup slot for `OWNER_HANDOFF_LIFETIME_MS` (30 minutes) from registration, never in the stored registration ([ADR 0023](../adr/0023-owner-setup-handoff.md), [installation.md](installation.md#the-setup-link)). It is `base64url(SHA-256(S))` over the text of the pairing tab's secret `S`, so compare it with the digest you already keep of your own setup secret. Ignore it when the engine has an owner or runs with the handoff off.
 
 ### Link URL
 
@@ -90,7 +91,7 @@ Errors are RFC 9457 problem+json (`ProblemDetails`, read with `TolerantProblemDe
 | `engine-suspended`  | 403    | The engine is suspended or revoked by its owner                            | Tell the owner; do not retry                                    |
 | `engine-limit`      | 403    | The account has no room for another engine                                 | Tell the owner                                                  |
 | `not-entitled`      | 403    | The account's plan does not include engines; the code stays unused         | Tell the owner, like `engine-limit`                             |
-| `rate-limited`      | 429    | Too many attempts from this address (20 per hour)                          | Retry later with backoff while the link code can still be valid |
+| `rate-limited`      | 429    | Too many attempts from this address (100 per hour)                         | Retry later with backoff while the link code can still be valid |
 
 The dashboard (D-03) also answers 400 `invalid-request` (the body fails the strict schema) and 413 `too-large` (over `REGISTER_REQUEST_MAX_BYTES`), which are bugs on the engine's side. Codes are only ever added to `REGISTRATION_ERROR_CODE`: handle a code you do not know like a 5xx.
 

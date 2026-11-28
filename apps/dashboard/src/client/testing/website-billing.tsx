@@ -13,7 +13,7 @@ import type { WebsiteBillingConfig } from '../features/website-billing/website-l
 import { LocaleProvider } from '../i18n/locale';
 import { createFakePasskeys } from './fake-passkeys';
 import { NOW } from './fixtures';
-import { createMemoryStorage } from './memory-storage';
+import { createMemorySessionStorage, createMemoryStorage } from './memory-storage';
 import { APP_ORIGIN } from './render-app';
 import { createScriptedApi, ok } from './scripted-api';
 
@@ -72,6 +72,7 @@ export function renderWebsiteBillingPage(
         <BrowserProvider
             browser={{
                 storage: createMemoryStorage(),
+                sessionStorage: createMemorySessionStorage(),
                 matchMedia: (query) => window.matchMedia(query),
                 passkeys: createFakePasskeys(),
                 now: () => NOW,

@@ -5,7 +5,6 @@ import {
     Button,
     createDataTableColumnHelper,
     DataTable,
-    EntityChip,
     FilterBar,
     filterField,
     RelativeTime,
@@ -14,7 +13,6 @@ import {
 } from '@ptbk/ui';
 import type { DataTableColumnDef, FilterBarField, SortingState } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link as RouterLink } from '@tanstack/react-router';
 import { Activity, Bot, CalendarClock, CircleDot, Coins, Hash, Timer, Zap } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 
@@ -28,7 +26,7 @@ import { readListParam, readOneParam, readRangeParams, writeListParam } from '..
 import { m } from '../../paraglide/messages';
 import { AgentAvatar, NO_AGENT_PROFILE } from '../agents/agent-avatar';
 import { agentListQueryOptions } from '../agents/agents-queries';
-import { agentColor } from '../chat/references/agent-color';
+import { EntityChip } from '../entities/entity-chip';
 import { useRunRowActions } from './run-actions';
 import { RunCost, RunDuration, runTitle } from './run-format';
 import { hasRunFilters, runListParams } from './run-search';
@@ -180,21 +178,15 @@ function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColum
     }, [acrossAgents, cost]);
 }
 
-/** The run's agent as a chip in its colour, linking to the agent; the name is a text node. */
+/** The run's agent as a chip in its colour, linking to the agent with its card; the name is a text node. */
 function RunAgent({ run }: { readonly run: ReadRun }) {
     const agent = useAgents(true).byId.get(run.agentId);
-    const name = run.agentName ?? run.agentId;
     return (
         <EntityChip
-            label={name}
-            tone="agent"
-            tint={agentColor(agent?.profile.color, run.agentId)}
-            leading={<RunAgentAvatar agentId={run.agentId} name={name} agent={agent} />}
-            render={({ children, ...props }) => (
-                <RouterLink to="/agents/$agentId" params={{ agentId: run.agentId }} {...props}>
-                    {children}
-                </RouterLink>
-            )}
+            kind="agent"
+            id={run.agentId}
+            name={run.agentName ?? run.agentId}
+            {...(agent === undefined ? {} : { profile: agent.profile, origin: agent.origin })}
         />
     );
 }

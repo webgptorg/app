@@ -1,4 +1,4 @@
-import type { EngineId, Hostname, LinkCode, LinkUrlProblem } from '@ptbk/protocol';
+import type { EngineId, Hostname, LinkCode, LinkUrlProblem, OwnerSetupCommitment } from '@ptbk/protocol';
 import { defaultHostname, parseLinkArgument } from '@ptbk/protocol';
 
 import type { Clock } from '../domain/clock';
@@ -112,6 +112,11 @@ export interface ConnectCommandDeps {
     /** Whether stdout is an interactive terminal: only then does `connect` show the setup link. */
     readonly terminal: boolean;
     readonly setupLink: ShowSetupLinkDeps;
+    /**
+     * Keeps the pairing tab's commitment from a fresh registration as the handoff slot (ADR 0023), where the engine
+     * reads it when it links; resolves false with handoff off.
+     */
+    readonly storeOwnerHandoff: (commitment: OwnerSetupCommitment, registeredAtMs: number) => Promise<boolean>;
 }
 
 export interface ConnectResult {
@@ -195,7 +200,11 @@ export async function runConnectCommand(
     });
     const exitCode = registrationExitCode(outcome);
     deps.say(`${exitCode === 0 ? DONE : FAILED} ${registrationSentence(outcome)}`);
-    if (exitCode === 0) await join(command, deps);
+    const handedOff =
+        outcome.kind === 'registered' &&
+        outcome.ownerSetupCommitment !== null &&
+        (await deps.storeOwnerHandoff(outcome.ownerSetupCommitment, deps.clock.nowMs()));
+    if (exitCode === 0) await join(command, deps, handedOff);
     return { report: reportOf(outcome), exitCode };
 }
 
@@ -204,7 +213,7 @@ export async function runConnectCommand(
  * Only one setup secret is live at a time, so exactly one process issues the first link: this command when it runs on
  * a terminal (the operator is watching it), else the engine, on its own terminal if it has one.
  */
-async function join(command: ConnectCommand, deps: ConnectCommandDeps): Promise<void> {
+async function join(command: ConnectCommand, deps: ConnectCommandDeps, handedOff: boolean): Promise<void> {
     const showsSetupLink = deps.terminal && !command.json;
     const answer = await deps.joinRunning(showsSetupLink);
     if (answer === null) {
@@ -216,7 +225,8 @@ async function join(command: ConnectCommand, deps: ConnectCommandDeps): Promise<
             deps.say(
                 `${DONE} The running engine is linked and connects to ${String(answer.relays)} relay${answer.relays === 1 ? '' : 's'}`,
             );
-            if (showsSetupLink) await showFirstSetupLink(command.open, deps.setupLink);
+            // The pairing tab opens the setup page itself; a second one racing it would only confuse.
+            if (showsSetupLink) await showFirstSetupLink(command.open && !handedOff, deps.setupLink);
             return;
         case 'already-linked':
             return;

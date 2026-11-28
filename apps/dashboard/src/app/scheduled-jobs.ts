@@ -6,6 +6,7 @@ import type { PublicFaceJobDeps } from '../domain/abuse/public-face-job';
 import { runPublicFaceCheck } from '../domain/abuse/public-face-job';
 import type { MonitoringJobDeps } from '../domain/monitoring/monitoring-job';
 import { runMonitoring } from '../domain/monitoring/monitoring-job';
+import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import type { ScheduledJob } from '../domain/scheduled/scheduled-dispatcher';
 import { runUsageRollup, type UsageRollupDeps } from '../domain/usage/usage-rollup-job';
 
@@ -30,6 +31,8 @@ export interface ScheduledJobDeps {
     readonly abuse: AbuseJobDeps | null;
     /** ADR 0022's daily rollups and retention; needs only D1 and the status objects. */
     readonly usage: UsageRollupDeps;
+    /** ADR 0023: an expired code's owner setup commitment is nulled, not only never handed out. */
+    readonly linkCodes: Pick<LinkCodeStore, 'clearExpiredCommitments'>;
 }
 
 /**
@@ -37,7 +40,7 @@ export interface ScheduledJobDeps {
  * which scheduled-jobs.test.ts checks.
  */
 export function scheduledJobs(deps: ScheduledJobDeps): readonly ScheduledJob[] {
-    const { monitoring, abuse, usage } = deps;
+    const { monitoring, abuse, usage, linkCodes } = deps;
     const jobs: ScheduledJob[] = [];
     if (monitoring !== null) {
         jobs.push({
@@ -68,6 +71,13 @@ export function scheduledJobs(deps: ScheduledJobDeps): readonly ScheduledJob[] {
         name: 'usage-rollup',
         cron: EVERY_15_MINUTES,
         run: ({ scheduledTime, signal }) => runUsageRollup(usage, scheduledTime, signal),
+    });
+    jobs.push({
+        name: 'link-code-commitments',
+        cron: EVERY_15_MINUTES,
+        run: async ({ scheduledTime }) => {
+            await linkCodes.clearExpiredCommitments(scheduledTime);
+        },
     });
     return jobs;
 }

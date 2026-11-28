@@ -14,9 +14,12 @@ export const FAKE_AGENT_TAB_ORIGIN = 'https://shop.example';
 export const LIVE_BROWSER_SIGN_IN_ORIGINS: readonly string[] = ['https://accounts.example'];
 
 export function withLiveBrowser(capabilities: readonly CapabilityRef[]): readonly CapabilityRef[] {
-    return capabilities.includes(KNOWN_CAPABILITIES.browserTab)
+    const live = capabilities.includes(KNOWN_CAPABILITIES.browserTab)
         ? capabilities
         : [...capabilities, KNOWN_CAPABILITIES.browserTab];
+    return live.includes(KNOWN_CAPABILITIES.wallet) && !live.includes(KNOWN_CAPABILITIES.walletSignIn)
+        ? [...live, KNOWN_CAPABILITIES.walletSignIn]
+        : live;
 }
 
 /** On a fresh core: the allowlist, and the fake agent's tab in the first seeded chat, if there is one. */

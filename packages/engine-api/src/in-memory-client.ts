@@ -146,6 +146,7 @@ import { OWNER_PERMISSIONS } from './permissions';
 import type { Permission, Role } from './permissions';
 import { createProblem } from './problem';
 import type { EngineApiStreamItem, ParsedRouteRequest, RouteBody, RouteDefinition } from './route';
+import { supportsRoute } from './route';
 import { matchMediaType } from './media-type';
 import type { EngineApiRouteId } from './routes';
 import { SecurityOverview } from './security';
@@ -1163,12 +1164,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             signal.throwIfAborted();
             await auditTail;
             // An engine without the capability has no such route, whoever asks.
-            const walletSession =
-                supports(state.engine, KNOWN_CAPABILITIES.walletSignIn) &&
-                ['openBrowserSignIn', 'getBrowserSession', 'handBackBrowserTab', 'endBrowserSession'].includes(
-                    route.id,
-                );
-            if (route.capability && !walletSession && !supports(state.engine, route.capability)) {
+            if (!supportsRoute(state.engine, route)) {
                 return { kind: 'problem', problem: createProblem('capability-not-supported') };
             }
             // Read on every request, so a removed member is signed out and a changed role applies at once.

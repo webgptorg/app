@@ -145,6 +145,12 @@ describe('buildOpenApiDocument', () => {
     });
 
     it('documents route-specific capability problems', () => {
+        const open = operation('/browser-sessions', 'POST');
+        expect(open['x-alternate-capability']).toMatchObject({ label: 'wallet-sign-in@1' });
+        const signIn = open['responses'] as Record<string, Record<string, string[]>>;
+        expect(signIn['403']?.['x-problem-codes']).toContain('forbidden');
+        expect(signIn['404']?.['x-problem-codes']).toContain('not-found');
+        expect(signIn['409']?.['x-problem-codes']).toContain('wallet-request-moved');
         const cancel = operation('/runs/{runId}/cancel', 'POST')['responses'] as Readonly<
             Record<string, Readonly<Record<string, unknown>>>
         >;

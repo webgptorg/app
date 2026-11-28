@@ -5,6 +5,7 @@ import { createWebRiskApi } from '../adapters/abuse/web-risk-api';
 import { createWebRiskFeed } from '../adapters/abuse/web-risk-feed';
 import { createFetchPublicFaceFetcher } from '../adapters/abuse/fetch-public-face-fetcher';
 import { createDatabase } from '../adapters/db/client';
+import { createD1LinkCodeStore } from '../adapters/db/d1-registration-store';
 import { createD1CtStore } from '../adapters/db/d1-ct-store';
 import { createD1UsageStore } from '../adapters/db/d1-usage-store';
 import { createDurableObjectEngineStatus } from '../adapters/status/durable-object-engine-status';
@@ -200,6 +201,7 @@ export async function runScheduled(
             concurrency: USAGE_ROLLUP_CONCURRENCY,
             logger,
         },
+        linkCodes: createD1LinkCodeStore(createDatabase(env.DB)),
     });
     const dispatcher = createScheduledDispatcher({
         jobs,

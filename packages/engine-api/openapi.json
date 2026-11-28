@@ -13739,13 +13739,18 @@
       "post": {
         "operationId": "openBrowserSignIn",
         "summary": "Open a new engine browser tab at a site for the owner to sign in by hand",
-        "description": "The session starts in control of a new tab at `origin`, which no agent uses and no other session reaches; ending it closes the tab, and the login stays in the browser profile. 422 `browser-origin-refused` for the engine’s own origins and origins outside its sign-in allowlist; 409 `browser-busy` while another sign-in session is open on the engine.",
+        "description": "The session starts in control of a new tab at `origin`, which no agent uses and no other session reaches; ending it closes the tab, and the login stays in the browser profile. 422 `browser-origin-refused` for the engine’s own origins and origins outside its sign-in allowlist; 409 `browser-busy` while another sign-in session is open on the engine. With wallet-sign-in@1 an owner with Wallet management may open a matching record or current request step. A missing item is 404, a moved request is 409.",
         "tags": ["browser-sessions"],
         "x-required-permission": "browser.control",
         "x-capability": {
           "id": "browser-tab",
           "version": 1,
           "label": "browser-tab@1"
+        },
+        "x-alternate-capability": {
+          "id": "wallet-sign-in",
+          "version": 1,
+          "label": "wallet-sign-in@1"
         },
         "x-step-up": true,
         "x-draft": true,
@@ -13965,8 +13970,8 @@
             }
           },
           "409": {
-            "description": "Problem: `browser-busy`.",
-            "x-problem-codes": ["browser-busy"],
+            "description": "Problem: `browser-busy`, `wallet-request-moved`.",
+            "x-problem-codes": ["browser-busy", "wallet-request-moved"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -14714,6 +14719,11 @@
           "version": 1,
           "label": "browser-tab@1"
         },
+        "x-alternate-capability": {
+          "id": "wallet-sign-in",
+          "version": 1,
+          "label": "wallet-sign-in@1"
+        },
         "x-draft": true,
         "parameters": [
           {
@@ -15134,13 +15144,18 @@
       "post": {
         "operationId": "handBackBrowserTab",
         "summary": "Hand the tab back to the agent; the session keeps watching",
-        "description": "The agent resumes with the outcome `handed-back`. Idempotent while the session only watches. A sign-in session has no agent to hand back to, so it ends. 409 `browser-session-ended` once the session ended.",
+        "description": "The agent resumes with the outcome `handed-back`. Idempotent while the session only watches. A sign-in session ends on successful hand-back. While Wallet cannot verify the requested service and account, `wallet-sign-in-incomplete` leaves the session open. 409 `browser-session-ended` once the session ended.",
         "tags": ["browser-sessions"],
         "x-required-permission": "browser.control",
         "x-capability": {
           "id": "browser-tab",
           "version": 1,
           "label": "browser-tab@1"
+        },
+        "x-alternate-capability": {
+          "id": "wallet-sign-in",
+          "version": 1,
+          "label": "wallet-sign-in@1"
         },
         "x-draft": true,
         "parameters": [
@@ -15303,8 +15318,8 @@
             }
           },
           "409": {
-            "description": "Problem: `browser-session-ended`.",
-            "x-problem-codes": ["browser-session-ended"],
+            "description": "Problem: `browser-busy`, `browser-session-ended`, `wallet-sign-in-incomplete`.",
+            "x-problem-codes": ["browser-busy", "browser-session-ended", "wallet-sign-in-incomplete"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -15360,6 +15375,11 @@
           "id": "browser-tab",
           "version": 1,
           "label": "browser-tab@1"
+        },
+        "x-alternate-capability": {
+          "id": "wallet-sign-in",
+          "version": 1,
+          "label": "wallet-sign-in@1"
         },
         "x-draft": true,
         "parameters": [
@@ -27001,6 +27021,7 @@
               "browser-tab-controlled",
               "browser-tab-full",
               "browser-busy",
+              "wallet-sign-in-incomplete",
               "browser-session-ended",
               "live-channel-attached",
               "browser-help-resolved",

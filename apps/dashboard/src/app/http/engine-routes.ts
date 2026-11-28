@@ -66,10 +66,11 @@ export function bindEngineRoutes(
 ): void {
     const bind = deps.routes.bind.bind(deps.routes);
 
-    bind(router, mount, apiRoutes.createLinkCode, async ({ request, session }) => {
+    bind(router, mount, apiRoutes.createLinkCode, async ({ input, request, session }) => {
         const outcome = await issueLinkCode(
             { ...deps, linkCodeTtlMs: deps.config.linkCodeTtlMs },
             { orgId: session.actor.orgId, userId: session.actor.userId },
+            input.body?.ownerSetupCommitment ?? null,
             request.signal,
         );
         if (outcome.kind === 'issued') {

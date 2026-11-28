@@ -67,6 +67,9 @@ function demoEngine(options: InMemoryEngineApiOptions = {}): EngineApiClient {
 // A section's name is its title, then its count when it has one ("Needs you 5").
 const needsYou = () => screen.findByRole('region', { name: /^Needs you( \d+)?$/ });
 const workingNow = () => screen.findByRole('region', { name: /^Working now( \d+)?$/ });
+/** A line whose agent name is a link of its own: matched by its whole text. */
+const sentence = (text: string) => (_content: string, element: Element | null) =>
+    element?.tagName === 'SPAN' && element.textContent === text;
 
 describe('home', { timeout: TIMEOUT_MS }, () => {
     it('greets the owner, leads with Ask Chatter, ends with recent activity and meets axe', async () => {
@@ -209,7 +212,9 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
     it('quotes an agent’s question with Reply, and puts every count that waits on the member on one line each', async () => {
         renderWithProviders({ path: '/', engineApi: demoEngine() });
         const region = await needsYou();
-        expect(await within(region).findByText('Iris asks you')).toBeDefined();
+        expect(await within(region).findByText(sentence('Iris asks you'))).toBeDefined();
+        // The agent's name opens the agent, with the card every agent reference has.
+        expect(within(region).getByRole('link', { name: 'Iris' }).getAttribute('aria-haspopup')).toBe('dialog');
         expect(
             await within(region).findByText('Should the weekly report include the three open support cases?'),
         ).toBeDefined();
@@ -251,7 +256,7 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
             engineApi: demoEngine({ member: { permissions: allBut('members.manage') } }),
         });
         const region = await needsYou();
-        await within(region).findByText('Iris asks you');
+        await within(region).findByText(sentence('Iris asks you'));
         expect(within(region).queryByText(/is waiting for access/)).toBeNull();
     });
 
@@ -290,10 +295,17 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('shows agents replying with their latest step and a timer, running tasks and runs that are neither', async () => {
-        renderWithProviders({ path: '/', engineApi: demoEngine() });
+        const { user } = renderWithProviders({ path: '/', engineApi: demoEngine() });
 
         const region = await workingNow();
-        expect(await within(region).findByText('Chatter is replying in')).toBeDefined();
+        expect(await within(region).findByText(sentence('Chatter is replying in'))).toBeDefined();
+        const chatter = within(region).getByRole('link', { name: 'Chatter' });
+        await user.hover(chatter);
+        const card = await screen.findByRole('dialog', { name: 'Chatter' });
+        expect((await within(card).findByRole('link', { name: 'Open agent' })).getAttribute('href')).toBe(
+            chatter.getAttribute('href'),
+        );
+        await user.unhover(chatter);
         expect(within(region).getByRole('link', { name: 'Release notes' }).getAttribute('href')).toBe(
             '/chats/chat-working',
         );

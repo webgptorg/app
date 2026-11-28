@@ -28,6 +28,7 @@ const PROBLEM_MESSAGES: Partial<Record<ProblemCode, () => string>> = {
     'browser-tab-full': m.browser_error_tab_full,
     'browser-tab-controlled': m.browser_error_tab_controlled,
     'browser-busy': m.browser_error_busy,
+    'wallet-sign-in-incomplete': m.browser_finish_sign_in,
     'browser-origin-refused': m.browser_error_origin_refused,
     'browser-session-ended': m.browser_error_session_ended,
     unavailable: m.browser_error_unavailable,
@@ -144,7 +145,7 @@ export function useHandBack() {
         invalidates: INVALIDATES,
         errorMessage: (failure) =>
             failure.kind === 'problem' && failure.problem.code === 'browser-busy'
-                ? m.browser_finish_sign_in()
+                ? m.browser_hand_back_busy()
                 : problemMessage(failure),
         onSuccess: (session) => {
             sessions.current()?.update(session);

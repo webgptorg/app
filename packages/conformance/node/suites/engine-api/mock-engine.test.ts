@@ -24,7 +24,8 @@ const MOCK_SKIPS = {
 /** With `MOCK_VOICE=enabled` the mock advertises every capability this contract defines. */
 const WITH_VOICE = {
     ...MOCK_SKIPS,
-    'engine-api.capabilities.unadvertised-404': 'skip: the engine advertises every capability this contract defines',
+    'engine-api.capabilities.unadvertised-404':
+        'skip: the engine advertises every optional route this contract defines',
 };
 
 /**
@@ -33,6 +34,7 @@ const WITH_VOICE = {
  */
 const WITHOUT_VOICE_OR_LIVE_BROWSER = {
     ...MOCK_SKIPS,
+    'engine-api.wallet-sign-in.target': 'skip: capability-not-advertised',
     'engine-api.voice.transcription-caps': 'skip: capability-not-advertised',
     'engine-api.voice.transcription-draft': 'skip: capability-not-advertised',
     'engine-api.voice.speech': 'skip: capability-not-advertised',

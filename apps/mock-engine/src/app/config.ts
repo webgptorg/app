@@ -76,6 +76,11 @@ export interface MockEngineConfig {
     /** `MOCK_DEV_LOGIN=enabled`: the sign-in page lets anyone pick a member. Refused with `NODE_ENV=production`. */
     readonly devLogin: boolean;
     /**
+     * `PTBK_OWNER_HANDOFF` (`on` by default, or `off`): whether the pairing tab's commitment from the registration
+     * answer becomes a second setup slot (ADR 0023). Off, only the engine's own setup link sets up the owner.
+     */
+    readonly ownerHandoff: boolean;
+    /**
      * `MOCK_PASSKEYS`: `none` (the default: a fresh engine that waits for its owner, as a real one does) or `seeded`
      * (the owner is set up).
      */
@@ -497,6 +502,7 @@ const envSchema = z.strictObject({
     ).default(DEFAULT_HEARTBEAT_INTERVAL_S),
     MOCK_STATS: value(z.enum(['os', 'scenario']), 'must be os or scenario').default('os'),
     PTBK_UI_RELEASE_URL: parsed(parseReleaseUrl).optional(),
+    PTBK_OWNER_HANDOFF: value(z.enum(['on', 'off']), 'must be on or off').default('on'),
     PTBK_UPDATE_POLICY: value(z.enum(['auto', 'manual', 'pinned']), 'must be auto, manual or pinned').default('auto'),
     PTBK_PINNED_VERSION: value(EngineVersionSchema, 'must be a SemVer version').optional(),
     PTBK_UI_TRUST_POLICY_FILE: absoluteFilePath.optional(),
@@ -653,6 +659,7 @@ export function parseMockEngineConfig(env: Env): ParsedMockEngineConfig {
         capabilities: parsedEnv.MOCK_CAPABILITIES ?? PROFILE_CAPABILITY_NAMES[parsedEnv.MOCK_PROFILE],
         simulation: Object.freeze({ mode: parsedEnv.MOCK_SIMULATION, speed: parsedEnv.MOCK_SIMULATION_SPEED }),
         devLogin: parsedEnv.MOCK_DEV_LOGIN === 'enabled',
+        ownerHandoff: parsedEnv.PTBK_OWNER_HANDOFF === 'on',
         passkeys: parsedEnv.MOCK_PASSKEYS,
         onboarding: parsedEnv.MOCK_ONBOARDING ?? null,
         liveBrowser: parsedEnv.MOCK_LIVE_BROWSER === 'enabled',

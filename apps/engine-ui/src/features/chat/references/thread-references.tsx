@@ -38,6 +38,8 @@ export interface ThreadReferences {
     readonly working: readonly ReadChatWorking[];
     /** The engine offers `tasks@1` and the member may read tasks, so "Open task" leads somewhere. */
     readonly canOpenTasks: boolean;
+    /** The member may open agents, so their references carry the agent's card. */
+    readonly canOpenAgents: boolean;
     /** Addresses the agent in the composer; absent where the member cannot write. */
     readonly onMention?: ((agent: ReferenceAgent) => void) | undefined;
 }
@@ -81,6 +83,7 @@ export interface ThreadReferencesInput {
     /** The project's agents, when they have loaded; `[]` without `agents.read`. */
     readonly agents: readonly ReadAgent[];
     readonly canOpenTasks: boolean;
+    readonly canOpenAgents: boolean;
     readonly onMention?: ((agent: ReferenceAgent) => void) | undefined;
 }
 
@@ -89,6 +92,7 @@ export function buildThreadReferences({
     chat,
     agents,
     canOpenTasks,
+    canOpenAgents,
     onMention,
 }: ThreadReferencesInput): ThreadReferences {
     const profiles = new Map(agents.map((agent) => [agent.id as string, agent]));
@@ -121,6 +125,7 @@ export function buildThreadReferences({
         tasks: new Map(chat.tasks.map((task) => [task.name, task])),
         working: chat.working,
         canOpenTasks,
+        canOpenAgents,
         onMention,
     };
 }

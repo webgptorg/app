@@ -90,6 +90,7 @@ interface ChannelRecord {
 interface TabRecord {
     readonly id: BrowserTabId;
     readonly kind: 'sign-in' | 'agent-tab';
+    readonly walletOrigin?: string;
     readonly browser: string;
     readonly agentId: AgentId | null;
     readonly chatId: ChatId | null;
@@ -505,6 +506,9 @@ export const LIVE_HANDLERS: Pick<Handlers, LiveRoute> = {
     openLiveAudioSession: () => fail('capability-not-supported'),
     openBrowserSignIn: swept(({ body }, ctx) => {
         const { browser } = ctx.state;
+        if (body.wallet && !supports(ctx.state.engine, KNOWN_CAPABILITIES.walletSignIn)) {
+            return fail('capability-not-supported');
+        }
         if (body.wallet !== undefined || !supports(ctx.state.engine, KNOWN_CAPABILITIES.browserTab)) {
             if (ctx.member.role !== 'owner' || !ctx.actor.permissions.has('wallet.manage')) return fail('forbidden');
             const target = body.wallet;
@@ -529,6 +533,7 @@ export const LIVE_HANDLERS: Pick<Handlers, LiveRoute> = {
         const tab: TabRecord = {
             id: ctx.newId(BrowserTabId, 'tab'),
             kind: 'sign-in',
+            ...(body.wallet ? { walletOrigin: body.origin } : {}),
             browser: DEFAULT_BROWSER,
             agentId: null,
             chatId: null,
@@ -598,6 +603,7 @@ export const LIVE_HANDLERS: Pick<Handlers, LiveRoute> = {
         if (session.status === 'ended' || !tab) return fail('browser-session-ended');
         if (tab.controller !== session.id) return viewOwn(ctx, session);
         if (tab.kind === 'sign-in') {
+            if (tab.walletOrigin && visibleOrigin(tab) !== tab.walletOrigin) return fail('wallet-sign-in-incomplete');
             endSession(ctx, session, 'ended', ctx.member.id);
             return viewOwn(ctx, session);
         }

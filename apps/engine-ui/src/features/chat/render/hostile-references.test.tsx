@@ -50,7 +50,13 @@ const PROJECT_AGENT = {
 } as unknown as ReadAgent;
 
 function inThread(ui: ReactNode, onMention?: (agent: ReferenceAgent) => void) {
-    const value = buildThreadReferences({ chat: CHAT, agents: [PROJECT_AGENT], canOpenTasks: true, onMention });
+    const value = buildThreadReferences({
+        chat: CHAT,
+        agents: [PROJECT_AGENT],
+        canOpenTasks: true,
+        canOpenAgents: true,
+        onMention,
+    });
     return renderUi(<ThreadReferencesProvider value={value}>{ui}</ThreadReferencesProvider>).container;
 }
 

@@ -6,7 +6,6 @@ import { createTestEngine, engineRecord } from '../../testing/test-engine';
 import { createTestRegistration, REGISTRATION_START_MS as NOW } from '../../testing/test-registration';
 import { sha256Hex } from '../auth/secrets';
 import type { LinkCodeId } from '../ids';
-import { LINK_CODE_LIMITS } from './engine-creation-policy';
 import { LINK_CODE_TTL_MS } from './issue-link-code';
 
 const MINUTE = 60_000;
@@ -36,6 +35,7 @@ describe('issueLinkCode', () => {
                 createdByUserId: expect.any(String) as string,
                 createdAt: NOW,
                 expiresAt: NOW + LINK_CODE_TTL_MS,
+                ownerSetupCommitment: null,
                 usedAt: null,
                 engineId: null,
             },
@@ -72,17 +72,17 @@ describe('issueLinkCode', () => {
         expect(t.stores.state.linkCodes.size).toBe(1);
     });
 
-    it('allows at most 5 active codes per organization, until one expires or is cancelled', async () => {
+    it('allows at most 100 active codes per organization, until one expires or is cancelled', async () => {
         const t = setup();
         const ids: LinkCodeId[] = [];
-        for (let i = 0; i < LINK_CODE_LIMITS.active; i++) {
+        for (let i = 0; i < 100; i++) {
             const outcome = await t.issue();
             if (outcome.kind === 'issued') {
                 ids.push(outcome.linkCodeId);
             }
             t.clock.advance(HOUR);
         }
-        expect(ids).toHaveLength(LINK_CODE_LIMITS.active);
+        expect(ids).toHaveLength(100);
         expect(await t.issue()).toEqual({ kind: 'denied', reason: 'link-code-limit' });
         expect((await t.issue(testOrgId())).kind).toBe('issued');
         expect(await t.stores.linkCodes.cancel(t.orgId, ids[0] as LinkCodeId, t.clock.nowMs())).toBe('cancelled');
@@ -92,17 +92,20 @@ describe('issueLinkCode', () => {
         expect((await t.issue()).kind).toBe('issued');
     });
 
-    it('allows at most 10 codes per hour per organization', async () => {
+    it('allows at most 200 codes per hour per organization', async () => {
         const t = setup();
-        for (let i = 0; i < LINK_CODE_LIMITS.perHour; i++) {
+        for (let i = 0; i < 199; i++) {
             const outcome = await t.issue();
             expect(outcome.kind).toBe('issued');
             // Cancel each before the next, so only the hourly limit applies.
             if (outcome.kind === 'issued') {
                 await t.stores.linkCodes.cancel(t.orgId, outcome.linkCodeId, t.clock.nowMs());
             }
-            t.clock.advance(MINUTE);
+            t.clock.advance(1_000);
         }
+        const last = await Promise.all([t.issue(), t.issue()]);
+        expect(last.map((result) => result.kind).sort()).toEqual(['denied', 'issued']);
+        expect(last).toContainEqual({ kind: 'denied', reason: 'rate-limited' });
         t.clock.set(NOW + 60 * MINUTE - 1);
         expect(await t.issue()).toEqual({ kind: 'denied', reason: 'rate-limited' });
         t.clock.set(NOW + 60 * MINUTE);

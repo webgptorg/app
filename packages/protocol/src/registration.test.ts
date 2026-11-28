@@ -159,6 +159,7 @@ describe('RegisterEngineResponse', () => {
         hostname: `${vectors.key.engineId}.engines.example`,
         relays: ['relay-fsn.ptbk.example', 'relay-hel.ptbk.example'],
         memberKey: vectors.registration.request.enginePublicKey,
+        ownerSetupCommitment: 'q83vEjRWeJCrze8SNFZ4kKvN7xI0VniQq83vEjRWeJA',
     };
 
     it('accepts a response with 1 to 16 relays', () => {
@@ -171,6 +172,9 @@ describe('RegisterEngineResponse', () => {
         ['an unknown field', { ...response, orgId: 'org_1' }],
         ['no relays', { ...response, relays: [] }],
         ['a member key of the wrong length', { ...response, memberKey: 'AAAA' }],
+        ['a commitment of 31 bytes', { ...response, ownerSetupCommitment: 'A'.repeat(42) }],
+        ['a commitment in standard base64', { ...response, ownerSetupCommitment: `${'A'.repeat(42)}+` }],
+        ['a commitment with padding', { ...response, ownerSetupCommitment: `${'A'.repeat(43)}=` }],
         [
             '17 relays',
             { ...response, relays: Array.from({ length: 17 }, (_, index) => `r${String(index)}.ptbk.example`) },
@@ -188,8 +192,24 @@ describe('RegisterEngineResponse', () => {
 
     it('reads a dashboard without teams as having no member key', () => {
         const withoutKey = { engineId: response.engineId, hostname: response.hostname, relays: response.relays };
-        expect(RegisterEngineResponse.parse(withoutKey)).toEqual({ ...withoutKey, memberKey: null });
+        expect(RegisterEngineResponse.parse(withoutKey)).toEqual({
+            ...withoutKey,
+            memberKey: null,
+            ownerSetupCommitment: null,
+        });
         expect(TolerantRegisterEngineResponse.parse(withoutKey).memberKey).toBeNull();
+    });
+
+    it('reads an answer without a handoff as no commitment, and carries one an engine can check', () => {
+        const without = { ...response, ownerSetupCommitment: undefined };
+        expect(TolerantRegisterEngineResponse.parse(without).ownerSetupCommitment).toBeNull();
+        expect(
+            RegisterEngineResponse.parse({ ...response, ownerSetupCommitment: null }).ownerSetupCommitment,
+        ).toBeNull();
+        expect(TolerantRegisterEngineResponse.parse(response).ownerSetupCommitment).toBe(response.ownerSetupCommitment);
+        expect(TolerantRegisterEngineResponse.safeParse({ ...response, ownerSetupCommitment: 'x' }).success).toBe(
+            false,
+        );
     });
 
     it('is read tolerantly by the engine: unknown fields stripped, known ones still validated', () => {

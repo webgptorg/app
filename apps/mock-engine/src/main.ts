@@ -16,7 +16,7 @@ import { SeqStoreError, createFsSeqStore } from './adapters/fs-seq-store';
 import { createHttpsFetch } from './adapters/https-fetch';
 import { createJsonLogger } from './adapters/json-logger';
 import { PasskeyStoreError, createFsPasskeyStore } from './adapters/fs-passkey-store';
-import { SetupSecretStoreError, createFsSetupSecretStore } from './adapters/fs-setup-secret-store';
+import { OWNER_HANDOFF_FILE, SetupSecretStoreError, createFsSetupSecretStore } from './adapters/fs-setup-secret-store';
 import { SpentTicketStoreError, createFsSpentTicketStore } from './adapters/fs-spent-ticket-store';
 import { gatewayPagesDir, loadGatewayPageFiles } from './adapters/http/gateway-page-files';
 import type { OperatorClient } from './adapters/operator-client';
@@ -56,6 +56,7 @@ import { UiLoaderSetupError, createUiLoaderDeps } from './app/ui-loader-deps';
 import type { Logger } from './domain/logger';
 import type { BrowserSession } from './domain/onboarding/setup-link-delivery';
 import { mayOpenBrowser, terminalHyperlinks } from './domain/onboarding/setup-link-delivery';
+import { handoffSlot } from './domain/onboarding/setup-secret';
 import type { AcmeChallenges } from './domain/tls/acme-challenges';
 import { createAcmeChallenges } from './domain/tls/acme-challenges';
 import type { ManagedCertificateSource } from './domain/tls/certificate-source';
@@ -200,6 +201,12 @@ async function connect(parse: (args: readonly string[]) => ConnectCommand, args:
             joinRunning: (showsSetupLink) => operator.link(showsSetupLink),
             terminal: process.stdout.isTTY,
             setupLink: showSetupLinkDeps(operator),
+            storeOwnerHandoff: async (commitment, registeredAtMs) => {
+                if (!config.ownerHandoff) return false;
+                const store = createFsSetupSecretStore(config.dataDir, { file: OWNER_HANDOFF_FILE });
+                await store.save(handoffSlot(commitment, registeredAtMs));
+                return true;
+            },
         });
         if (command.json) stdoutLine(JSON.stringify(result.report));
         process.exitCode = result.exitCode;
@@ -243,6 +250,7 @@ async function start(
             },
             onboarding: {
                 setupSecrets: createFsSetupSecretStore(config.dataDir),
+                ownerHandoff: createFsSetupSecretStore(config.dataDir, { file: OWNER_HANDOFF_FILE }),
                 passkeys: createFsPasskeyStore(config.dataDir),
                 spentTickets: createFsSpentTicketStore(config.dataDir),
                 pages: await loadGatewayPageFiles(gatewayPagesDir(import.meta.url)),
