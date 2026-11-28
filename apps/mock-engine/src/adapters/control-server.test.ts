@@ -286,6 +286,8 @@ describe('control server', () => {
             'POST /__mock/live-browser/help-requests',
             'POST /__mock/live-browser/navigate',
             'POST /__mock/live-browser/tabs',
+            'POST /__mock/notifications',
+            'POST /__mock/notifications/close',
             'POST /__mock/onboarding/harness-check',
             'POST /__mock/onboarding/harness-login',
             'POST /__mock/reset',
@@ -467,5 +469,50 @@ describe('updates@1 levers', () => {
         expect((await put({ uiStoreFailing: true })).status).toBe(204);
         expect((await post('/__mock/updates/check', undefined)).body).toMatchObject({ outcome: 'unavailable' });
         expect((await put({ uiRelease: { version: 'nine' } })).status).toBe(400);
+    });
+});
+
+describe('notifications@1 levers', () => {
+    it('raise an item for a member or the project, and close it again', async () => {
+        const { runtime, post } = await start();
+        const owner = runtime
+            .controller()
+            .inspect()
+            .members.find(({ role }) => role === 'owner');
+        const raised = await post('/__mock/notifications', {
+            memberId: owner?.id,
+            kind: 'task-failed',
+            title: 'Weekly report failed',
+            target: { kind: 'task', taskId: 'weekly-report' },
+        });
+        expect(raised.response.status).toBe(201);
+        const notification = raised.body['notification'] as { id: string };
+        expect(notification).toMatchObject({ audience: 'personal', detail: null, seenAt: null });
+        const project = await post('/__mock/notifications', { memberId: null, kind: 'tool-sign-in', title: 'Sign in' });
+        expect(project.body['notification']).toMatchObject({ audience: 'project', target: null });
+        const listed = await ownerClient(runtime).notifications.list({}, AbortSignal.timeout(5_000));
+        if (listed.kind !== 'ok') throw new Error(listed.problem.code);
+        expect(listed.data.items.map(({ title }) => title)).toEqual(
+            expect.arrayContaining(['Weekly report failed', 'Sign in']),
+        );
+
+        expect((await post('/__mock/notifications/close', { id: notification.id })).body).toEqual({
+            closed: notification.id,
+        });
+        expect((await post('/__mock/notifications/close', { id: notification.id })).response.status).toBe(404);
+        const unknown = await post('/__mock/notifications', { memberId: 'nobody', kind: 'task-failed', title: 'x' });
+        expect(unknown.response.status).toBe(404);
+        const loose = await post('/__mock/notifications', { memberId: null, kind: 'task-failed', title: 'x', a: 1 });
+        expect(loose.response.status).toBe(400);
+    });
+
+    it('answer 404 capability-not-supported on an engine without notifications@1', async () => {
+        const { post } = await start();
+        await post('/__mock/reset', { scenario: 'empty', seed: 3, capabilities: ['runs'] });
+        const raised = await post('/__mock/notifications', { memberId: null, kind: 'tool-sign-in', title: 'Sign in' });
+        expect(raised.response.status).toBe(404);
+        expect(raised.body['code']).toBe('capability-not-supported');
+        const closed = await post('/__mock/notifications/close', { id: 'notification-1' });
+        expect(closed.body['code']).toBe('capability-not-supported');
     });
 });

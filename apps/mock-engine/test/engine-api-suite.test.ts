@@ -328,7 +328,7 @@ describe('every response of that run', () => {
             KNOWN_CAPABILITIES.aiTools.id,
             KNOWN_CAPABILITIES.voiceInput.id,
             KNOWN_CAPABILITIES.voiceOutput.id,
-            // Served from M-16 on.
+            // The shared client suite has no notifications@1 cases; capabilities.test.ts answers its routes.
             KNOWN_CAPABILITIES.notifications.id,
         ]);
         const missing = ENGINE_API_ROUTE_LIST.filter(

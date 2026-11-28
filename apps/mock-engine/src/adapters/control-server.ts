@@ -8,7 +8,13 @@ import {
     ChatId,
     LiveSessionId,
     MAX_BROWSER_HELP_MESSAGE_LENGTH,
+    MAX_NOTIFICATION_DETAIL_LENGTH,
+    MAX_NOTIFICATION_TITLE_LENGTH,
     KNOWN_CAPABILITIES,
+    MemberId,
+    NotificationId,
+    NotificationKind,
+    NotificationTarget,
     Permission,
     Role,
     TriggerId,
@@ -123,6 +129,15 @@ const AiToolDeviceLogin = z.strictObject({ aiToolId: AiToolId, ...HarnessLoginOu
 
 const LiveBrowserElapse = z.strictObject({ sessionId: LiveSessionId, what: z.enum(['expired', 'idle']) });
 
+/** An item as engine work would raise it: for one member, or project-wide with `memberId: null`. */
+const RaisedNotification = z.strictObject({
+    memberId: MemberId.nullable(),
+    kind: NotificationKind,
+    title: z.string().trim().min(1).max(MAX_NOTIFICATION_TITLE_LENGTH),
+    detail: z.string().trim().min(1).max(MAX_NOTIFICATION_DETAIL_LENGTH).nullable().default(null),
+    target: NotificationTarget.nullable().default(null),
+});
+
 function invalidBody(path: string, message: string): Response {
     return problemResponse({ code: 'validation-failed', extras: { errors: [{ path, message }] } });
 }
@@ -219,6 +234,10 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
     /** Like the API: without `ai-tools@1` the levers have nothing to act on. */
     const aiTools = (act: () => Response): Response =>
         runtime.current().capabilities.some(({ id }) => id === KNOWN_CAPABILITIES.aiTools.id)
+            ? act()
+            : problemResponse({ code: 'capability-not-supported' });
+    const notifications = (act: () => Response): Response =>
+        runtime.current().capabilities.some(({ id }) => id === KNOWN_CAPABILITIES.notifications.id)
             ? act()
             : problemResponse({ code: 'capability-not-supported' });
     const aiTool = (aiToolId: string, act: () => unknown): Response => {
@@ -427,6 +446,33 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
                 controller.failHarnessCheck(body.harness, body.reason);
                 return Response.json(controller.onboarding());
             },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/notifications',
+            body: { kind: 'json', schema: RaisedNotification, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                notifications(() => {
+                    const controller = runtime.controller();
+                    if (
+                        body.memberId !== null &&
+                        !controller.inspect().members.some(({ id }) => id === body.memberId)
+                    ) {
+                        return problemResponse({ code: 'not-found' });
+                    }
+                    return Response.json({ notification: controller.raiseNotification(body) }, { status: 201 });
+                }),
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/notifications/close',
+            body: { kind: 'json', schema: z.strictObject({ id: NotificationId }), maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) =>
+                notifications(() =>
+                    runtime.controller().closeNotification(body.id)
+                        ? Response.json({ closed: body.id })
+                        : problemResponse({ code: 'not-found' }),
+                ),
         }),
         control({
             method: 'POST',

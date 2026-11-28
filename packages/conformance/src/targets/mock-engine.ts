@@ -119,6 +119,19 @@ export function createMockEngineTarget(options: MockEngineTargetOptions): Confor
                 await control('/__mock/ai-tools/renew', { aiToolId }, 200);
             },
         },
+        notifications: {
+            async raise(input) {
+                const data = (await control('/__mock/notifications', input, 201)) as {
+                    readonly notification?: { readonly id?: unknown };
+                } | null;
+                if (typeof data?.notification?.id !== 'string') {
+                    throw new Error(
+                        'the mock control listener answered 201 to POST /__mock/notifications without an ID',
+                    );
+                }
+                return data.notification.id;
+            },
+        },
         session: (subject) => signIn(subject, 'fresh'),
     };
 }

@@ -150,6 +150,7 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [M-15](tasks/M-15-mock-engine-owner-handoff.md)          | Mock engine: the owner setup handoff slot                                                    | M    | M5        |
 | [D-39](tasks/D-39-owner-handoff-dashboard.md)            | Dashboard: finish owner setup from the pairing tab                                           | D    | M5        |
 | [C-21](tasks/C-21-notifications-contract.md)             | Notifications: heartbeat counts, `notifications@1` and conformance                           | C    | M5        |
+| [M-16](tasks/M-16-mock-engine-notifications.md)          | Mock engine: notifications inbox and heartbeat attention                                     | M    | M5        |
 
 ## Parallel waves
 

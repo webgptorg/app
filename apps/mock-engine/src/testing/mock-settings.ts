@@ -16,6 +16,7 @@ export const DEFAULT_MOCK_SETTINGS: Pick<
     | 'simulation'
     | 'devLogin'
     | 'ownerHandoff'
+    | 'dashboardAttention'
     | 'passkeys'
     | 'onboarding'
     | 'liveBrowser'
@@ -33,6 +34,7 @@ export const DEFAULT_MOCK_SETTINGS: Pick<
     simulation: { mode: 'paused' as const, speed: 1 },
     devLogin: false,
     ownerHandoff: true,
+    dashboardAttention: true,
     passkeys: 'seeded',
     onboarding: null,
     liveBrowser: false,

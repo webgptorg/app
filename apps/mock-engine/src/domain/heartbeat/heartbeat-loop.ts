@@ -1,4 +1,4 @@
-import type { EngineVersion, HeartbeatAck, Timestamp } from '@ptbk/protocol';
+import type { EngineVersion, HeartbeatAck, HeartbeatAttention, Timestamp } from '@ptbk/protocol';
 
 import type { Clock } from '../clock';
 import type { DashboardApi, DashboardProblem } from '../dashboard/dashboard-api';
@@ -61,6 +61,8 @@ export interface HeartbeatLoopDeps {
     readonly teams?: HeartbeatTeams;
     /** Whether the pairing tab may send the owner to `/setup` now (ADR 0023); beats carry `ownerHandoff` while true. */
     readonly ownerHandoff?: () => boolean;
+    /** Unseen notification counts for v2 beats (ADR 0027); `null` while the owner keeps them off. */
+    readonly attention?: () => readonly HeartbeatAttention[] | null;
 }
 
 export interface HeartbeatTeams {
@@ -129,6 +131,7 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
         const teams = deps.teams?.enabled() === true ? deps.teams : null;
         await teams?.settle();
         const acks = teams?.acks() ?? [];
+        const attention = teams === null ? null : (deps.attention?.() ?? null);
         const signed = await buildSignedHeartbeat(
             {
                 engineId: deps.identity.engineId,
@@ -140,7 +143,15 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
                 update: deps.engine.updateState(),
                 setup: deps.engine.setup(),
                 ownerHandoff: deps.ownerHandoff?.() === true ? 'ready' : null,
-                ...(teams === null ? {} : { teams: { accessRequests: teams.pendingRequests(), acks } }),
+                ...(teams === null
+                    ? {}
+                    : {
+                          teams: {
+                              accessRequests: teams.pendingRequests(),
+                              acks,
+                              ...(attention === null ? {} : { attention }),
+                          },
+                      }),
             },
             { clock, signer, signal },
         );

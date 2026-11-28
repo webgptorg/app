@@ -3,6 +3,7 @@ import type {
     EngineId,
     EngineVersion,
     HeartbeatAck,
+    HeartbeatAttention,
     OwnerHandoff,
     SetupState,
     Signer,
@@ -28,7 +29,12 @@ export interface HeartbeatFacts {
     /** Left out of the body when `null`: no live handoff slot, or the address does not serve browsers yet. */
     readonly ownerHandoff?: OwnerHandoff | null;
     /** Present once the engine pinned a member key: it then sends heartbeat v2 (ADR 0018). */
-    readonly teams?: { readonly accessRequests: number; readonly acks: readonly HeartbeatAck[] };
+    readonly teams?: {
+        readonly accessRequests: number;
+        readonly acks: readonly HeartbeatAck[];
+        /** Left out of the body when absent: the owner keeps notification counts off (ADR 0027). */
+        readonly attention?: readonly HeartbeatAttention[];
+    };
 }
 
 export interface SignedHeartbeat {
