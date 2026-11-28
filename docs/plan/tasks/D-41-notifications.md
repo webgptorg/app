@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M5
 - **Depends on:** D-05, D-12, D-13, C-21
-- **Status:** done (#398)
+- **Status:** in progress (feat/d-41-attention; done with #398, once C-21 is done)
 - **Spec:** ADR [0027](../../adr/0027-notifications.md) (behaviour, storage, timing, email, threat model); ADR [0018](../../adr/0018-teams-and-member-access.md), [0022](../../adr/0022-usage-data-in-d1.md), [0026](../../adr/0026-teams-v2.md), [0028](../../adr/0028-clean-removal.md); [docs/design/ui.md](../../design/ui.md)
 
 ## Goal
@@ -140,4 +140,4 @@ Both actions are org-scoped for every role and read and write only the session u
 - [x] Unsubscribe: forged, tampered and other-purpose tokens refused; a valid one turns email off for exactly its kinds; GET changes nothing; headers present.
 - [x] Route-table test passes with the new routes; policy actions deny by default.
 - [x] SPA tests: bell, dot, dropdown, mark seen, preferences, both locales (#399). Phone width is the panel's sheet classes and U-28's rules; jsdom has no layout, so no test measures it.
-- [x] **Status** line above set to `done (#398)`.
+- [ ] **Status** line above set to `done (#398)` (the plan check refuses it until C-21 is done).
