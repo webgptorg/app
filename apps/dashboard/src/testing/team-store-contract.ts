@@ -454,37 +454,28 @@ export function describeTeamStoreContract(suite: string, makeFixture: () => Team
             expect(await fixture.revocations(owner.orgId)).toEqual([]);
         });
 
-        it('tells the inviter and the team’s owners and admins of a waiting request, once', async () => {
+        it('hands out each waiting request once, with its organization, and says which ack answers one', async () => {
             const a = await team();
             const engineId = await engineFor(a);
-            const admin = testAccount(`c-admin-${crypto.randomUUID()}@example.test`).user;
-            const outsideAdmin = testAccount().user;
-            await fixture.addMember(owner.orgId, admin, 'admin');
-            await fixture.addMember(owner.orgId, outsideAdmin, 'admin');
-            await fixture.teams.addMember(owner.orgId, a, admin.id, entry(owner.userId));
             const newcomer = testAccount();
             await fixture.addAccount(newcomer);
-            const invited = invite({ email: newcomer.user.email, teamIds: [a], invitedByUserId: outsideAdmin.id });
-            await fixture.teams.insertInvite(invited, entry(outsideAdmin.id));
-            await fixture.teams.acceptInvite(invited.tokenHash, newcomer.userId, {
-                id: entry(newcomer.userId).id,
-                at: NOW,
-            });
-
             const old = await ticket(a, engineId, newcomer.userId, NOW - 10);
             const fresh = await ticket(a, engineId, newcomer.userId, NOW + 10);
             const notices = await fixture.teams.ticketsAwaitingNotice(engineId, NOW);
-            expect(notices.map((notice) => notice.ticketId)).toEqual([fresh]);
-            expect(notices[0]).toMatchObject({ teamId: a, teamName: 'Client A', requesterEmail: newcomer.user.email });
-            expect(notices[0]?.recipients.map((recipient) => recipient.email).sort()).toEqual(
-                [owner.user.email, admin.email, outsideAdmin.email].sort(),
-            );
+            expect(notices).toEqual([{ ticketId: fresh, orgId: owner.orgId }]);
             await fixture.teams.markNoticed([fresh], NOW + 20);
             await fixture.teams.markNoticed([], NOW + 20);
             expect(await fixture.teams.ticketsAwaitingNotice(engineId, NOW)).toEqual([]);
             expect((await fixture.teams.ticketsAwaitingNotice(engineId, NOW - 100)).map((n) => n.ticketId)).toEqual([
                 old,
             ]);
+            // A noticed request the engine answers closes one join request; one nobody was told of closes none.
+            expect(await fixture.teams.applyTicketAck(engineId, fresh, 'declined', NOW + 30)).toMatchObject({
+                noticed: true,
+            });
+            expect(await fixture.teams.applyTicketAck(engineId, old, 'approved', NOW + 30)).toMatchObject({
+                noticed: false,
+            });
         });
 
         it('hands out pending revocations oldest first, closes acked ones, and shows who is still being removed', async () => {
