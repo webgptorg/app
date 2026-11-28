@@ -2,7 +2,7 @@
 // their own browser context, authenticator and client address, as they would their own laptop.
 import { randomInt } from 'node:crypto';
 
-import type { Browser, Frame, Page } from '@playwright/test';
+import type { Browser, Frame, Page, Route } from '@playwright/test';
 import { devices } from '@playwright/test';
 
 import type { OneOffContainer } from './compose.ts';
@@ -71,20 +71,26 @@ export async function withStepUp(
     const onNavigation = (frame: Frame) => {
         if (frame === page.mainFrame() && new URL(frame.url()).pathname.startsWith('/auth/')) left.push(frame.url());
     };
+    const context = page.context();
+    const optionsUrl = new URL('/auth/step-up/options', page.url()).href;
+    // A real platform authenticator is already available when a new tab starts WebAuthn. Give the popup its
+    // virtual one before delivering the real engine's challenge, even if it asks before Playwright emits "popup".
+    const preparePasskeys = async (route: Route) => {
+        await sharePasskeys(page, route.request().frame().page());
+        await route.continue();
+    };
+    await context.route(optionsUrl, preparePasskeys, { times: 1 });
     page.on('framenavigated', onNavigation);
-    const opened = page.waitForEvent('popup');
-    await stepUp.click();
-    const popup = await opened;
-    await sharePasskeys(page, popup);
-    // The page starts the prompt by itself; if that ran before the popup had the passkey, it offers the button.
-    const closed = popup.waitForEvent('close');
-    const confirm = popup.locator('section[data-state="ready"] button[data-action="confirm"]');
-    const ready = confirm.waitFor().then(() => 'ready' as const);
-    ready.catch(() => undefined);
-    if ((await Promise.race([closed.then(() => 'closed' as const), ready])) === 'ready') await confirm.click();
-    await closed;
-    await done();
-    page.off('framenavigated', onNavigation);
+    try {
+        const opened = page.waitForEvent('popup');
+        await stepUp.click();
+        const popup = await opened;
+        if (!popup.isClosed()) await popup.waitForEvent('close');
+        await done();
+    } finally {
+        page.off('framenavigated', onNavigation);
+        await context.unroute(optionsUrl, preparePasskeys);
+    }
     expect(left).toEqual([]);
     return 'asked';
 }
