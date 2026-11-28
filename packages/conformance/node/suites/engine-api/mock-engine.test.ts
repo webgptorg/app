@@ -117,6 +117,13 @@ describe('the engine-api suite on one engine the harness starts', () => {
                         'skip: the target cannot raise a Wallet request (ConformanceTarget.walletRequest)',
                     // So is expiring an AI tool's sign-in.
                     'engine-api.ai-tools.sign-in-required': 'skip: the target has no AI tool levers',
+                    // And raising a notification.
+                    ...Object.fromEntries(
+                        ['own-items', 'project-wide', 'seen-lowers-count'].map((check) => [
+                            `engine-api.notifications.${check}`,
+                            'skip: the target cannot raise notifications (no test-mode lever)',
+                        ]),
+                    ),
                 },
                 'disabled',
             );
