@@ -24,6 +24,7 @@ const DASHBOARD_RP_ID = new URL(DASHBOARD_ORIGIN).hostname;
 // The approver email goes out with the heartbeat that first counts the request; the one in flight may miss it.
 const WAITING_EMAIL_WITHIN_MS = ACKED_WITHIN_MS;
 const UNSEEN_EMAIL_AFTER_MS = 16 * 60_000;
+const HOURLY_CAP_MS = 61 * 60_000;
 const APPROVED = /can now use this project$/;
 
 function approveDialog(page: Page, email: string): Locator {
@@ -98,10 +99,13 @@ test('a new colleague joins from the invite in one step and is let in from the a
             (await dashboard.emails(engine.ownerEmail)).find(
                 (email) => email.template === 'notifications' && email.subject === subject,
             );
+        // Each run goes further ahead, so the hourly cap an earlier email (the project's "online") set never holds it.
+        let ahead = UNSEEN_EMAIL_AFTER_MS;
         await expect
             .poll(
                 async () => {
-                    await dashboard.deliverNotifications(UNSEEN_EMAIL_AFTER_MS);
+                    await dashboard.deliverNotifications(ahead);
+                    ahead += HOURLY_CAP_MS;
                     return (await approverEmail()) !== undefined;
                 },
                 { timeout: WAITING_EMAIL_WITHIN_MS, intervals: [2_000] },
