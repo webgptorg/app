@@ -331,7 +331,7 @@ describe('team page', () => {
         await app.user.click(within(dialog).getByRole('button', { name: 'Send invitations' }));
         expect(
             await screen.findByText(
-                'Your plan’s limit on people is reached. To invite someone new, upgrade the plan or ask an owner to. Everyone already here keeps access.',
+                'Your plan’s limit on people is reached; pending invitations count too. To invite someone new, upgrade the plan or ask an owner to. Everyone already here keeps access.',
             ),
         ).toBeTruthy();
     });
