@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { ATTENTION_KINDS } from '@ptbk/protocol';
+
 import { m } from '../../paraglide/messages';
 import { RECIPIENT_ROLES, type NotificationItem } from './notification-kind';
 import {
@@ -37,7 +39,7 @@ describe('the notification kind registry', () => {
     });
 
     it('keeps engine kinds to the heartbeat’s closed `attention` enum and the people it may name', () => {
-        expect(NOTIFICATION_KIND_IDS.filter(isEngineKind)).toEqual(['agent-waiting', 'task-failed', 'tool-sign-in']);
+        expect(NOTIFICATION_KIND_IDS.filter(isEngineKind)).toEqual([...ATTENTION_KINDS]);
         for (const kind of NOTIFICATION_KIND_IDS) {
             expect(anyKind(kind).reach === 'managers-or-approved').toBe(isEngineKind(kind));
         }
