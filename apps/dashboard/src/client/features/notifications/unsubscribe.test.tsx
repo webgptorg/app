@@ -6,7 +6,7 @@ import { expectNoAxeViolations } from '../../testing/axe';
 import { renderApp } from '../../testing/render-app';
 import { ok, problem } from '../../testing/scripted-api';
 
-const TOKEN = `u1.${'a'.repeat(26)}.${'b'.repeat(26)}.agent-waiting+task-failed.${'c'.repeat(43)}`;
+const TOKEN = `u1.${'a'.repeat(26)}.${'b'.repeat(26)}.agent-waiting~task-failed.${'c'.repeat(43)}`;
 
 describe('unsubscribe page', () => {
     it('changes nothing on opening, and stops the emails only on the button, signed out', async () => {

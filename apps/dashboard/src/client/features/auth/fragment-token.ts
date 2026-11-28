@@ -10,7 +10,7 @@ const EMAIL_TOKEN = /^[A-Za-z0-9_-]{43}$/;
  * A signed unsubscribe token (D-41) within the route's size cap; its parts and signature are the server's to check, the
  * page only refuses what could not be one.
  */
-export const UNSUBSCRIBE_TOKEN = /^[A-Za-z0-9._+-]{1,400}$/;
+export const UNSUBSCRIBE_TOKEN = /^[A-Za-z0-9._~-]{1,400}$/;
 
 export function parseFragmentToken(hash: string, pattern: RegExp = EMAIL_TOKEN): FragmentToken {
     const value = hash.startsWith('#') ? hash.slice(1) : hash;
