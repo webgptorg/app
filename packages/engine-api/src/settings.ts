@@ -25,6 +25,11 @@ export const Settings = z.strictObject({
      * on by default, changed only by `setDashboardRemovals`. `null` from engines without the capability.
      */
     dashboardRemovals: z.boolean().nullable().default(null),
+    /**
+     * Whether heartbeats carry unseen notification counts per person (`notifications@1`, ADR 0027); changed only by
+     * `setDashboardAttention`. `null` from engines without the capability.
+     */
+    dashboardAttention: z.boolean().nullable().default(null),
 });
 export type Settings = z.infer<typeof Settings>;
 

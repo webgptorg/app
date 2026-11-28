@@ -234,7 +234,9 @@ describe('capabilities through the mock HTTP server (contract)', () => {
             (route) =>
                 route.capability !== undefined &&
                 !isReservedCapability(route.capability) &&
-                !coreFeatures.has(route.capability.id),
+                !coreFeatures.has(route.capability.id) &&
+                // Served from M-16 on.
+                route.capability.id !== KNOWN_CAPABILITIES.notifications.id,
         ).map(({ id }) => id);
         expect([...answered].filter((id) => id !== 'listActivity').sort()).toEqual([...capabilityRoutes].sort());
     });

@@ -79,7 +79,7 @@ export const signatureVerifies: PlatformCheck = {
 export const bodyStrict: PlatformCheck = {
     id: 'heartbeat.body.strict',
     suite: SUITE,
-    title: 'Every heartbeat body is within 4 KiB, a strict Heartbeat (percentages in tens), with a current ts and the registered version',
+    title: 'Every heartbeat body is within HEARTBEAT_MAX_BODY_BYTES, a strict Heartbeat (percentages in tens), with a current ts and the registered version',
     timeoutMs: (expectations) => expectations.startTimeoutMs * 2 + expectations.heartbeatIntervalMs * 3,
     async run(ctx) {
         const linked = await startLinkedEngine(ctx);

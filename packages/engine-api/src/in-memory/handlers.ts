@@ -20,6 +20,7 @@ import { ACCESS_REQUEST_HANDLERS, activeOwnerCount, signOutEverywhere } from './
 import { LIVE_HANDLERS } from './live';
 import { ONBOARDING_HANDLERS } from './onboarding';
 import { UPDATES_HANDLERS, securityView } from './updates';
+import { NOTIFICATION_HANDLERS } from './notifications';
 import { VOICE_HANDLERS } from './voice';
 import { AI_TOOL_HANDLERS } from './ai-tools';
 import { TEST_CHAT_HANDLERS } from './test-chat';
@@ -601,6 +602,7 @@ export const HANDLERS: Handlers = {
 
     ...ACTIVITY_HANDLERS,
     ...UPDATES_HANDLERS,
+    ...NOTIFICATION_HANDLERS,
     ...RUN_HANDLERS,
     ...TASK_HANDLERS,
     ...FILE_HANDLERS,

@@ -216,6 +216,11 @@ export interface EngineApiClient {
         setUpdatePolicy(body: Body<'setUpdatePolicy'>, signal: AbortSignal): Result<'setUpdatePolicy'>;
         /** `access-requests@1`. */
         setDashboardRemovals(body: Body<'setDashboardRemovals'>, signal: AbortSignal): Result<'setDashboardRemovals'>;
+        /** `notifications@1`. */
+        setDashboardAttention(
+            body: Body<'setDashboardAttention'>,
+            signal: AbortSignal,
+        ): Result<'setDashboardAttention'>;
     };
     readonly passkeys: {
         list(query: Query<'listPasskeys'>, signal: AbortSignal): Result<'listPasskeys'>;
@@ -443,6 +448,12 @@ export interface EngineApiClient {
     readonly updates: {
         checkUi(signal: AbortSignal): Result<'checkForUiUpdate'>;
     };
+    /** `notifications@1`: the caller's own inbox. */
+    readonly notifications: {
+        list(query: Query<'listMyNotifications'>, signal: AbortSignal): Result<'listMyNotifications'>;
+        counts(signal: AbortSignal): Result<'getMyNotificationCounts'>;
+        markSeen(body: Body<'markMyNotificationsSeen'>, signal: AbortSignal): Result<'markMyNotificationsSeen'>;
+    };
     readonly audit: {
         list(query: Query<'listAuditEntries'>, signal: AbortSignal): Result<'listAuditEntries'>;
         verify(signal: AbortSignal): Result<'verifyAuditLog'>;
@@ -542,6 +553,7 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
             update: (body, signal) => call(R.updateSettings, { body }, signal),
             setUpdatePolicy: (body, signal) => call(R.setUpdatePolicy, { body }, signal),
             setDashboardRemovals: (body, signal) => call(R.setDashboardRemovals, { body }, signal),
+            setDashboardAttention: (body, signal) => call(R.setDashboardAttention, { body }, signal),
         },
         passkeys: {
             list: (query, signal) => call(R.listPasskeys, { query }, signal),
@@ -653,6 +665,11 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
         },
         security: { get: (signal) => call(R.getSecurityOverview, {}, signal) },
         updates: { checkUi: (signal) => call(R.checkForUiUpdate, {}, signal) },
+        notifications: {
+            list: (query, signal) => call(R.listMyNotifications, { query }, signal),
+            counts: (signal) => call(R.getMyNotificationCounts, {}, signal),
+            markSeen: (body, signal) => call(R.markMyNotificationsSeen, { body }, signal),
+        },
         audit: {
             list: (query, signal) => call(R.listAuditEntries, { query }, signal),
             verify: (signal) => call(R.verifyAuditLog, {}, signal),

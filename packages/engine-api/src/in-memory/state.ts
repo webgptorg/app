@@ -25,6 +25,7 @@ import type { Settings } from '../settings';
 import type { InMemoryUpdates } from './updates';
 import type { InMemoryVoice } from './voice';
 import type { InMemoryAiTools } from './ai-tools';
+import type { NotificationRecord } from './notifications';
 
 export interface AgentRecord {
     agent: Agent;
@@ -94,6 +95,8 @@ export interface InMemoryState {
     readonly aiTools: InMemoryAiTools;
     /** `updates@1`: the plugged-in UI updater, or the fake release store's levers. */
     readonly updates: InMemoryUpdates;
+    /** `notifications@1`: every member's inbox and the project-wide items, closed ones included. */
+    readonly notifications: Map<string, NotificationRecord>;
     readonly folders: Map<string, Folder>;
     readonly agents: Map<string, AgentRecord>;
     readonly chats: Map<string, ChatRecord>;
