@@ -2465,6 +2465,5 @@
   "attention_on": "app.ptbk.io se teď dozví, kolik věcí čeká",
   "attention_off": "Oznámení teď zůstávají v tomto projektu",
   "attention_failed": "Nastavení se nepodařilo změnit.",
-  "security_heartbeat_field_attention": "Kolik neviděných věcí jakého druhu čeká na každého, kdo se připojil přes dashboard, aby dostal e-mail, když tu není. Nikdy ne, o co jde. Chybí, dokud to vlastník má vypnuté.",
-  "audit_action_settings_dashboard_attention": "Změna počtů oznámení pro dashboard"
+  "security_heartbeat_field_attention": "Kolik neviděných věcí jakého druhu čeká na každého, kdo se připojil přes dashboard, aby dostal e-mail, když tu není. Nikdy ne, o co jde. Chybí, dokud to vlastník má vypnuté."
 }

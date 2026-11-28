@@ -2398,6 +2398,5 @@
   "attention_on": "app.ptbk.io now learns how many things wait",
   "attention_off": "Notifications now stay in this project",
   "attention_failed": "The setting could not be changed.",
-  "security_heartbeat_field_attention": "How many unseen things wait, per kind, for each person who joined through the dashboard, so they get an email when away. Never what they are. Left out while the owner keeps it off.",
-  "audit_action_settings_dashboard_attention": "Notification counts for the dashboard changed"
+  "security_heartbeat_field_attention": "How many unseen things wait, per kind, for each person who joined through the dashboard, so they get an email when away. Never what they are. Left out while the owner keeps it off."
 }
