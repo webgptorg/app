@@ -1,4 +1,4 @@
-import type { EngineId } from '@ptbk/protocol';
+import type { EngineId, HeartbeatAttention } from '@ptbk/protocol';
 
 import type { NotificationChange, NotificationChannel } from '../../shared/notifications/notification-kind';
 import {
@@ -35,13 +35,12 @@ export interface NotificationTarget {
     readonly engineId: EngineId | null;
 }
 
-/** One entry of a heartbeat's `attention` (ADR 0027), as the protocol parsed it. */
-export interface AttentionEntry {
-    /** The dashboard user the items are for; absent for the project's managers. */
-    readonly to?: string;
-    readonly kind: EngineNotificationKind;
-    readonly count: number;
-}
+/**
+ * One entry of a heartbeat's `attention` (ADR 0027, C-21), as the protocol parsed it. Its kind must be one of the
+ * registry's engine kinds: a kind the protocol adds without a definition here fails to compile where heartbeats are
+ * handed over.
+ */
+export type AttentionEntry = HeartbeatAttention & { readonly kind: EngineNotificationKind };
 
 const ENGINE_KINDS = (Object.keys(NOTIFICATION_KINDS) as NotificationKind[]).filter(
     (kind): kind is EngineNotificationKind => NOTIFICATION_KINDS[kind].source === 'engine',

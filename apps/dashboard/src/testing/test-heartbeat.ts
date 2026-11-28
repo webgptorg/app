@@ -2,6 +2,7 @@ import {
     buildHeartbeat,
     buildHeartbeatV2,
     type HeartbeatAck,
+    type HeartbeatAttention,
     EngineVersion,
     HEARTBEAT_SIGNATURE_HEADER,
     signHeartbeat,
@@ -73,7 +74,12 @@ export function signedHeartbeatV2(
     engine: TestEngine,
     seq: number,
     atMs: number,
-    teams: { readonly accessRequests?: number; readonly acks?: readonly HeartbeatAck[] } = {},
+    teams: {
+        readonly accessRequests?: number;
+        readonly acks?: readonly HeartbeatAck[];
+        /** ADR 0027's unseen counts; left out, the owner has sharing switched off. */
+        readonly attention?: readonly HeartbeatAttention[];
+    } = {},
 ): Promise<SignedHeartbeat> {
     return signed(
         engine,
@@ -81,6 +87,7 @@ export function signedHeartbeatV2(
             ...heartbeatInput(engine, seq, atMs),
             accessRequests: teams.accessRequests ?? 0,
             acks: teams.acks ?? [],
+            ...(teams.attention === undefined ? {} : { attention: teams.attention }),
         }),
     );
 }

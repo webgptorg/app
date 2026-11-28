@@ -1,6 +1,14 @@
-import { ed25519PublicKeyToBytes, Timestamp, verifyHeartbeat, type HeartbeatVerification } from '@ptbk/protocol';
+import {
+    ed25519PublicKeyToBytes,
+    Timestamp,
+    verifyHeartbeat,
+    type AnyHeartbeat,
+    type HeartbeatAttention,
+    type HeartbeatVerification,
+} from '@ptbk/protocol';
 
 import type { ProjectStatusEvent } from '../../shared/notifications/kinds/project-status';
+import { toBase64Url } from '../auth/secrets';
 import type { Notifications } from '../notifications/notifications';
 import type { Clock } from '../ports/clock';
 import type { Logger } from '../ports/logger';
@@ -29,6 +37,18 @@ import {
 
 const SEND_TIMEOUT_MS = 10_000;
 
+/** One spelling per set of counts: entries sorted, so the same counts in another order are no change. */
+async function attentionDigest(entries: readonly HeartbeatAttention[]): Promise<string | undefined> {
+    if (entries.length === 0) {
+        return undefined;
+    }
+    const canonical = entries
+        .map((entry) => [entry.to ?? '', entry.kind, entry.count] as const)
+        .sort(([a, b], [c, d]) => (a === c ? (b < d ? -1 : 1) : a < c ? -1 : 1));
+    const bytes = new TextEncoder().encode(JSON.stringify(canonical));
+    return toBase64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)));
+}
+
 export interface EngineStatusServiceDeps {
     readonly storage: EngineStatusStorage;
     /** The alarm's `now`; heartbeats are checked against the `receivedAt` the Worker passes. */
@@ -37,8 +57,8 @@ export interface EngineStatusServiceDeps {
     readonly timing: HeartbeatTiming;
     /** Read before every send, so an engine revoked or suspended since its last heartbeat is told about to nobody. */
     readonly heartbeatEngines: HeartbeatEngineReader;
-    /** Offline, online, back online and update waiting go to people through the notification pipeline (D-41). */
-    readonly notifications: Pick<Notifications, 'notify'>;
+    /** Offline, online, back online, update waiting and the engine's counts reach people through the pipeline (D-41). */
+    readonly notifications: Pick<Notifications, 'notify' | 'syncAttention'>;
     /** The first heartbeat and setup completion; written only on those, never per heartbeat. */
     readonly usage: UsageRecorder;
 }
@@ -123,6 +143,39 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
         await deps.storage.setAlarm(status === next.status ? next.alarmAt : nextAlarmAt(status, deps.timing));
     }
 
+    /**
+     * The engine's unseen counts, handed to the pipeline only when they differ from the last ones it took (ADR 0027),
+     * so a steady inbox writes nothing to D1. Absent (the owner switched sharing off) reads like empty: the engine's
+     * rows close and its notifications stay inside the engine. A failed hand-over keeps the old digest, so the next
+     * heartbeat tries again.
+     */
+    async function attentionNotice(
+        stored: StoredEngineStatus | null,
+        status: TrackedEngineStatus,
+        heartbeat: AnyHeartbeat,
+    ): Promise<TrackedEngineStatus> {
+        const entries = heartbeat.v === 2 ? (heartbeat.attention ?? []) : [];
+        const digest = await attentionDigest(entries);
+        const last = stored?.kind === 'tracked' ? stored.attentionDigest : undefined;
+        // `status` is a fresh heartbeat's, which carries no digest of its own.
+        const keep = (value: string | undefined) =>
+            value === undefined ? status : { ...status, attentionDigest: value };
+        if (digest === last) {
+            return keep(last);
+        }
+        try {
+            await deps.notifications.syncAttention(
+                { orgId: status.orgId, engineId: status.engineId },
+                entries,
+                AbortSignal.timeout(SEND_TIMEOUT_MS),
+            );
+            return keep(digest);
+        } catch {
+            deps.logger.warn('engine-status.attention-failed', { engineId: status.engineId });
+            return keep(last);
+        }
+    }
+
     return {
         async recordHeartbeat(input) {
             const stored = await deps.storage.load();
@@ -135,14 +188,16 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                 now: Timestamp.parse(new Date(input.receivedAt).toISOString()),
             });
             if (verification.kind === 'accepted') {
-                const status = await updateNotice(
+                const accepted = acceptHeartbeat({
                     stored,
-                    acceptHeartbeat({
-                        stored,
-                        orgId: input.orgId,
-                        heartbeat: verification.heartbeat,
-                        receivedAt: input.receivedAt,
-                    }),
+                    orgId: input.orgId,
+                    heartbeat: verification.heartbeat,
+                    receivedAt: input.receivedAt,
+                });
+                const status = await attentionNotice(
+                    stored,
+                    await updateNotice(stored, accepted),
+                    verification.heartbeat,
                 );
                 await deps.storage.save(status);
                 // A notice now owed fires the alarm at once, so the heartbeat's answer never waits on email.
