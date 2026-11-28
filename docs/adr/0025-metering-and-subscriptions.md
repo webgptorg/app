@@ -117,13 +117,13 @@ The website connector does not map licence capabilities onto meters yet. ADR 002
 
 `checkMeterLimit(orgId, meter, { adding, project })` answers `ok`, or `warn` or `block` with the meter, the scope (`org` or `project`), what is used and the limit. It compares the reading's known value plus what the action adds with the quota; an unreported count never blocks. `block` happens only under a plan with `overLimit: block`; otherwise a shortfall is `warn`.
 
-It is asked only when the dashboard is about to create something, and never of running work, an issued link code, a heartbeat, registration or access:
+It is asked only when the dashboard is about to create something, and never of running work, a heartbeat or access:
 
-- **Projects:** when a link code is issued (`engine.link`).
-- **People:** when invitations are sent (`member.invite`).
+- **Projects:** when a link code is issued (`engine.link`), and again when an engine redeems one. Under `block`, registration keeps D-07's guard: the redemption refuses a project past `engines.max` atomically, so several pending codes cannot overshoot the limit. Under `warn` it does not.
+- **People:** when invitations are sent (`member.invite`). What is used counts the organization's people plus its pending invitations (unaccepted, unexpired) to addresses that are not members yet, so a batch of invitations cannot overshoot either. Only newcomers are added; inviting existing people to a team is never limited, and an acceptance is never refused.
 - **Agents and engine members** are created inside the project, where the dashboard is not. Their limits can only be reported, whatever `overLimit` says: in `GET /api/usage`, on the screens later, and in the admin console's over-limit list. Making the engine refuse a new agent would be an engine-side check, a contract change with the engine team.
 
-The upgrade-flow hook is the answer itself: `block` is a 403 problem `limit-reached` carrying `{ meter, scope, used, limit }`, and `warn` a success with a `limitWarning` of the same shape. The SPA turns either into the upgrade flow, whose target (website, Stripe Checkout, contact) the connector supplies. With billing `website`, ADR 0021's `LicenseGate` stays the check point for its licence, and the entitlements answer `warn`, so nothing it decided changes.
+The answers stay those the routes already give. `block` on projects is D-07's 403 problem `engine-limit`; `block` on people is a new 403 problem `people-limit`, which the invitation dialog explains. Neither carries the meter's details yet, and `warn` proceeds with the usual success answer, without a warning field. The upgrade flow adds both when it lands: `{ meter, scope, used, limit }` on the problems and a `limitWarning` of the same shape on a success, which the SPA turns into the upgrade flow, whose target (website, Stripe Checkout, contact) the connector supplies. With billing `website`, ADR 0021's `LicenseGate` stays the check point for its licence, and the entitlements answer `warn`, so nothing it decided changes.
 
 The admin console's over-limit list is a query: the latest `usage_daily_meters` rows against each organization's entitlements, computed when read, because plans change.
 
