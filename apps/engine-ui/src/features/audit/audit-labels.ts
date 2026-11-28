@@ -42,6 +42,7 @@ const ACTION_LABELS: Readonly<Record<AuditAction, () => string>> = {
     'settings.update': m.audit_action_settings_update,
     'settings.update-policy': m.audit_action_settings_update_policy,
     'settings.dashboard-removals': m.audit_action_settings_dashboard_removals,
+    'settings.dashboard-attention': m.audit_action_settings_dashboard_attention,
     'updates.ui-check': m.audit_action_updates_ui_check,
     'wallet.record.save': m.audit_action_wallet_record_save,
     'wallet.record.update': m.audit_action_wallet_record_update,
