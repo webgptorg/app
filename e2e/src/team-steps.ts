@@ -9,7 +9,7 @@ import type { OneOffContainer } from './compose.ts';
 import type { DashboardSteps } from './dashboard.ts';
 import { ENGINE_CLI, addPasskeyAuthenticator, expect, sharePasskeys, uniqueEmail } from './dashboard.ts';
 import type { OutboxEmail } from './dashboard-outputs.ts';
-import { devInstallLinkCode, parseSetupLink, terminalIdentity } from './dashboard-outputs.ts';
+import { devInstallLinkCode, terminalIdentity } from './dashboard-outputs.ts';
 import { DASHBOARD_ORIGIN, DASHBOARD_TIMING, MOCK_ENGINE_CONTROL } from './stack.ts';
 
 export const HEARTBEAT_MS = DASHBOARD_TIMING.heartbeatIntervalS * 1000;
@@ -17,7 +17,6 @@ export const HEARTBEAT_MS = DASHBOARD_TIMING.heartbeatIntervalS * 1000;
 export const ONE_HEARTBEAT_MS = HEARTBEAT_MS * 2;
 // The ack rides on the beat after that one, and the team page refetches on load.
 export const ACKED_WITHIN_MS = HEARTBEAT_MS * 3 + 10_000;
-const REACHABLE_WITHIN_MS = 90_000;
 const SETUP_LINK_WITHIN_MS = 120_000;
 
 export interface TeamEngine {
@@ -134,12 +133,15 @@ export async function linkTeamEngine(
     await dashboard.signUp(ownerEmail);
     await dashboard.subscribe();
 
-    await page.goto(`${DASHBOARD_ORIGIN}/engines`);
-    await page.getByRole('button', { name: 'New project' }).click();
-    await page.getByLabel('Project name').fill(team);
-    await page.getByRole('button', { name: 'Create and link a project' }).click();
-    await expect(page).toHaveURL(/\/engines\/new\?.*link=[a-z2-7]{26}/);
-    const linkCode = devInstallLinkCode((await page.getByRole('tabpanel').locator('code').textContent()) ?? '');
+    // The pairing tab follows the owner handoff to the engine. Keep the dashboard tab for later invitations.
+    const ownerPage = await page.context().newPage();
+    await sharePasskeys(page, ownerPage);
+    await ownerPage.goto(`${DASHBOARD_ORIGIN}/engines`);
+    await ownerPage.getByRole('button', { name: 'New project' }).click();
+    await ownerPage.getByLabel('Project name').fill(team);
+    await ownerPage.getByRole('button', { name: 'Create and link a project' }).click();
+    await expect(ownerPage).toHaveURL(/\/engines\/new\?.*link=[a-z2-7]{26}/);
+    const linkCode = devInstallLinkCode((await ownerPage.getByRole('tabpanel').locator('code').textContent()) ?? '');
 
     const container = await startUnlinked();
     await expect
@@ -150,31 +152,17 @@ export async function linkTeamEngine(
         .toBe(0);
     const connect = await container.exec([...ENGINE_CLI, 'connect', '--link', linkCode]);
     expect(connect.exitCode, connect.stderr).toBe(0);
-    const { hostname } = terminalIdentity(connect.stdout);
-
-    await expect(page.locator('section[data-link-state]')).toHaveAttribute('data-link-state', 'owner-pending', {
-        timeout: REACHABLE_WITHIN_MS,
+    const { hostname, fingerprint } = terminalIdentity(connect.stdout);
+    const origin = `https://${hostname}`;
+    await ownerPage.waitForURL((url) => url.origin === origin && url.pathname === '/setup', {
+        timeout: SETUP_LINK_WITHIN_MS,
     });
-    let setup = '';
-    await expect
-        .poll(
-            async () => {
-                const result = await container.exec([...ENGINE_CLI, 'setup-link', '--json', '--no-wait']);
-                setup = result.stdout;
-                return result.exitCode;
-            },
-            { timeout: SETUP_LINK_WITHIN_MS, intervals: [1_000] },
-        )
-        .toBe(0);
-
-    const ownerPage = await page.context().newPage();
-    await addPasskeyAuthenticator(ownerPage);
-    await ownerPage.goto(parseSetupLink(setup).url);
+    await expect(ownerPage.locator('section[data-state="valid"]')).toContainText(fingerprint);
     await ownerPage.locator('button[data-action="create"]').click();
     await expect(ownerPage.getByRole('heading', { name: 'You are the owner' })).toBeVisible();
     return {
         container,
-        origin: `https://${hostname}`,
+        origin,
         ownerEmail,
         owner: ownerPage,
         async expireStepUp() {
