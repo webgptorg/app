@@ -1,9 +1,9 @@
-import type { HeartbeatInput } from '@ptbk/protocol';
+import type { HeartbeatAttention, HeartbeatInput } from '@ptbk/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { testOrgId } from '../../testing/billing-fixtures';
 import { createTestEngine, type TestEngine } from '../../testing/test-engine';
-import { signedHeartbeat } from '../../testing/test-heartbeat';
+import { signedHeartbeat, signedHeartbeatV2 } from '../../testing/test-heartbeat';
 import { createStatusTestDeps, STATUS_START_MS as START } from '../../testing/test-status';
 import type { OrgId } from '../ids';
 import type { EngineStatus } from '../registration/engine-store';
@@ -442,6 +442,63 @@ describe('engine status service', () => {
         });
     });
 
+    describe('the engine’s unseen counts (ADR 0027)', () => {
+        function v2(t: ReturnType<typeof setup>) {
+            return async (seq: number, attention?: readonly HeartbeatAttention[]) => {
+                const { body, signature } = await signedHeartbeatV2(engine, seq, t.clock.nowMs(), {
+                    ...(attention === undefined ? {} : { attention }),
+                });
+                t.clock.advance(60_000);
+                return t.service.recordHeartbeat({
+                    engineId: engine.engineId,
+                    orgId,
+                    publicKey: engine.publicKey,
+                    rawBody: body,
+                    signatureHeader: signature,
+                    receivedAt: t.clock.nowMs() - 60_000,
+                });
+            };
+        }
+        const syncs = (t: ReturnType<typeof setup>) =>
+            t.notifications.calls.filter((call) => call.kind === 'attention').map((call) => call.event);
+
+        it('hands them over only when they change, whatever their order, and stores a digest, never the counts', async () => {
+            const t = setup();
+            const beat = v2(t);
+            const a = { to: 'aaaaaaaaaaaaaaaaaaaaaaaaaa', kind: 'agent-waiting', count: 2 } as const;
+            const b = { kind: 'tool-sign-in', count: 1 } as const;
+            await beat(1, []);
+            await beat(2);
+            expect(syncs(t)).toEqual([]);
+            await beat(3, [a, b]);
+            await beat(4, [b, a]);
+            expect(syncs(t)).toEqual([[a, b]]);
+            expect(JSON.stringify(t.storage.stored())).not.toContain('aaaaaaaaaaaaaaaaaaaaaaaaaa');
+            await beat(5, [{ ...a, count: 3 }, b]);
+            // Switched off: absent reads like empty, so the engine's rows close.
+            await beat(6);
+            await beat(7, []);
+            expect(syncs(t)).toEqual([[a, b], [{ ...a, count: 3 }, b], []]);
+        });
+
+        it('accepts the heartbeat when the pipeline fails, and tries again on the next one', async () => {
+            const t = setup();
+            const beat = v2(t);
+            const entry = { kind: 'task-failed', count: 1 } as const;
+            t.notifications.failing = true;
+            expect((await beat(1, [entry])).kind).toBe('accepted');
+            expect(t.logger.entries).toContainEqual({
+                level: 'warn',
+                event: 'engine-status.attention-failed',
+                fields: { engineId: engine.engineId },
+            });
+            t.notifications.failing = false;
+            await beat(2, [entry]);
+            await beat(3, [entry]);
+            expect(syncs(t)).toEqual([[entry]]);
+        });
+    });
+
     describe('an engine no longer active', () => {
         function setupEngine() {
             let status: EngineStatus | null = 'active';
@@ -557,6 +614,7 @@ describe('engine status service', () => {
             const sending = createEngineStatusService({
                 ...t.deps,
                 notifications: {
+                    syncAttention: (target, entries, signal) => t.notifications.syncAttention(target, entries, signal),
                     async notify(kind, target, event, signal) {
                         if (!ran) {
                             ran = true;

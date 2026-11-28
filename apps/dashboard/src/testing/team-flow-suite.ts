@@ -37,7 +37,7 @@ import {
     uniqueEmail,
 } from './auth-flows';
 import { createTestEngine, type TestEngine } from './test-engine';
-import { signedHeartbeat, signedHeartbeatV2 } from './test-heartbeat';
+import { heartbeatJson, signedHeartbeat, signedHeartbeatV2, signedJson } from './test-heartbeat';
 import { DEV_MEMBER_KEY } from '../app/config';
 import { fromBase64Url } from '../domain/auth/secrets';
 import { memberKeySource } from '../domain/teams/member-key';
@@ -1074,6 +1074,76 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
                 expiresAt: null,
             });
             expect(await members(boss.browser, team.teamId)).toMatchObject({ removing: [], invites: [] });
+        });
+
+        it('hears what waits for people in the engine as counts only, for those it may name, and refuses anything more', async () => {
+            const boss = await owner();
+            const team = await createTeam(boss.browser);
+            const engine = await linkTestEngine(boss.browser, team.teamId);
+            const member = await joined(boss, [team.teamId]);
+            const stranger = await joined(boss, []);
+            const ticket = await openTicket(member.browser, team.teamId, engine.engineId);
+            await beatV2(engine, { acks: [{ id: ticket.ticketId, outcome: 'approved' }] });
+            interface Bell {
+                readonly notifications: readonly { readonly kind: string; readonly count: number }[];
+            }
+            const bell = async (who: Person) =>
+                ((await who.browser.request('GET', '/api/notifications')).body as Bell).notifications.filter(
+                    (n) => n.kind !== 'people-change',
+                );
+            await beatV2(engine, {
+                attention: [
+                    { to: member.userId, kind: 'agent-waiting', count: 2 },
+                    { to: stranger.userId, kind: 'agent-waiting', count: 5 },
+                    { kind: 'tool-sign-in', count: 1 },
+                ],
+            });
+            expect(await bell(member)).toEqual([expect.objectContaining({ kind: 'agent-waiting', count: 2 })]);
+            // Not sent there by the dashboard, or not approved: dropped without a trace.
+            expect(await bell(stranger)).toEqual([]);
+            // Project-wide counts go to whoever linked it, never to members.
+            expect(await bell(boss)).toEqual([expect.objectContaining({ kind: 'tool-sign-in', count: 1 })]);
+
+            // A field beyond ADR 0027's shape refuses the whole heartbeat, so no engine text can ride along.
+            seq++;
+            harness.clock.advance(60_000);
+            const smuggled = await signedJson(engine, {
+                ...heartbeatJson(engine, seq, harness.clock.nowMs()),
+                v: 2,
+                accessRequests: 0,
+                acks: [],
+                attention: [
+                    { to: member.userId, kind: 'agent-waiting', count: 1, title: 'Approve the invoice for ACME' },
+                ],
+            });
+            const refused = await harness.post(heartbeatPath(engine.engineId), smuggled.body, smuggled.headers);
+            expectProblem(refused, 400, 'invalid-body');
+            for (const unknown of [
+                { kind: 'chat-reply', count: 1 },
+                { kind: 'agent-waiting', count: 0 },
+            ]) {
+                seq++;
+                harness.clock.advance(60_000);
+                const bad = await signedJson(engine, {
+                    ...heartbeatJson(engine, seq, harness.clock.nowMs()),
+                    v: 2,
+                    accessRequests: 0,
+                    acks: [],
+                    attention: [unknown],
+                });
+                expectProblem(
+                    await harness.post(heartbeatPath(engine.engineId), bad.body, bad.headers),
+                    400,
+                    'invalid-body',
+                );
+            }
+            expect(await bell(member)).toEqual([expect.objectContaining({ count: 2 })]);
+            expect(JSON.stringify(await member.browser.request('GET', '/api/notifications'))).not.toContain('ACME');
+
+            // Switched off: the field is absent, and the engine's rows close.
+            await beatV2(engine);
+            expect(await bell(member)).toEqual([]);
+            expect(await bell(boss)).toEqual([]);
         });
 
         it('hears the engine: notifies of a waiting request once, grants access on approval, and resends removals until acked', async () => {

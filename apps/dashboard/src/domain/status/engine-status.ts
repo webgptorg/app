@@ -114,6 +114,11 @@ const trackedSchema = z.strictObject({
     activity: engineActivitySchema.optional(),
     // Whether the pipeline was last told an update waits (D-41); it is told again only when that changes.
     updateWaiting: z.boolean().optional(),
+    // SHA-256 of the last `attention` the pipeline took (D-41), never the counts themselves; absent: none, or nothing.
+    attentionDigest: z
+        .string()
+        .regex(/^[A-Za-z0-9_-]{43}$/)
+        .optional(),
 });
 
 /** After the retention purge: nothing about the engine but that it is offline and when it was last seen. */

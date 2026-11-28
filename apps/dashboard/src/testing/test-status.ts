@@ -17,9 +17,9 @@ export const DEFAULT_TIMING: HeartbeatTiming = { intervalS: 60, missedLimit: 3, 
 // The status object reads only the engine's status and label from the row; the rest is a placeholder.
 const PLACEHOLDER_KEY = Ed25519PublicKey.parse('A'.repeat(43));
 
-/** A notification call the status object made. */
+/** A notification call the status object made; `attention` stands for `syncAttention`. */
 export interface NotifyCall {
-    readonly kind: 'project-status' | 'update-waiting';
+    readonly kind: 'project-status' | 'update-waiting' | 'attention';
     readonly orgId: string;
     readonly engineId: string | null;
     readonly event: unknown;
@@ -30,6 +30,7 @@ export interface RecordingNotifications {
     readonly calls: NotifyCall[];
     failing: boolean;
     notify: EngineStatusServiceDeps['notifications']['notify'];
+    syncAttention: EngineStatusServiceDeps['notifications']['syncAttention'];
 }
 
 export function createRecordingNotifications(): RecordingNotifications {
@@ -46,6 +47,13 @@ export function createRecordingNotifications(): RecordingNotifications {
                 engineId: target.engineId,
                 event,
             });
+            return Promise.resolve();
+        },
+        syncAttention(target, entries) {
+            if (recorder.failing) {
+                return Promise.reject(new Error('database unavailable'));
+            }
+            recorder.calls.push({ kind: 'attention', orgId: target.orgId, engineId: target.engineId, event: entries });
             return Promise.resolve();
         },
     };

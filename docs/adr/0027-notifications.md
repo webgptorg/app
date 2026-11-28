@@ -77,7 +77,7 @@ attention: z.array(
 
 - A count is the number of open items of that kind that the person has **not yet seen in the engine UI**. Seeing or handling them there lowers it, so someone who works in the project gets no email.
 - Kinds are a closed enum; a new kind is an addition in the same version (ADR 0010), accepted by the dashboard before engines send it.
-- `HEARTBEAT_MAX_BODY_BYTES` rises from 4 to 8 KiB, so 64 entries fit beside 32 acks. The dashboard accepts the larger body before any engine sends one.
+- `HEARTBEAT_MAX_BODY_BYTES` rises from 4 to 8 KiB, so 64 entries fit beside 32 acks. The dashboard accepts the larger body before any engine sends one. (C-21 set it to 12 KiB: 8 KiB fits the dashboard's own IDs, but not every entry and ack with IDs at the 64 characters the schema allows. C-21 also allows one entry per `to` and `kind`.)
 - The engine owner switches it off in the engine's settings; strict mode starts with it off. Switched off, the field is absent and the project's notifications are in-app only, inside the engine. The engine UI already shows the owner the exact last payload, this field included.
 - v1 heartbeats get no field: only an engine that handles access tickets knows dashboard user IDs.
 

@@ -245,7 +245,7 @@ async function beat(key: KeyObject, engineId: string): Promise<number> {
         agents: 0,
         members: 1,
         ...(defects.has('extra-heartbeat-field') ? { hostname: 'leaks.example' } : {}),
-        ...(defects.has('oversized-heartbeat') ? { padding: 'x'.repeat(5000) } : {}),
+        ...(defects.has('oversized-heartbeat') ? { padding: 'x'.repeat(13_000) } : {}),
     });
     const body = Buffer.from(defects.has('garbage-heartbeat-body') ? `${json}}` : json);
     const digest = createHash('sha256').update(body).digest();
