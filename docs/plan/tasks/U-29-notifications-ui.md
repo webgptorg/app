@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M5
 - **Depends on:** C-21, M-16
-- **Status:** in progress (feat/u-29-notifications-ui)
+- **Status:** done (#396)
 - **Spec:** ADRs [0027](../../adr/0027-notifications.md), [0016](../../adr/0016-engine-capabilities.md), [0015](../../adr/0015-ui-architecture-and-design-system.md); [engine-api.md](../../engine-integration/engine-api.md#notifications)
 
 ## Goal
@@ -20,7 +20,7 @@ People see what waits for them inside the project, with its content, and open it
 - An inbox entry in the shell with the unseen `total` as a badge, reachable on phones; counts refetch every 60 seconds, on window focus and after mark-seen.
 - `/inbox`: open items newest first, title and detail as text only, the kind quietly, project-wide items marked as for the project, relative time, a link into the item (chat, run, task, the AI tool's settings; none for a `null` target), unseen ones a little stronger, more via `nextCursor`, a calm empty state.
 - Showing unseen items marks them seen (one request of up to 100 IDs) and refreshes the counts; a 404 refetches.
-- Settings → Security: the owner's switch, with `settings.manage` and the capability, behind step-up, with quiet copy on what the counts say and what they never say, and a link to the last heartbeat.
+- Settings: the owner's switch, with `settings.manage` and the capability, behind step-up, with quiet copy on what the counts say and what they never say, and a link to the last heartbeat.
 - The heartbeat details label `attention`. English and Czech messages.
 
 ## Out of scope
@@ -29,7 +29,7 @@ People see what waits for them inside the project, with its content, and open it
 
 ## Acceptance criteria
 
-- [ ] Component tests: no UI without the capability, the badge count, text-only rendering of a title with markup, links per target kind, mark-seen on view and the 404 refetch, the switch on and off and its permission gating; axe passes.
-- [ ] The CSP browser test visits `/inbox` with seeded items and sees no request to another origin.
-- [ ] The bundle budget holds, or is raised with the measured numbers and why.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Component tests: no UI without the capability, the badge count, text-only rendering of a title with markup, links per target kind, mark-seen on view and the 404 refetch, the switch on and off and its permission gating; axe passes.
+- [x] The CSP browser test visits `/inbox` with seeded items and sees no request to another origin.
+- [x] The bundle budget holds, or is raised with the measured numbers and why.
+- [x] **Status** line above set to `done (#396)`.
