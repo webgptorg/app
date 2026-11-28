@@ -154,8 +154,11 @@ function expectDecision(
 }
 
 // Reserved capabilities are never advertised, so their routes answer 404 before any permission check.
+// The mock serves notifications@1 from M-16 on.
 const SERVED_ROUTES = ENGINE_API_ROUTE_LIST.filter(
-    (route) => route.capability === undefined || !isReservedCapability(route.capability),
+    (route) =>
+        route.capability === undefined ||
+        (!isReservedCapability(route.capability) && route.capability.id !== KNOWN_CAPABILITIES.notifications.id),
 );
 
 let harness: ApiHarness;
