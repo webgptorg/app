@@ -131,7 +131,9 @@ function BellWithPanel({ canMarkSeen }: { readonly canMarkSeen: boolean }) {
                 aria-labelledby={headingId}
                 tabIndex={-1}
                 className={[
-                    'fixed inset-auto m-0 flex flex-col overflow-auto p-0 outline-none',
+                    // `hidden` until open: an author `display` would otherwise beat the UA's closed-popover rule and
+                    // leave the panel over the page, catching clicks.
+                    'fixed inset-auto m-0 hidden flex-col overflow-auto p-0 outline-none open:flex',
                     'border border-hairline bg-raised text-text shadow-overlay',
                     'motion-safe:animate-[ptbk-menu-enter_var(--motion-enter)_var(--ease-enter)]',
                     // A phone gets a sheet on the bottom edge; wider screens a panel under the bell, which sits at the
@@ -140,26 +142,31 @@ function BellWithPanel({ canMarkSeen }: { readonly canMarkSeen: boolean }) {
                     'sm:top-13 sm:right-[max(1rem,calc((100%-64rem)/2+1rem))] sm:bottom-auto sm:left-auto sm:max-h-[min(32rem,calc(100dvh-4rem))] sm:w-96 sm:rounded-surface',
                 ].join(' ')}
             >
-                <h2 id={headingId} className="px-4 pt-3 pb-1 text-sm font-semibold">
-                    {m.notification_bell()}
-                </h2>
-                <BellBody
-                    entries={notifications.data === undefined ? null : notifications.data.notifications}
-                    failed={notifications.isError && notifications.data === undefined}
-                    onFollow={hide}
-                />
-                <div className="mt-1 border-t border-hairline p-1">
-                    <Link
-                        to="/account"
-                        hash="notifications"
-                        variant="standalone"
-                        onClick={hide}
-                        className="flex min-h-9 items-center gap-1.5 rounded-small px-3 text-sm text-text-muted no-underline hover:bg-hover hover:text-text"
-                    >
-                        {m.notification_settings_link()}
-                        <ArrowRight aria-hidden className="size-3.5" />
-                    </Link>
-                </div>
+                {/* Rendered only while open, so a closed panel puts no lines in the page for anyone to find. */}
+                {open ? (
+                    <>
+                        <h2 id={headingId} className="px-4 pt-3 pb-1 text-sm font-semibold">
+                            {m.notification_bell()}
+                        </h2>
+                        <BellBody
+                            entries={notifications.data === undefined ? null : notifications.data.notifications}
+                            failed={notifications.isError && notifications.data === undefined}
+                            onFollow={hide}
+                        />
+                        <div className="mt-1 border-t border-hairline p-1">
+                            <Link
+                                to="/account"
+                                hash="notifications"
+                                variant="standalone"
+                                onClick={hide}
+                                className="flex min-h-9 items-center gap-1.5 rounded-small px-3 text-sm text-text-muted no-underline hover:bg-hover hover:text-text"
+                            >
+                                {m.notification_settings_link()}
+                                <ArrowRight aria-hidden className="size-3.5" />
+                            </Link>
+                        </div>
+                    </>
+                ) : null}
             </div>
         </>
     );
