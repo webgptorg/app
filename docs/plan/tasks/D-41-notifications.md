@@ -1,7 +1,7 @@
 # D-41. Dashboard notifications: one pipeline, in-app and email
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M5
-- **Depends on:** D-05, D-12, D-13
+- **Depends on:** D-05, D-12, D-13, C-21
 - **Status:** in progress (feat/d-41-notifications)
 - **Spec:** ADR [0027](../../adr/0027-notifications.md) (behaviour, storage, timing, email, threat model); ADR [0018](../../adr/0018-teams-and-member-access.md), [0022](../../adr/0022-usage-data-in-d1.md), [0026](../../adr/0026-teams-v2.md), [0028](../../adr/0028-clean-removal.md); [docs/design/ui.md](../../design/ui.md)
 
