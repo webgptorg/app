@@ -146,6 +146,7 @@ import { OWNER_PERMISSIONS } from './permissions';
 import type { Permission, Role } from './permissions';
 import { createProblem } from './problem';
 import type { EngineApiStreamItem, ParsedRouteRequest, RouteBody, RouteDefinition } from './route';
+import { supportsRoute } from './route';
 import { matchMediaType } from './media-type';
 import type { EngineApiRouteId } from './routes';
 import { SecurityOverview } from './security';
@@ -754,6 +755,8 @@ export const DEFAULT_CAPABILITIES: readonly CapabilityRef[] = Object.values(KNOW
     (ref) =>
         ref !== KNOWN_CAPABILITIES.fileScanning &&
         ref !== KNOWN_CAPABILITIES.browserTab &&
+        ref !== KNOWN_CAPABILITIES.walletSignIn &&
+        ref !== KNOWN_CAPABILITIES.computerControl &&
         ref !== KNOWN_CAPABILITIES.voiceInput &&
         ref !== KNOWN_CAPABILITIES.voiceOutput,
 );
@@ -1161,7 +1164,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             signal.throwIfAborted();
             await auditTail;
             // An engine without the capability has no such route, whoever asks.
-            if (route.capability && !supports(state.engine, route.capability)) {
+            if (!supportsRoute(state.engine, route)) {
                 return { kind: 'problem', problem: createProblem('capability-not-supported') };
             }
             // Read on every request, so a removed member is signed out and a changed role applies at once.
@@ -1216,7 +1219,10 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             return { kind: 'ok', data: checkSuccess(route, result.data) };
         };
     const attach: InMemoryEngineCore['attachLiveChannel'] = (actor, sessionId, sink) => {
-        if (!supports(state.engine, KNOWN_CAPABILITIES.browserTab)) {
+        if (
+            !supports(state.engine, KNOWN_CAPABILITIES.browserTab) &&
+            !supports(state.engine, KNOWN_CAPABILITIES.walletSignIn)
+        ) {
             return { kind: 'refused', problem: createProblem('capability-not-supported') };
         }
         if (!state.members.has(actor.memberId)) return { kind: 'refused', problem: createProblem('unauthenticated') };

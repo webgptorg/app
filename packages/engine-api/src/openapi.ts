@@ -483,6 +483,14 @@ function operationOf(route: RouteDefinition, components: ComponentCollector): Js
                   },
               }
             : {}),
+        ...(route.alternateCapability
+            ? {
+                  'x-alternate-capability': {
+                      ...route.alternateCapability,
+                      label: capabilityLabel(route.alternateCapability),
+                  },
+              }
+            : {}),
         ...(route.stepUp ? { 'x-step-up': true } : {}),
         ...(route.draft ? { 'x-draft': true } : {}),
         ...(parameters.length > 0 ? { parameters } : {}),

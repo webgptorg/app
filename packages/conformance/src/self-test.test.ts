@@ -58,7 +58,7 @@ describe('the suite against an in-process engine', () => {
         expect(Object.fromEntries(notPassed)).toEqual({
             // The fake advertises every capability, so no route can be checked for capability-not-supported.
             'engine-api.capabilities.unadvertised-404':
-                'skip: the engine advertises every capability this contract defines',
+                'skip: the engine advertises every optional route this contract defines',
             // Reserved capabilities are design only, so no engine advertises them.
             'engine-api.live-audio.session': 'skip: capability-not-advertised',
         });

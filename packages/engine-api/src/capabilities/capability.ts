@@ -58,6 +58,10 @@ export const KNOWN_CAPABILITIES = {
     onboarding: { id: 'onboarding', version: 1 },
     /** The engine's Wallet: saved logins without secrets, agents' login requests, one-at-a-time add and update. */
     wallet: { id: 'wallet', version: 1 },
+    /** Owner-only sign-in attachment of the live browser. General tab watching and help requests are separate. */
+    walletSignIn: { id: 'wallet-sign-in', version: 1 },
+    /** The engine can present its existing protected primary desktop when the owner needs native UI. */
+    computerControl: { id: 'computer-control', version: 1 },
     /**
      * Live browser (draft, capabilities/live.ts): members watch the tab an agent works in, the owner takes it over or
      * signs in to a site in a fresh tab, and agents ask for help. No real environment advertises it yet.

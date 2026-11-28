@@ -21,6 +21,7 @@ import { Page } from '../shell/page';
 import { siteName } from '../wallet/wallet-origin';
 import { browserKeys, CONTROL_REQUIREMENT, useBrowserTab } from './browser-queries';
 import { viewState, whereLabel } from './browser-labels';
+import { ComputerControlLink } from './computer-control-link';
 import { createWebSocketLiveChannels } from './live-channel';
 import { createLiveSession } from './live-session';
 import type { LiveSession, LiveView } from './live-session';
@@ -154,6 +155,7 @@ function ViewerActions({ session, view }: { readonly session: LiveSession; reado
     return (
         <div className="flex items-center gap-2">
             {primary}
+            {signIn ? <ComputerControlLink /> : null}
             <ActionMenu
                 label={m.browser_more_actions()}
                 items={[

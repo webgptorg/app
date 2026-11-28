@@ -45,6 +45,8 @@ export const PROBLEM_STATUS = {
     'browser-tab-full': 409,
     /** Another sign-in session is open on the engine; one at a time. */
     'browser-busy': 409,
+    /** The provider or account check has not finished; the owner can continue in the same session. */
+    'wallet-sign-in-incomplete': 409,
     'browser-session-ended': 409,
     /** The live session's channel is already attached; one attachment per participant. */
     'live-channel-attached': 409,

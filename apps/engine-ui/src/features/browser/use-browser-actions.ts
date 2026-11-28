@@ -1,4 +1,4 @@
-import { BrowserOrigin, BrowserTabId, LiveSessionId } from '@ptbk/engine-api';
+import { BrowserOrigin, BrowserTabId, LiveSessionId, WalletSignInTarget } from '@ptbk/engine-api';
 import type { BrowserHelpRequestId, ProblemCode, ReadBrowserSession } from '@ptbk/engine-api';
 import { useNavigate } from '@tanstack/react-router';
 import { useCallback } from 'react';
@@ -28,6 +28,7 @@ const PROBLEM_MESSAGES: Partial<Record<ProblemCode, () => string>> = {
     'browser-tab-full': m.browser_error_tab_full,
     'browser-tab-controlled': m.browser_error_tab_controlled,
     'browser-busy': m.browser_error_busy,
+    'wallet-sign-in-incomplete': m.browser_finish_sign_in,
     'browser-origin-refused': m.browser_error_origin_refused,
     'browser-session-ended': m.browser_error_session_ended,
     unavailable: m.browser_error_unavailable,
@@ -56,7 +57,10 @@ export const RERUN = {
     },
     signIn: (data: unknown) => {
         const origin = parsed(BrowserOrigin, data, 'origin');
-        return origin === undefined ? undefined : { origin };
+        if (origin === undefined || typeof data !== 'object' || data === null) return undefined;
+        if (!('wallet' in data)) return { origin };
+        const wallet = WalletSignInTarget.safeParse(data.wallet);
+        return wallet.success ? { origin, wallet: wallet.data } : undefined;
     },
 };
 
@@ -139,7 +143,10 @@ export function useHandBack() {
         mutationFn: async ({ sessionId }: { readonly sessionId: LiveSessionId }) =>
             unwrap(await engineApi.browser.handBack(sessionId, signal())),
         invalidates: INVALIDATES,
-        errorMessage: problemMessage,
+        errorMessage: (failure) =>
+            failure.kind === 'problem' && failure.problem.code === 'browser-busy'
+                ? m.browser_hand_back_busy()
+                : problemMessage(failure),
         onSuccess: (session) => {
             sessions.current()?.update(session);
         },
@@ -166,13 +173,13 @@ export function useOpenSignIn() {
     const engineApi = useEngineApi();
     const show = useShowSession();
     return useStepUpAwareMutation({
-        mutationFn: async ({ origin }: { readonly origin: string }) =>
-            unwrap(await engineApi.browser.openSignIn({ browser: null, origin }, signal())),
+        mutationFn: async (input: { readonly origin: string; readonly wallet?: WalletSignInTarget }) =>
+            unwrap(await engineApi.browser.openSignIn({ browser: null, ...input }, signal())),
         errorMessage: problemMessage,
         onSuccess: show,
         resumeAs: {
             action: SIGN_IN_ACTION,
-            data: ({ origin }) => ({ origin }),
+            data: (input) => ({ ...input }),
             rerun: RERUN.signIn,
         },
     });

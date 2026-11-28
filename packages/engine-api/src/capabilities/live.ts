@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AgentId, ChatId, LiveSessionId, MemberId, RunId, TaskId, Timestamp } from '../common';
+import { WalletRecordId, WalletRequestId } from './wallet';
 import { defineRoute } from '../route';
 import { openEnum, toTolerant } from '../tolerant';
 import { KNOWN_CAPABILITIES, RESERVED_CAPABILITIES } from './capability';
@@ -118,10 +119,18 @@ export const BrowserOrigin = z.string().max(300).refine(isCanonicalHttpsOrigin, 
     message: 'Expected a canonical https origin: scheme and host, no path',
 });
 
+/** Binds manual sign-in to the selected account or the exact pending step on a wallet-sign-in engine. */
+export const WalletSignInTarget = z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('record'), id: WalletRecordId }),
+    z.strictObject({ kind: z.literal('request'), id: WalletRequestId, step: z.int().nonnegative() }),
+]);
+export type WalletSignInTarget = z.infer<typeof WalletSignInTarget>;
+
 /** `browser: null` is the engine's default browser. */
 export const OpenBrowserSignInBody = z.strictObject({
     browser: BrowserToolName.nullable(),
     origin: BrowserOrigin,
+    wallet: WalletSignInTarget.optional(),
 });
 export type OpenBrowserSignInBody = z.infer<typeof OpenBrowserSignInBody>;
 
@@ -328,12 +337,14 @@ export const LIVE_ROUTES = {
             'The session starts in control of a new tab at `origin`, which no agent uses and no other session ' +
             'reaches; ending it closes the tab, and the login stays in the browser profile. 422 ' +
             '`browser-origin-refused` for the engine’s own origins and origins outside its sign-in allowlist; 409 ' +
-            '`browser-busy` while another sign-in session is open on the engine.',
+            '`browser-busy` while another sign-in session is open on the engine. With wallet-sign-in@1 an owner ' +
+            'with Wallet management may open a matching record or current request step. A missing item is 404, a moved request is 409.',
         permission: 'browser.control',
         capability,
+        alternateCapability: KNOWN_CAPABILITIES.walletSignIn,
         body: { kind: 'json', schema: OpenBrowserSignInBody },
         responses: created,
-        problems: ['browser-origin-refused', 'browser-busy'],
+        problems: ['browser-origin-refused', 'browser-busy', 'wallet-request-moved'],
         stepUp: true,
         draft: true,
     }),
@@ -389,6 +400,7 @@ export const LIVE_ROUTES = {
         summary: 'One of the caller’s own browser sessions; 404 for any other gateway session’s',
         permission: 'browser.watch',
         capability,
+        alternateCapability: KNOWN_CAPABILITIES.walletSignIn,
         params: BrowserSessionParams,
         responses: session,
         draft: true,
@@ -416,12 +428,14 @@ export const LIVE_ROUTES = {
         summary: 'Hand the tab back to the agent; the session keeps watching',
         description:
             'The agent resumes with the outcome `handed-back`. Idempotent while the session only watches. A sign-in ' +
-            'session has no agent to hand back to, so it ends. 409 `browser-session-ended` once the session ended.',
+            'session ends on successful hand-back. While Wallet cannot verify the requested service and account, ' +
+            '`wallet-sign-in-incomplete` leaves the session open. 409 `browser-session-ended` once the session ended.',
         permission: 'browser.control',
         capability,
+        alternateCapability: KNOWN_CAPABILITIES.walletSignIn,
         params: BrowserSessionParams,
         responses: session,
-        problems: ['browser-session-ended'],
+        problems: ['browser-session-ended', 'browser-busy', 'wallet-sign-in-incomplete'],
         draft: true,
     }),
     endBrowserSession: defineRoute({
@@ -432,6 +446,7 @@ export const LIVE_ROUTES = {
         description: 'Idempotent: an ended session answers as it is.',
         permission: 'browser.watch',
         capability,
+        alternateCapability: KNOWN_CAPABILITIES.walletSignIn,
         params: BrowserSessionParams,
         responses: session,
         draft: true,

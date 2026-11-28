@@ -1,3 +1,4 @@
+import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import { DEFAULT_CAPABILITIES } from '@ptbk/engine-api/in-memory';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
@@ -450,8 +451,7 @@ describe('the live browser', () => {
         });
         const { user, router } = render(engine, { path: '/wallet' });
         const logins = await screen.findByRole('region', { name: 'Saved logins' });
-        await user.click(await within(logins).findByRole('button', { name: /^More for github\.com/ }));
-        await user.click(await screen.findByRole('menuitem', { name: "Sign in in the project's browser" }));
+        await user.click(await within(logins).findByRole('button', { name: 'Sign in manually' }));
         expect(await screen.findByRole('heading', { level: 1, name: 'Sign in on github.com' })).toBeDefined();
         expect(await screen.findByText(/Your clicks and keys go to the site/)).toBeDefined();
         await router.navigate({ to: '/wallet' });
@@ -461,6 +461,66 @@ describe('the live browser', () => {
         expect(await screen.findByText('The session ended.')).toBeDefined();
         expect(screen.queryByRole('button', { name: 'Watch again' })).toBeNull();
     });
+
+    it('opens the current request through a Wallet-only engine and offers the configured whole desktop explicitly', async () => {
+        const engine = createLiveBrowserTestEngine({
+            capabilities: [
+                ...DEFAULT_CAPABILITIES,
+                KNOWN_CAPABILITIES.walletSignIn,
+                KNOWN_CAPABILITIES.computerControl,
+            ],
+        });
+        const request = engine.controller.requestWalletLogin({
+            origin: SITE,
+            account: 'ada@example.test',
+            problem: 'rejected',
+            fields: [],
+            recordId: null,
+            reason: 'Complete sign-in.',
+            tasks: ['Publish'],
+            agents: ['Ada'],
+        });
+        const open = vi.spyOn(engine.client.browser, 'openSignIn');
+        const { user } = render(engine, { path: '/wallet' });
+        const requests = await screen.findByRole('region', { name: 'Agents are waiting' });
+        await user.click(within(requests).getByRole('button', { name: 'Sign in manually' }));
+        expect(await screen.findByRole('heading', { name: 'Sign in on shop.example' })).toBeDefined();
+        expect(open.mock.calls[0]?.[0]).toMatchObject({
+            browser: null,
+            origin: SITE,
+            wallet: { kind: 'request', id: request.id, step: request.step },
+        });
+        expect(screen.getByRole('link', { name: 'Control the whole computer' }).getAttribute('href')).toBe('/computer');
+    });
+
+    it.each([
+        { origin: SITE, capabilities: [KNOWN_CAPABILITIES.computerControl] },
+        {
+            origin: 'http://intranet.example',
+            capabilities: [KNOWN_CAPABILITIES.walletSignIn, KNOWN_CAPABILITIES.computerControl],
+        },
+    ])(
+        'offers the configured desktop directly when a sign-in tab cannot open for $origin',
+        async ({ origin, capabilities }) => {
+            const engine = createLiveBrowserTestEngine({ capabilities: [...DEFAULT_CAPABILITIES, ...capabilities] });
+            engine.controller.requestWalletLogin({
+                origin,
+                account: 'ada@example.test',
+                problem: 'rejected',
+                fields: [],
+                recordId: null,
+                reason: 'Complete sign-in.',
+                tasks: ['Publish'],
+                agents: ['Ada'],
+            });
+            render(engine, { path: '/wallet' });
+            const requests = await screen.findByRole('region', { name: 'Agents are waiting' });
+            expect(
+                within(requests).getByRole('link', { name: 'Control the whole computer' }).getAttribute('href'),
+            ).toBe('/computer');
+            expect(within(requests).queryByRole('button', { name: 'Sign in manually' })).toBeNull();
+        },
+    );
 
     it('reconnects within the session after the channel drops', async () => {
         const { engine } = engineWithHelp();

@@ -256,3 +256,13 @@ Nothing here is in code yet. When phase 2 is planned, its task types these messa
 4. **Screencast settings.** Format (JPEG is the obvious first), quality and frame-rate defaults, and when to re-encode below 64 KiB.
 5. **A visible indicator** in the terminal dashboard for a remote session.
 6. Anything here that conflicts with Reborn's behaviour. The engine spec wins on behaviour; this page then changes.
+
+### Manual sign-in from Wallet
+
+An engine advertising `wallet-sign-in@1` implements the owner sign-in subset of the live browser. A Wallet record or pending request opens the signed viewer using `openBrowserSignIn` with its origin and a `wallet` target. A request carries its current step. The engine checks the target, origin, account context and browser on open. The ordinary session read, live channel, hand-back and end operations apply. General tab watching and help requests still require `browser-tab@1`. Clients communicating with a browser-tab-only engine omit the optional target.
+
+The four shared HTTP operations declare `wallet-sign-in@1` as their alternate capability in OpenAPI. A missing Wallet item returns 404, an outdated step returns 409 `wallet-request-moved`, and a mismatched origin returns 422 `browser-origin-refused`. On hand-back, 409 `wallet-sign-in-incomplete` keeps the session open to finish verification. A simultaneous operation can return 409 `browser-busy`.
+
+Password rejection describes one attempted method. Show **Sign in manually** beside the credential action in Wallet. An existing provider session, a popup, an identity-provider redirect or a second factor can complete the original sign-in. Keep account validation on the target service and resume matching work on explicit hand-back. Closing the viewer leaves work waiting. On a host advertising `computer-control@1`, the owner can explicitly open its same-origin `/computer` viewer for a native dialog and return to the tab to finish.
+
+Wallet also offers **Control the whole computer** directly on a saved login or request when the host only offers desktop control or the stored site uses HTTP. This opens the desktop viewer without changing the site's address. Opening the desktop alone does not complete a Wallet request.

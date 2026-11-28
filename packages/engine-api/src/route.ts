@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 
-import type { CapabilityRef } from './capabilities/capability';
+import { supports, type CapabilityRef } from './capabilities/capability';
 import type { Permission } from './permissions';
 import type { ProblemCode } from './problem-codes';
 
@@ -61,6 +61,8 @@ export interface RouteDefinition {
     readonly permission: Permission | null;
     /** Set on every route of an optional capability; an engine that does not advertise it answers 404 `capability-not-supported`. */
     readonly capability?: CapabilityRef;
+    /** Another capability that implements this particular operation with a narrower scope. */
+    readonly alternateCapability?: CapabilityRef;
     readonly params?: z.ZodObject;
     readonly query?: z.ZodObject;
     readonly body?: RouteBody;
@@ -76,6 +78,17 @@ export interface RouteDefinition {
 
 export function defineRoute<const Route extends RouteDefinition>(route: Route): Route {
     return route;
+}
+
+export function supportsRoute(
+    engine: { readonly capabilities: readonly CapabilityRef[] },
+    route: RouteDefinition,
+): boolean {
+    return (
+        !route.capability ||
+        supports(engine, route.capability) ||
+        (route.alternateCapability !== undefined && supports(engine, route.alternateCapability))
+    );
 }
 
 type ParamsOf<Route> = Route extends { readonly params: infer Params extends z.ZodObject } ? Params : never;
