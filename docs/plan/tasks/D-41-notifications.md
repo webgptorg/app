@@ -83,7 +83,7 @@ interface EngineKind<K extends string> extends KindBase<K, never> {
 - An entry without `to` reaches the project's managers: the person who linked it, and owners, admins and team admins in its team with approved access. Never members.
 - A person's rows are the sum per kind; a kind missing from the latest `attention` closes their row. The status object keeps a SHA-256 digest of the last `attention` the pipeline took (never the counts) and calls it only on a change. Absent (`attention` switched off, C-21) reads like `[]`: the engine's rows close and its notifications stay inside the engine.
 
-### Storage (migration `0019_notifications`, `0018` until #388 lands)
+### Storage (migration `0019_notifications`)
 
 - `notifications`: ADR 0027's columns plus `variant` (closed per kind) and `due_at` (when its email is due; null when nobody owes one). One open row per `(user_id, org_id, engine_id, kind)`; `engine_id` is null for organization-level kinds.
 - `notification_preferences (user_id, org_id, kind, channel)`: overrides only; choosing the role default deletes the override.
