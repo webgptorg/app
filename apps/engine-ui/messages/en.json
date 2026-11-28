@@ -2373,7 +2373,6 @@
   "ai_tools_answer_failed": "The project did not answer. Try again.",
   "ai_tools_signed_in": "{name} signed in.",
   "nav_inbox": "Inbox",
-  "inbox_keywords": "notifications",
   "inbox_title": "Inbox",
   "inbox_description": "What needs you in this project. It stays here: app.ptbk.io never sees what it is.",
   "inbox_list_label": "Notifications",

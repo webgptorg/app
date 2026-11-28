@@ -2440,7 +2440,6 @@
   "ai_tools_answer_failed": "Projekt neodpověděl. Zkuste to znovu.",
   "ai_tools_signed_in": "{name} přihlášen.",
   "nav_inbox": "Doručené",
-  "inbox_keywords": "oznámení upozornění",
   "inbox_title": "Doručené",
   "inbox_description": "Co na vás v tomto projektu čeká. Zůstává to tady: app.ptbk.io nikdy neuvidí, o co jde.",
   "inbox_list_label": "Oznámení",

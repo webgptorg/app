@@ -57,7 +57,7 @@ function engineWithout(capability: (typeof KNOWN_CAPABILITIES)[keyof typeof KNOW
     });
 }
 
-const nav = () => screen.getByRole('navigation', { name: 'Main' });
+const nav = () => screen.findByRole('navigation', { name: 'Main' });
 const inboxList = () => screen.findByRole('list', { name: 'Notifications' });
 
 describe('inbox: gating and badge', { timeout: TIMEOUT_MS }, () => {
@@ -66,7 +66,7 @@ describe('inbox: gating and badge', { timeout: TIMEOUT_MS }, () => {
         const counts = vi.spyOn(engine.client.notifications, 'counts');
         renderWithProviders({ path: '/settings', engineApi: engine.client });
         expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeDefined();
-        expect(within(nav()).queryByRole('link', { name: /Inbox/ })).toBeNull();
+        expect(within(await nav()).queryByRole('link', { name: /Inbox/ })).toBeNull();
         expect(screen.queryByRole('switch', { name: /how many things wait/ })).toBeNull();
         expect(counts).not.toHaveBeenCalled();
     });
@@ -81,7 +81,7 @@ describe('inbox: gating and badge', { timeout: TIMEOUT_MS }, () => {
         const [first] = raiseEveryKind(engine.controller);
         await markSeenNow(engine.client, first?.id);
         renderWithProviders({ path: '/settings', engineApi: engine.client });
-        const link = await within(nav()).findByRole('link', { name: /Inbox/ });
+        const link = await within(await nav()).findByRole('link', { name: /Inbox/ });
         await waitFor(() => {
             expect(within(link).getByText('4 waiting')).toBeDefined();
         });
@@ -89,7 +89,7 @@ describe('inbox: gating and badge', { timeout: TIMEOUT_MS }, () => {
 
     it('shows no badge when nothing waits', async () => {
         renderWithProviders({ path: '/settings', engineApi: createSecurityEngine().client });
-        const link = await within(nav()).findByRole('link', { name: /Inbox/ });
+        const link = await within(await nav()).findByRole('link', { name: /Inbox/ });
         expect(link.textContent).toBe('Inbox');
     });
 });
@@ -190,7 +190,10 @@ describe('inbox: seen on view', { timeout: TIMEOUT_MS }, () => {
         });
         expect([...(markSeen.mock.calls[0]?.[0].ids ?? [])].sort()).toEqual(raised.map(({ id }) => id).sort());
         await waitFor(() => {
-            expect(within(nav()).getByRole('link', { name: /Inbox/ }).textContent).toBe('Inbox');
+            expect(
+                within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: /Inbox/ })
+                    .textContent,
+            ).toBe('Inbox');
         });
         // What was new stays marked for this visit.
         expect(within(await inboxList()).getAllByText('New')).toHaveLength(5);
@@ -232,7 +235,10 @@ describe('inbox: seen on view', { timeout: TIMEOUT_MS }, () => {
             expect(within(list).queryByText(/^Ada asks/)).toBeNull();
         });
         await waitFor(() => {
-            expect(within(nav()).getByRole('link', { name: /Inbox/ }).textContent).toBe('Inbox');
+            expect(
+                within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: /Inbox/ })
+                    .textContent,
+            ).toBe('Inbox');
         });
     });
 });
@@ -297,7 +303,7 @@ describe('settings: the owner’s attention switch', { timeout: TIMEOUT_MS }, ()
     it('is not offered without settings.manage, while the inbox still is', async () => {
         const permissions = OWNER_PERMISSIONS.filter((permission) => permission !== 'settings.manage');
         renderWithProviders({ path: '/settings', engineApi: createSecurityEngine({ permissions }).client });
-        expect(await within(nav()).findByRole('link', { name: /Inbox/ })).toBeDefined();
+        expect(await within(await nav()).findByRole('link', { name: /Inbox/ })).toBeDefined();
         expect(screen.queryByRole('switch', { name: /how many things wait/ })).toBeNull();
     });
 });

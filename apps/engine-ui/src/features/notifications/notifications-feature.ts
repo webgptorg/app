@@ -19,5 +19,4 @@ export const notificationsFeature = defineFeature({
         to: '/inbox',
         useBadge: useUnseenNotifications,
     },
-    commands: [{ id: 'notifications.open', label: m.nav_inbox, keywords: () => [m.inbox_keywords()], to: '/inbox' }],
 });
