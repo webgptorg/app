@@ -42,8 +42,10 @@ export function AppFrame({ session, children }: { readonly session: SessionView;
                 <header className="sticky top-0 z-20 border-b border-hairline bg-[color-mix(in_oklab,var(--color-surface)_88%,transparent)] backdrop-blur-md">
                     <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-3 px-4 md:h-12 md:flex-nowrap">
                         <div className="flex h-12 min-w-0 flex-1 items-center gap-2 md:flex-none">
-                            <BrandMark className="sm:hidden" />
-                            <BrandLockup className="hidden sm:block" />
+                            <Link to="/" variant="standalone" aria-label="Promptbook">
+                                <BrandMark decorative className="sm:hidden" />
+                                <BrandLockup decorative className="hidden sm:block" />
+                            </Link>
                             <span aria-hidden="true" className="hidden text-text-subtle sm:inline">
                                 /
                             </span>
