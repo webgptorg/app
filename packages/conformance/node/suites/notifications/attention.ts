@@ -110,7 +110,8 @@ async function call(
     };
 }
 
-function attentionEngine(
+/** The checks' view of a real engine behind the harness; exported for its own tests. */
+export function attentionEngine(
     joinable: JoinableEngine,
     owner: SessionCredential,
     notifications: NotificationsTarget,

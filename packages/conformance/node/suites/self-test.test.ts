@@ -4,7 +4,7 @@ import type { EngineApiEndpoint, EngineTargetFactory } from '../harness/platform
 import { runPlatformConformance } from '../harness/run-platform';
 import { createMockEngineTargetFactory } from '../targets/mock-engine';
 import { fakeEngineCommand, mockEngineCommand } from '../testing/engines';
-import { MEMBER_ACCESS_SUITE, OWNER_HANDOFF_SUITE } from '../index';
+import { MEMBER_ACCESS_SUITE, NOTIFICATIONS_SUITE, OWNER_HANDOFF_SUITE } from '../index';
 import { DASHBOARD_SUITES, EXPECTATIONS, WITHOUT_ENGINE_API, notPassing, run } from '../testing/self-test';
 
 /** The mock's sessions, behind an engine API whose security panel lies about the clock skew in the given way. */
@@ -35,6 +35,19 @@ describe('the member-access suite', () => {
             MEMBER_ACCESS_SUITE,
         ]);
         expect(notPassing(results)).toEqual({});
+    }, 300_000);
+});
+
+describe('the notifications suite', () => {
+    // The mock serves notifications@1 from M-16 on; until then the suite must skip, not fail.
+    it('skips against a mock engine without notifications@1', async () => {
+        const results = await run(mockEngineCommand(), undefined, {}, createMockEngineTargetFactory(), [
+            NOTIFICATIONS_SUITE,
+        ]);
+        expect(notPassing(results)).toEqual({
+            'notifications.attention.recipients': 'skip: capability-not-advertised',
+            'notifications.attention.switched-off': 'skip: capability-not-advertised',
+        });
     }, 300_000);
 });
 
