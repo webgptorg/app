@@ -6,10 +6,10 @@ import type { Browser, Frame, Page, Route } from '@playwright/test';
 import { devices } from '@playwright/test';
 
 import type { OneOffContainer } from './compose.ts';
-import type { DashboardSteps } from './dashboard.ts';
+import type { DashboardSteps, MockEngines } from './dashboard.ts';
 import { ENGINE_CLI, addPasskeyAuthenticator, expect, sharePasskeys, uniqueEmail } from './dashboard.ts';
 import type { OutboxEmail } from './dashboard-outputs.ts';
-import { devInstallLinkCode, terminalIdentity } from './dashboard-outputs.ts';
+import { devInstallLinkCode, parseSetupLink, terminalIdentity } from './dashboard-outputs.ts';
 import { DASHBOARD_ORIGIN, DASHBOARD_TIMING, MOCK_ENGINE_CONTROL } from './stack.ts';
 
 export const HEARTBEAT_MS = DASHBOARD_TIMING.heartbeatIntervalS * 1000;
@@ -17,6 +17,7 @@ export const HEARTBEAT_MS = DASHBOARD_TIMING.heartbeatIntervalS * 1000;
 export const ONE_HEARTBEAT_MS = HEARTBEAT_MS * 2;
 // The ack rides on the beat after that one, and the team page refetches on load.
 export const ACKED_WITHIN_MS = HEARTBEAT_MS * 3 + 10_000;
+const REACHABLE_WITHIN_MS = 90_000;
 const SETUP_LINK_WITHIN_MS = 120_000;
 
 export interface TeamEngine {
@@ -71,26 +72,25 @@ export async function withStepUp(
     const onNavigation = (frame: Frame) => {
         if (frame === page.mainFrame() && new URL(frame.url()).pathname.startsWith('/auth/')) left.push(frame.url());
     };
-    const context = page.context();
-    const optionsUrl = new URL('/auth/step-up/options', page.url()).href;
-    // A real platform authenticator is already available when a new tab starts WebAuthn. Give the popup its
-    // virtual one before delivering the real engine's challenge, even if it asks before Playwright emits "popup".
-    const preparePasskeys = async (route: Route) => {
-        await sharePasskeys(page, route.request().frame().page());
+    page.on('framenavigated', onNavigation);
+    // The popup starts the prompt as soon as it has the options. One that starts before the popup has its authenticator
+    // waits for a passkey that never comes (minutes, not an error), so the options wait for the shared passkeys.
+    const shared = Promise.withResolvers<undefined>();
+    const holdOptions = async (route: Route): Promise<void> => {
+        await shared.promise;
         await route.continue();
     };
-    await context.route(optionsUrl, preparePasskeys, { times: 1 });
-    page.on('framenavigated', onNavigation);
-    try {
-        const opened = page.waitForEvent('popup');
-        await stepUp.click();
-        const popup = await opened;
-        if (!popup.isClosed()) await popup.waitForEvent('close');
-        await done();
-    } finally {
-        page.off('framenavigated', onNavigation);
-        await context.unroute(optionsUrl, preparePasskeys);
-    }
+    await page.context().route('**/auth/step-up/options', holdOptions);
+    const opened = page.waitForEvent('popup');
+    await stepUp.click();
+    const popup = await opened;
+    const closed = popup.waitForEvent('close');
+    await sharePasskeys(page, popup);
+    shared.resolve(undefined);
+    await closed;
+    await page.context().unroute('**/auth/step-up/options', holdOptions);
+    await done();
+    page.off('framenavigated', onNavigation);
     expect(left).toEqual([]);
     return 'asked';
 }
@@ -132,24 +132,23 @@ export async function newPerson(browser: Browser): Promise<Person> {
 export async function linkTeamEngine(
     page: Page,
     dashboard: DashboardSteps,
-    startUnlinked: () => Promise<OneOffContainer>,
+    mockEngines: Pick<MockEngines, 'startUnlinked'>,
     team: string,
 ): Promise<TeamEngine> {
     const ownerEmail = uniqueEmail('teams-admin');
     await dashboard.signUp(ownerEmail);
     await dashboard.subscribe();
 
-    // The pairing tab follows the owner handoff to the engine. Keep the dashboard tab for later invitations.
-    const ownerPage = await page.context().newPage();
-    await sharePasskeys(page, ownerPage);
-    await ownerPage.goto(`${DASHBOARD_ORIGIN}/engines`);
-    await ownerPage.getByRole('button', { name: 'New project' }).click();
-    await ownerPage.getByLabel('Project name').fill(team);
-    await ownerPage.getByRole('button', { name: 'Create and link a project' }).click();
-    await expect(ownerPage).toHaveURL(/\/engines\/new\?.*link=[a-z2-7]{26}/);
-    const linkCode = devInstallLinkCode((await ownerPage.getByRole('tabpanel').locator('code').textContent()) ?? '');
+    await page.goto(`${DASHBOARD_ORIGIN}/engines`);
+    await page.getByRole('button', { name: 'New project' }).click();
+    await page.getByLabel('Project name').fill(team);
+    await page.getByRole('button', { name: 'Create and link a project' }).click();
+    await expect(page).toHaveURL(/\/engines\/new\?.*link=[a-z2-7]{26}/);
+    const linkCode = devInstallLinkCode((await page.getByRole('tabpanel').locator('code').textContent()) ?? '');
 
-    const container = await startUnlinked();
+    // Owner setup by the terminal's link: with the handoff (ADR 0023) on, this tab could leave for the setup page before
+    // it shows owner-pending. The handoff has its own journey in onboarding.spec.ts.
+    const container = await mockEngines.startUnlinked({ ownerHandoff: 'off' });
     await expect
         .poll(async () => (await container.exec([...ENGINE_CLI, 'status', '--json'])).exitCode, {
             timeout: 60_000,
@@ -158,17 +157,31 @@ export async function linkTeamEngine(
         .toBe(0);
     const connect = await container.exec([...ENGINE_CLI, 'connect', '--link', linkCode]);
     expect(connect.exitCode, connect.stderr).toBe(0);
-    const { hostname, fingerprint } = terminalIdentity(connect.stdout);
-    const origin = `https://${hostname}`;
-    await ownerPage.waitForURL((url) => url.origin === origin && url.pathname === '/setup', {
-        timeout: SETUP_LINK_WITHIN_MS,
+    const { hostname } = terminalIdentity(connect.stdout);
+
+    await expect(page.locator('section[data-link-state]')).toHaveAttribute('data-link-state', 'owner-pending', {
+        timeout: REACHABLE_WITHIN_MS,
     });
-    await expect(ownerPage.locator('section[data-state="valid"]')).toContainText(fingerprint);
+    let setup = '';
+    await expect
+        .poll(
+            async () => {
+                const result = await container.exec([...ENGINE_CLI, 'setup-link', '--json', '--no-wait']);
+                setup = result.stdout;
+                return result.exitCode;
+            },
+            { timeout: SETUP_LINK_WITHIN_MS, intervals: [1_000] },
+        )
+        .toBe(0);
+
+    const ownerPage = await page.context().newPage();
+    await addPasskeyAuthenticator(ownerPage);
+    await ownerPage.goto(parseSetupLink(setup).url);
     await ownerPage.locator('button[data-action="create"]').click();
     await expect(ownerPage.getByRole('heading', { name: 'You are the owner' })).toBeVisible();
     return {
         container,
-        origin,
+        origin: `https://${hostname}`,
         ownerEmail,
         owner: ownerPage,
         async expireStepUp() {

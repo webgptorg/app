@@ -56,7 +56,7 @@ test('saving a Wallet login finishes after the passkey in a popup, with the pass
     mockEngines,
 }) => {
     test.setTimeout(420_000);
-    const engine = await linkTeamEngine(page, dashboard, () => mockEngines.startUnlinked(), TEAM);
+    const engine = await linkTeamEngine(page, dashboard, mockEngines, TEAM);
     const { owner } = engine;
     const site = newSite();
     const password = `pw-${crypto.randomUUID()}`;
@@ -93,7 +93,7 @@ test('with popups blocked, step-up goes through its page: a removal runs again b
     mockEngines,
 }) => {
     test.setTimeout(420_000);
-    const engine = await linkTeamEngine(page, dashboard, () => mockEngines.startUnlinked(), TEAM);
+    const engine = await linkTeamEngine(page, dashboard, mockEngines, TEAM);
     const { owner } = engine;
     // A popup blocker: `window.open` gives no window, which is what the app checks for.
     await owner.addInitScript(() => {
