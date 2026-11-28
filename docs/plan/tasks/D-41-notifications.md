@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M5
 - **Depends on:** D-05, D-12, D-13, C-21
-- **Status:** in progress (feat/d-41-notifications)
+- **Status:** done (#398)
 - **Spec:** ADR [0027](../../adr/0027-notifications.md) (behaviour, storage, timing, email, threat model); ADR [0018](../../adr/0018-teams-and-member-access.md), [0022](../../adr/0022-usage-data-in-d1.md), [0026](../../adr/0026-teams-v2.md), [0028](../../adr/0028-clean-removal.md); [docs/design/ui.md](../../design/ui.md)
 
 ## Goal
@@ -133,11 +133,11 @@ Both actions are org-scoped for every role and read and write only the session u
 
 ## Acceptance criteria
 
-- [ ] Pipeline tests with fakes: merge into one open row with a count; seen platform rows are not emailed; email only after the delay; one email per person and project; hourly cap; recipients re-resolved at send time; preference `off`, `in-app`, `email`; closed rows deleted after 30 days.
-- [ ] Status object tests: online, offline and back-online notify once each; back online emails only people the offline email reached.
-- [ ] Engine mapping tests: `to` without approved access dropped, `to` of someone who left dropped, entries without `to` to managers only, a vanished kind closes, extra fields in `attention` refuse the heartbeat.
-- [ ] Rendered emails and in-app rows contain only dashboard-owned fields (test with sentinel strings).
-- [ ] Unsubscribe: forged, tampered and other-purpose tokens refused; a valid one turns email off for exactly its kinds; GET changes nothing; headers present.
-- [ ] Route-table test passes with the new routes; policy actions deny by default.
-- [ ] SPA tests: bell, dot, dropdown, mark seen, preferences, both locales, phone width.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Pipeline tests with fakes: merge into one open row with a count; seen platform rows are not emailed; email only after the delay; one email per person and project; hourly cap; recipients re-resolved at send time; preference `off`, `in-app`, `email`; closed rows deleted after 30 days.
+- [x] Status object tests: online, offline and back-online notify once each; back online emails only people the offline email reached.
+- [x] Engine mapping tests: `to` without approved access dropped, `to` of someone who left dropped, entries without `to` to managers only, a vanished kind closes, extra fields in `attention` refuse the heartbeat.
+- [x] Rendered emails and in-app rows contain only dashboard-owned fields (test with sentinel strings).
+- [x] Unsubscribe: forged, tampered and other-purpose tokens refused; a valid one turns email off for exactly its kinds; GET changes nothing; headers present.
+- [x] Route-table test passes with the new routes; policy actions deny by default.
+- [x] SPA tests: bell, dot, dropdown, mark seen, preferences, both locales (#399). Phone width is the panel's sheet classes and U-28's rules; jsdom has no layout, so no test measures it.
+- [x] **Status** line above set to `done (#398)`.
