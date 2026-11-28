@@ -19,6 +19,7 @@ import type { PasskeyView } from '../../../shared/api/routes';
 import { dataOrThrow, passkeysQuery, problemCode, queryKeys } from '../../api/queries';
 import { useApiClient } from '../../api/api-client-context';
 import { useBrowser } from '../../core/browser';
+import { usePasskeyPrompt } from '../passkeys/use-passkey-prompt';
 import { useAppMutation } from '../../core/mutations';
 import { addPasskey, CeremonyError, valueOrThrow } from '../passkeys/ceremonies';
 import { ceremonyFailureMessage } from '../passkeys/ceremony-messages';
@@ -32,13 +33,14 @@ const CEREMONY_CODES: ReadonlySet<string> = new Set(['challenge-invalid', 'webau
 export function PasskeysCard() {
     const api = useApiClient();
     const browser = useBrowser();
+    const { waitForPrompt, reopen } = usePasskeyPrompt();
     const formatters = useFormatters();
     const passkeys = useQuery(passkeysQuery(api));
     const [removing, setRemoving] = useState<PasskeyView | null>(null);
     const [now] = useState(() => new Date(browser.now()));
 
     const add = useAppMutation({
-        mutationFn: async () => valueOrThrow(await addPasskey({ api, passkeys: browser.passkeys })),
+        mutationFn: async () => valueOrThrow(await addPasskey({ api, passkeys: browser.passkeys, waitForPrompt })),
         invalidates: [queryKeys.passkeys],
         successMessage: () => m.passkey_added(),
         errorMessage: (error) => {
@@ -140,13 +142,16 @@ export function PasskeysCard() {
                 <Button
                     variant="primary"
                     size="sm"
-                    loading={add.isPending}
-                    onClick={() => {
-                        add.mutate();
-                    }}
+                    loading={add.isPending && reopen === null}
+                    onClick={
+                        reopen ??
+                        (() => {
+                            add.mutate();
+                        })
+                    }
                 >
                     <Plus aria-hidden className="size-4" />
-                    {m.passkey_add()}
+                    {reopen === null ? m.passkey_add() : m.passkey_reopen_prompt()}
                 </Button>
             }
         >

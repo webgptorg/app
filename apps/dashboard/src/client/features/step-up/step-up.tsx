@@ -8,6 +8,8 @@ import type { SessionView } from '../../../shared/api/routes';
 import { hasProblem, queryKeys } from '../../api/queries';
 import { useApiClient } from '../../api/api-client-context';
 import { useBrowser } from '../../core/browser';
+import { usePasskeyPrompt } from '../passkeys/use-passkey-prompt';
+import type { WaitForPasskey } from '../passkeys/passkey-authenticator';
 import { stepUpWithPasskey } from '../passkeys/ceremonies';
 import type { CeremonyFailure } from '../passkeys/ceremonies';
 import { ceremonyFailureMessage } from '../passkeys/ceremony-messages';
@@ -28,7 +30,7 @@ export class StepUpFailedError extends Error {
  * already, the passkey check runs straight away, so two modals never stack; a failed check throws
  * {@link StepUpFailedError}.
  */
-export type StepUpMode = 'dialog' | 'in-place';
+export type StepUpMode = 'dialog' | { readonly inPlace: WaitForPasskey };
 
 interface StepUpContextValue {
     /**
@@ -39,7 +41,7 @@ interface StepUpContextValue {
     /** Whether a sensitive action would need a fresh passkey check now. */
     readonly needsStepUp: () => boolean;
     /** The passkey check on its own, without a dialog; throws {@link StepUpFailedError} when it fails. */
-    readonly stepUpInPlace: () => Promise<void>;
+    readonly stepUpInPlace: (waitForPrompt: WaitForPasskey) => Promise<void>;
 }
 
 const StepUpContext = createContext<StepUpContextValue | null>(null);
@@ -54,6 +56,7 @@ export function StepUpProvider(props: { readonly children: ReactNode }) {
     const { passkeys, now } = useBrowser();
     const queryClient = useQueryClient();
     const [state, setState] = useState<DialogState>({ kind: 'closed' });
+    const { waitForPrompt, reopen } = usePasskeyPrompt(state.kind === 'open');
     const settle = useRef<((passed: boolean) => void) | null>(null);
 
     const finish = useCallback((passed: boolean) => {
@@ -72,16 +75,19 @@ export function StepUpProvider(props: { readonly children: ReactNode }) {
         [],
     );
 
-    const stepUpInPlace = useCallback(async () => {
-        const result = await stepUpWithPasskey({ api, passkeys });
-        if (result.kind === 'failed') {
-            throw new StepUpFailedError(result.failure);
-        }
-        // So the next sensitive action within the window goes straight through, without asking again.
-        queryClient.setQueryData<SessionView | null>(queryKeys.session, (session) =>
-            session === undefined || session === null ? session : { ...session, steppedUpUntil: result.value },
-        );
-    }, [api, passkeys, queryClient]);
+    const stepUpInPlace = useCallback(
+        async (waitForPrompt: WaitForPasskey) => {
+            const result = await stepUpWithPasskey({ api, passkeys, waitForPrompt });
+            if (result.kind === 'failed') {
+                throw new StepUpFailedError(result.failure);
+            }
+            // So the next sensitive action within the window goes straight through, without asking again.
+            queryClient.setQueryData<SessionView | null>(queryKeys.session, (session) =>
+                session === undefined || session === null ? session : { ...session, steppedUpUntil: result.value },
+            );
+        },
+        [api, passkeys, queryClient],
+    );
 
     const value = useMemo<StepUpContextValue>(
         () => ({
@@ -92,8 +98,8 @@ export function StepUpProvider(props: { readonly children: ReactNode }) {
                     if (!hasProblem(error, 'step-up-required')) {
                         throw error;
                     }
-                    if (mode === 'in-place') {
-                        await stepUpInPlace();
+                    if (mode !== 'dialog') {
+                        await stepUpInPlace(mode.inPlace);
                     } else if (!(await confirm())) {
                         throw error;
                     }
@@ -110,8 +116,10 @@ export function StepUpProvider(props: { readonly children: ReactNode }) {
     );
 
     const verify = async () => {
+        const request = settle.current;
         setState({ kind: 'open', running: true, failure: null });
-        const result = await stepUpWithPasskey({ api, passkeys });
+        const result = await stepUpWithPasskey({ api, passkeys, waitForPrompt });
+        if (settle.current !== request) return;
         if (result.kind === 'ok') {
             finish(true);
         } else {
@@ -139,8 +147,16 @@ export function StepUpProvider(props: { readonly children: ReactNode }) {
                         >
                             {m.step_up_cancel()}
                         </Button>
-                        <Button variant="primary" loading={open && state.running} onClick={() => void verify()}>
-                            {open && state.failure !== null ? m.passkey_try_again() : m.step_up_continue()}
+                        <Button
+                            variant="primary"
+                            loading={open && state.running && reopen === null}
+                            onClick={reopen ?? (() => void verify())}
+                        >
+                            {reopen !== null
+                                ? m.passkey_reopen_prompt()
+                                : open && state.failure !== null
+                                  ? m.passkey_try_again()
+                                  : m.step_up_continue()}
                         </Button>
                     </>
                 }

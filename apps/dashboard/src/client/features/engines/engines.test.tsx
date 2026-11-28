@@ -886,6 +886,29 @@ describe('revoke', () => {
         expect(app.api.callsTo(apiRoutes.revokeEngine)).toHaveLength(1);
     });
 
+    it('reopens only the passkey check and revokes the project once', async () => {
+        const app = revokable();
+        app.passkeys.authenticate.mockReturnValueOnce(new Promise(() => undefined));
+        const dialog = await confirmIn(app, 'Revoke with passkey');
+        expect(app.api.callsTo(apiRoutes.revokeEngine)).toHaveLength(0);
+        await app.user.click(within(dialog).getByRole('button', { name: 'Reopen passkey prompt' }));
+        expect(await screen.findByText('Project revoked')).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.stepUpOptions)).toHaveLength(2);
+        expect(app.api.callsTo(apiRoutes.stepUpVerify)).toHaveLength(1);
+        expect(app.api.callsTo(apiRoutes.revokeEngine)).toHaveLength(1);
+    });
+
+    it('can leave a pending passkey check without revoking the project', async () => {
+        const app = revokable();
+        app.passkeys.authenticate.mockReturnValueOnce(new Promise(() => undefined));
+        const dialog = await confirmIn(app, 'Revoke with passkey');
+        expect(within(dialog).getByRole('button', { name: 'Reopen passkey prompt' })).toBeTruthy();
+        await app.user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(app.api.callsTo(apiRoutes.stepUpVerify)).toHaveLength(0);
+        expect(app.api.callsTo(apiRoutes.revokeEngine)).toHaveLength(0);
+    });
+
     it('asks for no passkey within the step-up window', async () => {
         const app = revokable({ steppedUpUntil: NOW + 120_000 });
         await confirmIn(app, 'Revoke permanently');

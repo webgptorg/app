@@ -5,6 +5,7 @@ import { m } from '../../../paraglide/messages';
 import type { SessionView } from '../../../shared/api/routes';
 import { useApiClient } from '../../api/api-client-context';
 import { useBrowser } from '../../core/browser';
+import { usePasskeyPrompt } from '../passkeys/use-passkey-prompt';
 import { Link } from '../../core/link';
 import { CooldownBanner } from '../account/cooldown-banner';
 import { registerWithEmailToken } from '../passkeys/ceremonies';
@@ -68,9 +69,10 @@ function RecoverPasskeyStep(props: {
     const { passkeys } = useBrowser();
     const completeSignIn = useCompleteSignIn();
     const { onRecovered } = props;
+    const { waitForPrompt, reopen } = usePasskeyPrompt();
     const ceremony = useCallback(
-        () => registerWithEmailToken({ api, passkeys }, 'recovery', props.token),
-        [api, passkeys, props.token],
+        () => registerWithEmailToken({ api, passkeys, waitForPrompt }, 'recovery', props.token),
+        [api, passkeys, waitForPrompt, props.token],
     );
     const onRegistered = useCallback(
         async (session: SessionView) => {
@@ -99,6 +101,7 @@ function RecoverPasskeyStep(props: {
             kind="register"
             state={state}
             onStart={start}
+            reopen={reopen}
         />
     );
 }

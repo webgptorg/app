@@ -37,7 +37,7 @@ const EXPECTED: Readonly<Record<GatewayPage, { readonly page: string; readonly s
         ],
     },
 };
-const ACTIONS = new Set(['create', 'confirm', 'retry', 'close']);
+const ACTIONS = new Set(['create', 'confirm', 'reopen', 'retry', 'close']);
 
 const parse = (page: GatewayPage) => new DOMParser().parseFromString(readPage(page), 'text/html');
 const assetName = (url: string | null) =>

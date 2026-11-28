@@ -10,6 +10,7 @@ import type { SessionView, TeamView } from '../../../shared/api/routes';
 import { useApiClient } from '../../api/api-client-context';
 import { dataOrThrow, problemCode, queryKeys, sessionQuery } from '../../api/queries';
 import { useBrowser } from '../../core/browser';
+import { usePasskeyPrompt } from '../passkeys/use-passkey-prompt';
 import { ButtonLink, Link } from '../../core/link';
 import { useAppMutation } from '../../core/mutations';
 import type { FragmentToken } from '../auth/fragment-token';
@@ -159,9 +160,10 @@ function JoinCeremony(props: {
     const api = useApiClient();
     const { passkeys } = useBrowser();
     const mode = props.preview.hasAccount ? 'sign-in' : 'new-account';
+    const { waitForPrompt, reopen } = usePasskeyPrompt();
     const ceremony = useCallback(
-        () => joinFromInvite({ api, passkeys }, mode, props.token),
-        [api, passkeys, mode, props.token],
+        () => joinFromInvite({ api, passkeys, waitForPrompt }, mode, props.token),
+        [api, passkeys, waitForPrompt, mode, props.token],
     );
     const { state, start } = useCeremony(ceremony, props.onJoined);
     const code = state.kind === 'failed' && state.failure.kind === 'api' ? state.failure.code : null;
@@ -210,13 +212,20 @@ function JoinCeremony(props: {
                         : ceremonyFailureMessage(state.failure, mode === 'new-account' ? 'register' : 'authenticate')}
                 </Banner>
             ) : null}
-            <Button variant="primary" size="lg" loading={state.kind === 'running'} onClick={start}>
+            <Button
+                variant="primary"
+                size="lg"
+                loading={state.kind === 'running' && reopen === null}
+                onClick={reopen ?? start}
+            >
                 <KeyRound aria-hidden className="size-4" />
-                {state.kind === 'failed'
-                    ? m.passkey_try_again()
-                    : mode === 'new-account'
-                      ? joinLabel(props.preview)
-                      : m.invite_join_sign_in()}
+                {reopen !== null
+                    ? m.passkey_reopen_prompt()
+                    : state.kind === 'failed'
+                      ? m.passkey_try_again()
+                      : mode === 'new-account'
+                        ? joinLabel(props.preview)
+                        : m.invite_join_sign_in()}
             </Button>
             {mode === 'new-account' ? (
                 <p className="text-sm text-text-muted">{m.invite_join_passkey_hint()}</p>

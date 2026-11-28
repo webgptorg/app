@@ -129,7 +129,51 @@ describe('Continue, "Use a passkey"', () => {
         app.api.on(apiRoutes.getSession, ok(session()));
         await openPasskeyPicker(app);
         expect(await screen.findByRole('heading', { name: 'Projects' })).toBeTruthy();
-        expect(app.passkeys.authenticate).toHaveBeenCalledWith(AUTHENTICATION_OPTIONS);
+        expect(app.passkeys.authenticate).toHaveBeenCalledWith(AUTHENTICATION_OPTIONS, expect.any(AbortSignal));
+        expect(app.api.callsTo(apiRoutes.signinVerify)).toEqual([{ body: { response: AUTHENTICATION_RESPONSE } }]);
+        expect(app.api.callsTo(apiRoutes.signupStart)).toEqual([]);
+    });
+
+    it('ignores an autofill answer that arrives after the explicit picker has opened', async () => {
+        const autofill = Promise.withResolvers<{ kind: 'ok'; response: typeof AUTHENTICATION_RESPONSE }>();
+        const app = renderApp({
+            path: '/continue',
+            script: continueScript,
+            passkeys: (passkeys) => {
+                passkeys.supportsAutofill.mockResolvedValue(true);
+                passkeys.autofill.mockReturnValueOnce(autofill.promise);
+                passkeys.authenticate.mockReturnValueOnce(new Promise(() => undefined));
+            },
+        });
+        await waitFor(() => {
+            expect(app.passkeys.autofill).toHaveBeenCalledOnce();
+        });
+        await openPasskeyPicker(app);
+        expect(await screen.findByRole('button', { name: 'Reopen passkey prompt' })).toBeTruthy();
+        autofill.resolve({ kind: 'ok', response: AUTHENTICATION_RESPONSE });
+        await autofill.promise;
+        await new Promise<void>((resolve) => {
+            queueMicrotask(resolve);
+        });
+        expect(app.api.callsTo(apiRoutes.signinVerify)).toHaveLength(0);
+    });
+
+    it('reopens a lost picker with fresh options and verifies only the current answer', async () => {
+        const old = Promise.withResolvers<{ kind: 'ok'; response: typeof AUTHENTICATION_RESPONSE }>();
+        const app = renderApp({ path: '/continue', script: continueScript });
+        app.passkeys.authenticate.mockReturnValueOnce(old.promise);
+        await openPasskeyPicker(app);
+        const fresh = { ...AUTHENTICATION_OPTIONS, challenge: 'ZnJlc2g' };
+        app.api.on(apiRoutes.signinOptions, ok({ options: fresh }));
+        app.api.on(apiRoutes.getSession, ok(session()));
+        await app.user.click(await screen.findByRole('button', { name: 'Reopen passkey prompt' }));
+        expect(await screen.findByRole('heading', { name: 'Projects' })).toBeTruthy();
+        old.resolve({ kind: 'ok', response: AUTHENTICATION_RESPONSE });
+        await old.promise;
+        expect(app.passkeys.authenticate.mock.calls.map(([options]) => options)).toEqual([
+            AUTHENTICATION_OPTIONS,
+            fresh,
+        ]);
         expect(app.api.callsTo(apiRoutes.signinVerify)).toEqual([{ body: { response: AUTHENTICATION_RESPONSE } }]);
         expect(app.api.callsTo(apiRoutes.signupStart)).toEqual([]);
     });
@@ -196,7 +240,7 @@ describe('Continue, passkey autofill', () => {
         });
         app.api.on(apiRoutes.getSession, ok(session()));
         expect(await screen.findByRole('heading', { name: 'Projects' })).toBeTruthy();
-        expect(app.passkeys.autofill).toHaveBeenCalledWith(AUTHENTICATION_OPTIONS);
+        expect(app.passkeys.autofill).toHaveBeenCalledWith(AUTHENTICATION_OPTIONS, expect.any(AbortSignal));
         expect(app.passkeys.authenticate).not.toHaveBeenCalled();
     });
 

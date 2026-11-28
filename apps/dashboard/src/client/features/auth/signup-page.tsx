@@ -7,6 +7,7 @@ import { m } from '../../../paraglide/messages';
 import type { SessionView } from '../../../shared/api/routes';
 import { useApiClient } from '../../api/api-client-context';
 import { useBrowser } from '../../core/browser';
+import { usePasskeyPrompt } from '../passkeys/use-passkey-prompt';
 import { registerWithEmailToken } from '../passkeys/ceremonies';
 import { useCeremony } from '../passkeys/use-ceremony';
 import { afterSignUp } from '../licensing/website-link-marker';
@@ -37,9 +38,10 @@ function SignUpPasskeyStep(props: { readonly token: string; readonly onRestart: 
     const api = useApiClient();
     const { passkeys, storage, now } = useBrowser();
     const completeSignIn = useCompleteSignIn();
+    const { waitForPrompt, reopen } = usePasskeyPrompt();
     const ceremony = useCallback(
-        () => registerWithEmailToken({ api, passkeys }, 'signup', props.token),
-        [api, passkeys, props.token],
+        () => registerWithEmailToken({ api, passkeys, waitForPrompt }, 'signup', props.token),
+        [api, passkeys, waitForPrompt, props.token],
     );
     // Back to the ptbk.io link when this sign-up started there, even from the emailed link in a new tab.
     const onRegistered = useCallback(
@@ -63,6 +65,7 @@ function SignUpPasskeyStep(props: { readonly token: string; readonly onRestart: 
             kind="register"
             state={state}
             onStart={start}
+            reopen={reopen}
         />
     );
 }

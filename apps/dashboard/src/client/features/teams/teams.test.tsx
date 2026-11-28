@@ -555,7 +555,7 @@ describe('invitation page', () => {
             screen.getByText('Next, confirm a passkey for the project itself: it has its own secure address.'),
         ).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.inviteJoinOptions)).toEqual([{ body: { token: TOKEN } }]);
-        expect(app.passkeys.register).toHaveBeenCalledWith(REGISTRATION_OPTIONS);
+        expect(app.passkeys.register).toHaveBeenCalledWith(REGISTRATION_OPTIONS, expect.any(AbortSignal));
         // Someone new has no passkey to pick: the one button only ever registers.
         expect(app.passkeys.authenticate).not.toHaveBeenCalled();
         expect(app.api.callsTo(apiRoutes.signinOptions)).toEqual([]);

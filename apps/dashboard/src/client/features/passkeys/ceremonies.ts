@@ -4,7 +4,7 @@ import type { PasskeyView, SessionView } from '../../../shared/api/routes';
 import type { ApiClient, ApiOutcome } from '../../api/api-client';
 import { ApiError } from '../../api/queries';
 import type { ApiFailure } from '../../api/queries';
-import type { PasskeyAuthenticator, PasskeyFailure } from './passkey-authenticator';
+import type { PasskeyAuthenticator, PasskeyFailure, PasskeyOutcome, WaitForPasskey } from './passkey-authenticator';
 
 /** Why a ceremony failed: the browser's half, or the API's answer (`null` when there was no usable answer). */
 export type CeremonyFailure =
@@ -28,6 +28,24 @@ function passkeyFailure(reason: PasskeyFailure): CeremonyResult<never> {
 export interface CeremonyDeps {
     readonly api: ApiClient;
     readonly passkeys: PasskeyAuthenticator;
+    readonly waitForPrompt?: WaitForPasskey;
+}
+
+/** Reopening repeats only options and the credential request. The caller verifies one answer. */
+async function requestCredential<Options, Response>(
+    getOptions: () => Promise<{ readonly kind: 'ok'; readonly data: { readonly options: Options } } | ApiFailure>,
+    open: (options: Options, signal?: AbortSignal) => Promise<PasskeyOutcome<Response>>,
+    waitForPrompt?: WaitForPasskey,
+): Promise<CeremonyResult<Response>> {
+    for (;;) {
+        const result = await getOptions();
+        if (result.kind !== 'ok') return apiFailure(result);
+        const { options } = result.data;
+        const answer =
+            waitForPrompt === undefined ? await open(options) : await waitForPrompt((signal) => open(options, signal));
+        if (answer === 'reopen') continue;
+        return answer.kind === 'ok' ? { kind: 'ok', value: answer.response } : passkeyFailure(answer.reason);
+    }
 }
 
 /**
@@ -43,15 +61,13 @@ export async function registerWithEmailToken(
         purpose === 'signup'
             ? { options: apiRoutes.signupOptions, verify: apiRoutes.signupVerify }
             : { options: apiRoutes.recoveryOptions, verify: apiRoutes.recoveryVerify };
-    const options = await deps.api.call(routes.options, { body: { token } });
-    if (options.kind !== 'ok') {
-        return apiFailure(options);
-    }
-    const created = await deps.passkeys.register(options.data.options);
-    if (created.kind === 'failed') {
-        return passkeyFailure(created.reason);
-    }
-    const verified = await deps.api.call(routes.verify, { body: { token, response: created.response } });
+    const created = await requestCredential(
+        () => deps.api.call(routes.options, { body: { token } }),
+        deps.passkeys.register.bind(deps.passkeys),
+        deps.waitForPrompt,
+    );
+    if (created.kind === 'failed') return created;
+    const verified = await deps.api.call(routes.verify, { body: { token, response: created.value } });
     return verified.kind === 'ok' ? { kind: 'ok', value: verified.data } : apiFailure(verified);
 }
 
@@ -61,20 +77,22 @@ export async function registerWithEmailToken(
  */
 export async function signInWithPasskey(
     deps: CeremonyDeps,
-    mode: 'prompt' | 'autofill' = 'prompt',
+    autofill?: AbortSignal,
 ): Promise<CeremonyResult<SessionView>> {
-    const options = await deps.api.call(apiRoutes.signinOptions, {});
-    if (options.kind !== 'ok') {
-        return apiFailure(options);
-    }
-    const asserted =
-        mode === 'prompt'
-            ? await deps.passkeys.authenticate(options.data.options)
-            : await deps.passkeys.autofill(options.data.options);
-    if (asserted.kind === 'failed') {
-        return passkeyFailure(asserted.reason);
-    }
-    const verified = await deps.api.call(apiRoutes.signinVerify, { body: { response: asserted.response } });
+    const asserted = await requestCredential(
+        () => deps.api.call(apiRoutes.signinOptions, {}, autofill),
+        autofill === undefined
+            ? deps.passkeys.authenticate.bind(deps.passkeys)
+            : async (options) =>
+                  autofill.aborted
+                      ? { kind: 'failed', reason: 'cancelled' }
+                      : deps.passkeys.autofill(options, autofill),
+        autofill === undefined ? deps.waitForPrompt : undefined,
+    );
+    // An extension may resolve a cancelled autofill request after the person has opened the explicit picker.
+    if (autofill?.aborted) return passkeyFailure('cancelled');
+    if (asserted.kind === 'failed') return asserted;
+    const verified = await deps.api.call(apiRoutes.signinVerify, { body: { response: asserted.value } });
     return verified.kind === 'ok' ? { kind: 'ok', value: verified.data } : apiFailure(verified);
 }
 
@@ -95,58 +113,50 @@ export async function joinFromInvite(
 ): Promise<CeremonyResult<InviteJoined>> {
     const body = token === null ? {} : { token };
     if (mode === 'new-account') {
-        const options = await deps.api.call(apiRoutes.inviteJoinOptions, { body });
-        if (options.kind !== 'ok') {
-            return apiFailure(options);
-        }
-        const created = await deps.passkeys.register(options.data.options);
-        if (created.kind === 'failed') {
-            return passkeyFailure(created.reason);
-        }
+        const created = await requestCredential(
+            () => deps.api.call(apiRoutes.inviteJoinOptions, { body }),
+            deps.passkeys.register.bind(deps.passkeys),
+            deps.waitForPrompt,
+        );
+        if (created.kind === 'failed') return created;
         const verified = await deps.api.call(apiRoutes.inviteJoinVerify, {
-            body: { ...body, response: created.response },
+            body: { ...body, response: created.value },
         });
         return verified.kind === 'ok' ? { kind: 'ok', value: verified.data } : apiFailure(verified);
     }
-    const options = await deps.api.call(apiRoutes.signinOptions, {});
-    if (options.kind !== 'ok') {
-        return apiFailure(options);
-    }
-    const asserted = await deps.passkeys.authenticate(options.data.options);
-    if (asserted.kind === 'failed') {
-        return passkeyFailure(asserted.reason);
-    }
+    const asserted = await requestCredential(
+        () => deps.api.call(apiRoutes.signinOptions, {}),
+        deps.passkeys.authenticate.bind(deps.passkeys),
+        deps.waitForPrompt,
+    );
+    if (asserted.kind === 'failed') return asserted;
     const verified = await deps.api.call(apiRoutes.inviteSigninVerify, {
-        body: { ...body, response: asserted.response },
+        body: { ...body, response: asserted.value },
     });
     return verified.kind === 'ok' ? { kind: 'ok', value: verified.data } : apiFailure(verified);
 }
 
 /** Adds a passkey to the signed-in account; the authenticator refuses one it already holds for the account. */
 export async function addPasskey(deps: CeremonyDeps): Promise<CeremonyResult<PasskeyView>> {
-    const options = await deps.api.call(apiRoutes.passkeyOptions, {});
-    if (options.kind !== 'ok') {
-        return apiFailure(options);
-    }
-    const created = await deps.passkeys.register(options.data.options);
-    if (created.kind === 'failed') {
-        return passkeyFailure(created.reason);
-    }
-    const verified = await deps.api.call(apiRoutes.passkeyVerify, { body: { response: created.response } });
+    const created = await requestCredential(
+        () => deps.api.call(apiRoutes.passkeyOptions, {}),
+        deps.passkeys.register.bind(deps.passkeys),
+        deps.waitForPrompt,
+    );
+    if (created.kind === 'failed') return created;
+    const verified = await deps.api.call(apiRoutes.passkeyVerify, { body: { response: created.value } });
     return verified.kind === 'ok' ? { kind: 'ok', value: verified.data.passkey } : apiFailure(verified);
 }
 
 /** A fresh passkey assertion for actions the server guards with `step-up-required`. */
 export async function stepUpWithPasskey(deps: CeremonyDeps): Promise<CeremonyResult<number>> {
-    const options = await deps.api.call(apiRoutes.stepUpOptions, {});
-    if (options.kind !== 'ok') {
-        return apiFailure(options);
-    }
-    const asserted = await deps.passkeys.authenticate(options.data.options);
-    if (asserted.kind === 'failed') {
-        return passkeyFailure(asserted.reason);
-    }
-    const verified = await deps.api.call(apiRoutes.stepUpVerify, { body: { response: asserted.response } });
+    const asserted = await requestCredential(
+        () => deps.api.call(apiRoutes.stepUpOptions, {}),
+        deps.passkeys.authenticate.bind(deps.passkeys),
+        deps.waitForPrompt,
+    );
+    if (asserted.kind === 'failed') return asserted;
+    const verified = await deps.api.call(apiRoutes.stepUpVerify, { body: { response: asserted.value } });
     return verified.kind === 'ok' ? { kind: 'ok', value: verified.data.steppedUpUntil } : apiFailure(verified);
 }
 

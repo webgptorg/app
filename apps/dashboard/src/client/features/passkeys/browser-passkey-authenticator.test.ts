@@ -10,6 +10,7 @@ import { createBrowserPasskeyAuthenticator } from './browser-passkey-authenticat
 
 const browser = vi.hoisted(() => ({
     browserSupportsWebAuthn: vi.fn(() => true),
+    WebAuthnAbortService: { cancelCeremony: vi.fn() },
     startRegistration: vi.fn<(options: unknown) => Promise<unknown>>(),
     startAuthentication: vi.fn<(options: unknown) => Promise<unknown>>(),
 }));
@@ -42,6 +43,21 @@ describe('the @simplewebauthn/browser authenticator', () => {
             kind: 'ok',
             response: { ...REGISTRATION_RESPONSE, clientExtensionResults: { credProps: { rk: true } } },
         });
+    });
+
+    it('cancels the native prompt when its owner aborts', async () => {
+        const controller = new AbortController();
+        const pending = Promise.withResolvers<unknown>();
+        browser.startAuthentication.mockReturnValueOnce(pending.promise);
+        const passkeys = createBrowserPasskeyAuthenticator();
+        const result = passkeys.authenticate(AUTHENTICATION_OPTIONS, controller.signal);
+        await vi.waitFor(() => {
+            expect(browser.startAuthentication).toHaveBeenCalledOnce();
+        });
+        controller.abort();
+        expect(browser.WebAuthnAbortService.cancelCeremony).toHaveBeenCalledOnce();
+        pending.reject(new DOMException('closed', 'AbortError'));
+        expect(await result).toEqual({ kind: 'failed', reason: 'cancelled' });
     });
 
     it('returns a valid assertion', async () => {

@@ -11,12 +11,18 @@ import type { PasskeyAuthenticator, PasskeyFailure, PasskeyOutcome } from '../fe
 import { AUTHENTICATION_RESPONSE, REGISTRATION_RESPONSE } from './fixtures';
 
 export interface FakePasskeys extends PasskeyAuthenticator {
-    readonly register: Mock<(options: RegistrationOptions) => Promise<PasskeyOutcome<RegistrationResponse>>>;
-    readonly authenticate: Mock<(options: AuthenticationOptions) => Promise<PasskeyOutcome<AuthenticationResponse>>>;
+    readonly register: Mock<
+        (options: RegistrationOptions, signal?: AbortSignal) => Promise<PasskeyOutcome<RegistrationResponse>>
+    >;
+    readonly authenticate: Mock<
+        (options: AuthenticationOptions, signal?: AbortSignal) => Promise<PasskeyOutcome<AuthenticationResponse>>
+    >;
     /** Off by default, so screens behave as in a browser without passkey autofill. */
     readonly supportsAutofill: Mock<() => Promise<boolean>>;
     /** By default the person never picks a passkey from the autofill: the promise stays pending. */
-    readonly autofill: Mock<(options: AuthenticationOptions) => Promise<PasskeyOutcome<AuthenticationResponse>>>;
+    readonly autofill: Mock<
+        (options: AuthenticationOptions, signal?: AbortSignal) => Promise<PasskeyOutcome<AuthenticationResponse>>
+    >;
     /** The next ceremonies fail with these reasons, in order; afterwards they succeed again. */
     failNext(...reasons: PasskeyFailure[]): void;
 }
