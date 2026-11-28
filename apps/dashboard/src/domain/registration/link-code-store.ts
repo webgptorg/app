@@ -52,6 +52,15 @@ export interface PendingLinkCode {
 /** `conflict`: the code or the engine changed since it was read; nothing was written. */
 export type Redemption = 'redeemed' | 'conflict';
 
+export interface VpsReservation {
+    readonly orgId: OrgId;
+    readonly userId: UserId;
+    readonly id: LinkCodeId;
+    readonly provider: 'digitalocean';
+    readonly codeHash: string;
+    readonly now: number;
+}
+
 /**
  * Link codes in D1, looked up by hash for redemption and by ID, within the organization, for their state. A code is
  * redeemable while it is unused and `now < expiresAt`. Redemption marks the code used and writes the engine in one
@@ -60,6 +69,11 @@ export type Redemption = 'redeemed' | 'conflict';
  * so it never hands the commitment out, and `clearExpiredCommitments` nulls its column too.
  */
 export interface LinkCodeStore {
+    /** Rotates the code and clears the pairing tab's setup commitment atomically. The VPS verifies its cloud owner. */
+    reserveVps(input: VpsReservation): Promise<boolean>;
+    /** Null releases a definitely rejected create. Ambiguous writes keep their reservation. */
+    finishVps(input: VpsReservation, resourceId: string | null): Promise<void>;
+    vpsStatus(orgId: OrgId, id: LinkCodeId): Promise<{ provider: 'digitalocean'; resourceId: string | null } | null>;
     /** Checks both organization quotas and inserts the code in one transaction. */
     insert(record: LinkCodeRecord): Promise<LinkCodeInsertOutcome>;
     /** The organization's codes still redeemable at `now`, newest first. */

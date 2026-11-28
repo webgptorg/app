@@ -6,6 +6,9 @@ import { dataOrThrow } from '../../api/queries';
 
 // Here rather than in api/queries.ts, which the entry loads: only /engines/new asks for these.
 
+/** Poll the current pairing while the page is visible. */
+export const LINK_POLL_MS = 3000;
+
 /** Whether `/engines/new` may offer a link code, with the code lifetime and the install guide (D-10). */
 export function linkEligibilityQuery(client: ApiClient) {
     return queryOptions({

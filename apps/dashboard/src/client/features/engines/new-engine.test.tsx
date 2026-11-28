@@ -22,7 +22,8 @@ import { createMemorySessionStorage } from '../../testing/memory-storage';
 import { renderApp } from '../../testing/render-app';
 import type { ScriptedApi } from '../../testing/scripted-api';
 import { ok, problem } from '../../testing/scripted-api';
-import { LINK_POLL_MS, NO_HEARTBEAT_HINT_MS, WAITING_HINT_MS } from './link-progress';
+import { NO_HEARTBEAT_HINT_MS, WAITING_HINT_MS } from './link-progress';
+import { LINK_POLL_MS } from './link-queries';
 
 const OWNER = session({ permissions: ['org.read', 'billing.read', 'billing.manage', 'engine.link', 'engine.read'] });
 const LINK_ID = 'lllllllllllllllllllllllllq';

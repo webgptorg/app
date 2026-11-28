@@ -50,6 +50,8 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'label',
         'team_id',
     ],
+    // OAuth client IDs and callbacks for VPS launch.
+    vps_oauth_clients: ['callback', 'client_id'],
     // One-time link codes: the code only as SHA-256, who issued it for which organization, a 30-minute lifetime, the
     // engine that redeemed it and the team that engine joins, and until it is spent the SHA-256 of the pairing tab's
     // owner setup secret (ADR 0023), never the secret.
@@ -64,6 +66,8 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'id',
         'team_id',
         'owner_setup_commitment',
+        'vps_provider',
+        'vps_resource_id',
     ],
     // Teams (ADR 0018): a name the organization typed, and who is in it. No engine content.
     teams: ['id', 'org_id', 'name', 'created_at', 'deleted_at'],

@@ -1,3 +1,7 @@
+import { digitalOceanClient } from '../adapters/registration/digitalocean-client';
+import { createD1VpsClientStore } from '../adapters/db/d1-vps-client-store';
+import { VPS_CALLBACK } from '../shared/vps';
+import { digitalOceanProvider } from '../adapters/registration/digitalocean';
 import type { Hono } from 'hono';
 
 import { createFakeBillingProvider } from '../adapters/billing/fake-billing-provider';
@@ -233,6 +237,18 @@ export function createDashboard(
         store: createD1AuthStore(db),
         ...billing,
         linkCodes: createD1LinkCodeStore(db),
+        vpsProviders: {
+            digitalocean: digitalOceanProvider(
+                fetch,
+                config.dashboardOrigin,
+                digitalOceanClient(
+                    fetch,
+                    createD1VpsClientStore(db),
+                    config.dashboardOrigin + VPS_CALLBACK,
+                    config.digitalOcean?.clientId,
+                ),
+            ),
+        },
         installReleases:
             config.environment === 'dev'
                 ? createConfiguredEngineInstallReleaseSource()

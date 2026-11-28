@@ -31,10 +31,13 @@ import type { UsageRecorder } from '../domain/usage/usage-recorder';
 import type { WebsiteLicenseApi } from '../domain/licensing/license-contract';
 import type { WebsiteIdentityExchange } from '../domain/licensing/website-access';
 import type { WebsiteLicensingStore } from '../domain/licensing/website-licensing-store';
+import type { CloudOffer } from '../shared/vps';
+import type { VpsProvider } from '../domain/registration/vps-provider';
 import type { DashboardConfig } from './config';
 
 /** Everything handlers may use. Later tasks add their ports here, built from the adapters `config.adapters` selects. */
 export interface DashboardDeps {
+    readonly vpsProviders?: Readonly<Partial<Record<CloudOffer['provider'], VpsProvider>>>;
     readonly config: DashboardConfig;
     readonly clock: Clock;
     readonly random: Random;

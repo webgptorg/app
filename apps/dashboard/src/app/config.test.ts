@@ -75,6 +75,16 @@ describe('parseConfig', () => {
             }),
         ).toEqual(['ENGINE_INSTALLATION.version']);
     });
+    it('accepts a DigitalOcean signup referral and only links to the official referral service', () => {
+        const offer = { clientId: 'public-client', referralUrl: 'https://m.do.co/c/example123' };
+        const config = parseConfig({ ...bindings, ...devVars, VPS_DIGITALOCEAN: offer });
+        expect(config.digitalOcean).toEqual(offer);
+        expect(Object.isFrozen(config.digitalOcean)).toBe(true);
+        expect(
+            failedPaths({ ...bindings, ...devVars, VPS_DIGITALOCEAN: { referralUrl: 'https://example.org/' } }),
+        ).toEqual(['VPS_DIGITALOCEAN.referralUrl']);
+    });
+
     it('parses a complete dev configuration into a frozen object', () => {
         const { billing, ...config } = parseConfig({ ...bindings, ...devVars });
         expect(config).toEqual({

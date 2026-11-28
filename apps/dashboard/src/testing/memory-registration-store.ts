@@ -14,6 +14,7 @@ import { LINK_CODE_LIMITS } from '../shared/link-code-limits';
 import type { LinkCodeRecord, LinkCodeStore } from '../domain/registration/link-code-store';
 
 export interface StoredLinkCode extends LinkCodeRecord {
+    readonly launch?: { provider: 'digitalocean'; resourceId: string | null } | null;
     readonly usedAt: number | null;
     readonly engineId: EngineId | null;
 }
@@ -87,6 +88,30 @@ export function createMemoryRegistrationStores(deps: {
             }
             state.linkCodes.set(record.codeHash, { ...record, usedAt: null, engineId: null });
             return Promise.resolve('inserted');
+        },
+        reserveVps(input) {
+            const code = codes().find((c) => c.id === input.id && c.createdByUserId === input.userId);
+            if (!redeemable(code, input.orgId, input.now) || code.launch) return Promise.resolve(false);
+            state.linkCodes.delete(code.codeHash);
+            state.linkCodes.set(input.codeHash, {
+                ...code,
+                codeHash: input.codeHash,
+                ownerSetupCommitment: null,
+                launch: { provider: input.provider, resourceId: null },
+            });
+            return Promise.resolve(true);
+        },
+        finishVps(input, resourceId) {
+            const code = state.linkCodes.get(input.codeHash);
+            if (code?.id === input.id && code.orgId === input.orgId)
+                state.linkCodes.set(input.codeHash, {
+                    ...code,
+                    launch: resourceId === null ? null : { provider: input.provider, resourceId },
+                });
+            return Promise.resolve();
+        },
+        vpsStatus(orgId, id) {
+            return Promise.resolve(codes().find((c) => c.id === id && c.orgId === orgId)?.launch ?? null);
         },
         listPending: (orgId, now) =>
             Promise.resolve(

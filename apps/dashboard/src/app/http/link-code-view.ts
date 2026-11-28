@@ -23,7 +23,10 @@ export async function resolveLinkCodeView(
 
 /** The view of a code just issued: the code, its link URL and each install tab with one of them filled in. */
 export function issuedLinkCodeView(
-    config: Pick<DashboardConfig, 'dashboardOrigin' | 'installCommands' | 'installGuideUrl' | 'engineInstallation'>,
+    config: Pick<
+        DashboardConfig,
+        'dashboardOrigin' | 'installCommands' | 'installGuideUrl' | 'engineInstallation' | 'digitalOcean'
+    >,
     issued: Issued,
 ): LinkCodeView {
     // Engines take only https:// link URLs; config refuses {linkUrl} on a plain-http (dev) origin.
@@ -39,6 +42,11 @@ export function issuedLinkCodeView(
     return {
         linkCodeId: issued.linkCodeId,
         linkCode: issued.linkCode,
+        ...(linkUrl !== null && config.engineInstallation?.digitalOceanOwner
+            ? {
+                  vpsProviders: [{ provider: 'digitalocean' as const, referralUrl: config.digitalOcean?.referralUrl }],
+              }
+            : {}),
         linkUrl,
         installCommands: [
             ...(newProject?.kind === 'command'

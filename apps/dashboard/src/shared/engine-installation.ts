@@ -18,6 +18,8 @@ export const engineInstallReleaseSchema = z.strictObject({
                 compareEngineVersions(candidate.data, MINIMUM_VERSION) >= 0
             );
         }, 'requires 0.119.0-117 or a later semantic version'),
+    /** Set only by a reviewed release or the published npm capability manifest. */
+    digitalOceanOwner: z.literal(true).optional(),
     windowsSha256: z
         .string()
         .length(64)

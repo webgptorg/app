@@ -127,6 +127,13 @@
       "when": 1795777617955,
       "tag": "0017_link_code_owner_setup_commitment",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1795777617956,
+      "tag": "0018_vps_launch_reservation",
+      "breakpoints": true
     }
   ]
 }
