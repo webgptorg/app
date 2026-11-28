@@ -2,13 +2,14 @@ import { Section } from '@ptbk/ui';
 
 import { m } from '../../../paraglide/messages';
 import { useBrowser } from '../../core/browser';
+import { NotificationSettings } from '../notifications/notification-settings';
 import { useSession } from '../session/use-session';
 import { Page } from '../shell/page';
 import { CooldownBanner } from './cooldown-banner';
 import { PasskeysCard } from './passkeys-card';
 import { SessionsCard } from './sessions-card';
 
-/** `/account`: the email, passkeys and sessions of the signed-in person. */
+/** `/account`: the email, passkeys, sessions and notification settings of the signed-in person. */
 export function AccountPage() {
     const session = useSession();
     const { now } = useBrowser();
@@ -20,6 +21,7 @@ export function AccountPage() {
             </Section>
             <PasskeysCard />
             <SessionsCard />
+            <NotificationSettings />
         </Page>
     );
 }

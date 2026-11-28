@@ -8,6 +8,7 @@ import type { SessionView } from '../../../shared/api/routes';
 import { sessionQuery } from '../../api/queries';
 import { useApiClient } from '../../api/api-client-context';
 import { Link } from '../../core/link';
+import { NotificationBell } from '../notifications/notification-bell';
 import { SessionProvider } from '../session/use-session';
 import { EnvironmentBadge } from './environment-badge';
 import { HeaderLanguageSwitch } from './language-switch';
@@ -73,6 +74,7 @@ export function AppFrame({ session, children }: { readonly session: SessionView;
                         </nav>
                         <div className="flex h-12 shrink-0 items-center gap-0.5">
                             <HeaderLanguageSwitch />
+                            <NotificationBell />
                             <UserMenu />
                         </div>
                     </div>

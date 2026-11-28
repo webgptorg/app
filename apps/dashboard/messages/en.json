@@ -1018,5 +1018,40 @@
       }
     }
   ],
-  "notification_plan_limit_detail": "Nothing that runs stops. To add more, upgrade the plan on the Billing page."
+  "notification_plan_limit_detail": "Nothing that runs stops. To add more, upgrade the plan on the Billing page.",
+  "notification_bell": "Notifications",
+  "notification_bell_unseen": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Notifications, 1 new",
+        "countPlural=other": "Notifications, {count} new"
+      }
+    }
+  ],
+  "notification_bell_empty": "Nothing needs you right now.",
+  "notification_bell_failed": "Notifications could not be loaded. They come back on their own.",
+  "notification_open": "Open",
+  "notification_settings_link": "Notification settings",
+  "org_switcher_unseen": "{name}, new notifications",
+  "org_switcher_others_unseen": "Another organization has new notifications",
+  "notification_settings_title": "Notification settings",
+  "notification_settings_description": "How you hear about things in this organization. Each organization keeps its own choices.",
+  "notification_settings_always": "Emails about signing in, recovery and invitations always arrive and can't be turned off.",
+  "notification_settings_failed": "Your notification settings could not be loaded.",
+  "notification_channel_off": "Off",
+  "notification_channel_in_app": "In the app",
+  "notification_channel_email": "In the app and by email",
+  "notification_channel_default": "{channel} (default)",
+  "notification_settings_saved": "\"{kind}\" saved.",
+  "notification_settings_save_failed": "\"{kind}\" could not be saved.",
+  "unsubscribe_title": "Stop these emails?",
+  "unsubscribe_body": "You will stop getting emails like the one that brought you here. You still see these notifications in the app.",
+  "unsubscribe_confirm": "Stop these emails",
+  "unsubscribe_done_title": "Emails stopped",
+  "unsubscribe_done_body": "You won't get these emails any more. You still see them in the app.",
+  "unsubscribe_settings": "Open notification settings",
+  "unsubscribe_invalid_title": "This link doesn't work",
+  "unsubscribe_invalid_body": "It may be incomplete or out of date. Sign in and choose in your notification settings which emails you get."
 }

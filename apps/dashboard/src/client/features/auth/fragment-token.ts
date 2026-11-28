@@ -1,18 +1,23 @@
-/** What a `/signup#…` or `/recover#…` link carried: a well-formed token, something else, or nothing. */
+/** What a `/signup#…`, `/recover#…` or `/unsubscribe#…` link carried: a well-formed token, something else, or nothing. */
 export type FragmentToken =
     { readonly kind: 'none' } | { readonly kind: 'token'; readonly token: string } | { readonly kind: 'malformed' };
 
-export type TokenPurpose = 'signup' | 'recovery' | 'invite';
+export type TokenPurpose = 'signup' | 'recovery' | 'invite' | 'unsubscribe';
 
 /** 256-bit email tokens, base64url, as `src/shared/api/routes.ts` accepts them. */
 const EMAIL_TOKEN = /^[A-Za-z0-9_-]{43}$/;
+/**
+ * A signed unsubscribe token (D-41) within the route's size cap; its parts and signature are the server's to check, the
+ * page only refuses what could not be one.
+ */
+export const UNSUBSCRIBE_TOKEN = /^[A-Za-z0-9._+-]{1,400}$/;
 
-export function parseFragmentToken(hash: string): FragmentToken {
+export function parseFragmentToken(hash: string, pattern: RegExp = EMAIL_TOKEN): FragmentToken {
     const value = hash.startsWith('#') ? hash.slice(1) : hash;
     if (value === '') {
         return { kind: 'none' };
     }
-    return EMAIL_TOKEN.test(value) ? { kind: 'token', token: value } : { kind: 'malformed' };
+    return pattern.test(value) ? { kind: 'token', token: value } : { kind: 'malformed' };
 }
 
 /**
