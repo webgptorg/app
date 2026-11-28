@@ -111,6 +111,17 @@ describe('notify', () => {
         expect(t.rowOf(t.owner.userId)).toMatchObject({ variant: null, count: 3 });
     });
 
+    it('writes nothing when nobody is named and nothing is open', async () => {
+        const t = await setup();
+        await t.notifications.notify(
+            'people-change',
+            { orgId: t.orgId, engineId: null },
+            { kind: 'role', userId: 'nobodynobodynobodynobodyno' },
+            signal,
+        );
+        expect(t.store.rows).toEqual([]);
+    });
+
     it('fails without writing when the directory cannot be read', async () => {
         const t = await setup();
         t.directory.fail();

@@ -1,6 +1,7 @@
 import type { EngineId } from '@ptbk/protocol';
 
 import type { OrgId } from '../domain/ids';
+import { orgRoleSchema } from '../domain/roles';
 import type { ProjectPlace, RecipientDirectory } from '../domain/notifications/recipient-directory';
 import {
     asRecipient,
@@ -32,10 +33,11 @@ export function createMemoryRecipientDirectory(deps: {
             .filter((membership) => membership.orgId === orgId)
             .flatMap((membership): DirectoryMember[] => {
                 const user = deps.auth.users.get(membership.userId);
+                const role = orgRoleSchema.safeParse(membership.role);
                 const member = deps.teams.members.find(
                     (candidate) => candidate.teamId === teamId && candidate.userId === membership.userId,
                 );
-                return user === undefined
+                return user === undefined || !role.success
                     ? []
                     : [
                           {
@@ -43,7 +45,7 @@ export function createMemoryRecipientDirectory(deps: {
                               email: user.email,
                               emailVerified: user.emailVerifiedAt !== null,
                               locale: user.locale,
-                              orgRole: membership.role,
+                              orgRole: role.data,
                               access: teamId === undefined ? undefined : member?.access,
                           },
                       ];

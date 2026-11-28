@@ -1,5 +1,5 @@
 import { m } from '../../../paraglide/messages';
-import { DAY_MS, definePlatformKind, type NotificationItem, type NotificationPlace } from '../notification-kind';
+import { DAY_MS, definePlatformKind, projectLabel, type NotificationItem } from '../notification-kind';
 
 /** The status Durable Object's three moments (D-05, D-12). */
 export type ProjectStatusEvent =
@@ -8,10 +8,6 @@ export type ProjectStatusEvent =
     | { readonly kind: 'back-online' };
 
 type Variant = 'online' | 'offline' | 'back-online';
-
-function label(place: NotificationPlace): string {
-    return place.project?.label ?? '';
-}
 
 /**
  * Offline, online for the first time, back online. The offline alert's threshold already waited, so its email goes on
@@ -50,7 +46,7 @@ export const projectStatusKind = definePlatformKind<'project-status', ProjectSta
     copy: {
         label: () => m.notification_project_status_label(),
         line(item: NotificationItem<Variant>, place, { locale, time }) {
-            const project = label(place);
+            const project = projectLabel(place);
             switch (item.variant) {
                 case 'offline':
                     return m.notification_project_offline_line({ project, since: time(item.openedAt) }, { locale });
@@ -62,7 +58,7 @@ export const projectStatusKind = definePlatformKind<'project-status', ProjectSta
             }
         },
         subject(item, place, { locale }) {
-            const project = label(place);
+            const project = projectLabel(place);
             switch (item.variant) {
                 case 'offline':
                     return m.notification_project_offline_subject({ project }, { locale });

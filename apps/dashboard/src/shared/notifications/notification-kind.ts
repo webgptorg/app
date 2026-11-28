@@ -74,6 +74,11 @@ export interface NotificationPlace {
     readonly project: { readonly label: string; readonly hostname: string } | null;
 }
 
+/** The project's label, for lines of kinds that always have a project; empty never shows, since those rows do. */
+export function projectLabel(place: NotificationPlace): string {
+    return place.project?.label ?? '';
+}
+
 export interface NotificationItem<V extends string = string> {
     readonly count: number;
     readonly variant: V | null;

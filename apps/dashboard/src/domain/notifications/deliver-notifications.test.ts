@@ -43,12 +43,14 @@ describe('runNotificationDelivery', () => {
                 requesters: ['jana@example.test'],
                 settingsLink: 'https://app.ptbk.test/account#notifications',
                 unsubscribe: {
-                    page: 'https://app.ptbk.test/unsubscribe#tok-1',
-                    oneClick: 'https://app.ptbk.test/email/unsubscribe?token=tok-1',
+                    page: expect.stringMatching(/^https:\/\/app\.ptbk\.test\/unsubscribe#tok-\d$/) as unknown,
+                    oneClick: expect.stringMatching(
+                        /^https:\/\/app\.ptbk\.test\/email\/unsubscribe\?token=tok-\d$/,
+                    ) as unknown,
                 },
             },
         ]);
-        expect(t.signed[0]).toEqual({ userId: t.owner.userId, orgId: t.orgId, kinds: ['join-request'] });
+        expect(t.signed).toContainEqual({ userId: t.owner.userId, orgId: t.orgId, kinds: ['join-request'] });
         expect(await t.deliver(START + 60 * MINUTE)).toEqual({ emails: 0, failed: 0 });
     });
 
@@ -111,6 +113,22 @@ describe('runNotificationDelivery', () => {
         expect(t.to(t.admin)[1]?.items[0]).toMatchObject({ openedAt: START, updatedAt: START + 10 * MINUTE });
     });
 
+    it('checks again that the person is still one the kind reaches', async () => {
+        const t = await setup();
+        await t.notifications.notify('join-request', t.target, { kind: 'waiting', requests: 1 }, signal);
+        await t.notifications.syncAttention(
+            t.target,
+            [{ to: t.member.userId, kind: 'agent-waiting', count: 1 }],
+            signal,
+        );
+        // The admin's access is no longer approved: no longer a manager, so the join request is not theirs to see.
+        t.directory.setPeople(t.orgId, [t.owner, { ...t.admin, projects: { [t.engineId]: 'waiting' } }, t.member]);
+        await t.deliver(START + 15 * MINUTE);
+        expect(t.to(t.admin)).toEqual([]);
+        expect(t.to(t.owner)).toHaveLength(1);
+        expect(t.to(t.member).map((message) => message.items[0]?.kind)).toEqual(['agent-waiting']);
+    });
+
     it('reads recipients and preferences again when it sends', async () => {
         const t = await setup();
         await t.notifications.notify('project-status', t.target, { kind: 'offline', lastSeenAt: START }, signal);
@@ -161,7 +179,63 @@ describe('runNotificationDelivery', () => {
         ]);
         await t.deliver(START + 30 * 24 * 60 * MINUTE + 1);
         expect(t.store.rows.every((row) => row.closedAt !== null)).toBe(true);
-        await t.deliver(START + 30 * 24 * 60 * MINUTE + 1 + CLOSED_ROW_RETENTION_MS);
+        await t.deliver(START + 30 * 24 * 60 * MINUTE + 2 + CLOSED_ROW_RETENTION_MS);
         expect(t.store.rows).toEqual([]);
+    });
+
+    it('links only to the dashboard’s pages and the project’s own hostname, and to the dashboard when there is no project', async () => {
+        const t = await setup();
+        const org = { orgId: t.orgId, engineId: null };
+        await t.notifications.notify('people-change', org, { kind: 'role', userId: t.owner.userId }, signal);
+        await t.notifications.notify('people-change', t.target, { kind: 'added', userId: t.admin.userId }, signal);
+        // Rows a kind would never make, written by hand: a project link with no project falls back to the dashboard.
+        const base = t.store.rows[0];
+        if (base === undefined) {
+            throw new Error('no row');
+        }
+        await t.store.write([
+            {
+                op: 'insert',
+                row: { ...base, id: 'aaaaaaaaaaaaaaaaaaaaaaaaaa' as never, kind: 'update-waiting', variant: null },
+            },
+            {
+                op: 'insert',
+                row: {
+                    ...base,
+                    id: 'bbbbbbbbbbbbbbbbbbbbbbbbbb' as never,
+                    kind: 'project-status',
+                    variant: 'online',
+                    dueAt: START,
+                },
+            },
+        ]);
+        await t.store.setOverride(t.orgId, t.owner.userId, 'people-change', 'email');
+        await t.store.setOverride(t.orgId, t.owner.userId, 'update-waiting', 'email');
+        await t.store.setOverride(t.orgId, t.admin.userId, 'people-change', 'email');
+        await t.store.write(
+            t.store.rows
+                .filter((row) => row.closedAt === null)
+                .map((row) => ({
+                    op: 'update' as const,
+                    id: row.id,
+                    fields: {
+                        count: row.count,
+                        variant: row.variant,
+                        openedAt: row.openedAt,
+                        updatedAt: row.updatedAt,
+                        seenAt: null,
+                        dueAt: START,
+                    },
+                })),
+        );
+        await t.deliver(START + 15 * MINUTE);
+        expect(t.to(t.owner).flatMap((message) => message.items.map((item) => [item.kind, item.link]))).toEqual([
+            ['project-status', 'https://app.ptbk.test/'],
+            ['update-waiting', 'https://app.ptbk.test/'],
+            ['people-change', 'https://app.ptbk.test/'],
+        ]);
+        expect(t.to(t.admin).flatMap((message) => message.items.map((item) => item.link))).toEqual([
+            `https://app.ptbk.test/engines/${t.engineId}`,
+        ]);
     });
 });

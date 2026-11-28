@@ -6,6 +6,7 @@ import {
     MINUTE_MS,
     type NotificationChannel,
     type NotificationLink,
+    type Reach,
 } from '../../shared/notifications/notification-kind';
 import {
     anyKind,
@@ -60,6 +61,17 @@ function linkUrl(link: NotificationLink, origin: string, engineId: EngineId | nu
     }
 }
 
+function reaches(reach: Reach, person: NotificationRecipient): boolean {
+    switch (reach) {
+        case 'viewers':
+            return true;
+        case 'managers':
+            return person.manager;
+        case 'managers-or-approved':
+            return person.manager || person.approved;
+    }
+}
+
 /**
  * Whether the person may still get this row's email now: still reached by the kind, still asking for email, with a
  * verified address, and (platform kinds) not seen in-app meanwhile. Engine counts are themselves the engine's word that
@@ -70,11 +82,7 @@ function stillOwed(
     person: NotificationRecipient,
     override: NotificationChannel | null,
 ): boolean {
-    const kind = anyKind(row.kind);
-    const reached =
-        kind.reach === 'viewers' ||
-        (kind.reach === 'managers' && person.manager) ||
-        (kind.reach === 'managers-or-approved' && (person.manager || person.approved));
+    const reached = reaches(anyKind(row.kind).reach, person);
     const channel = effectiveChannel(row.kind, person.role, override);
     return reached && person.emailVerified && channel === 'email' && (isEngineKind(row.kind) || row.seenAt === null);
 }
@@ -89,16 +97,21 @@ export async function runNotificationDelivery(
     signal: AbortSignal,
 ): Promise<DeliveryReport> {
     const due = await deps.store.due(now, now - DUE_WINDOW_MS, DELIVERY_BATCH);
-    const groups = new Map<string, OpenNotificationRecord[]>();
+    const groups = new Map<
+        string,
+        { readonly first: OpenNotificationRecord; readonly rows: OpenNotificationRecord[] }
+    >();
     for (const row of due) {
         const key = `${row.orgId}|${row.userId}|${row.engineId ?? ''}`;
-        groups.set(key, [...(groups.get(key) ?? []), row]);
+        const group = groups.get(key) ?? { first: row, rows: [] };
+        group.rows.push(row);
+        groups.set(key, group);
     }
     let emails = 0;
     let failed = 0;
-    for (const rows of groups.values()) {
+    for (const { first, rows } of groups.values()) {
         signal.throwIfAborted();
-        const outcome = await deliverGroup(deps, rows, now, signal);
+        const outcome = await deliverGroup(deps, first, rows, now, signal);
         emails += outcome === 'sent' ? 1 : 0;
         failed += outcome === 'failed' ? 1 : 0;
     }
@@ -112,15 +125,11 @@ export async function runNotificationDelivery(
 
 async function deliverGroup(
     deps: NotificationDeliveryDeps,
+    { orgId, userId, engineId }: OpenNotificationRecord,
     rows: readonly OpenNotificationRecord[],
     now: number,
     signal: AbortSignal,
 ): Promise<'sent' | 'failed' | 'none'> {
-    const [first] = rows;
-    if (first === undefined) {
-        return 'none';
-    }
-    const { orgId, userId, engineId } = first;
     const [person, place, overrides] = await Promise.all([
         deps.directory.member(orgId, engineId, userId, signal),
         deps.directory.place(orgId, engineId, signal),
@@ -149,7 +158,10 @@ async function deliverGroup(
             last + HOURLY_CAP_MS,
         );
     }
-    const sending = owed.filter((row) => !held.includes(row));
+    // In the registry's order, so a merged email reads the same however its rows came due.
+    const sending = owed
+        .filter((row) => !held.includes(row))
+        .sort((a, b) => NOTIFICATION_KIND_IDS.indexOf(a.kind) - NOTIFICATION_KIND_IDS.indexOf(b.kind));
     if (sending.length === 0) {
         return 'none';
     }

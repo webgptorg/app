@@ -1002,5 +1002,6 @@
     }
   ],
   "notification_email_open": "Open it here: {link}",
-  "notification_email_footer": "This mailbox isn't read. Manage your notifications: {settings}\n\nTurn these emails off: {unsubscribe}"
+  "notification_email_footer": "This mailbox isn't read. Manage your notifications: {settings}\n\nTurn these emails off: {unsubscribe}",
+  "notification_email_project": "Project: {project}, at {hostname}"
 }

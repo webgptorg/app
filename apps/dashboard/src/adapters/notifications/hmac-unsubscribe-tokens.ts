@@ -48,8 +48,12 @@ export function createHmacUnsubscribeTokens(secret: Uint8Array): UnsubscribeToke
             }
             const [, userId, orgId, kindList, mac] = match as unknown as [string, string, string, string, string];
             const payload = token.slice(0, token.length - mac.length - 1);
-            // `verify` compares in constant time.
-            if (!(await crypto.subtle.verify('HMAC', await key(), fromBase64Url(mac), bytes(payload)))) {
+            const macBytes = fromBase64Url(mac);
+            // One spelling per token: the last character's spare bits must be zero. `verify` compares in constant time.
+            if (
+                toBase64Url(macBytes) !== mac ||
+                !(await crypto.subtle.verify('HMAC', await key(), macBytes, bytes(payload)))
+            ) {
                 return null;
             }
             const kinds = kindList.split('+').map((kind) => notificationKindSchema.safeParse(kind));

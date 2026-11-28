@@ -418,6 +418,12 @@ describe('engine status service', () => {
             ]);
         });
 
+        it('tells it of an update already waiting on the very first heartbeat', async () => {
+            const t = setup();
+            await t.beat(1, t.clock.nowMs(), { update: 'available' });
+            expect(t.notifications.calls.map((call) => call.event)).toEqual([{ kind: 'waiting' }]);
+        });
+
         it('accepts the heartbeat when the pipeline fails, and tries again on the next one', async () => {
             const t = setup();
             t.notifications.failing = true;

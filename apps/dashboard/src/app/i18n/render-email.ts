@@ -164,6 +164,14 @@ function renderNotifications(message: Extract<EmailMessage, { readonly template:
         subject,
         text: [
             ...sections,
+            ...(place.project === null
+                ? []
+                : [
+                      m.notification_email_project(
+                          { project: place.project.label, hostname: place.project.hostname },
+                          { locale },
+                      ),
+                  ]),
             m.notification_email_footer(
                 { settings: message.settingsLink, unsubscribe: message.unsubscribe.page },
                 { locale },

@@ -23,6 +23,7 @@ const TEAM = 'Northwind';
 const DASHBOARD_RP_ID = new URL(DASHBOARD_ORIGIN).hostname;
 // The approver email goes out with the heartbeat that first counts the request; the one in flight may miss it.
 const WAITING_EMAIL_WITHIN_MS = ACKED_WITHIN_MS;
+const UNSEEN_EMAIL_AFTER_MS = 16 * 60_000;
 const APPROVED = /can now use this project$/;
 
 function approveDialog(page: Page, email: string): Locator {
@@ -91,8 +92,21 @@ test('a new colleague joins from the invite in one step and is let in from the a
     });
 
     await test.step('the owner gets the approver email, which opens the Members page with her request', async () => {
-        const waiting = await emailed(dashboard, engine.ownerEmail, 'access-waiting', WAITING_EMAIL_WITHIN_MS);
-        expect(waiting.subject).toBe(`${jana} is waiting for access to ${TEAM}`);
+        // In-app at once; by email once still unseen 15 minutes later (ADR 0027), which the delivery run skips ahead to.
+        await expect
+            .poll(
+                async () => {
+                    await dashboard.deliverNotifications(UNSEEN_EMAIL_AFTER_MS);
+                    return (await dashboard.emails(engine.ownerEmail)).some(
+                        (email) => email.template === 'notifications',
+                    );
+                },
+                { timeout: WAITING_EMAIL_WITHIN_MS, intervals: [2_000] },
+            )
+            .toBe(true);
+        const waiting = await emailed(dashboard, engine.ownerEmail, 'notifications');
+        expect(waiting.subject).toBe(`Someone is waiting for access to ${TEAM}`);
+        expect(waiting.text).toContain(jana);
         const link = `${engine.origin}/members`;
         expect(waiting.text).toContain(link);
         await owner.goto(link);

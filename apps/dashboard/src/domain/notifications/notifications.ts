@@ -83,20 +83,21 @@ export function createNotifications(deps: NotificationsDeps): Notifications {
         now: number,
     ): readonly NotificationWrite[] {
         const timing = anyKind(kind).timing;
-        if (change.op === 'keep') {
-            return [];
-        }
         if (change.op === 'close' || channel === 'off') {
             return row === null ? [] : [{ op: 'close', id: row.id, at: now }];
         }
-        const dueAt = change.rearm ? (channel === 'email' ? now + timing.emailDelayMs : null) : (row?.dueAt ?? null);
+        if (change.op === 'keep') {
+            return [];
+        }
+        // Only a count that drops keeps a row as it was; anything new is unseen and owes its email again.
+        const kept = row !== null && !change.rearm ? row : null;
         const fields = {
             count: change.count,
             variant: change.variant,
             openedAt: change.openedAt,
             updatedAt: now,
-            seenAt: change.rearm ? null : (row?.seenAt ?? null),
-            dueAt,
+            seenAt: kept === null ? null : kept.seenAt,
+            dueAt: kept !== null ? kept.dueAt : channel === 'email' ? now + timing.emailDelayMs : null,
         };
         if (row !== null && !(change.rearm && row.emailedAt !== null)) {
             return [{ op: 'update', id: row.id, fields }];

@@ -97,7 +97,8 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
         status: TrackedEngineStatus,
     ): Promise<TrackedEngineStatus> {
         const waiting = status.payload.update === 'available';
-        const told = stored?.kind === 'tracked' ? (stored.updateWaiting ?? false) : false;
+        // Statuses stored before D-41 hold no `updateWaiting`, and were told nothing.
+        const told = stored?.kind === 'tracked' && stored.updateWaiting === true;
         if (waiting === told) {
             return { ...status, updateWaiting: told };
         }

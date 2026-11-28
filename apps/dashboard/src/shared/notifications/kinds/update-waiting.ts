@@ -1,5 +1,5 @@
 import { m } from '../../../paraglide/messages';
-import { DAY_MS, definePlatformKind, UNSEEN_EMAIL_DELAY_MS } from '../notification-kind';
+import { DAY_MS, definePlatformKind, projectLabel, UNSEEN_EMAIL_DELAY_MS } from '../notification-kind';
 
 /** The heartbeat's `update` turned `available` (the engine waits for someone), or left it. */
 export type UpdateWaitingEvent = { readonly kind: 'waiting' } | { readonly kind: 'done' };
@@ -30,9 +30,9 @@ export const updateWaitingKind = definePlatformKind<'update-waiting', UpdateWait
     copy: {
         label: () => m.notification_update_waiting_label(),
         line: (_item, place, { locale }) =>
-            m.notification_update_waiting_line({ project: place.project?.label ?? '' }, { locale }),
+            m.notification_update_waiting_line({ project: projectLabel(place) }, { locale }),
         subject: (_item, place, { locale }) =>
-            m.notification_update_waiting_subject({ project: place.project?.label ?? '' }, { locale }),
+            m.notification_update_waiting_subject({ project: projectLabel(place) }, { locale }),
         link: () => ({ to: 'project', path: '/' }),
     },
 });

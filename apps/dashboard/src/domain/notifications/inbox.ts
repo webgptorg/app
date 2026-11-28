@@ -1,6 +1,6 @@
 import type { EngineId, Hostname } from '@ptbk/protocol';
 
-import { engineLabel } from '../../shared/engine-label';
+import { projectName } from '../../shared/engine-label';
 import type { NotificationChannel, RecipientRole } from '../../shared/notifications/notification-kind';
 import { effectiveChannel, NOTIFICATION_KIND_IDS, type NotificationKind } from '../../shared/notifications/registry';
 import type { NotificationId, OrgId } from '../ids';
@@ -48,12 +48,14 @@ export interface Inbox {
  * they lost, or one revoked since, waits unseen for its close or the cleanup, rather than naming what they cannot open.
  */
 export async function readInbox(deps: InboxDeps, actor: TeamActor): Promise<Inbox> {
-    const [rows, unseen, engines, visible] = await Promise.all([
+    const [rows, unseen, engines, teams, visible] = await Promise.all([
         deps.store.listOpen(actor.orgId, actor.userId, INBOX_LIMIT),
         deps.store.orgsWithUnseen(actor.userId),
         deps.engines.listForOrg(actor.orgId),
+        deps.teams.list(actor.orgId),
         visibleEngineIds(deps, actor),
     ]);
+    const teamNames = new Map(teams.flatMap((team) => (team.engineId === null ? [] : [[team.engineId, team.name]])));
     const byId = new Map(
         engines.filter((engine) => engine.status === 'active').map((engine) => [engine.engineId, engine]),
     );
@@ -68,7 +70,11 @@ export async function readInbox(deps: InboxDeps, actor: TeamActor): Promise<Inbo
         return [
             {
                 ...toItem(row),
-                project: { engineId: engine.engineId, label: engineLabel(engine), hostname: engine.hostname },
+                project: {
+                    engineId: engine.engineId,
+                    label: projectName({ ...engine, teamName: teamNames.get(engine.engineId) ?? null }),
+                    hostname: engine.hostname,
+                },
             },
         ];
     });

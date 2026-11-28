@@ -1,5 +1,5 @@
 import { m } from '../../../paraglide/messages';
-import { countUp, DAY_MS, definePlatformKind, UNSEEN_EMAIL_DELAY_MS } from '../notification-kind';
+import { countUp, DAY_MS, definePlatformKind, projectLabel, UNSEEN_EMAIL_DELAY_MS } from '../notification-kind';
 
 /**
  * People the dashboard sent to the project with an access ticket now wait for approval there, or the engine answered
@@ -43,9 +43,9 @@ export const joinRequestKind = definePlatformKind<'join-request', JoinRequestEve
     copy: {
         label: () => m.notification_join_request_label(),
         line: (item, place, { locale }) =>
-            m.notification_join_request_line({ count: item.count, project: place.project?.label ?? '' }, { locale }),
+            m.notification_join_request_line({ count: item.count, project: projectLabel(place) }, { locale }),
         subject: (item, place, { locale }) =>
-            m.notification_join_request_subject({ count: item.count, project: place.project?.label ?? '' }, { locale }),
+            m.notification_join_request_subject({ count: item.count, project: projectLabel(place) }, { locale }),
         detail: (_item, _place, { locale }, extras) =>
             extras.requesters.length === 0
                 ? m.notification_join_request_detail_unnamed({}, { locale })

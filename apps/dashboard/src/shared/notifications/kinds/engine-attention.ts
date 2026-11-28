@@ -6,6 +6,7 @@ import {
     type ChannelDefaults,
     type EngineKind,
     type NotificationCopy,
+    projectLabel,
 } from '../notification-kind';
 
 /**
@@ -45,17 +46,17 @@ const EVERYONE_BY_EMAIL: ChannelDefaults = {
 export const agentWaitingKind = attentionKind('agent-waiting', EVERYONE_BY_EMAIL, {
     label: () => m.notification_agent_waiting_label(),
     line: (item, place, { locale }) =>
-        m.notification_agent_waiting_line({ count: item.count, project: place.project?.label ?? '' }, { locale }),
+        m.notification_agent_waiting_line({ count: item.count, project: projectLabel(place) }, { locale }),
     subject: (item, place, { locale }) =>
-        m.notification_agent_waiting_line({ count: item.count, project: place.project?.label ?? '' }, { locale }),
+        m.notification_agent_waiting_line({ count: item.count, project: projectLabel(place) }, { locale }),
 });
 
 export const taskFailedKind = attentionKind('task-failed', EVERYONE_BY_EMAIL, {
     label: () => m.notification_task_failed_label(),
     line: (item, place, { locale }) =>
-        m.notification_task_failed_line({ count: item.count, project: place.project?.label ?? '' }, { locale }),
+        m.notification_task_failed_line({ count: item.count, project: projectLabel(place) }, { locale }),
     subject: (item, place, { locale }) =>
-        m.notification_task_failed_line({ count: item.count, project: place.project?.label ?? '' }, { locale }),
+        m.notification_task_failed_line({ count: item.count, project: projectLabel(place) }, { locale }),
 });
 
 // Project-wide: the engine sends it without `to`, so it reaches the managers the dashboard knows, never members.
@@ -65,8 +66,8 @@ export const toolSignInKind = attentionKind(
     {
         label: () => m.notification_tool_sign_in_label(),
         line: (item, place, { locale }) =>
-            m.notification_tool_sign_in_line({ count: item.count, project: place.project?.label ?? '' }, { locale }),
+            m.notification_tool_sign_in_line({ count: item.count, project: projectLabel(place) }, { locale }),
         subject: (item, place, { locale }) =>
-            m.notification_tool_sign_in_line({ count: item.count, project: place.project?.label ?? '' }, { locale }),
+            m.notification_tool_sign_in_line({ count: item.count, project: projectLabel(place) }, { locale }),
     },
 );
