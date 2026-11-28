@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 
 import { createDatabase } from '../../src/adapters/db/client';
+import { createD1MeteringStore } from '../../src/adapters/db/d1-metering-store';
 import { createD1AuthStore } from '../../src/adapters/db/d1-auth-store';
 import { createD1BillingStore } from '../../src/adapters/db/d1-billing-store';
 import {
@@ -26,6 +27,7 @@ describeEngineListFlows('engine list on D1', (options) => {
                 engines: createD1EngineStore(db),
                 platformEngines: createD1PlatformEngineStore(db),
             },
+            metering: createD1MeteringStore(db),
             registry: createD1RegistryReader(db),
             heartbeatEngines: createD1HeartbeatEngineReader(db),
         }),

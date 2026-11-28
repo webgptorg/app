@@ -385,6 +385,7 @@
   "invite_emails_invalid": "Enter one or more email addresses.",
   "invite_emails_label": "Email addresses",
   "invite_open": "Invite people",
+  "invite_people_limit": "Your plan’s limit on people is reached; pending invitations count too. To invite someone new, upgrade the plan or ask an owner to. Everyone already here keeps access.",
   "invite_page_body": "You're invited to {org} on Promptbook.",
   "invite_page_body_unnamed": "You're invited to an organization on Promptbook.",
   "invite_page_for": "Invitation for {email}, valid until {until}.",

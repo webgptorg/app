@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers';
 
 import { createDatabase } from '../../src/adapters/db/client';
+import { createD1MeteringStore } from '../../src/adapters/db/d1-metering-store';
 import { createD1AuthStore } from '../../src/adapters/db/d1-auth-store';
 import { createD1BillingStore } from '../../src/adapters/db/d1-billing-store';
 import {
@@ -23,6 +24,7 @@ describeHeartbeatFlows('heartbeats on D1', () => {
                 engines: createD1EngineStore(db),
                 platformEngines: createD1PlatformEngineStore(db),
             },
+            metering: createD1MeteringStore(db),
             heartbeatEngines: createD1HeartbeatEngineReader(db),
             alertRecipients: createD1AlertRecipients(db),
             heartbeat: FLOW_HEARTBEAT,

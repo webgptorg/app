@@ -56,6 +56,8 @@ export const DASHBOARD_POLICY = {
     'license.read': { scope: 'org', orgRoles: MANAGERS, ...PLAIN },
     // Binds the organization to a website account; a hijacked account must not rebind it during the cooldown.
     'license.link': { scope: 'org', orgRoles: MANAGERS, ...SENSITIVE },
+    // What the organization's meters count now and per day, with its limits (ADR 0025): counts only.
+    'usage.read': { scope: 'org', orgRoles: MANAGERS, ...PLAIN },
 } as const satisfies PolicyTable<string>;
 
 export type DashboardAction = keyof typeof DASHBOARD_POLICY;

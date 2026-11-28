@@ -53,7 +53,7 @@ import {
 } from './memory-engine-status';
 import { createMemoryAuthStore, type MemoryAuthState } from './memory-auth-store';
 import { createMemoryRegistrationStores, type MemoryRegistrationState } from './memory-registration-store';
-import { createMemoryTeamStore } from './memory-team-store';
+import { createMemoryTeamStore, type MemoryTeamState } from './memory-team-store';
 import type { TeamStore } from '../domain/teams/team-store';
 import { memberKeySource } from '../domain/teams/member-key';
 import { createFakeDnsResolver, type FakeDnsResolver } from './fake-dns-resolver';
@@ -65,6 +65,8 @@ import { createTestBilling } from './test-billing';
 import { createUsageRecorder } from '../domain/usage/usage-recorder';
 import type { UsageStore } from '../domain/usage/usage-store';
 import { createMemoryUsageStore, type MemoryUsageStore } from './memory-usage-store';
+import { createMemoryMeteringStore, type MemoryMeteringStore } from './memory-metering-store';
+import type { MeteringStore } from '../domain/metering/metering-store';
 import {
     createMemoryDashboardMetrics,
     type MemoryDashboardMetrics,
@@ -170,6 +172,8 @@ export function createAuthHarness(options: {
      * `website` mounts no billing route either; licences come from {@link AuthHarness.website}.
      */
     readonly billing?: 'fake' | 'off' | 'website';
+    /** With billing `off`: the `BILLING_OFF_PLAN` JSON, {@link TEST_OFF_PLAN} by default. */
+    readonly offPlan?: unknown;
     /** With billing `website`; an in-memory store by default (the D1 one in the workers project). */
     readonly websiteLicensing?: WebsiteLicensingStore;
     /** With billing `website`: `LICENSE_ENFORCEMENT`, unset (advisory) by default. */
@@ -205,6 +209,8 @@ export function createAuthHarness(options: {
     readonly relays?: readonly string[];
     /** Where usage events go instead of `usage`, e.g. a store that fails. */
     readonly usageStore?: Pick<UsageStore, 'insertEvents'>;
+    /** The meters' store; by default one over the harness's in-memory stores. */
+    readonly metering?: MeteringStore;
     readonly engineInstallation?: EngineInstallRelease;
     readonly installReleases?: EngineInstallReleaseSource;
 }): AuthHarness {
@@ -235,7 +241,7 @@ export function createAuthHarness(options: {
         RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
         MEMBER_KEY: DEV_MEMBER_KEY,
         ...(options.billing === 'off'
-            ? { BILLING_OFF_PLAN: TEST_OFF_PLAN }
+            ? { BILLING_OFF_PLAN: options.offPlan ?? TEST_OFF_PLAN }
             : options.billing === 'website'
               ? {
                     WEBSITE_HANDOFF_URL: FAKE_HANDOFF_URL,
@@ -295,6 +301,7 @@ export function createAuthHarness(options: {
         engineHostname: (engineId) => defaultHostname(engineId, config.engineDomain),
         engineLink: (engineId) => `${ORIGIN}/engines/${engineId}`,
     });
+    const metering = options.metering ?? harnessMeteringStore(options.store, registration, teams, usage);
     const metrics = createMemoryDashboardMetrics(clock);
     const relayPresence = options.relayPresence ?? createMemoryRelayPresenceStore();
     const deps: DashboardDeps = {
@@ -339,6 +346,7 @@ export function createAuthHarness(options: {
         engineStatus: options.wrapEngineStatus?.(engineStatuses) ?? engineStatuses,
         relayPresence,
         usage: usageRecorder,
+        metering,
     };
     const { app: http, routes } = createHttpApp({
         ...deps,
@@ -483,4 +491,32 @@ export function createAuthHarness(options: {
             };
         },
     };
+}
+
+/** Meters over the harness's own in-memory stores, as the D1 tables share one database. */
+function harnessMeteringStore(
+    auth: AuthStore,
+    registration: object,
+    teams: TeamStore,
+    usage: MemoryUsageStore,
+): MemoryMeteringStore {
+    const registrationState =
+        'state' in registration ? (registration as { readonly state: MemoryRegistrationState }).state : null;
+    // Empty meters would let every project limit through unnoticed.
+    if (registrationState === null) {
+        throw new Error('registration stores kept elsewhere need a `metering` store over the same data');
+    }
+    const authState = 'state' in auth ? (auth as { readonly state: MemoryAuthState }).state : null;
+    const teamState = 'state' in teams ? (teams as { readonly state: MemoryTeamState }).state : null;
+    return createMemoryMeteringStore({
+        engines: () =>
+            [...registrationState.engines.values()].map((engine) => ({
+                ...engine,
+                teamId: teamState?.engineTeams.get(engine.engineId) ?? null,
+            })),
+        teams: () => teamState?.teams.values() ?? [],
+        teamMembers: () => teamState?.members ?? [],
+        memberships: () => authState?.memberships ?? [],
+        engineDays: () => usage.state.engineDays.values(),
+    });
 }

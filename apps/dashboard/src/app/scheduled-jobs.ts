@@ -8,6 +8,7 @@ import type { MonitoringJobDeps } from '../domain/monitoring/monitoring-job';
 import { runMonitoring } from '../domain/monitoring/monitoring-job';
 import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import type { ScheduledJob } from '../domain/scheduled/scheduled-dispatcher';
+import { runMeterHistory, type MeterHistoryDeps } from '../domain/metering/meter-history';
 import { runUsageRollup, type UsageRollupDeps } from '../domain/usage/usage-rollup-job';
 
 /** Every minute: the relay monitor. */
@@ -33,6 +34,8 @@ export interface ScheduledJobDeps {
     readonly usage: UsageRollupDeps;
     /** ADR 0023: an expired code's owner setup commitment is nulled, not only never handed out. */
     readonly linkCodes: Pick<LinkCodeStore, 'clearExpiredCommitments'>;
+    /** ADR 0025's daily meter readings; D1 only. */
+    readonly meterHistory: MeterHistoryDeps;
 }
 
 /**
@@ -40,7 +43,7 @@ export interface ScheduledJobDeps {
  * which scheduled-jobs.test.ts checks.
  */
 export function scheduledJobs(deps: ScheduledJobDeps): readonly ScheduledJob[] {
-    const { monitoring, abuse, usage, linkCodes } = deps;
+    const { monitoring, abuse, usage, linkCodes, meterHistory } = deps;
     const jobs: ScheduledJob[] = [];
     if (monitoring !== null) {
         jobs.push({
@@ -78,6 +81,11 @@ export function scheduledJobs(deps: ScheduledJobDeps): readonly ScheduledJob[] {
         run: async ({ scheduledTime }) => {
             await linkCodes.clearExpiredCommitments(scheduledTime);
         },
+    });
+    jobs.push({
+        name: 'meter-history',
+        cron: EVERY_15_MINUTES,
+        run: ({ scheduledTime, signal }) => runMeterHistory(meterHistory, scheduledTime, signal),
     });
     return jobs;
 }

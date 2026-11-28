@@ -41,7 +41,8 @@ export const TEST_PLANS = {
             stripeProductId: 'prod_testscale',
             stripePriceId: TEST_PRICE_IDS.scale,
             features: ['engines.create'],
-            quotas: { 'engines.max': null, 'custom-domains.max': 5 },
+            quotas: { 'engines.max': null, 'custom-domains.max': 5, 'agents.per-project.max': 20 },
+            overLimit: 'warn',
             trialDays: 14,
         },
     ],
@@ -50,7 +51,7 @@ export const TEST_PLANS = {
 /** `BILLING_OFF_PLAN` for tests: engines without a subscription, capped so the limit path is reachable. */
 export const TEST_OFF_PLAN = {
     features: ['engines.create'],
-    quotas: { 'engines.max': 3, 'custom-domains.max': 1 },
+    quotas: { 'engines.max': 3, 'custom-domains.max': 1, 'people.max': 10 },
 } as const;
 
 export function testOrgId(): OrgId {

@@ -315,6 +315,27 @@ describe('team page', () => {
         ]);
     });
 
+    it('says in plain words when the plan has no room for more people', async () => {
+        const app = renderApp({
+            path: `/teams/${TEAM_ID}`,
+            session: ADMIN,
+            script: (api) => {
+                teamPage(api);
+                api.on(apiRoutes.createInvites, problem(403, 'people-limit'));
+            },
+        });
+        const people = await screen.findByRole('region', { name: 'People' });
+        await app.user.click(within(people).getByRole('button', { name: 'Invite to this project' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Invite people to Northwind' });
+        await app.user.type(within(dialog).getByLabelText('Email addresses'), 'eve@example.test');
+        await app.user.click(within(dialog).getByRole('button', { name: 'Send invitations' }));
+        expect(
+            await screen.findByText(
+                'Your plan’s limit on people is reached; pending invitations count too. To invite someone new, upgrade the plan or ask an owner to. Everyone already here keeps access.',
+            ),
+        ).toBeTruthy();
+    });
+
     it('removes someone from the team, and lets one leave it', async () => {
         const app = renderApp({
             path: `/teams/${TEAM_ID}`,

@@ -7,4 +7,6 @@ it('allows every feature without a limit, so a licence never stops anyone in the
     const signal = new AbortController().signal;
     expect(await entitlements.allows('org' as never, 'engines.create', signal)).toBe(true);
     expect(await entitlements.limit('org' as never, 'engines.max', signal)).toBeNull();
+    expect(await entitlements.limit('org' as never, 'agents.per-project.max', signal)).toBeNull();
+    expect(await entitlements.overLimit('org' as never, signal)).toBe('warn');
 });

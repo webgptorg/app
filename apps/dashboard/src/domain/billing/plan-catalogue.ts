@@ -3,12 +3,16 @@ import { z } from 'zod';
 import {
     FEATURES,
     featureSchema,
+    METER_QUOTAS,
     NONE_PLAN_ID,
+    overLimitSchema,
     planIdSchema,
     planNameSchema,
     planPriceSchema,
     QUOTAS,
     type Feature,
+    type MeterQuota,
+    type OverLimit,
     type PlanName,
     type PlanPrice,
     type Quota,
@@ -25,13 +29,14 @@ export interface Plan {
     readonly stripePriceId: string | null;
     readonly features: readonly Feature[];
     /** `null` is unlimited. */
-    readonly quotas: Readonly<Record<Quota, number | null>>;
+    readonly quotas: Readonly<Record<Quota | MeterQuota, number | null>>;
+    readonly overLimit: OverLimit;
     /** Days of free trial Checkout grants an organization's first subscription; null for none (and for `none`). */
     readonly trialDays: number | null;
 }
 
 /** What a plan grants, and all the entitlements port reads of one. */
-export type PlanEntitlements = Pick<Plan, 'features' | 'quotas'>;
+export type PlanEntitlements = Pick<Plan, 'features' | 'quotas' | 'overLimit'>;
 
 /** A plan Checkout can sell. */
 export interface PaidPlan extends Plan {
@@ -52,9 +57,19 @@ export interface PlanCatalogue {
 
 const quotaLimitSchema = z.number().int().nonnegative().max(1_000_000).nullable();
 
-const quotasSchema = z.strictObject(
-    Object.fromEntries(QUOTAS.map((quota) => [quota, quotaLimitSchema])) as Record<Quota, typeof quotaLimitSchema>,
-);
+const optionalQuotaLimitSchema = quotaLimitSchema.optional();
+
+// Meter quotas are optional, so configuration written before ADR 0025 parses unchanged; absent is unlimited.
+const quotasSchema = z.strictObject({
+    ...(Object.fromEntries(QUOTAS.map((quota) => [quota, quotaLimitSchema])) as Record<Quota, typeof quotaLimitSchema>),
+    ...(Object.fromEntries(METER_QUOTAS.map((quota) => [quota, optionalQuotaLimitSchema])) as Record<
+        MeterQuota,
+        typeof optionalQuotaLimitSchema
+    >),
+});
+
+/** Absent is `block`: what `engines.max` has always done. */
+const planOverLimitSchema = overLimitSchema.default('block');
 
 const featuresSchema = z
     .array(featureSchema)
@@ -62,7 +77,11 @@ const featuresSchema = z
     .refine((features) => new Set(features).size === features.length, 'duplicate feature');
 
 /** The JSON shape of a plan's grants: `none` in `BILLING_PLANS`, and `BILLING_OFF_PLAN`. */
-export const planEntitlementsSchema = z.strictObject({ features: featuresSchema, quotas: quotasSchema });
+export const planEntitlementsSchema = z.strictObject({
+    features: featuresSchema,
+    quotas: quotasSchema,
+    overLimit: planOverLimitSchema,
+});
 
 const paidPlanSchema = z.strictObject({
     id: planIdSchema.refine((id) => id !== NONE_PLAN_ID, `"${NONE_PLAN_ID}" is reserved`),
@@ -72,6 +91,7 @@ const paidPlanSchema = z.strictObject({
     stripePriceId: z.string().regex(/^price_[A-Za-z0-9]{1,64}$/),
     features: featuresSchema,
     quotas: quotasSchema,
+    overLimit: planOverLimitSchema,
     trialDays: z.int().min(1).max(30).optional(),
 });
 
@@ -93,10 +113,19 @@ export const planCatalogueSchema = z
         });
     });
 
+function fullQuotas(parsed: z.output<typeof quotasSchema>): Readonly<Record<Quota | MeterQuota, number | null>> {
+    const meterQuotas = Object.fromEntries(METER_QUOTAS.map((quota) => [quota, parsed[quota] ?? null])) as Record<
+        MeterQuota,
+        number | null
+    >;
+    return Object.freeze({ ...parsed, ...meterQuotas });
+}
+
 export function createPlanEntitlements(parsed: z.output<typeof planEntitlementsSchema>): PlanEntitlements {
     return Object.freeze({
         features: Object.freeze([...parsed.features]),
-        quotas: Object.freeze({ ...parsed.quotas }),
+        quotas: fullQuotas(parsed.quotas),
+        overLimit: parsed.overLimit,
     });
 }
 
@@ -107,7 +136,6 @@ export function createPlanCatalogue(parsed: z.output<typeof planCatalogueSchema>
             name: plan.name === null ? null : Object.freeze({ ...plan.name }),
             price: plan.price === null ? null : Object.freeze({ ...plan.price }),
             features: Object.freeze([...plan.features]),
-            quotas: Object.freeze({ ...plan.quotas }),
         });
     const none = freeze({
         id: NONE_PLAN_ID,
@@ -116,11 +144,11 @@ export function createPlanCatalogue(parsed: z.output<typeof planCatalogueSchema>
         stripeProductId: null,
         stripePriceId: null,
         trialDays: null,
-        ...parsed.none,
+        ...createPlanEntitlements(parsed.none),
     });
     const plans = Object.freeze(
-        parsed.plans.map(({ price, trialDays, ...plan }) =>
-            freeze({ ...plan, price: price ?? null, trialDays: trialDays ?? null }),
+        parsed.plans.map(({ price, trialDays, quotas, ...plan }) =>
+            freeze({ ...plan, quotas: fullQuotas(quotas), price: price ?? null, trialDays: trialDays ?? null }),
         ),
     );
     return Object.freeze({

@@ -29,6 +29,7 @@ import {
 import { engineLabelSchema } from '../engine-label';
 import { LINK_CODE_LIMITS } from '../link-code-limits';
 import { teamNameSchema } from '../team-name';
+import { usageViewSchema } from './usage';
 import { environmentSchema } from '../environment';
 import { docsAnchorSchema, installPathIdSchema, installPathLabelKeySchema } from '../install-paths';
 import { installationOptionSchema } from '../engine-installation';
@@ -1247,8 +1248,9 @@ export const apiRoutes = {
         output: z.strictObject({
             results: z.array(z.strictObject({ email: z.string(), outcome: z.enum(['invited', 'added']) })),
         }),
-        // `license-limit` (403): only with `LICENSE_ENFORCEMENT` `enforce`, which no environment sets yet.
-        errorCodes: ['invalid-email', 'team-not-found', 'license-limit'],
+        // `license-limit` (403): only with `LICENSE_ENFORCEMENT` `enforce`, which no environment sets yet. `people-limit`
+        // (403): the plan's `people.max` under `overLimit: block` (ADR 0025); a plan that warns lets the invitations go.
+        errorCodes: ['invalid-email', 'team-not-found', 'license-limit', 'people-limit'],
     }),
     resendInvite: defineRoute({
         method: 'POST',
@@ -1455,6 +1457,16 @@ export const apiRoutes = {
         rateLimit: null,
         input: NO_INPUT,
         output: licenseViewSchema,
+        errorCodes: [],
+    }),
+    getUsage: defineRoute({
+        method: 'GET',
+        path: '/api/usage',
+        auth: 'session',
+        permission: 'usage.read',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: usageViewSchema,
         errorCodes: [],
     }),
 } as const;

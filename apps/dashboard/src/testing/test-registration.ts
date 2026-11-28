@@ -11,6 +11,7 @@ import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import { registerEngine, type RegisterEngineDeps } from '../domain/registration/register-engine';
 import { createFakeEntitlements } from './fake-entitlements';
 import { createMemoryAuthStore } from './memory-auth-store';
+import { createMemoryMeteringStore } from './memory-metering-store';
 import { createMemoryRegistrationStores, type MemoryRegistrationStores } from './memory-registration-store';
 import { createMemoryTeamStore } from './memory-team-store';
 import type { MemberKeySource } from '../domain/teams/member-key';
@@ -36,10 +37,15 @@ export function createTestRegistration(
     const stores = createMemoryRegistrationStores({ orgExists: () => true });
     const teams = createMemoryTeamStore({ auth: createMemoryAuthStore().state, registration: stores.state });
     const entitlements = createFakeEntitlements();
-    const policy = createEngineCreationPolicy({
-        entitlements,
-        engines: stores.engines,
+    // Only the projects meter matters to registration, and it counts engines alone.
+    const metering = createMemoryMeteringStore({
+        engines: () => [...stores.state.engines.values()].map((engine) => ({ ...engine, teamId: null })),
+        teams: () => [],
+        teamMembers: () => [],
+        memberships: () => [],
+        engineDays: () => [],
     });
+    const policy = createEngineCreationPolicy({ entitlements, metering });
     const signal = new AbortController().signal;
     const deps: RegisterEngineDeps = {
         linkCodes: options.wrapLinkCodes?.(stores.linkCodes, stores) ?? stores.linkCodes,

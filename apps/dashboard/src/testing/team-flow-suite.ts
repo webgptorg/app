@@ -1,3 +1,6 @@
+import { orgIdSchema } from '../domain/ids';
+import { utcDay } from '../domain/usage/usage-day';
+import type { UsageView } from '../shared/api/usage';
 import {
     ed25519PublicKeyToBytes,
     heartbeatPath,
@@ -155,6 +158,60 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
             const response = await browser.authenticator.assert(options);
             expect((await browser.request('POST', '/api/auth/step-up/verify', { response })).status).toBe(200);
         }
+
+        it('shows owners and admins what the meters count, and members nothing (ADR 0025)', async () => {
+            const boss = await owner();
+            const team = await createTeam(boss.browser);
+            const empty = await createTeam(boss.browser, 'Client B');
+            const engineId = await linkEngine(boss.browser, team.teamId);
+            const colleague = await joined(boss, [team.teamId]);
+            const response = await boss.browser.request('GET', '/api/usage');
+            expect(response.status).toBe(200);
+            const view = response.body as UsageView;
+            const meter = (id: string) => view.meters.find((entry) => entry.meter === id);
+            expect(view.overLimit).toBe('block');
+            expect(meter('projects')).toEqual({
+                meter: 'projects',
+                limits: { org: 2, project: null },
+                org: { value: 1, unreported: 0 },
+                teams: [
+                    { teamId: team.teamId, value: 1, unreported: 0 },
+                    { teamId: empty.teamId, value: 0, unreported: 0 },
+                ],
+                projects: [{ engineId, value: 1, unreported: 0 }],
+            });
+            // No heartbeat has reached a rollup yet: unknown, not zero.
+            expect(meter('agents')?.org).toEqual({ value: 0, unreported: 1 });
+            expect(meter('people')?.org).toEqual({ value: 2, unreported: 0 });
+            expect(meter('people')?.projects).toEqual([{ engineId, value: 2, unreported: 0 }]);
+            expect(view.history).toEqual([]);
+            const day = utcDay(harness.clock.nowMs());
+            const orgId = orgIdSchema.parse(boss.orgId);
+            await harness.deps.metering.upsertMeterDays([
+                {
+                    day,
+                    orgId,
+                    scope: 'org',
+                    scopeId: orgId,
+                    meter: 'projects',
+                    value: 1,
+                    unreported: 0,
+                },
+                {
+                    day,
+                    orgId,
+                    scope: 'team',
+                    scopeId: team.teamId,
+                    meter: 'projects',
+                    value: 1,
+                    unreported: 0,
+                },
+            ]);
+            expect(((await boss.browser.request('GET', '/api/usage')).body as UsageView).history).toEqual([
+                { day, meter: 'projects', value: 1, unreported: 0, peak: 1 },
+            ]);
+            expectProblem(await colleague.browser.request('GET', '/api/usage'), 403, 'forbidden');
+        });
 
         it('creates, renames and lists teams with their people', async () => {
             const boss = await owner();

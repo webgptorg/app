@@ -387,6 +387,7 @@
   "invite_emails_invalid": "Zadejte jednu nebo více e-mailových adres.",
   "invite_emails_label": "E-mailové adresy",
   "invite_open": "Pozvat lidi",
+  "invite_people_limit": "Dosáhli jste limitu lidí svého tarifu; počítají se i čekající pozvánky. Chcete-li pozvat někoho nového, zvyšte tarif nebo o to požádejte vlastníka. Kdo už tu je, přístup neztrácí.",
   "invite_page_body": "Máte pozvánku do {org} v Promptbooku.",
   "invite_page_body_unnamed": "Máte pozvánku do organizace v Promptbooku.",
   "invite_page_for": "Pozvánka pro {email}, platí do {until}.",

@@ -222,7 +222,20 @@ describe('parseConfig', () => {
         ])('runs in %s without Stripe secrets or Stripe IDs', (_, vars) => {
             const config = parseConfig({ ...bindings, ...vars });
             expect(config.adapters.billing).toBe('off');
-            expect(config.billing).toEqual({ adapter: 'off', grant: TEST_OFF_PLAN });
+            expect(config.billing).toEqual({
+                adapter: 'off',
+                grant: {
+                    features: TEST_OFF_PLAN.features,
+                    quotas: {
+                        ...TEST_OFF_PLAN.quotas,
+                        'agents.max': null,
+                        'agents.per-project.max': null,
+                        'members.max': null,
+                        'members.per-project.max': null,
+                    },
+                    overLimit: 'block',
+                },
+            });
             expect(Object.isFrozen(config.billing)).toBe(true);
             expect(config.stripeSecretKey).toBeNull();
         });

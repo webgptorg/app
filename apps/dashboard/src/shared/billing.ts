@@ -12,6 +12,25 @@ export const QUOTAS = ['engines.max', 'custom-domains.max'] as const;
 export const quotaSchema = z.enum(QUOTAS);
 export type Quota = z.infer<typeof quotaSchema>;
 
+/**
+ * Limits on a meter's count (ADR 0025): `<meter>.max` for the whole organization, `<meter>.per-project.max` for each
+ * project. The projects meter's is `engines.max`. A plan that leaves one out is unlimited, so adding one breaks no
+ * configuration.
+ */
+export const METER_QUOTAS = [
+    'agents.max',
+    'agents.per-project.max',
+    'members.max',
+    'members.per-project.max',
+    'people.max',
+] as const;
+export type MeterQuota = (typeof METER_QUOTAS)[number];
+
+/** Whether going over a plan's limit stops something new from being created, or only says so (ADR 0025). */
+export const OVER_LIMIT_MODES = ['block', 'warn'] as const;
+export const overLimitSchema = z.enum(OVER_LIMIT_MODES);
+export type OverLimit = z.infer<typeof overLimitSchema>;
+
 /** `none` is the plan of an organization without a live subscription. */
 export const planIdSchema = z.string().regex(/^[a-z][a-z0-9-]{0,31}$/);
 

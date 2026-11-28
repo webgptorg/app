@@ -71,6 +71,9 @@ function InviteForm(props: Parameters<typeof InviteDialog>[0]) {
             if (code === 'invalid-email') {
                 return m.invite_emails_invalid();
             }
+            if (code === 'people-limit') {
+                return m.invite_people_limit();
+            }
             return code === 'license-limit' ? m.invite_license_limit() : undefined;
         },
         successMessage: (results) =>

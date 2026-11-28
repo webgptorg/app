@@ -7,6 +7,7 @@ import { createFetchPublicFaceFetcher } from '../adapters/abuse/fetch-public-fac
 import { createDatabase } from '../adapters/db/client';
 import { createD1LinkCodeStore } from '../adapters/db/d1-registration-store';
 import { createD1CtStore } from '../adapters/db/d1-ct-store';
+import { createD1MeteringStore } from '../adapters/db/d1-metering-store';
 import { createD1UsageStore } from '../adapters/db/d1-usage-store';
 import { createDurableObjectEngineStatus } from '../adapters/status/durable-object-engine-status';
 import { createD1ActiveEngineDirectory, createD1PublicFaceStore } from '../adapters/db/d1-public-face-store';
@@ -202,6 +203,7 @@ export async function runScheduled(
             logger,
         },
         linkCodes: createD1LinkCodeStore(createDatabase(env.DB)),
+        meterHistory: { store: createD1MeteringStore(createDatabase(env.DB)), logger },
     });
     const dispatcher = createScheduledDispatcher({
         jobs,

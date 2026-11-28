@@ -99,6 +99,7 @@ export function bindTeamRoutes(
         ...deps,
         accounts: deps.store.accounts,
         inviteLink: (token) => deps.links.invite(token),
+        meterLimits: { entitlements: deps.entitlements, store: deps.metering },
     };
 
     bind(router, mount, apiRoutes.listTeams, async ({ session }) => {
@@ -369,12 +370,17 @@ export function bindTeamRoutes(
         if (license.outcome === 'deny') {
             return { kind: 'problem', status: 403, code: 'license-limit' };
         }
-        const outcome = await createInvites(inviteDeps, inviter(session), {
-            emails,
-            role: input.body.role,
-            teamIds: input.body.teamIds.map((teamId) => teamIdSchema.parse(teamId)),
-            locale: requestLocale(request),
-        });
+        const outcome = await createInvites(
+            inviteDeps,
+            inviter(session),
+            {
+                emails,
+                role: input.body.role,
+                teamIds: input.body.teamIds.map((teamId) => teamIdSchema.parse(teamId)),
+                locale: requestLocale(request),
+            },
+            request.signal,
+        );
         switch (outcome.kind) {
             case 'ok':
                 request.waitUntil(sendInBackground(deps, outcome.deliver));
@@ -396,6 +402,8 @@ export function bindTeamRoutes(
                 return { kind: 'problem', status: 403, code: 'forbidden' };
             case 'team-not-found':
                 return { kind: 'problem', status: 404, code: 'team-not-found' };
+            case 'people-limit':
+                return { kind: 'problem', status: 403, code: 'people-limit' };
         }
     });
 
