@@ -2,7 +2,7 @@
 
 - **Lane:** M · **Module:** `apps/mock-engine` (and the mock target in `packages/conformance`) · **Milestone:** M5
 - **Depends on:** C-21
-- **Status:** in progress (feat/m-16-mock-engine-notifications)
+- **Status:** done (#395)
 - **Spec:** Interfaces (draft) 4; ADRs [0027](../../adr/0027-notifications.md), [0004](../../adr/0004-mock-engine-and-conformance.md)
 
 ## Goal
@@ -23,6 +23,6 @@ The mock engine serves `notifications@1` with fake data and sends the counts in 
 
 ## Acceptance criteria
 
-- [ ] Unit tests: attention in v2 beats and absent while off, no content in the body, the switch's default from the environment, the control routes.
-- [ ] The `engine-api` and `notifications` conformance suites pass against the mock engine.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Unit tests: attention in v2 beats and absent while off, no content in the body, the switch's default from the environment, the control routes.
+- [x] The `engine-api` and `notifications` conformance suites pass against the mock engine.
+- [x] **Status** line above set to `done (#<PR>)`.
