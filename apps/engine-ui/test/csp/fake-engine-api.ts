@@ -251,6 +251,25 @@ const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])
     ],
     ['GET', /^\/settings$/, 200, (api, _, __, ___, signal) => api.settings.get(signal)],
     [
+        'PUT',
+        /^\/settings\/dashboard-attention$/,
+        200,
+        (api, _, __, body, signal) => api.settings.setDashboardAttention(body as never, signal),
+    ],
+    [
+        'GET',
+        /^\/me\/notifications$/,
+        200,
+        (api, _, query, __, signal) => api.notifications.list(Object.fromEntries(query), signal),
+    ],
+    ['GET', /^\/me\/notifications\/unseen$/, 200, (api, _, __, ___, signal) => api.notifications.counts(signal)],
+    [
+        'POST',
+        /^\/me\/notifications\/seen$/,
+        200,
+        (api, _, __, body, signal) => api.notifications.markSeen(body as never, signal),
+    ],
+    [
         'GET',
         /^\/invites$/,
         200,
@@ -1125,6 +1144,7 @@ export async function routeFakeEngineApi(
     });
     const engineApi = engine.client;
     await saveSecondBookVersion(engineApi);
+    await seedNotifications(engine, options.member?.id ?? OWNER_MEMBER_ID);
     if (options.liveBrowser === true) await routeLiveChannels(page, engine);
     await page.route(`**${ENGINE_API_PREFIX}/**`, async (route) => {
         const request = route.request();
@@ -1166,6 +1186,47 @@ export async function routeFakeEngineApi(
         await fulfil(route, { kind: 'problem', problem: createProblem('not-found') }, 404);
     });
     return engine.controller;
+}
+
+/** The in-memory engine's owner, who signs in unless a test names another member. */
+const OWNER_MEMBER_ID = 'member-owner';
+
+/**
+ * The inbox with every target kind, one seen and one project-wide item, and agent-written text that must stay text:
+ * `/inbox` proves it renders and that nothing it shows reaches another origin.
+ */
+async function seedNotifications(
+    { client, controller }: { readonly client: EngineApiClient; readonly controller: InMemoryEngineController },
+    memberId: string,
+): Promise<void> {
+    const seen = controller.raiseNotification({
+        memberId,
+        kind: 'task-failed',
+        title: 'Weekly report failed',
+        detail: 'The search API answered 503 three times.',
+        target: { kind: 'task', taskId: FAKE_TASK_ID },
+    });
+    controller.raiseNotification({
+        memberId,
+        kind: 'agent-waiting',
+        title: `Ada asks: ${HOSTILE_TARGET_NAME}`,
+        detail: `${HOSTILE_TARGET_NAME} https://evil.example/pixel.png`,
+        target: { kind: 'chat', agentId: FAKE_AGENT_ID, chatId: FAKE_CHAT_ID },
+    });
+    controller.raiseNotification({
+        memberId,
+        kind: 'task-failed',
+        title: 'Run stopped',
+        target: { kind: 'run', runId: FAKE_RUN_ID },
+    });
+    controller.raiseNotification({
+        memberId: null,
+        kind: 'tool-sign-in',
+        title: 'Claude Code needs signing in again',
+        target: { kind: 'ai-tool', aiToolId: 'claude-code' },
+    });
+    controller.raiseNotification({ memberId, kind: 'agent-waiting', title: 'Grace finished a draft', target: null });
+    await client.notifications.markSeen({ ids: [seen.id] }, AbortSignal.timeout(5_000));
 }
 
 /** Frames reach the page at most this often, so the screencast does not spin the CPU for the length of a check. */

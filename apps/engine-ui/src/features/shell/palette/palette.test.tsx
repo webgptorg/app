@@ -312,8 +312,9 @@ describe('command palette', { timeout: TIMEOUT_MS }, () => {
             expect(groupNames().slice(0, 2)).toEqual(['Agents', 'Go to']);
         });
         const places = optionsIn('Go to');
-        expect(places.slice(0, 8)).toEqual([
+        expect(places.slice(0, 9)).toEqual([
             'Home',
+            'Inbox',
             'Agents',
             'Chats',
             'Tasks',

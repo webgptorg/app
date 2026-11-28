@@ -9,6 +9,7 @@ import { filesFeature } from '../features/files/files-feature';
 import { homeFeature } from '../features/home/home-feature';
 import { integrationsFeature } from '../features/integrations/integrations-feature';
 import { membersFeature } from '../features/members/members-feature';
+import { notificationsFeature } from '../features/notifications/notifications-feature';
 import { onboardingFeature } from '../features/onboarding/onboarding-feature';
 import { runsFeature } from '../features/runs/runs-feature';
 import { walletFeature } from '../features/wallet/wallet-feature';
@@ -24,6 +25,7 @@ import type { FeatureDefinition } from './registry/feature';
  */
 export const FEATURES: readonly FeatureDefinition[] = [
     homeFeature,
+    notificationsFeature,
     agentsFeature,
     agentWizardFeature,
     chatFeature,

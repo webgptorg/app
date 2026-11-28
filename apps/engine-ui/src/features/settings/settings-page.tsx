@@ -13,12 +13,14 @@ import { AI_TOOLS_READ } from '../ai-tools/ai-tools-queries';
 import { securityOverviewQueryOptions } from '../security/security-queries';
 import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
+import { DashboardAttentionSection } from './dashboard-attention-section';
 import { localeLabel, themeLabel } from './preference-labels';
 import { PropertyList, PropertyRow } from './property-row';
 import { UpdatesSection } from './updates-section';
 
 /**
- * What a member changes: this device's language and theme, and the engine's update policy for those who see it.
+ * What a member changes: this device's language and theme, the engine's update policy for those who see it, and for
+ * the owner whether heartbeats carry how many things wait for whom.
  * Language and theme apply the moment they are picked, so they have no save button.
  */
 export function SettingsPage() {
@@ -79,6 +81,7 @@ export function SettingsPage() {
                 </Section>
             ) : null}
             {can('security.read') ? <UpdatesSection query={overview} /> : null}
+            <DashboardAttentionSection />
         </Page>
     );
 }
