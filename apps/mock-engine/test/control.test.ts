@@ -198,6 +198,7 @@ describe('control listener: simulation (M-07)', () => {
                 'wallet@1',
                 'ai-tools@1',
                 'updates@1',
+                'notifications@1',
             ],
             simulation: { mode: 'paused', speed: 1, now: '2026-10-01T00:00:00.000Z' },
         });

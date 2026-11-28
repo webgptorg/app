@@ -310,6 +310,8 @@ describe('control listener route table', () => {
                 'http POST /__mock/live-browser/help-requests',
                 'http POST /__mock/live-browser/navigate',
                 'http POST /__mock/live-browser/tabs',
+                'http POST /__mock/notifications',
+                'http POST /__mock/notifications/close',
                 'http POST /__mock/onboarding/harness-check',
                 'http POST /__mock/onboarding/harness-login',
                 'http PUT /__mock/faults',

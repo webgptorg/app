@@ -224,6 +224,12 @@ describe('capabilities through the mock HTTP server (contract)', () => {
         );
         await okFrom('cancelAiToolSignIn', owner.aiTools.cancelSignIn(tool.id, keySignIn.id, signal()));
         await okFrom('signOutAiTool', owner.aiTools.signOut(tool.id, signal()));
+
+        const [item] = (await okFrom('listMyNotifications', owner.notifications.list({}, signal()))).items;
+        if (item === undefined) throw new Error('no seeded notification');
+        await okFrom('getMyNotificationCounts', owner.notifications.counts(signal()));
+        await okFrom('markMyNotificationsSeen', owner.notifications.markSeen({ ids: [item.id] }, signal()));
+        await okFrom('setDashboardAttention', owner.settings.setDashboardAttention({ enabled: false }, signal()));
         await okFrom('checkForUiUpdate', owner.updates.checkUi(signal()));
 
         const { members, apiTokens, audit, bookEditor, agentManagement } = KNOWN_CAPABILITIES;
@@ -234,9 +240,7 @@ describe('capabilities through the mock HTTP server (contract)', () => {
             (route) =>
                 route.capability !== undefined &&
                 !isReservedCapability(route.capability) &&
-                !coreFeatures.has(route.capability.id) &&
-                // Served from M-16 on.
-                route.capability.id !== KNOWN_CAPABILITIES.notifications.id,
+                !coreFeatures.has(route.capability.id),
         ).map(({ id }) => id);
         expect([...answered].filter((id) => id !== 'listActivity').sort()).toEqual([...capabilityRoutes].sort());
     });
